@@ -1,0 +1,30 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "CMake: Clean Rebuild",
+            "dependsOn": [
+                "CMake: Clean",
+                "CMake: Build"
+            ],
+            "problemMatcher": []
+        },
+        {
+            "label": "CMake: Clean",
+            "type": "shell",
+            "command": "cmake --build ${cmake.buildDirectory} --target clean",
+            "problemMatcher": []
+        },
+        {
+            "label": "CMake: Build", 
+            "type": "cmake",
+            "command": "build",
+            "preset": "unixgcc",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": []
+        }
+    ]
+}

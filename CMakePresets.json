@@ -1,0 +1,29 @@
+{
+    "version": 3,
+    "configurePresets": [
+        {
+            "name": "unixgcc",
+            "displayName": "Configure preset using toolchain file",
+            "description": "Sets Unix Makefiles generator, build and install directory",
+            "generator": "Unix Makefiles",
+            "binaryDir": "${sourceDir}/out/build/${presetName}",
+            "environment": {"PATH": "/usr/bin/"},
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/cmake/unixgcc_toolchain.cmake",
+                "CMAKE_INSTALL_PREFIX": "${sourceDir}/out/install/${presetName}"
+            }
+            
+        }
+    ],
+    "buildPresets": [
+    {
+        "name": "unixgcc",
+        "displayName": "unixgcc Debug",
+        "configurePreset": "unixgcc",
+        "targets": ["all"],
+        "configuration": "Debug"
+        
+    }
+    ]  
+}

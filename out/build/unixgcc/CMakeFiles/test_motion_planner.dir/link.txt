@@ -1,0 +1,1 @@
+/usr/bin/gcc -g -O0 -Wall -g CMakeFiles/test_motion_planner.dir/tests/test_motion_planner.c.o -o test_motion_planner  libHydroMotionLib.a -lm 
