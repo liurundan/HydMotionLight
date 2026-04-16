@@ -1,5 +1,6 @@
 #include "motion_control.h"
 #include "motion_planner.h"
+#include "ramp_controller.h"
 #include <math.h>
 #include <string.h>
 
@@ -37,7 +38,7 @@ void HDY_MotionControlFB_Init(HDY_MotionControlFB* fb) {
     memset(fb, 0, sizeof(*fb));
     fb->ENO = true;
     fb->_segmentChangedFlag = false;
-    fb->_rampedPressure = 0.0;
+    HDY_RampController_Init(&fb->_rampController, 0.0, 0.0);
 }
 
 void HDY_MotionControlFB_LoadRecipe(HDY_MotionControlFB* fb, const HDY_MotionSegment* recipe, size_t recipeSize) {
@@ -70,7 +71,7 @@ void HDY_MotionControlFB_StartSegment(HDY_MotionControlFB* fb, size_t segmentInd
     fb->STATE.currentSegmentIndex = segmentIndex;
     fb->STATE.commandedPumpSpeed = 0.0;
     fb->_segmentStartTime = timestamp;
-    fb->_rampedPressure = fb->AXIS_REF.pressure; /* Start ramp from current pressure */
+    HDY_RampController_Init(&fb->_rampController, fb->AXIS_REF.pressure, timestamp); /* Start ramp from current pressure */
     strncpy(fb->CURRENT_SEGMENT_NAME, fb->RECIPE[segmentIndex].name, HDY_NAME_MAX - 1);
     fb->CURRENT_SEGMENT_NAME[HDY_NAME_MAX - 1] = '\0';
     memset(&fb->DIAGNOSTIC, 0, sizeof(fb->DIAGNOSTIC));
@@ -142,17 +143,14 @@ void HDY_MotionControlFB_Execute(HDY_MotionControlFB* fb) {
     }
 
     /* Ramp pressure to prevent sudden changes */
-    HDY_REAL targetPressure = segment->targetPressure;
-    if (segment->pressureRampRate > 0.0) {
-        HDY_REAL maxChange = segment->pressureRampRate * elapsed;
-        if (fb->_rampedPressure < targetPressure) {
-            fb->_rampedPressure = HDY_ClampReal(fb->_rampedPressure + maxChange, fb->_rampedPressure, targetPressure);
-        } else if (fb->_rampedPressure > targetPressure) {
-            fb->_rampedPressure = HDY_ClampReal(fb->_rampedPressure - maxChange, targetPressure, fb->_rampedPressure);
-        }
-    } else {
-        fb->_rampedPressure = targetPressure;
-    }
+    HDY_RampControllerInput rampInput;
+    HDY_RampControllerOutput rampOutput;
+
+    rampInput.targetPressure = segment->targetPressure;
+    rampInput.rampRate = segment->pressureRampRate;
+    rampInput.currentTime = fb->AXIS_REF.timestamp;
+
+    HDY_RampController_Execute(&fb->_rampController, &rampInput, &rampOutput);
 
     HDY_MotionPlannerInput plannerInput;
     HDY_MotionPlannerOutput plannerOutput;
@@ -162,7 +160,7 @@ void HDY_MotionControlFB_Execute(HDY_MotionControlFB* fb) {
     plannerInput.elapsedTime = elapsed;
     plannerInput.flowToPumpSpeedGain = fb->FLOW_TO_PUMP_SPEED_GAIN;
     plannerInput.pumpSpeedLimit = fb->PUMP_SPEED_LIMIT;
-    plannerInput.rampedPressure = fb->_rampedPressure;
+    plannerInput.rampedPressure = rampOutput.rampedPressure;
 
     HDY_MotionPlanner_Execute(&plannerInput, &plannerOutput);
 

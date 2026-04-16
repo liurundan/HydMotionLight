@@ -53,15 +53,17 @@ void HDY_MotionPlanner_Execute(const HDY_MotionPlannerInput* input, HDY_MotionPl
         return;
     }
 
-    HDY_REAL targetVelocity;
-    if (input->segment->planner == HDY_PLANNER_POSITION_BASED) {
-        HDY_REAL remaining = input->segment->targetPosition - input->axisRef->position;
-        if (remaining < 0.0) {
-            remaining = 0.0;
+    HDY_REAL targetVelocity = 0.0;
+    if (input->segment->mode != HDY_MODE_PRESSURE_CLOSED_LOOP) {
+        if (input->segment->planner == HDY_PLANNER_POSITION_BASED) {
+            HDY_REAL remaining = input->segment->targetPosition - input->axisRef->position;
+            if (remaining < 0.0) {
+                remaining = 0.0;
+            }
+            targetVelocity = HDY_ComputePositionBasedVelocity(remaining, input->segment->maxAcceleration, input->segment->maxVelocity);
+        } else {
+            targetVelocity = HDY_ComputeTimeBasedVelocity(input->elapsedTime, input->segment->maxAcceleration, input->segment->maxVelocity);
         }
-        targetVelocity = HDY_ComputePositionBasedVelocity(remaining, input->segment->maxAcceleration, input->segment->maxVelocity);
-    } else {
-        targetVelocity = HDY_ComputeTimeBasedVelocity(input->elapsedTime, input->segment->maxAcceleration, input->segment->maxVelocity);
     }
 
     HDY_REAL targetFlow;

@@ -4,7 +4,7 @@
 # compile C with /usr/bin/gcc
 C_DEFINES = 
 
-C_INCLUDES = -I/home/dan/project/hdymotionlight/include
+C_INCLUDES = -I/home/dan/project/hdy-motion-light/include
 
 C_FLAGS = -g -O0 -Wall -g -std=gnu99
 

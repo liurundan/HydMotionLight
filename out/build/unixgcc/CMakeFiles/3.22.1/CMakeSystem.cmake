@@ -3,7 +3,7 @@ set(CMAKE_HOST_SYSTEM_NAME "Linux")
 set(CMAKE_HOST_SYSTEM_VERSION "6.6.87.2-microsoft-standard-WSL2")
 set(CMAKE_HOST_SYSTEM_PROCESSOR "x86_64")
 
-include("/home/dan/project/hdymotionlight/cmake/unixgcc_toolchain.cmake")
+include("/home/dan/project/hdy-motion-light/cmake/unixgcc_toolchain.cmake")
 
 set(CMAKE_SYSTEM "Linux")
 set(CMAKE_SYSTEM_NAME "Linux")

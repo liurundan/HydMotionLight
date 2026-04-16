@@ -1,8 +1,8 @@
 CMakeFiles/HydroMotionLib.dir/src/motion_planner.c.o: \
- /home/dan/project/hdymotionlight/src/motion_planner.c \
+ /home/dan/project/hdy-motion-light/src/motion_planner.c \
  /usr/include/stdc-predef.h \
- /home/dan/project/hdymotionlight/include/motion_planner.h \
- /home/dan/project/hdymotionlight/include/common_types.h \
+ /home/dan/project/hdy-motion-light/include/motion_planner.h \
+ /home/dan/project/hdy-motion-light/include/common_types.h \
  /usr/lib/gcc/x86_64-linux-gnu/11/include/stdbool.h \
  /usr/lib/gcc/x86_64-linux-gnu/11/include/stddef.h \
  /usr/lib/gcc/x86_64-linux-gnu/11/include/stdint.h /usr/include/stdint.h \

@@ -1,7 +1,7 @@
 CMakeFiles/HydroMotionLib.dir/src/rbf_pid.c.o: \
- /home/dan/project/hdymotionlight/src/rbf_pid.c \
+ /home/dan/project/hdy-motion-light/src/rbf_pid.c \
  /usr/include/stdc-predef.h \
- /home/dan/project/hdymotionlight/include/rbf_pid.h \
+ /home/dan/project/hdy-motion-light/include/rbf_pid.h \
  /usr/lib/gcc/x86_64-linux-gnu/11/include/stdbool.h \
  /usr/lib/gcc/x86_64-linux-gnu/11/include/stdint.h /usr/include/stdint.h \
  /usr/include/x86_64-linux-gnu/bits/libc-header-start.h \

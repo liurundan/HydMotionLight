@@ -55,7 +55,7 @@
 				}
 			],
 			"type" : "INTERNAL",
-			"value" : "/home/dan/project/hdymotionlight/out/build/unixgcc"
+			"value" : "/home/dan/project/hdy-motion-light/out/build/unixgcc"
 		},
 		{
 			"name" : "CMAKE_CACHE_MAJOR_VERSION",
@@ -491,7 +491,7 @@
 				}
 			],
 			"type" : "INTERNAL",
-			"value" : "/home/dan/project/hdymotionlight"
+			"value" : "/home/dan/project/hdy-motion-light"
 		},
 		{
 			"name" : "CMAKE_INSTALL_PREFIX",
@@ -503,7 +503,7 @@
 				}
 			],
 			"type" : "PATH",
-			"value" : "/home/dan/project/hdymotionlight/out/install/unixgcc"
+			"value" : "/home/dan/project/hdy-motion-light/out/install/unixgcc"
 		},
 		{
 			"name" : "CMAKE_INSTALL_SO_NO_EXE",
@@ -995,11 +995,11 @@
 			[
 				{
 					"name" : "HELPSTRING",
-					"value" : "The CMake toolchain file"
+					"value" : "No help, variable specified on the command line."
 				}
 			],
-			"type" : "FILEPATH",
-			"value" : "/home/dan/project/hdymotionlight/cmake/unixgcc_toolchain.cmake"
+			"type" : "UNINITIALIZED",
+			"value" : "/home/dan/project/hdy-motion-light/cmake/unixgcc_toolchain.cmake"
 		},
 		{
 			"name" : "CMAKE_UNAME",
@@ -1039,7 +1039,7 @@
 				}
 			],
 			"type" : "STATIC",
-			"value" : "/home/dan/project/hdymotionlight/out/build/unixgcc"
+			"value" : "/home/dan/project/hdy-motion-light/out/build/unixgcc"
 		},
 		{
 			"name" : "HydroMotionLib_IS_TOP_LEVEL",
@@ -1075,7 +1075,7 @@
 				}
 			],
 			"type" : "STATIC",
-			"value" : "/home/dan/project/hdymotionlight"
+			"value" : "/home/dan/project/hdy-motion-light"
 		},
 		{
 			"name" : "TARGET_INCLUDE_DIRS",
@@ -1087,7 +1087,7 @@
 				}
 			],
 			"type" : "INTERNAL",
-			"value" : "/home/dan/project/hdymotionlight/include;/usr/include;/usr/local/include"
+			"value" : "/home/dan/project/hdy-motion-light/include;/usr/include;/usr/local/include"
 		}
 	],
 	"kind" : "cache",

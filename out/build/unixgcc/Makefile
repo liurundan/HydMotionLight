@@ -57,13 +57,23 @@ RM = /usr/bin/cmake -E rm -f
 EQUALS = =
 
 # The top-level source directory on which CMake was run.
-CMAKE_SOURCE_DIR = /home/dan/project/hdymotionlight
+CMAKE_SOURCE_DIR = /home/dan/project/hdy-motion-light
 
 # The top-level build directory on which CMake was run.
-CMAKE_BINARY_DIR = /home/dan/project/hdymotionlight/out/build/unixgcc
+CMAKE_BINARY_DIR = /home/dan/project/hdy-motion-light/out/build/unixgcc
 
 #=============================================================================
 # Targets provided globally by CMake.
+
+# Special rule for the target test
+test:
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --cyan "Running tests..."
+	/usr/bin/ctest --force-new-ctest-process $(ARGS)
+.PHONY : test
+
+# Special rule for the target test
+test/fast: test
+.PHONY : test/fast
 
 # Special rule for the target edit_cache
 edit_cache:
@@ -87,9 +97,9 @@ rebuild_cache/fast: rebuild_cache
 
 # The main all target
 all: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/dan/project/hdymotionlight/out/build/unixgcc/CMakeFiles /home/dan/project/hdymotionlight/out/build/unixgcc//CMakeFiles/progress.marks
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/dan/project/hdy-motion-light/out/build/unixgcc/CMakeFiles /home/dan/project/hdy-motion-light/out/build/unixgcc//CMakeFiles/progress.marks
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 all
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/dan/project/hdymotionlight/out/build/unixgcc/CMakeFiles 0
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/dan/project/hdy-motion-light/out/build/unixgcc/CMakeFiles 0
 .PHONY : all
 
 # The main clean target
@@ -142,6 +152,45 @@ test_motion_planner/fast:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_motion_planner.dir/build.make CMakeFiles/test_motion_planner.dir/build
 .PHONY : test_motion_planner/fast
 
+#=============================================================================
+# Target rules for targets named rbf_pid_test
+
+# Build rule for target.
+rbf_pid_test: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 rbf_pid_test
+.PHONY : rbf_pid_test
+
+# fast build rule for target.
+rbf_pid_test/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/rbf_pid_test.dir/build.make CMakeFiles/rbf_pid_test.dir/build
+.PHONY : rbf_pid_test/fast
+
+#=============================================================================
+# Target rules for targets named ramp_controller_test
+
+# Build rule for target.
+ramp_controller_test: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 ramp_controller_test
+.PHONY : ramp_controller_test
+
+# fast build rule for target.
+ramp_controller_test/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/ramp_controller_test.dir/build.make CMakeFiles/ramp_controller_test.dir/build
+.PHONY : ramp_controller_test/fast
+
+#=============================================================================
+# Target rules for targets named main
+
+# Build rule for target.
+main: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 main
+.PHONY : main
+
+# fast build rule for target.
+main/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/main.dir/build.make CMakeFiles/main.dir/build
+.PHONY : main/fast
+
 src/motion_control.o: src/motion_control.c.o
 .PHONY : src/motion_control.o
 
@@ -190,6 +239,30 @@ src/motion_planner.c.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/HydroMotionLib.dir/build.make CMakeFiles/HydroMotionLib.dir/src/motion_planner.c.s
 .PHONY : src/motion_planner.c.s
 
+src/ramp_controller.o: src/ramp_controller.c.o
+.PHONY : src/ramp_controller.o
+
+# target to build an object file
+src/ramp_controller.c.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/HydroMotionLib.dir/build.make CMakeFiles/HydroMotionLib.dir/src/ramp_controller.c.o
+.PHONY : src/ramp_controller.c.o
+
+src/ramp_controller.i: src/ramp_controller.c.i
+.PHONY : src/ramp_controller.i
+
+# target to preprocess a source file
+src/ramp_controller.c.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/HydroMotionLib.dir/build.make CMakeFiles/HydroMotionLib.dir/src/ramp_controller.c.i
+.PHONY : src/ramp_controller.c.i
+
+src/ramp_controller.s: src/ramp_controller.c.s
+.PHONY : src/ramp_controller.s
+
+# target to generate assembly for a file
+src/ramp_controller.c.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/HydroMotionLib.dir/build.make CMakeFiles/HydroMotionLib.dir/src/ramp_controller.c.s
+.PHONY : src/ramp_controller.c.s
+
 src/rbf_pid.o: src/rbf_pid.c.o
 .PHONY : src/rbf_pid.o
 
@@ -214,29 +287,77 @@ src/rbf_pid.c.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/HydroMotionLib.dir/build.make CMakeFiles/HydroMotionLib.dir/src/rbf_pid.c.s
 .PHONY : src/rbf_pid.c.s
 
-src/rbf_pid_test.o: src/rbf_pid_test.c.o
-.PHONY : src/rbf_pid_test.o
+tests/main.o: tests/main.c.o
+.PHONY : tests/main.o
 
 # target to build an object file
-src/rbf_pid_test.c.o:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/HydroMotionLib.dir/build.make CMakeFiles/HydroMotionLib.dir/src/rbf_pid_test.c.o
-.PHONY : src/rbf_pid_test.c.o
+tests/main.c.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/main.dir/build.make CMakeFiles/main.dir/tests/main.c.o
+.PHONY : tests/main.c.o
 
-src/rbf_pid_test.i: src/rbf_pid_test.c.i
-.PHONY : src/rbf_pid_test.i
+tests/main.i: tests/main.c.i
+.PHONY : tests/main.i
 
 # target to preprocess a source file
-src/rbf_pid_test.c.i:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/HydroMotionLib.dir/build.make CMakeFiles/HydroMotionLib.dir/src/rbf_pid_test.c.i
-.PHONY : src/rbf_pid_test.c.i
+tests/main.c.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/main.dir/build.make CMakeFiles/main.dir/tests/main.c.i
+.PHONY : tests/main.c.i
 
-src/rbf_pid_test.s: src/rbf_pid_test.c.s
-.PHONY : src/rbf_pid_test.s
+tests/main.s: tests/main.c.s
+.PHONY : tests/main.s
 
 # target to generate assembly for a file
-src/rbf_pid_test.c.s:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/HydroMotionLib.dir/build.make CMakeFiles/HydroMotionLib.dir/src/rbf_pid_test.c.s
-.PHONY : src/rbf_pid_test.c.s
+tests/main.c.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/main.dir/build.make CMakeFiles/main.dir/tests/main.c.s
+.PHONY : tests/main.c.s
+
+tests/ramp_controller_test.o: tests/ramp_controller_test.c.o
+.PHONY : tests/ramp_controller_test.o
+
+# target to build an object file
+tests/ramp_controller_test.c.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/ramp_controller_test.dir/build.make CMakeFiles/ramp_controller_test.dir/tests/ramp_controller_test.c.o
+.PHONY : tests/ramp_controller_test.c.o
+
+tests/ramp_controller_test.i: tests/ramp_controller_test.c.i
+.PHONY : tests/ramp_controller_test.i
+
+# target to preprocess a source file
+tests/ramp_controller_test.c.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/ramp_controller_test.dir/build.make CMakeFiles/ramp_controller_test.dir/tests/ramp_controller_test.c.i
+.PHONY : tests/ramp_controller_test.c.i
+
+tests/ramp_controller_test.s: tests/ramp_controller_test.c.s
+.PHONY : tests/ramp_controller_test.s
+
+# target to generate assembly for a file
+tests/ramp_controller_test.c.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/ramp_controller_test.dir/build.make CMakeFiles/ramp_controller_test.dir/tests/ramp_controller_test.c.s
+.PHONY : tests/ramp_controller_test.c.s
+
+tests/rbf_pid_test.o: tests/rbf_pid_test.c.o
+.PHONY : tests/rbf_pid_test.o
+
+# target to build an object file
+tests/rbf_pid_test.c.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/rbf_pid_test.dir/build.make CMakeFiles/rbf_pid_test.dir/tests/rbf_pid_test.c.o
+.PHONY : tests/rbf_pid_test.c.o
+
+tests/rbf_pid_test.i: tests/rbf_pid_test.c.i
+.PHONY : tests/rbf_pid_test.i
+
+# target to preprocess a source file
+tests/rbf_pid_test.c.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/rbf_pid_test.dir/build.make CMakeFiles/rbf_pid_test.dir/tests/rbf_pid_test.c.i
+.PHONY : tests/rbf_pid_test.c.i
+
+tests/rbf_pid_test.s: tests/rbf_pid_test.c.s
+.PHONY : tests/rbf_pid_test.s
+
+# target to generate assembly for a file
+tests/rbf_pid_test.c.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/rbf_pid_test.dir/build.make CMakeFiles/rbf_pid_test.dir/tests/rbf_pid_test.c.s
+.PHONY : tests/rbf_pid_test.c.s
 
 tests/test_motion_planner.o: tests/test_motion_planner.c.o
 .PHONY : tests/test_motion_planner.o
@@ -270,7 +391,11 @@ help:
 	@echo "... depend"
 	@echo "... edit_cache"
 	@echo "... rebuild_cache"
+	@echo "... test"
 	@echo "... HydroMotionLib"
+	@echo "... main"
+	@echo "... ramp_controller_test"
+	@echo "... rbf_pid_test"
 	@echo "... test_motion_planner"
 	@echo "... src/motion_control.o"
 	@echo "... src/motion_control.i"
@@ -278,12 +403,21 @@ help:
 	@echo "... src/motion_planner.o"
 	@echo "... src/motion_planner.i"
 	@echo "... src/motion_planner.s"
+	@echo "... src/ramp_controller.o"
+	@echo "... src/ramp_controller.i"
+	@echo "... src/ramp_controller.s"
 	@echo "... src/rbf_pid.o"
 	@echo "... src/rbf_pid.i"
 	@echo "... src/rbf_pid.s"
-	@echo "... src/rbf_pid_test.o"
-	@echo "... src/rbf_pid_test.i"
-	@echo "... src/rbf_pid_test.s"
+	@echo "... tests/main.o"
+	@echo "... tests/main.i"
+	@echo "... tests/main.s"
+	@echo "... tests/ramp_controller_test.o"
+	@echo "... tests/ramp_controller_test.i"
+	@echo "... tests/ramp_controller_test.s"
+	@echo "... tests/rbf_pid_test.o"
+	@echo "... tests/rbf_pid_test.i"
+	@echo "... tests/rbf_pid_test.s"
 	@echo "... tests/test_motion_planner.o"
 	@echo "... tests/test_motion_planner.i"
 	@echo "... tests/test_motion_planner.s"

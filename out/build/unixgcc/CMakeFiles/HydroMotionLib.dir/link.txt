@@ -1,2 +1,2 @@
-/usr/bin/ar qc libHydroMotionLib.a CMakeFiles/HydroMotionLib.dir/src/motion_control.c.o CMakeFiles/HydroMotionLib.dir/src/motion_planner.c.o CMakeFiles/HydroMotionLib.dir/src/rbf_pid.c.o CMakeFiles/HydroMotionLib.dir/src/rbf_pid_test.c.o
+/usr/bin/ar qc libHydroMotionLib.a CMakeFiles/HydroMotionLib.dir/src/motion_control.c.o CMakeFiles/HydroMotionLib.dir/src/motion_planner.c.o CMakeFiles/HydroMotionLib.dir/src/ramp_controller.c.o CMakeFiles/HydroMotionLib.dir/src/rbf_pid.c.o
 /usr/bin/ranlib libHydroMotionLib.a

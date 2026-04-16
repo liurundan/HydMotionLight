@@ -1,8 +1,8 @@
 CMakeFiles/HydroMotionLib.dir/src/motion_control.c.o: \
- /home/dan/project/hdymotionlight/src/motion_control.c \
+ /home/dan/project/hdy-motion-light/src/motion_control.c \
  /usr/include/stdc-predef.h \
- /home/dan/project/hdymotionlight/include/motion_control.h \
- /home/dan/project/hdymotionlight/include/common_types.h \
+ /home/dan/project/hdy-motion-light/include/motion_control.h \
+ /home/dan/project/hdy-motion-light/include/common_types.h \
  /usr/lib/gcc/x86_64-linux-gnu/11/include/stdbool.h \
  /usr/lib/gcc/x86_64-linux-gnu/11/include/stddef.h \
  /usr/lib/gcc/x86_64-linux-gnu/11/include/stdint.h /usr/include/stdint.h \
@@ -20,7 +20,9 @@ CMakeFiles/HydroMotionLib.dir/src/motion_control.c.o: \
  /usr/include/x86_64-linux-gnu/bits/wchar.h \
  /usr/include/x86_64-linux-gnu/bits/stdint-intn.h \
  /usr/include/x86_64-linux-gnu/bits/stdint-uintn.h \
- /home/dan/project/hdymotionlight/include/motion_planner.h \
+ /home/dan/project/hdy-motion-light/include/ramp_controller.h \
+ /home/dan/project/hdy-motion-light/include/motion_planner.h \
+ /home/dan/project/hdy-motion-light/include/ramp_controller.h \
  /usr/include/math.h /usr/include/x86_64-linux-gnu/bits/math-vector.h \
  /usr/include/x86_64-linux-gnu/bits/libm-simd-decl-stubs.h \
  /usr/include/x86_64-linux-gnu/bits/floatn.h \

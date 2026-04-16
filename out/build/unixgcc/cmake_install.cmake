@@ -1,8 +1,8 @@
-# Install script for directory: /home/dan/project/hdymotionlight
+# Install script for directory: /home/dan/project/hdy-motion-light
 
 # Set the install prefix
 if(NOT DEFINED CMAKE_INSTALL_PREFIX)
-  set(CMAKE_INSTALL_PREFIX "/home/dan/project/hdymotionlight/out/install/unixgcc")
+  set(CMAKE_INSTALL_PREFIX "/home/dan/project/hdy-motion-light/out/install/unixgcc")
 endif()
 string(REGEX REPLACE "/$" "" CMAKE_INSTALL_PREFIX "${CMAKE_INSTALL_PREFIX}")
 
@@ -50,5 +50,5 @@ endif()
 
 string(REPLACE ";" "\n" CMAKE_INSTALL_MANIFEST_CONTENT
        "${CMAKE_INSTALL_MANIFEST_FILES}")
-file(WRITE "/home/dan/project/hdymotionlight/out/build/unixgcc/${CMAKE_INSTALL_MANIFEST}"
+file(WRITE "/home/dan/project/hdy-motion-light/out/build/unixgcc/${CMAKE_INSTALL_MANIFEST}"
      "${CMAKE_INSTALL_MANIFEST_CONTENT}")

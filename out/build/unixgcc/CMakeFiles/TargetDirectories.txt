@@ -1,4 +1,8 @@
-/home/dan/project/hdymotionlight/out/build/unixgcc/CMakeFiles/HydroMotionLib.dir
-/home/dan/project/hdymotionlight/out/build/unixgcc/CMakeFiles/test_motion_planner.dir
-/home/dan/project/hdymotionlight/out/build/unixgcc/CMakeFiles/edit_cache.dir
-/home/dan/project/hdymotionlight/out/build/unixgcc/CMakeFiles/rebuild_cache.dir
+/home/dan/project/hdy-motion-light/out/build/unixgcc/CMakeFiles/HydroMotionLib.dir
+/home/dan/project/hdy-motion-light/out/build/unixgcc/CMakeFiles/test_motion_planner.dir
+/home/dan/project/hdy-motion-light/out/build/unixgcc/CMakeFiles/rbf_pid_test.dir
+/home/dan/project/hdy-motion-light/out/build/unixgcc/CMakeFiles/ramp_controller_test.dir
+/home/dan/project/hdy-motion-light/out/build/unixgcc/CMakeFiles/main.dir
+/home/dan/project/hdy-motion-light/out/build/unixgcc/CMakeFiles/test.dir
+/home/dan/project/hdy-motion-light/out/build/unixgcc/CMakeFiles/edit_cache.dir
+/home/dan/project/hdy-motion-light/out/build/unixgcc/CMakeFiles/rebuild_cache.dir

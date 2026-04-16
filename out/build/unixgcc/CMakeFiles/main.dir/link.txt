@@ -1,0 +1,1 @@
+/usr/bin/gcc -g -O0 -Wall -g CMakeFiles/main.dir/tests/main.c.o -o main  libHydroMotionLib.a -lm 

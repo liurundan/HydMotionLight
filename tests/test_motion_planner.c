@@ -192,15 +192,11 @@ void test_velocity_to_flow_conversion() {
         HDY_MotionPlannerOutput output = {0};
         HDY_MotionPlanner_Execute(&input, &output);
 
-        // Handle special case for zero gain
-        if (segment.velocityToFlowGain <= 0.0) {
-            expectedFlows[i] = 1.0 * input.segment->maxVelocity; // Default gain of 1.0
-        } else {
-            expectedFlows[i] = 5.0 * segment.velocityToFlowGain; // 5.0 is targetVelocity
-        }
+        HDY_REAL expectedGain = (segment.velocityToFlowGain <= 0.0) ? 1.0 : segment.velocityToFlowGain;
+        expectedFlows[i] = output.targetVelocity * expectedGain;
+        HDY_REAL maxFlow = segment.maxVelocity * expectedGain;
         expectedFlows[i] = (expectedFlows[i] < 0.0) ? 0.0 : expectedFlows[i];
-        expectedFlows[i] = (expectedFlows[i] > segment.maxVelocity * segment.velocityToFlowGain) ?
-                           segment.maxVelocity * segment.velocityToFlowGain : expectedFlows[i];
+        expectedFlows[i] = (expectedFlows[i] > maxFlow) ? maxFlow : expectedFlows[i];
 
         assert(fabs(output.targetFlow - expectedFlows[i]) < 0.001);
     }

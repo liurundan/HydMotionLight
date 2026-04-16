@@ -2,7 +2,7 @@
 #define HDY_MOTION_CONTROL_H
 
 #include "common_types.h"
-
+#include "ramp_controller.h"
 
 
 typedef struct {
@@ -29,7 +29,7 @@ typedef struct {
     /* Internal */
     HDY_REAL _segmentStartTime;
     HDY_BOOL _segmentChangedFlag;
-    HDY_REAL _rampedPressure; /* Current ramped pressure setpoint for smooth transitions */
+    HDY_RampController _rampController;
 } HDY_MotionControlFB;
 
 void HDY_MotionControlFB_Init(HDY_MotionControlFB* fb);

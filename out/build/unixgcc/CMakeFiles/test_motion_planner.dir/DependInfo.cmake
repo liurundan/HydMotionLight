@@ -8,12 +8,12 @@ set(CMAKE_DEPENDS_LANGUAGES
 
 # The set of dependency files which are needed:
 set(CMAKE_DEPENDS_DEPENDENCY_FILES
-  "/home/dan/project/hdymotionlight/tests/test_motion_planner.c" "CMakeFiles/test_motion_planner.dir/tests/test_motion_planner.c.o" "gcc" "CMakeFiles/test_motion_planner.dir/tests/test_motion_planner.c.o.d"
+  "/home/dan/project/hdy-motion-light/tests/test_motion_planner.c" "CMakeFiles/test_motion_planner.dir/tests/test_motion_planner.c.o" "gcc" "CMakeFiles/test_motion_planner.dir/tests/test_motion_planner.c.o.d"
   )
 
 # Targets to which this target links.
 set(CMAKE_TARGET_LINKED_INFO_FILES
-  "/home/dan/project/hdymotionlight/out/build/unixgcc/CMakeFiles/HydroMotionLib.dir/DependInfo.cmake"
+  "/home/dan/project/hdy-motion-light/out/build/unixgcc/CMakeFiles/HydroMotionLib.dir/DependInfo.cmake"
   )
 
 # Fortran module output directory.

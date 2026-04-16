@@ -1,5 +1,5 @@
 CMakeFiles/test_motion_planner.dir/tests/test_motion_planner.c.o: \
- /home/dan/project/hdymotionlight/tests/test_motion_planner.c \
+ /home/dan/project/hdy-motion-light/tests/test_motion_planner.c \
  /usr/include/stdc-predef.h /usr/include/stdio.h \
  /usr/include/x86_64-linux-gnu/bits/libc-header-start.h \
  /usr/include/features.h /usr/include/features-time64.h \
@@ -33,8 +33,8 @@ CMakeFiles/test_motion_planner.dir/tests/test_motion_planner.c.o: \
  /usr/include/x86_64-linux-gnu/bits/types/locale_t.h \
  /usr/include/x86_64-linux-gnu/bits/types/__locale_t.h \
  /usr/include/strings.h \
- /home/dan/project/hdymotionlight/include/motion_planner.h \
- /home/dan/project/hdymotionlight/include/common_types.h \
+ /home/dan/project/hdy-motion-light/include/motion_planner.h \
+ /home/dan/project/hdy-motion-light/include/common_types.h \
  /usr/lib/gcc/x86_64-linux-gnu/11/include/stdbool.h \
  /usr/lib/gcc/x86_64-linux-gnu/11/include/stdint.h /usr/include/stdint.h \
  /usr/include/x86_64-linux-gnu/bits/wchar.h \

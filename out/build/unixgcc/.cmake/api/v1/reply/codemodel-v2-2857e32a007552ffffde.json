@@ -1,0 +1,96 @@
+{
+	"configurations" : 
+	[
+		{
+			"directories" : 
+			[
+				{
+					"build" : ".",
+					"jsonFile" : "directory-.-Debug-f5ebdc15457944623624.json",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.10"
+					},
+					"projectIndex" : 0,
+					"source" : ".",
+					"targetIndexes" : 
+					[
+						0,
+						1,
+						2,
+						3,
+						4
+					]
+				}
+			],
+			"name" : "Debug",
+			"projects" : 
+			[
+				{
+					"directoryIndexes" : 
+					[
+						0
+					],
+					"name" : "HydroMotionLib",
+					"targetIndexes" : 
+					[
+						0,
+						1,
+						2,
+						3,
+						4
+					]
+				}
+			],
+			"targets" : 
+			[
+				{
+					"directoryIndex" : 0,
+					"id" : "HydroMotionLib::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-HydroMotionLib-Debug-a0a4d20c7eb65fafcfe6.json",
+					"name" : "HydroMotionLib",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "main::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-main-Debug-d5953d9321938da340e9.json",
+					"name" : "main",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "ramp_controller_test::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-ramp_controller_test-Debug-596ccabc5dadc7533c06.json",
+					"name" : "ramp_controller_test",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "rbf_pid_test::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-rbf_pid_test-Debug-94e7600f515ad604eb35.json",
+					"name" : "rbf_pid_test",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "test_motion_planner::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-test_motion_planner-Debug-ac6631f4a5ea8d824818.json",
+					"name" : "test_motion_planner",
+					"projectIndex" : 0
+				}
+			]
+		}
+	],
+	"kind" : "codemodel",
+	"paths" : 
+	{
+		"build" : "/home/dan/project/hdy-motion-light/out/build/unixgcc",
+		"source" : "/home/dan/project/hdy-motion-light"
+	},
+	"version" : 
+	{
+		"major" : 2,
+		"minor" : 3
+	}
+}
