@@ -10,12 +10,14 @@ typedef bool HDY_BOOL;
 typedef double HDY_REAL;
 typedef double HDY_TIME;
 typedef uint8_t HDY_UINT8;
+typedef uint16_t HDY_UINT16;
 typedef size_t HDY_UINT;
 
 /* Constants */
 #define HDY_MAX_SEGMENTS 16
 #define HDY_NAME_MAX 32
 #define HDY_MESSAGE_MAX 64
+#define HDY_DIAG_HISTORY_DEPTH 4
 
 /* Enums shared between modules */
 typedef enum {
@@ -58,6 +60,7 @@ typedef enum {
     HDY_STATUS_IDLE,
     HDY_STATUS_READY,
     HDY_STATUS_RUNNING,
+    HDY_STATUS_DEGRADED,
     HDY_STATUS_SEGMENT_COMPLETE,
     HDY_STATUS_FINISHED,
     HDY_STATUS_FAULT
@@ -69,6 +72,33 @@ typedef enum {
     HDY_DIAG_SEVERITY_WARNING,
     HDY_DIAG_SEVERITY_FAULT
 } HDY_DiagnosticSeverity;
+
+typedef enum {
+    HDY_DIAG_SOURCE_NONE,
+    HDY_DIAG_SOURCE_RECIPE,
+    HDY_DIAG_SOURCE_RUNTIME,
+    HDY_DIAG_SOURCE_COMMAND,
+    HDY_DIAG_SOURCE_EXECUTION,
+    HDY_DIAG_SOURCE_SENSOR,
+    HDY_DIAG_SOURCE_INTERNAL
+} HDY_DiagnosticSource;
+
+typedef enum {
+    HDY_DIAG_RECOVERY_NONE,
+    HDY_DIAG_RECOVERY_AUTO_CLEAR,
+    HDY_DIAG_RECOVERY_CHECK_COMMAND,
+    HDY_DIAG_RECOVERY_CHECK_SENSOR,
+    HDY_DIAG_RECOVERY_RELOAD_RECIPE,
+    HDY_DIAG_RECOVERY_RESTART_SEGMENT,
+    HDY_DIAG_RECOVERY_RESET_CONTROLLER
+} HDY_DiagnosticRecovery;
+
+typedef enum {
+    HDY_PROTECTION_ACTION_NONE,
+    HDY_PROTECTION_ACTION_WARNING,
+    HDY_PROTECTION_ACTION_DERATE,
+    HDY_PROTECTION_ACTION_STOP
+} HDY_ProtectionAction;
 
 typedef enum {
     HDY_DIAG_CODE_NONE,
@@ -88,8 +118,66 @@ typedef enum {
     HDY_DIAG_CODE_FLOW_DEVIATION,
     HDY_DIAG_CODE_POSITION_DEVIATION,
     HDY_DIAG_CODE_VELOCITY_DEVIATION,
+    HDY_DIAG_CODE_SENSOR_FAULT,
+    HDY_DIAG_CODE_TIMESTAMP_ROLLBACK,
     HDY_DIAG_CODE_INTERNAL_ERROR
 } HDY_DiagnosticCode;
+
+typedef HDY_UINT16 HDY_DiagnosticFlags;
+
+typedef enum {
+    HDY_DIAG_FLAG_NONE = 0U,
+    HDY_DIAG_FLAG_OVER_PRESSURE = 1U << 0,
+    HDY_DIAG_FLAG_UNDER_PRESSURE = 1U << 1,
+    HDY_DIAG_FLAG_FLOW_DEVIATION = 1U << 2,
+    HDY_DIAG_FLAG_POSITION_DEVIATION = 1U << 3,
+    HDY_DIAG_FLAG_VELOCITY_DEVIATION = 1U << 4,
+    HDY_DIAG_FLAG_TIMEOUT = 1U << 5,
+    HDY_DIAG_FLAG_SENSOR_FAULT = 1U << 6,
+    HDY_DIAG_FLAG_TIMESTAMP_ROLLBACK = 1U << 7
+} HDY_DiagnosticFlag;
+
+typedef enum {
+    HDY_PRESSURE_CONTROLLER_NONE,
+    HDY_PRESSURE_CONTROLLER_P,
+    HDY_PRESSURE_CONTROLLER_PI,
+    HDY_PRESSURE_CONTROLLER_PID,
+    HDY_PRESSURE_CONTROLLER_RBF_PID
+} HDY_PressureControllerType;
+
+typedef struct {
+    HDY_REAL minKp;
+    HDY_REAL maxKp;
+    HDY_REAL minKi;
+    HDY_REAL maxKi;
+    HDY_REAL minKd;
+    HDY_REAL maxKd;
+    HDY_REAL etaW;
+    HDY_REAL etaC;
+    HDY_REAL etaB;
+    HDY_REAL etaP;
+    HDY_REAL etaI;
+    HDY_REAL etaD;
+} HDY_RbfPidConfig;
+
+typedef struct {
+    HDY_REAL targetPressure;
+    HDY_REAL filteredPressure;
+    HDY_REAL filteredPressureRate;
+    HDY_REAL controlError;
+    HDY_REAL feedforwardFlow;
+    HDY_REAL feedbackFlow;
+    HDY_REAL outputFlow;
+    HDY_REAL unsaturatedOutputFlow;
+    HDY_REAL samplingPeriod;
+    HDY_REAL adaptiveKp;
+    HDY_REAL adaptiveKi;
+    HDY_REAL adaptiveKd;
+    HDY_REAL adaptiveJacobian;
+    HDY_BOOL trackingApplied;
+    HDY_BOOL saturated;
+    HDY_BOOL adaptiveActive;
+} HDY_PressureLoopState;
 
 /* Data structures */
 typedef struct {
@@ -109,8 +197,8 @@ typedef struct {
  *   Builds velocity magnitude by time ramp. The process layer still owns valve
  *   direction, so the segment must declare EXTEND/RETRACT explicitly.
  * - HDY_MODE_PRESSURE_CLOSED_LOOP:
- *   Uses targetPressure and targetFlow as the pressure reference and flow
- *   feedforward/cap inputs.
+ *   Uses targetPressure as the closed-loop reference and targetFlow as the
+ *   feedforward bias / nominal hold flow.
  */
 typedef struct {
     char name[HDY_NAME_MAX];
@@ -137,31 +225,84 @@ typedef struct {
 
     HDY_REAL velocityToFlowGain; /* L/min per mm/s, actuator flow gain */
     HDY_REAL pressureRampRate;   /* MPa/s, target pressure ramp rate */
+
+    /* Pressure-controller tuning. Zero values keep legacy-compatible defaults.
+     * Adaptive RBF-PID reuses the generic filter/deadband envelope and exposes
+     * additional bounded tuning / learning fields through pressureRbfConfig.
+     */
+    HDY_PressureControllerType pressureController;
+    HDY_REAL pressureKp;                     /* L/min per MPa */
+    HDY_REAL pressureKi;                     /* L/min per (MPa*s) */
+    HDY_REAL pressureKd;                     /* L/min per (MPa/s) */
+    HDY_REAL pressureIntegralLimit;          /* L/min absolute limit for integral contribution */
+    HDY_REAL pressureDeadband;               /* MPa */
+    HDY_REAL pressureFilterAlpha;            /* 0<alpha<=1, 1 means no measurement filtering */
+    HDY_REAL pressureDerivativeFilterAlpha;  /* 0<alpha<=1, 1 means no derivative filtering */
+    HDY_RbfPidConfig pressureRbfConfig;      /* Optional RBF-PID bounded tuning / learning profile. Zero uses library defaults. */
 } HDY_MotionSegment;
 
 typedef struct {
     HDY_DiagnosticCode code;
     HDY_DiagnosticSeverity severity;
+    HDY_DiagnosticSource source;
+    HDY_DiagnosticRecovery recovery;
+    HDY_ProtectionAction protectionAction;
+    HDY_DiagnosticFlags flags;  /* Compact embedded-facing summary of active diagnostic conditions. */
     HDY_BOOL overPressure;
     HDY_BOOL underPressure;
     HDY_BOOL flowDeviation;
     HDY_BOOL positionDeviation;
     HDY_BOOL velocityDeviation;
     HDY_BOOL timeout;
+    HDY_BOOL sensorFault;
+    HDY_BOOL timestampRollback;
     HDY_REAL pressureError;
     HDY_REAL flowError;
     HDY_REAL velocityError;
-    char message[HDY_MESSAGE_MAX];
+    char message[HDY_MESSAGE_MAX]; /* Optional debug text; upper layers should prefer code/source/action/flags. */
 } HDY_DiagnosticInfo;
+
+typedef struct {
+    HDY_REAL elapsedTime;
+    HDY_REAL pressureReference;
+    HDY_REAL flowReference;
+    HDY_REAL velocityReference;
+} HDY_ExecutionReference;
+
+typedef struct {
+    HDY_BOOL valid;
+    HDY_TIME eventTimestamp;              /* Event capture time in seconds. */
+    HDY_UINT8 segmentIndex;               /* HDY_MAX_SEGMENTS or larger means no active segment context. */
+    HDY_ControllerStatus status;
+    HDY_BOOL active;
+    HDY_BOOL finished;
+    HDY_BOOL fault;
+    HDY_DiagnosticInfo diagnostic;
+    HDY_AxisRef axisRef;
+    HDY_ExecutionReference references;
+    char segmentName[HDY_NAME_MAX];
+} HDY_DiagnosticSnapshot;
+
+typedef struct {
+    HDY_DiagnosticSnapshot entries[HDY_DIAG_HISTORY_DEPTH];
+    HDY_UINT8 count;
+    HDY_UINT8 nextWriteIndex;
+    HDY_UINT16 totalRecorded;
+    HDY_BOOL wrapped;
+} HDY_DiagnosticHistory;
 
 typedef struct {
     HDY_UINT currentSegmentIndex;
     HDY_BOOL active;
     HDY_BOOL finished;
     HDY_BOOL faultActive;
-    HDY_REAL plannedVelocity;      /* mm/s, signed */
-    HDY_REAL plannedFlow;          /* L/min, nonnegative pump-side magnitude */
-    HDY_REAL commandedPumpSpeed;   /* rpm, nonnegative */
+    HDY_REAL plannedVelocity;             /* mm/s, signed */
+    HDY_REAL plannedFlow;                 /* L/min, nonnegative pump-side magnitude */
+    HDY_REAL commandedPumpSpeed;          /* rpm, nonnegative */
+    HDY_ExecutionReference references;    /* Current runtime reference bundle shared by diagnostics/completion/HMI */
+    HDY_PressureControllerType pressureControllerApplied;
+    HDY_PressureLoopState pressureLoop;    /* Embedded-facing pressure-loop telemetry / adaptive summary. */
+    HDY_ProtectionAction protectionAction;
     HDY_MotionDirection plannedDirection;
     HDY_ControllerStatus status;
     char currentSegmentName[HDY_NAME_MAX];

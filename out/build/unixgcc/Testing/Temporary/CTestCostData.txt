@@ -1,7 +1,10 @@
-test_motion_planner 7 0.000229361
-test_ramp_controller 8 0.000181418
-test_motion_control 6 0.000210686
-test_segment_completion 6 0.000237746
-test_pump_converter 4 0.000314148
-test_recipe_validator 1 0.00134579
+test_motion_planner 24 5.51604e-05
+test_ramp_controller 25 4.04712e-05
+test_motion_control 23 6.24513e-05
+test_segment_completion 23 5.33596e-05
+test_pump_converter 21 9.79105e-05
+test_recipe_validator 18 6.15267e-05
+test_pressure_controller 18 5.93144e-05
+test_rbf_pid 7 0.000152193
+test_scenario_matrix 4 0.000566527
 ---

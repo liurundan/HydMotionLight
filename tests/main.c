@@ -1,7 +1,55 @@
 #define _POSIX_C_SOURCE 199309L
+#include "diagnostics.h"
 #include "motion_control.h"
 #include <stdio.h>
 #include <time.h>
+
+static void print_live_diagnostic(const HDY_DiagnosticInfo* diagnostic) {
+    if (diagnostic == NULL || diagnostic->code == HDY_DIAG_CODE_NONE) {
+        return;
+    }
+
+    printf("    Diag: code=%s severity=%s source=%s recovery=%s action=%s flags=0x%02X",
+           HDY_Diagnostics_CodeToString(diagnostic->code),
+           HDY_Diagnostics_SeverityToString(diagnostic->severity),
+           HDY_Diagnostics_SourceToString(diagnostic->source),
+           HDY_Diagnostics_RecoveryToString(diagnostic->recovery),
+           HDY_Diagnostics_ProtectionActionToString(diagnostic->protectionAction),
+           (unsigned int)diagnostic->flags);
+    if (diagnostic->message[0] != '\0') {
+        printf(" msg=%s", diagnostic->message);
+    }
+    printf("\n");
+}
+
+static void print_retained_diagnostics(const HDY_MotionControlFB* controller) {
+    HDY_DiagnosticSnapshot latestSnapshot;
+
+    if (controller == NULL || controller->DIAGNOSTIC_LATCH.code == HDY_DIAG_CODE_NONE) {
+        return;
+    }
+
+    printf("    Retained: last=%s severity=%s totalRecorded=%u historyCount=%u\n",
+           HDY_Diagnostics_CodeToString(controller->DIAGNOSTIC_LATCH.code),
+           HDY_Diagnostics_SeverityToString(controller->DIAGNOSTIC_LATCH.severity),
+           (unsigned int)controller->DIAGNOSTIC_HISTORY.totalRecorded,
+           (unsigned int)controller->DIAGNOSTIC_HISTORY.count);
+
+    if (HDY_DiagnosticsHistory_GetLatest(&controller->DIAGNOSTIC_HISTORY, &latestSnapshot)) {
+        printf("    History latest: t=%.2f segment=%s code=%s action=%s\n",
+               latestSnapshot.eventTimestamp,
+               latestSnapshot.segmentName,
+               HDY_Diagnostics_CodeToString(latestSnapshot.diagnostic.code),
+               HDY_Diagnostics_ProtectionActionToString(latestSnapshot.diagnostic.protectionAction));
+    }
+
+    if (controller->LAST_FAULT_SNAPSHOT.valid) {
+        printf("    Last fault snapshot: t=%.2f segment=%s code=%s\n",
+               controller->LAST_FAULT_SNAPSHOT.eventTimestamp,
+               controller->LAST_FAULT_SNAPSHOT.segmentName,
+               HDY_Diagnostics_CodeToString(controller->LAST_FAULT_SNAPSHOT.diagnostic.code));
+    }
+}
 
 int main(void) {
     HDY_MotionControlFB controller;
@@ -73,7 +121,13 @@ int main(void) {
             .flowTolerance = 0.3,
             .timeoutLimit = 2.5,
             .velocityToFlowGain = 0.10,
-            .pressureRampRate = 6.0
+            .pressureRampRate = 6.0,
+            .pressureController = HDY_PRESSURE_CONTROLLER_PI,
+            .pressureKp = 0.35,
+            .pressureKi = 0.80,
+            .pressureIntegralLimit = 6.0,
+            .pressureDeadband = 0.10,
+            .pressureFilterAlpha = 0.35
         },
         {
             .name = "Injection Stage 1",
@@ -115,7 +169,13 @@ int main(void) {
             .flowTolerance = 0.4,
             .timeoutLimit = 3.0,
             .velocityToFlowGain = 0.10,
-            .pressureRampRate = 4.0
+            .pressureRampRate = 4.0,
+            .pressureController = HDY_PRESSURE_CONTROLLER_PI,
+            .pressureKp = 0.45,
+            .pressureKi = 1.00,
+            .pressureIntegralLimit = 8.0,
+            .pressureDeadband = 0.10,
+            .pressureFilterAlpha = 0.30
         }
     };
 
@@ -133,7 +193,7 @@ int main(void) {
 
         printf("[%.1f s] %s | PumpSpeed=%.1f rpm | Flow=%.1f | Velocity=%.2f | Pressure=%.2f MPa | Status=%s | Changed=%s\n",
                ref.timestamp,
-               controller.CURRENT_SEGMENT_NAME,
+               controller.STATE.currentSegmentName,
                controller.PUMP_SPEED,
                controller.STATE.plannedFlow,
                controller.STATE.plannedVelocity,
@@ -141,8 +201,10 @@ int main(void) {
                controller.SEGMENT_COMPLETED ? "Segment completed" : "Segment running",
                controller.SEGMENT_CHANGED ? "Yes" : "No");
 
-        if (controller.DIAGNOSTIC.message[0] != '\0') {
-            printf("    Diag: %s\n", controller.DIAGNOSTIC.message);
+        if (controller.DIAGNOSTIC.code != HDY_DIAG_CODE_NONE) {
+            print_live_diagnostic(&controller.DIAGNOSTIC);
+        } else if (!controller.ACTIVE && controller.DIAGNOSTIC_LATCH.code != HDY_DIAG_CODE_NONE) {
+            print_retained_diagnostics(&controller);
         }
 
         if (controller.SEGMENT_COMPLETED) {
@@ -151,7 +213,7 @@ int main(void) {
                 printf("Recipe finished.\n");
                 break;
             }
-            printf("Switching to next segment: %s\n", controller.CURRENT_SEGMENT_NAME);
+            printf("Switching to next segment: %s\n", controller.STATE.currentSegmentName);
         }
 
         if (controller.ACTIVE) {
@@ -177,6 +239,14 @@ int main(void) {
         {
             struct timespec delay = {0, 20000000L};
             nanosleep(&delay, NULL);
+        }
+    }
+
+    if (!controller.FAULT && controller.DIAGNOSTIC.code == HDY_DIAG_CODE_NONE &&
+        controller.DIAGNOSTIC_LATCH.code != HDY_DIAG_CODE_NONE) {
+        print_retained_diagnostics(&controller);
+        if (HDY_MotionControlFB_AcknowledgeDiagnostics(&controller)) {
+            printf("Service acknowledgment cleared retained diagnostics before exit.\n");
         }
     }
 

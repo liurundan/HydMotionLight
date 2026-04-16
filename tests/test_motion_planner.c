@@ -177,14 +177,13 @@ static void test_position_mode_time_planner_brakes_near_target(void) {
     printf("✓ Position-mode time planner braking test passed\n");
 }
 
-static void test_pressure_closed_loop_respects_max_flow(void) {
+static void test_pressure_mode_is_left_to_pressure_controller_module(void) {
     HDY_AxisRef axisRef;
     HDY_MotionSegment segment;
     HDY_MotionPlannerInput input;
     HDY_MotionPlannerOutput output = {0};
-    HDY_REAL expectedFlow;
 
-    printf("Testing pressure closed loop maxFlow clamping...\n");
+    printf("Testing pressure mode planner bypass behavior...\n");
     axisRef = create_test_axis_ref(100.0);
     segment = create_test_segment();
     segment.mode = HDY_MODE_PRESSURE_CLOSED_LOOP;
@@ -199,15 +198,10 @@ static void test_pressure_closed_loop_respects_max_flow(void) {
 
     HDY_MotionPlanner_Execute(&input, &output);
 
-    expectedFlow = segment.targetFlow + 1.5 * (input.rampedPressure - axisRef.pressure);
-    if (expectedFlow > segment.maxFlow) {
-        expectedFlow = segment.maxFlow;
-    }
-
     assert(output.direction == HDY_DIRECTION_HOLD);
     assert(output.targetVelocity == 0.0);
-    assert(fabs(output.targetFlow - expectedFlow) < 0.001);
-    printf("✓ Pressure closed loop maxFlow clamping test passed\n");
+    assert(output.targetFlow == 0.0);
+    printf("✓ Pressure mode planner bypass test passed\n");
 }
 
 static void test_edge_cases(void) {
@@ -249,7 +243,7 @@ int main(void) {
     test_position_based_retract_velocity();
     test_speed_ramp_directional_planning();
     test_position_mode_time_planner_brakes_near_target();
-    test_pressure_closed_loop_respects_max_flow();
+    test_pressure_mode_is_left_to_pressure_controller_module();
     test_edge_cases();
 
     printf("\n✅ All MotionPlanner tests passed successfully!\n");

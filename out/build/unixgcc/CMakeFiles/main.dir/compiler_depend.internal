@@ -4,7 +4,7 @@
 CMakeFiles/main.dir/tests/main.c.o
  /home/dan/project/hdy-motion-light/tests/main.c
  /usr/include/stdc-predef.h
- /home/dan/project/hdy-motion-light/include/motion_control.h
+ /home/dan/project/hdy-motion-light/include/diagnostics.h
  /home/dan/project/hdy-motion-light/include/common_types.h
  /usr/lib/gcc/x86_64-linux-gnu/11/include/stdbool.h
  /usr/lib/gcc/x86_64-linux-gnu/11/include/stddef.h
@@ -25,6 +25,9 @@ CMakeFiles/main.dir/tests/main.c.o
  /usr/include/x86_64-linux-gnu/bits/wchar.h
  /usr/include/x86_64-linux-gnu/bits/stdint-intn.h
  /usr/include/x86_64-linux-gnu/bits/stdint-uintn.h
+ /home/dan/project/hdy-motion-light/include/motion_control.h
+ /home/dan/project/hdy-motion-light/include/pressure_controller.h
+ /home/dan/project/hdy-motion-light/include/rbf_pid.h
  /home/dan/project/hdy-motion-light/include/ramp_controller.h
  /usr/include/stdio.h
  /usr/lib/gcc/x86_64-linux-gnu/11/include/stdarg.h

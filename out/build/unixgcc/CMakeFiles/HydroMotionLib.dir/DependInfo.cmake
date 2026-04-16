@@ -11,6 +11,8 @@ set(CMAKE_DEPENDS_DEPENDENCY_FILES
   "/home/dan/project/hdy-motion-light/src/diagnostics.c" "CMakeFiles/HydroMotionLib.dir/src/diagnostics.c.o" "gcc" "CMakeFiles/HydroMotionLib.dir/src/diagnostics.c.o.d"
   "/home/dan/project/hdy-motion-light/src/motion_control.c" "CMakeFiles/HydroMotionLib.dir/src/motion_control.c.o" "gcc" "CMakeFiles/HydroMotionLib.dir/src/motion_control.c.o.d"
   "/home/dan/project/hdy-motion-light/src/motion_planner.c" "CMakeFiles/HydroMotionLib.dir/src/motion_planner.c.o" "gcc" "CMakeFiles/HydroMotionLib.dir/src/motion_planner.c.o.d"
+  "/home/dan/project/hdy-motion-light/src/pressure_controller.c" "CMakeFiles/HydroMotionLib.dir/src/pressure_controller.c.o" "gcc" "CMakeFiles/HydroMotionLib.dir/src/pressure_controller.c.o.d"
+  "/home/dan/project/hdy-motion-light/src/protection_manager.c" "CMakeFiles/HydroMotionLib.dir/src/protection_manager.c.o" "gcc" "CMakeFiles/HydroMotionLib.dir/src/protection_manager.c.o.d"
   "/home/dan/project/hdy-motion-light/src/pump_converter.c" "CMakeFiles/HydroMotionLib.dir/src/pump_converter.c.o" "gcc" "CMakeFiles/HydroMotionLib.dir/src/pump_converter.c.o.d"
   "/home/dan/project/hdy-motion-light/src/ramp_controller.c" "CMakeFiles/HydroMotionLib.dir/src/ramp_controller.c.o" "gcc" "CMakeFiles/HydroMotionLib.dir/src/ramp_controller.c.o.d"
   "/home/dan/project/hdy-motion-light/src/rbf_pid.c" "CMakeFiles/HydroMotionLib.dir/src/rbf_pid.c.o" "gcc" "CMakeFiles/HydroMotionLib.dir/src/rbf_pid.c.o.d"

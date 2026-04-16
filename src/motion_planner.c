@@ -2,8 +2,6 @@
 #include "segment_limits.h"
 #include <math.h>
 
-#define HDY_PRESSURE_FLOW_KP 1.5
-
 static HDY_REAL HDY_ClampReal(HDY_REAL value, HDY_REAL minimum, HDY_REAL maximum) {
     if (value < minimum) {
         return minimum;
@@ -152,21 +150,6 @@ static HDY_REAL HDY_ApplyModeFlowCap(const HDY_MotionSegment* segment,
     return HDY_ClampReal(flowMagnitude, 0.0, flowLimit);
 }
 
-static HDY_REAL HDY_ComputePressureClosedLoopFlow(const HDY_MotionSegment* segment,
-                                                  const HDY_AxisRef* axisRef,
-                                                  HDY_REAL rampedPressure) {
-    HDY_REAL pressureError;
-    HDY_REAL commandedFlow;
-
-    if (segment == NULL || axisRef == NULL) {
-        return 0.0;
-    }
-
-    pressureError = rampedPressure - axisRef->pressure;
-    commandedFlow = segment->targetFlow + HDY_PRESSURE_FLOW_KP * pressureError;
-    return HDY_ClampReal(commandedFlow, 0.0, segment->maxFlow);
-}
-
 static HDY_REAL HDY_ComputePositionModeVelocityMagnitude(const HDY_MotionPlannerInput* input,
                                                          HDY_MotionDirection direction) {
     HDY_REAL remainingDistance;
@@ -240,14 +223,8 @@ void HDY_MotionPlanner_Execute(const HDY_MotionPlannerInput* input, HDY_MotionPl
     direction = HDY_ResolveMotionDirection(input->segment, input->axisRef);
     output->direction = direction;
 
-    if (input->segment->mode == HDY_MODE_PRESSURE_CLOSED_LOOP) {
-        output->targetFlow = HDY_ComputePressureClosedLoopFlow(input->segment,
-                                                               input->axisRef,
-                                                               input->rampedPressure);
-        return;
-    }
-
-    if (direction == HDY_DIRECTION_HOLD) {
+    if (input->segment->mode == HDY_MODE_PRESSURE_CLOSED_LOOP ||
+        direction == HDY_DIRECTION_HOLD) {
         return;
     }
 

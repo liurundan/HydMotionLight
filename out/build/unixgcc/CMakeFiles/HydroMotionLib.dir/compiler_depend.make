@@ -24,7 +24,6 @@ CMakeFiles/HydroMotionLib.dir/src/diagnostics.c.o: ../../../src/diagnostics.c \
   /usr/include/x86_64-linux-gnu/bits/wchar.h \
   /usr/include/x86_64-linux-gnu/bits/stdint-intn.h \
   /usr/include/x86_64-linux-gnu/bits/stdint-uintn.h \
-  ../../../include/motion_planner.h \
   ../../../include/segment_limits.h \
   /usr/include/math.h \
   /usr/include/x86_64-linux-gnu/bits/math-vector.h \
@@ -64,28 +63,31 @@ CMakeFiles/HydroMotionLib.dir/src/motion_control.c.o: ../../../src/motion_contro
   /usr/include/x86_64-linux-gnu/bits/wchar.h \
   /usr/include/x86_64-linux-gnu/bits/stdint-intn.h \
   /usr/include/x86_64-linux-gnu/bits/stdint-uintn.h \
+  ../../../include/pressure_controller.h \
+  ../../../include/rbf_pid.h \
   ../../../include/ramp_controller.h \
   ../../../include/diagnostics.h \
   ../../../include/motion_planner.h \
-  ../../../include/motion_planner.h \
-  ../../../include/pump_converter.h \
-  ../../../include/ramp_controller.h \
-  ../../../include/segment_completion.h \
-  ../../../include/segment_limits.h \
-  ../../../include/state_reporter.h \
+  ../../../include/pressure_controller.h \
+  ../../../include/protection_manager.h \
   ../../../include/motion_control.h \
   ../../../include/pump_converter.h \
-  /usr/include/stdio.h \
-  /usr/lib/gcc/x86_64-linux-gnu/11/include/stdarg.h \
-  /usr/include/x86_64-linux-gnu/bits/types/__fpos_t.h \
-  /usr/include/x86_64-linux-gnu/bits/types/__mbstate_t.h \
-  /usr/include/x86_64-linux-gnu/bits/types/__fpos64_t.h \
-  /usr/include/x86_64-linux-gnu/bits/types/__FILE.h \
-  /usr/include/x86_64-linux-gnu/bits/types/FILE.h \
-  /usr/include/x86_64-linux-gnu/bits/types/struct_FILE.h \
-  /usr/include/x86_64-linux-gnu/bits/stdio_lim.h \
+  ../../../include/ramp_controller.h \
+  ../../../include/recipe_validator.h \
+  ../../../include/segment_completion.h \
+  ../../../include/state_reporter.h \
+  ../../../include/motion_planner.h \
+  ../../../include/pump_converter.h \
+  /usr/include/math.h \
+  /usr/include/x86_64-linux-gnu/bits/math-vector.h \
+  /usr/include/x86_64-linux-gnu/bits/libm-simd-decl-stubs.h \
   /usr/include/x86_64-linux-gnu/bits/floatn.h \
   /usr/include/x86_64-linux-gnu/bits/floatn-common.h \
+  /usr/include/x86_64-linux-gnu/bits/flt-eval-method.h \
+  /usr/include/x86_64-linux-gnu/bits/fp-logb.h \
+  /usr/include/x86_64-linux-gnu/bits/fp-fast.h \
+  /usr/include/x86_64-linux-gnu/bits/mathcalls-helper-functions.h \
+  /usr/include/x86_64-linux-gnu/bits/mathcalls.h \
   /usr/include/string.h \
   /usr/include/x86_64-linux-gnu/bits/types/locale_t.h \
   /usr/include/x86_64-linux-gnu/bits/types/__locale_t.h \
@@ -125,6 +127,77 @@ CMakeFiles/HydroMotionLib.dir/src/motion_planner.c.o: ../../../src/motion_planne
   /usr/include/x86_64-linux-gnu/bits/fp-fast.h \
   /usr/include/x86_64-linux-gnu/bits/mathcalls-helper-functions.h \
   /usr/include/x86_64-linux-gnu/bits/mathcalls.h
+
+CMakeFiles/HydroMotionLib.dir/src/pressure_controller.c.o: ../../../src/pressure_controller.c \
+  /usr/include/stdc-predef.h \
+  ../../../include/pressure_controller.h \
+  ../../../include/common_types.h \
+  /usr/lib/gcc/x86_64-linux-gnu/11/include/stdbool.h \
+  /usr/lib/gcc/x86_64-linux-gnu/11/include/stddef.h \
+  /usr/lib/gcc/x86_64-linux-gnu/11/include/stdint.h \
+  /usr/include/stdint.h \
+  /usr/include/x86_64-linux-gnu/bits/libc-header-start.h \
+  /usr/include/features.h \
+  /usr/include/features-time64.h \
+  /usr/include/x86_64-linux-gnu/bits/wordsize.h \
+  /usr/include/x86_64-linux-gnu/bits/timesize.h \
+  /usr/include/x86_64-linux-gnu/sys/cdefs.h \
+  /usr/include/x86_64-linux-gnu/bits/long-double.h \
+  /usr/include/x86_64-linux-gnu/gnu/stubs.h \
+  /usr/include/x86_64-linux-gnu/gnu/stubs-64.h \
+  /usr/include/x86_64-linux-gnu/bits/types.h \
+  /usr/include/x86_64-linux-gnu/bits/typesizes.h \
+  /usr/include/x86_64-linux-gnu/bits/time64.h \
+  /usr/include/x86_64-linux-gnu/bits/wchar.h \
+  /usr/include/x86_64-linux-gnu/bits/stdint-intn.h \
+  /usr/include/x86_64-linux-gnu/bits/stdint-uintn.h \
+  ../../../include/rbf_pid.h \
+  /usr/include/math.h \
+  /usr/include/x86_64-linux-gnu/bits/math-vector.h \
+  /usr/include/x86_64-linux-gnu/bits/libm-simd-decl-stubs.h \
+  /usr/include/x86_64-linux-gnu/bits/floatn.h \
+  /usr/include/x86_64-linux-gnu/bits/floatn-common.h \
+  /usr/include/x86_64-linux-gnu/bits/flt-eval-method.h \
+  /usr/include/x86_64-linux-gnu/bits/fp-logb.h \
+  /usr/include/x86_64-linux-gnu/bits/fp-fast.h \
+  /usr/include/x86_64-linux-gnu/bits/mathcalls-helper-functions.h \
+  /usr/include/x86_64-linux-gnu/bits/mathcalls.h \
+  /usr/include/string.h \
+  /usr/include/x86_64-linux-gnu/bits/types/locale_t.h \
+  /usr/include/x86_64-linux-gnu/bits/types/__locale_t.h \
+  /usr/include/strings.h
+
+CMakeFiles/HydroMotionLib.dir/src/protection_manager.c.o: ../../../src/protection_manager.c \
+  /usr/include/stdc-predef.h \
+  ../../../include/protection_manager.h \
+  ../../../include/motion_control.h \
+  ../../../include/common_types.h \
+  /usr/lib/gcc/x86_64-linux-gnu/11/include/stdbool.h \
+  /usr/lib/gcc/x86_64-linux-gnu/11/include/stddef.h \
+  /usr/lib/gcc/x86_64-linux-gnu/11/include/stdint.h \
+  /usr/include/stdint.h \
+  /usr/include/x86_64-linux-gnu/bits/libc-header-start.h \
+  /usr/include/features.h \
+  /usr/include/features-time64.h \
+  /usr/include/x86_64-linux-gnu/bits/wordsize.h \
+  /usr/include/x86_64-linux-gnu/bits/timesize.h \
+  /usr/include/x86_64-linux-gnu/sys/cdefs.h \
+  /usr/include/x86_64-linux-gnu/bits/long-double.h \
+  /usr/include/x86_64-linux-gnu/gnu/stubs.h \
+  /usr/include/x86_64-linux-gnu/gnu/stubs-64.h \
+  /usr/include/x86_64-linux-gnu/bits/types.h \
+  /usr/include/x86_64-linux-gnu/bits/typesizes.h \
+  /usr/include/x86_64-linux-gnu/bits/time64.h \
+  /usr/include/x86_64-linux-gnu/bits/wchar.h \
+  /usr/include/x86_64-linux-gnu/bits/stdint-intn.h \
+  /usr/include/x86_64-linux-gnu/bits/stdint-uintn.h \
+  ../../../include/pressure_controller.h \
+  ../../../include/rbf_pid.h \
+  ../../../include/ramp_controller.h \
+  ../../../include/state_reporter.h \
+  ../../../include/motion_planner.h \
+  ../../../include/pump_converter.h \
+  ../../../include/pressure_controller.h
 
 CMakeFiles/HydroMotionLib.dir/src/pump_converter.c.o: ../../../src/pump_converter.c \
   /usr/include/stdc-predef.h \
@@ -211,6 +284,43 @@ CMakeFiles/HydroMotionLib.dir/src/rbf_pid.c.o: ../../../src/rbf_pid.c \
   /usr/include/x86_64-linux-gnu/bits/types/__locale_t.h \
   /usr/include/strings.h
 
+CMakeFiles/HydroMotionLib.dir/src/recipe_validator.c.o: ../../../src/recipe_validator.c \
+  /usr/include/stdc-predef.h \
+  ../../../include/recipe_validator.h \
+  ../../../include/common_types.h \
+  /usr/lib/gcc/x86_64-linux-gnu/11/include/stdbool.h \
+  /usr/lib/gcc/x86_64-linux-gnu/11/include/stddef.h \
+  /usr/lib/gcc/x86_64-linux-gnu/11/include/stdint.h \
+  /usr/include/stdint.h \
+  /usr/include/x86_64-linux-gnu/bits/libc-header-start.h \
+  /usr/include/features.h \
+  /usr/include/features-time64.h \
+  /usr/include/x86_64-linux-gnu/bits/wordsize.h \
+  /usr/include/x86_64-linux-gnu/bits/timesize.h \
+  /usr/include/x86_64-linux-gnu/sys/cdefs.h \
+  /usr/include/x86_64-linux-gnu/bits/long-double.h \
+  /usr/include/x86_64-linux-gnu/gnu/stubs.h \
+  /usr/include/x86_64-linux-gnu/gnu/stubs-64.h \
+  /usr/include/x86_64-linux-gnu/bits/types.h \
+  /usr/include/x86_64-linux-gnu/bits/typesizes.h \
+  /usr/include/x86_64-linux-gnu/bits/time64.h \
+  /usr/include/x86_64-linux-gnu/bits/wchar.h \
+  /usr/include/x86_64-linux-gnu/bits/stdint-intn.h \
+  /usr/include/x86_64-linux-gnu/bits/stdint-uintn.h \
+  ../../../include/rbf_pid.h \
+  ../../../include/segment_limits.h \
+  /usr/lib/gcc/x86_64-linux-gnu/11/include/stdarg.h \
+  /usr/include/stdio.h \
+  /usr/include/x86_64-linux-gnu/bits/types/__fpos_t.h \
+  /usr/include/x86_64-linux-gnu/bits/types/__mbstate_t.h \
+  /usr/include/x86_64-linux-gnu/bits/types/__fpos64_t.h \
+  /usr/include/x86_64-linux-gnu/bits/types/__FILE.h \
+  /usr/include/x86_64-linux-gnu/bits/types/FILE.h \
+  /usr/include/x86_64-linux-gnu/bits/types/struct_FILE.h \
+  /usr/include/x86_64-linux-gnu/bits/stdio_lim.h \
+  /usr/include/x86_64-linux-gnu/bits/floatn.h \
+  /usr/include/x86_64-linux-gnu/bits/floatn-common.h
+
 CMakeFiles/HydroMotionLib.dir/src/segment_completion.c.o: ../../../src/segment_completion.c \
   /usr/include/stdc-predef.h \
   ../../../include/segment_completion.h \
@@ -294,6 +404,8 @@ CMakeFiles/HydroMotionLib.dir/src/state_reporter.c.o: ../../../src/state_reporte
   /usr/include/x86_64-linux-gnu/bits/wchar.h \
   /usr/include/x86_64-linux-gnu/bits/stdint-intn.h \
   /usr/include/x86_64-linux-gnu/bits/stdint-uintn.h \
+  ../../../include/pressure_controller.h \
+  ../../../include/rbf_pid.h \
   ../../../include/ramp_controller.h \
   ../../../include/motion_planner.h \
   ../../../include/pump_converter.h \
@@ -307,6 +419,20 @@ CMakeFiles/HydroMotionLib.dir/src/state_reporter.c.o: ../../../src/state_reporte
 
 ../../../src/segment_limits.c:
 
+/usr/include/x86_64-linux-gnu/bits/stdio_lim.h:
+
+/usr/include/x86_64-linux-gnu/bits/types/struct_FILE.h:
+
+/usr/include/x86_64-linux-gnu/bits/types/FILE.h:
+
+/usr/include/x86_64-linux-gnu/bits/types/__fpos64_t.h:
+
+/usr/include/x86_64-linux-gnu/bits/types/__mbstate_t.h:
+
+/usr/include/x86_64-linux-gnu/bits/floatn-common.h:
+
+/usr/include/strings.h:
+
 /usr/include/x86_64-linux-gnu/bits/floatn.h:
 
 /usr/include/x86_64-linux-gnu/bits/mathcalls.h:
@@ -317,12 +443,6 @@ CMakeFiles/HydroMotionLib.dir/src/state_reporter.c.o: ../../../src/state_reporte
 
 /usr/include/math.h:
 
-/usr/include/x86_64-linux-gnu/bits/types/struct_FILE.h:
-
-../../../src/diagnostics.c:
-
-../../../include/motion_planner.h:
-
 /usr/include/x86_64-linux-gnu/bits/stdint-uintn.h:
 
 /usr/include/x86_64-linux-gnu/gnu/stubs-64.h:
@@ -331,7 +451,7 @@ CMakeFiles/HydroMotionLib.dir/src/state_reporter.c.o: ../../../src/state_reporte
 
 /usr/include/string.h:
 
-/usr/include/x86_64-linux-gnu/bits/types/__mbstate_t.h:
+../../../include/protection_manager.h:
 
 /usr/include/x86_64-linux-gnu/bits/stdint-intn.h:
 
@@ -342,8 +462,6 @@ CMakeFiles/HydroMotionLib.dir/src/state_reporter.c.o: ../../../src/state_reporte
 /usr/include/x86_64-linux-gnu/gnu/stubs.h:
 
 /usr/include/x86_64-linux-gnu/bits/types.h:
-
-/usr/include/x86_64-linux-gnu/bits/stdio_lim.h:
 
 /usr/include/x86_64-linux-gnu/bits/long-double.h:
 
@@ -363,8 +481,6 @@ CMakeFiles/HydroMotionLib.dir/src/state_reporter.c.o: ../../../src/state_reporte
 
 /usr/include/features.h:
 
-/usr/include/x86_64-linux-gnu/bits/types/FILE.h:
-
 ../../../include/rbf_pid.h:
 
 /usr/include/x86_64-linux-gnu/bits/timesize.h:
@@ -375,6 +491,14 @@ CMakeFiles/HydroMotionLib.dir/src/state_reporter.c.o: ../../../src/state_reporte
 
 /usr/include/features-time64.h:
 
+/usr/include/x86_64-linux-gnu/bits/types/__FILE.h:
+
+/usr/lib/gcc/x86_64-linux-gnu/11/include/stdint.h:
+
+../../../include/diagnostics.h:
+
+../../../include/motion_planner.h:
+
 /usr/lib/gcc/x86_64-linux-gnu/11/include/stdbool.h:
 
 ../../../include/common_types.h:
@@ -382,10 +506,6 @@ CMakeFiles/HydroMotionLib.dir/src/state_reporter.c.o: ../../../src/state_reporte
 /usr/include/x86_64-linux-gnu/bits/wordsize.h:
 
 /usr/include/x86_64-linux-gnu/bits/types/locale_t.h:
-
-/usr/include/x86_64-linux-gnu/bits/floatn-common.h:
-
-/usr/include/strings.h:
 
 /usr/include/x86_64-linux-gnu/bits/flt-eval-method.h:
 
@@ -395,13 +515,13 @@ CMakeFiles/HydroMotionLib.dir/src/state_reporter.c.o: ../../../src/state_reporte
 
 ../../../src/motion_planner.c:
 
-/usr/include/x86_64-linux-gnu/bits/types/__fpos64_t.h:
-
 /usr/include/x86_64-linux-gnu/bits/mathcalls-helper-functions.h:
 
 ../../../include/motion_control.h:
 
 ../../../include/ramp_controller.h:
+
+../../../include/recipe_validator.h:
 
 ../../../src/segment_completion.c:
 
@@ -413,16 +533,20 @@ CMakeFiles/HydroMotionLib.dir/src/state_reporter.c.o: ../../../src/state_reporte
 
 ../../../src/pump_converter.c:
 
+../../../src/diagnostics.c:
+
+../../../include/pressure_controller.h:
+
+../../../src/pressure_controller.c:
+
+../../../src/protection_manager.c:
+
+../../../src/rbf_pid.c:
+
+../../../src/recipe_validator.c:
+
 ../../../include/segment_limits.h:
 
 /usr/include/x86_64-linux-gnu/bits/types/__locale_t.h:
 
 /usr/include/stdio.h:
-
-../../../include/diagnostics.h:
-
-/usr/lib/gcc/x86_64-linux-gnu/11/include/stdint.h:
-
-/usr/include/x86_64-linux-gnu/bits/types/__FILE.h:
-
-../../../src/rbf_pid.c:

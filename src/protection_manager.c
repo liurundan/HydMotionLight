@@ -1,0 +1,70 @@
+#include "protection_manager.h"
+#include "state_reporter.h"
+#include "pressure_controller.h"
+
+void HDY_ProtectionManager_ResetRuntimeActuation(HDY_MotionControlFB* fb) {
+    if (fb == NULL) {
+        return;
+    }
+
+    HDY_PressureController_ClearState(&fb->_pressureController);
+    fb->_lastCommandedFlow = 0.0;
+    fb->_lastFeedbackTimestamp = 0.0;
+    fb->_feedbackTimestampValid = false;
+}
+
+void HDY_ProtectionManager_ApplyIdleState(HDY_MotionControlFB* fb,
+                                          HDY_BOOL finished,
+                                          HDY_BOOL segmentCompleted) {
+    if (fb == NULL) {
+        return;
+    }
+
+    HDY_ProtectionManager_ResetRuntimeActuation(fb);
+    HDY_StateReporter_SetIdleState(fb, finished, segmentCompleted);
+}
+
+void HDY_ProtectionManager_ApplyDisabledState(HDY_MotionControlFB* fb) {
+    if (fb == NULL) {
+        return;
+    }
+
+    HDY_ProtectionManager_ResetRuntimeActuation(fb);
+    HDY_StateReporter_ResetTransitionFlags(fb);
+    HDY_StateReporter_ApplySafeOutputs(fb);
+    fb->SEGMENT_COMPLETED = false;
+
+    if (fb->FAULT) {
+        HDY_StateReporter_SetProtectionAction(fb, HDY_PROTECTION_ACTION_STOP);
+        HDY_StateReporter_SetStatus(fb, HDY_STATUS_FAULT);
+        return;
+    }
+
+    if (fb->FINISHED) {
+        HDY_StateReporter_SetStatus(fb, HDY_STATUS_FINISHED);
+    } else if (fb->RECIPE_SIZE > 0U) {
+        HDY_StateReporter_SetStatus(fb, HDY_STATUS_READY);
+    } else {
+        HDY_StateReporter_SetStatus(fb, HDY_STATUS_IDLE);
+    }
+}
+
+void HDY_ProtectionManager_ApplyFaultHold(HDY_MotionControlFB* fb) {
+    if (fb == NULL) {
+        return;
+    }
+
+    HDY_ProtectionManager_ResetRuntimeActuation(fb);
+    HDY_StateReporter_ApplySafeOutputs(fb);
+    HDY_StateReporter_SetProtectionAction(fb, HDY_PROTECTION_ACTION_STOP);
+    HDY_StateReporter_SetStatus(fb, HDY_STATUS_FAULT);
+}
+
+void HDY_ProtectionManager_EnterFaultStop(HDY_MotionControlFB* fb) {
+    if (fb == NULL) {
+        return;
+    }
+
+    HDY_ProtectionManager_ResetRuntimeActuation(fb);
+    HDY_StateReporter_EnterFaultState(fb);
+}

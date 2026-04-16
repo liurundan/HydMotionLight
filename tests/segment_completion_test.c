@@ -118,6 +118,36 @@ static void test_manual_completion(void) {
     printf("✓ Manual completion test passed\n");
 }
 
+static void test_runtime_reference_context_overrides_segment_targets(void) {
+    HDY_MotionSegment segment = create_segment();
+    HDY_AxisRef axisRef;
+    HDY_ExecutionReference references = {0};
+    HDY_SegmentCompletionContext context;
+
+    printf("Testing runtime reference context override behavior...\n");
+    segment.endCondition = HDY_END_PRESSURE;
+    segment.targetPressure = 50.0;
+    axisRef = create_axis_ref(0.0, 45.1, 0.0);
+
+    references.elapsedTime = 0.0;
+    references.pressureReference = 45.0;
+    references.flowReference = 0.0;
+    references.velocityReference = 0.0;
+    context.segment = &segment;
+    context.axisRef = &axisRef;
+    context.references = &references;
+
+    assert(HDY_SegmentCompletion_CheckWithContext(&context));
+    assert(!HDY_SegmentCompletion_Check(&segment, &axisRef, 0.0));
+
+    segment.endCondition = HDY_END_FLOW;
+    segment.targetFlow = 20.0;
+    axisRef.flow = 18.9;
+    references.flowReference = 19.0;
+    assert(HDY_SegmentCompletion_CheckWithContext(&context));
+    printf("✓ Runtime reference context override test passed\n");
+}
+
 int main(void) {
     printf("Running SegmentCompletion tests...\n\n");
     test_position_completion_extend();
@@ -126,6 +156,7 @@ int main(void) {
     test_pressure_completion();
     test_flow_completion();
     test_manual_completion();
+    test_runtime_reference_context_overrides_segment_targets();
     printf("\n✅ All SegmentCompletion tests passed successfully!\n");
     return 0;
 }

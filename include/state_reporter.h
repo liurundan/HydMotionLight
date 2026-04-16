@@ -9,6 +9,7 @@ void HDY_StateReporter_SetActive(HDY_MotionControlFB* fb, HDY_BOOL active);
 void HDY_StateReporter_SetFinished(HDY_MotionControlFB* fb, HDY_BOOL finished);
 void HDY_StateReporter_SetFault(HDY_MotionControlFB* fb, HDY_BOOL fault);
 void HDY_StateReporter_SetStatus(HDY_MotionControlFB* fb, HDY_ControllerStatus status);
+void HDY_StateReporter_SetProtectionAction(HDY_MotionControlFB* fb, HDY_ProtectionAction action);
 void HDY_StateReporter_SetPlannedDirection(HDY_MotionControlFB* fb, HDY_MotionDirection direction);
 void HDY_StateReporter_ResetTransitionFlags(HDY_MotionControlFB* fb);
 void HDY_StateReporter_ApplySafeOutputs(HDY_MotionControlFB* fb);
@@ -20,6 +21,10 @@ void HDY_StateReporter_SetIdleState(HDY_MotionControlFB* fb,
 void HDY_StateReporter_EnterFaultState(HDY_MotionControlFB* fb);
 void HDY_StateReporter_ReportExecution(HDY_MotionControlFB* fb,
                                        const HDY_MotionPlannerOutput* plannerOutput,
-                                       const HDY_PumpConverterOutput* pumpOutput);
+                                       const HDY_PumpConverterOutput* pumpOutput,
+                                       const HDY_ExecutionReference* references,
+                                       HDY_PressureControllerType pressureControllerApplied,
+                                       const HDY_PressureControllerOutput* pressureOutput,
+                                       const HDY_DiagnosticInfo* diagnostic);
 
 #endif /* HDY_STATE_REPORTER_H */

@@ -1,0 +1,112 @@
+[
+{
+  "directory": "/home/dan/project/hdy-motion-light/out/build/unixgcc",
+  "command": "/usr/bin/gcc  -I/home/dan/project/hdy-motion-light/include -g -O0 -Wall -g -std=gnu99 -o CMakeFiles/HydroMotionLib.dir/src/diagnostics.c.o -c /home/dan/project/hdy-motion-light/src/diagnostics.c",
+  "file": "/home/dan/project/hdy-motion-light/src/diagnostics.c"
+},
+{
+  "directory": "/home/dan/project/hdy-motion-light/out/build/unixgcc",
+  "command": "/usr/bin/gcc  -I/home/dan/project/hdy-motion-light/include -g -O0 -Wall -g -std=gnu99 -o CMakeFiles/HydroMotionLib.dir/src/motion_control.c.o -c /home/dan/project/hdy-motion-light/src/motion_control.c",
+  "file": "/home/dan/project/hdy-motion-light/src/motion_control.c"
+},
+{
+  "directory": "/home/dan/project/hdy-motion-light/out/build/unixgcc",
+  "command": "/usr/bin/gcc  -I/home/dan/project/hdy-motion-light/include -g -O0 -Wall -g -std=gnu99 -o CMakeFiles/HydroMotionLib.dir/src/motion_planner.c.o -c /home/dan/project/hdy-motion-light/src/motion_planner.c",
+  "file": "/home/dan/project/hdy-motion-light/src/motion_planner.c"
+},
+{
+  "directory": "/home/dan/project/hdy-motion-light/out/build/unixgcc",
+  "command": "/usr/bin/gcc  -I/home/dan/project/hdy-motion-light/include -g -O0 -Wall -g -std=gnu99 -o CMakeFiles/HydroMotionLib.dir/src/pressure_controller.c.o -c /home/dan/project/hdy-motion-light/src/pressure_controller.c",
+  "file": "/home/dan/project/hdy-motion-light/src/pressure_controller.c"
+},
+{
+  "directory": "/home/dan/project/hdy-motion-light/out/build/unixgcc",
+  "command": "/usr/bin/gcc  -I/home/dan/project/hdy-motion-light/include -g -O0 -Wall -g -std=gnu99 -o CMakeFiles/HydroMotionLib.dir/src/protection_manager.c.o -c /home/dan/project/hdy-motion-light/src/protection_manager.c",
+  "file": "/home/dan/project/hdy-motion-light/src/protection_manager.c"
+},
+{
+  "directory": "/home/dan/project/hdy-motion-light/out/build/unixgcc",
+  "command": "/usr/bin/gcc  -I/home/dan/project/hdy-motion-light/include -g -O0 -Wall -g -std=gnu99 -o CMakeFiles/HydroMotionLib.dir/src/pump_converter.c.o -c /home/dan/project/hdy-motion-light/src/pump_converter.c",
+  "file": "/home/dan/project/hdy-motion-light/src/pump_converter.c"
+},
+{
+  "directory": "/home/dan/project/hdy-motion-light/out/build/unixgcc",
+  "command": "/usr/bin/gcc  -I/home/dan/project/hdy-motion-light/include -g -O0 -Wall -g -std=gnu99 -o CMakeFiles/HydroMotionLib.dir/src/ramp_controller.c.o -c /home/dan/project/hdy-motion-light/src/ramp_controller.c",
+  "file": "/home/dan/project/hdy-motion-light/src/ramp_controller.c"
+},
+{
+  "directory": "/home/dan/project/hdy-motion-light/out/build/unixgcc",
+  "command": "/usr/bin/gcc  -I/home/dan/project/hdy-motion-light/include -g -O0 -Wall -g -std=gnu99 -o CMakeFiles/HydroMotionLib.dir/src/rbf_pid.c.o -c /home/dan/project/hdy-motion-light/src/rbf_pid.c",
+  "file": "/home/dan/project/hdy-motion-light/src/rbf_pid.c"
+},
+{
+  "directory": "/home/dan/project/hdy-motion-light/out/build/unixgcc",
+  "command": "/usr/bin/gcc  -I/home/dan/project/hdy-motion-light/include -g -O0 -Wall -g -std=gnu99 -o CMakeFiles/HydroMotionLib.dir/src/recipe_validator.c.o -c /home/dan/project/hdy-motion-light/src/recipe_validator.c",
+  "file": "/home/dan/project/hdy-motion-light/src/recipe_validator.c"
+},
+{
+  "directory": "/home/dan/project/hdy-motion-light/out/build/unixgcc",
+  "command": "/usr/bin/gcc  -I/home/dan/project/hdy-motion-light/include -g -O0 -Wall -g -std=gnu99 -o CMakeFiles/HydroMotionLib.dir/src/segment_completion.c.o -c /home/dan/project/hdy-motion-light/src/segment_completion.c",
+  "file": "/home/dan/project/hdy-motion-light/src/segment_completion.c"
+},
+{
+  "directory": "/home/dan/project/hdy-motion-light/out/build/unixgcc",
+  "command": "/usr/bin/gcc  -I/home/dan/project/hdy-motion-light/include -g -O0 -Wall -g -std=gnu99 -o CMakeFiles/HydroMotionLib.dir/src/segment_limits.c.o -c /home/dan/project/hdy-motion-light/src/segment_limits.c",
+  "file": "/home/dan/project/hdy-motion-light/src/segment_limits.c"
+},
+{
+  "directory": "/home/dan/project/hdy-motion-light/out/build/unixgcc",
+  "command": "/usr/bin/gcc  -I/home/dan/project/hdy-motion-light/include -g -O0 -Wall -g -std=gnu99 -o CMakeFiles/HydroMotionLib.dir/src/state_reporter.c.o -c /home/dan/project/hdy-motion-light/src/state_reporter.c",
+  "file": "/home/dan/project/hdy-motion-light/src/state_reporter.c"
+},
+{
+  "directory": "/home/dan/project/hdy-motion-light/out/build/unixgcc",
+  "command": "/usr/bin/gcc  -I/home/dan/project/hdy-motion-light/include -g -O0 -Wall -g -std=gnu99 -o CMakeFiles/test_motion_planner.dir/tests/test_motion_planner.c.o -c /home/dan/project/hdy-motion-light/tests/test_motion_planner.c",
+  "file": "/home/dan/project/hdy-motion-light/tests/test_motion_planner.c"
+},
+{
+  "directory": "/home/dan/project/hdy-motion-light/out/build/unixgcc",
+  "command": "/usr/bin/gcc  -I/home/dan/project/hdy-motion-light/include -g -O0 -Wall -g -std=gnu99 -o CMakeFiles/test_motion_control.dir/tests/test_motion_control.c.o -c /home/dan/project/hdy-motion-light/tests/test_motion_control.c",
+  "file": "/home/dan/project/hdy-motion-light/tests/test_motion_control.c"
+},
+{
+  "directory": "/home/dan/project/hdy-motion-light/out/build/unixgcc",
+  "command": "/usr/bin/gcc  -I/home/dan/project/hdy-motion-light/include -g -O0 -Wall -g -std=gnu99 -o CMakeFiles/test_recipe_validator.dir/tests/test_recipe_validator.c.o -c /home/dan/project/hdy-motion-light/tests/test_recipe_validator.c",
+  "file": "/home/dan/project/hdy-motion-light/tests/test_recipe_validator.c"
+},
+{
+  "directory": "/home/dan/project/hdy-motion-light/out/build/unixgcc",
+  "command": "/usr/bin/gcc  -I/home/dan/project/hdy-motion-light/include -g -O0 -Wall -g -std=gnu99 -o CMakeFiles/test_pressure_controller.dir/tests/test_pressure_controller.c.o -c /home/dan/project/hdy-motion-light/tests/test_pressure_controller.c",
+  "file": "/home/dan/project/hdy-motion-light/tests/test_pressure_controller.c"
+},
+{
+  "directory": "/home/dan/project/hdy-motion-light/out/build/unixgcc",
+  "command": "/usr/bin/gcc  -I/home/dan/project/hdy-motion-light/include -g -O0 -Wall -g -std=gnu99 -o CMakeFiles/test_pump_converter.dir/tests/test_pump_converter.c.o -c /home/dan/project/hdy-motion-light/tests/test_pump_converter.c",
+  "file": "/home/dan/project/hdy-motion-light/tests/test_pump_converter.c"
+},
+{
+  "directory": "/home/dan/project/hdy-motion-light/out/build/unixgcc",
+  "command": "/usr/bin/gcc  -I/home/dan/project/hdy-motion-light/include -g -O0 -Wall -g -std=gnu99 -o CMakeFiles/segment_completion_test.dir/tests/segment_completion_test.c.o -c /home/dan/project/hdy-motion-light/tests/segment_completion_test.c",
+  "file": "/home/dan/project/hdy-motion-light/tests/segment_completion_test.c"
+},
+{
+  "directory": "/home/dan/project/hdy-motion-light/out/build/unixgcc",
+  "command": "/usr/bin/gcc  -I/home/dan/project/hdy-motion-light/include -g -O0 -Wall -g -std=gnu99 -o CMakeFiles/rbf_pid_test.dir/tests/rbf_pid_test.c.o -c /home/dan/project/hdy-motion-light/tests/rbf_pid_test.c",
+  "file": "/home/dan/project/hdy-motion-light/tests/rbf_pid_test.c"
+},
+{
+  "directory": "/home/dan/project/hdy-motion-light/out/build/unixgcc",
+  "command": "/usr/bin/gcc  -I/home/dan/project/hdy-motion-light/include -g -O0 -Wall -g -std=gnu99 -o CMakeFiles/ramp_controller_test.dir/tests/ramp_controller_test.c.o -c /home/dan/project/hdy-motion-light/tests/ramp_controller_test.c",
+  "file": "/home/dan/project/hdy-motion-light/tests/ramp_controller_test.c"
+},
+{
+  "directory": "/home/dan/project/hdy-motion-light/out/build/unixgcc",
+  "command": "/usr/bin/gcc  -I/home/dan/project/hdy-motion-light/include -g -O0 -Wall -g -std=gnu99 -o CMakeFiles/test_scenario_matrix.dir/tests/test_scenario_matrix.c.o -c /home/dan/project/hdy-motion-light/tests/test_scenario_matrix.c",
+  "file": "/home/dan/project/hdy-motion-light/tests/test_scenario_matrix.c"
+},
+{
+  "directory": "/home/dan/project/hdy-motion-light/out/build/unixgcc",
+  "command": "/usr/bin/gcc  -I/home/dan/project/hdy-motion-light/include -g -O0 -Wall -g -std=gnu99 -o CMakeFiles/main.dir/tests/main.c.o -c /home/dan/project/hdy-motion-light/tests/main.c",
+  "file": "/home/dan/project/hdy-motion-light/tests/main.c"
+}
+]

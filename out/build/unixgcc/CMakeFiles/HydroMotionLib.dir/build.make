@@ -111,10 +111,38 @@ CMakeFiles/HydroMotionLib.dir/src/motion_planner.c.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling C source to assembly CMakeFiles/HydroMotionLib.dir/src/motion_planner.c.s"
 	/usr/bin/gcc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -S /home/dan/project/hdy-motion-light/src/motion_planner.c -o CMakeFiles/HydroMotionLib.dir/src/motion_planner.c.s
 
+CMakeFiles/HydroMotionLib.dir/src/pressure_controller.c.o: CMakeFiles/HydroMotionLib.dir/flags.make
+CMakeFiles/HydroMotionLib.dir/src/pressure_controller.c.o: ../../../src/pressure_controller.c
+CMakeFiles/HydroMotionLib.dir/src/pressure_controller.c.o: CMakeFiles/HydroMotionLib.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/dan/project/hdy-motion-light/out/build/unixgcc/CMakeFiles --progress-num=$(CMAKE_PROGRESS_4) "Building C object CMakeFiles/HydroMotionLib.dir/src/pressure_controller.c.o"
+	/usr/bin/gcc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT CMakeFiles/HydroMotionLib.dir/src/pressure_controller.c.o -MF CMakeFiles/HydroMotionLib.dir/src/pressure_controller.c.o.d -o CMakeFiles/HydroMotionLib.dir/src/pressure_controller.c.o -c /home/dan/project/hdy-motion-light/src/pressure_controller.c
+
+CMakeFiles/HydroMotionLib.dir/src/pressure_controller.c.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing C source to CMakeFiles/HydroMotionLib.dir/src/pressure_controller.c.i"
+	/usr/bin/gcc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -E /home/dan/project/hdy-motion-light/src/pressure_controller.c > CMakeFiles/HydroMotionLib.dir/src/pressure_controller.c.i
+
+CMakeFiles/HydroMotionLib.dir/src/pressure_controller.c.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling C source to assembly CMakeFiles/HydroMotionLib.dir/src/pressure_controller.c.s"
+	/usr/bin/gcc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -S /home/dan/project/hdy-motion-light/src/pressure_controller.c -o CMakeFiles/HydroMotionLib.dir/src/pressure_controller.c.s
+
+CMakeFiles/HydroMotionLib.dir/src/protection_manager.c.o: CMakeFiles/HydroMotionLib.dir/flags.make
+CMakeFiles/HydroMotionLib.dir/src/protection_manager.c.o: ../../../src/protection_manager.c
+CMakeFiles/HydroMotionLib.dir/src/protection_manager.c.o: CMakeFiles/HydroMotionLib.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/dan/project/hdy-motion-light/out/build/unixgcc/CMakeFiles --progress-num=$(CMAKE_PROGRESS_5) "Building C object CMakeFiles/HydroMotionLib.dir/src/protection_manager.c.o"
+	/usr/bin/gcc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT CMakeFiles/HydroMotionLib.dir/src/protection_manager.c.o -MF CMakeFiles/HydroMotionLib.dir/src/protection_manager.c.o.d -o CMakeFiles/HydroMotionLib.dir/src/protection_manager.c.o -c /home/dan/project/hdy-motion-light/src/protection_manager.c
+
+CMakeFiles/HydroMotionLib.dir/src/protection_manager.c.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing C source to CMakeFiles/HydroMotionLib.dir/src/protection_manager.c.i"
+	/usr/bin/gcc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -E /home/dan/project/hdy-motion-light/src/protection_manager.c > CMakeFiles/HydroMotionLib.dir/src/protection_manager.c.i
+
+CMakeFiles/HydroMotionLib.dir/src/protection_manager.c.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling C source to assembly CMakeFiles/HydroMotionLib.dir/src/protection_manager.c.s"
+	/usr/bin/gcc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -S /home/dan/project/hdy-motion-light/src/protection_manager.c -o CMakeFiles/HydroMotionLib.dir/src/protection_manager.c.s
+
 CMakeFiles/HydroMotionLib.dir/src/pump_converter.c.o: CMakeFiles/HydroMotionLib.dir/flags.make
 CMakeFiles/HydroMotionLib.dir/src/pump_converter.c.o: ../../../src/pump_converter.c
 CMakeFiles/HydroMotionLib.dir/src/pump_converter.c.o: CMakeFiles/HydroMotionLib.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/dan/project/hdy-motion-light/out/build/unixgcc/CMakeFiles --progress-num=$(CMAKE_PROGRESS_4) "Building C object CMakeFiles/HydroMotionLib.dir/src/pump_converter.c.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/dan/project/hdy-motion-light/out/build/unixgcc/CMakeFiles --progress-num=$(CMAKE_PROGRESS_6) "Building C object CMakeFiles/HydroMotionLib.dir/src/pump_converter.c.o"
 	/usr/bin/gcc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT CMakeFiles/HydroMotionLib.dir/src/pump_converter.c.o -MF CMakeFiles/HydroMotionLib.dir/src/pump_converter.c.o.d -o CMakeFiles/HydroMotionLib.dir/src/pump_converter.c.o -c /home/dan/project/hdy-motion-light/src/pump_converter.c
 
 CMakeFiles/HydroMotionLib.dir/src/pump_converter.c.i: cmake_force
@@ -128,7 +156,7 @@ CMakeFiles/HydroMotionLib.dir/src/pump_converter.c.s: cmake_force
 CMakeFiles/HydroMotionLib.dir/src/ramp_controller.c.o: CMakeFiles/HydroMotionLib.dir/flags.make
 CMakeFiles/HydroMotionLib.dir/src/ramp_controller.c.o: ../../../src/ramp_controller.c
 CMakeFiles/HydroMotionLib.dir/src/ramp_controller.c.o: CMakeFiles/HydroMotionLib.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/dan/project/hdy-motion-light/out/build/unixgcc/CMakeFiles --progress-num=$(CMAKE_PROGRESS_5) "Building C object CMakeFiles/HydroMotionLib.dir/src/ramp_controller.c.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/dan/project/hdy-motion-light/out/build/unixgcc/CMakeFiles --progress-num=$(CMAKE_PROGRESS_7) "Building C object CMakeFiles/HydroMotionLib.dir/src/ramp_controller.c.o"
 	/usr/bin/gcc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT CMakeFiles/HydroMotionLib.dir/src/ramp_controller.c.o -MF CMakeFiles/HydroMotionLib.dir/src/ramp_controller.c.o.d -o CMakeFiles/HydroMotionLib.dir/src/ramp_controller.c.o -c /home/dan/project/hdy-motion-light/src/ramp_controller.c
 
 CMakeFiles/HydroMotionLib.dir/src/ramp_controller.c.i: cmake_force
@@ -142,7 +170,7 @@ CMakeFiles/HydroMotionLib.dir/src/ramp_controller.c.s: cmake_force
 CMakeFiles/HydroMotionLib.dir/src/rbf_pid.c.o: CMakeFiles/HydroMotionLib.dir/flags.make
 CMakeFiles/HydroMotionLib.dir/src/rbf_pid.c.o: ../../../src/rbf_pid.c
 CMakeFiles/HydroMotionLib.dir/src/rbf_pid.c.o: CMakeFiles/HydroMotionLib.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/dan/project/hdy-motion-light/out/build/unixgcc/CMakeFiles --progress-num=$(CMAKE_PROGRESS_6) "Building C object CMakeFiles/HydroMotionLib.dir/src/rbf_pid.c.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/dan/project/hdy-motion-light/out/build/unixgcc/CMakeFiles --progress-num=$(CMAKE_PROGRESS_8) "Building C object CMakeFiles/HydroMotionLib.dir/src/rbf_pid.c.o"
 	/usr/bin/gcc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT CMakeFiles/HydroMotionLib.dir/src/rbf_pid.c.o -MF CMakeFiles/HydroMotionLib.dir/src/rbf_pid.c.o.d -o CMakeFiles/HydroMotionLib.dir/src/rbf_pid.c.o -c /home/dan/project/hdy-motion-light/src/rbf_pid.c
 
 CMakeFiles/HydroMotionLib.dir/src/rbf_pid.c.i: cmake_force
@@ -156,7 +184,7 @@ CMakeFiles/HydroMotionLib.dir/src/rbf_pid.c.s: cmake_force
 CMakeFiles/HydroMotionLib.dir/src/recipe_validator.c.o: CMakeFiles/HydroMotionLib.dir/flags.make
 CMakeFiles/HydroMotionLib.dir/src/recipe_validator.c.o: ../../../src/recipe_validator.c
 CMakeFiles/HydroMotionLib.dir/src/recipe_validator.c.o: CMakeFiles/HydroMotionLib.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/dan/project/hdy-motion-light/out/build/unixgcc/CMakeFiles --progress-num=$(CMAKE_PROGRESS_7) "Building C object CMakeFiles/HydroMotionLib.dir/src/recipe_validator.c.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/dan/project/hdy-motion-light/out/build/unixgcc/CMakeFiles --progress-num=$(CMAKE_PROGRESS_9) "Building C object CMakeFiles/HydroMotionLib.dir/src/recipe_validator.c.o"
 	/usr/bin/gcc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT CMakeFiles/HydroMotionLib.dir/src/recipe_validator.c.o -MF CMakeFiles/HydroMotionLib.dir/src/recipe_validator.c.o.d -o CMakeFiles/HydroMotionLib.dir/src/recipe_validator.c.o -c /home/dan/project/hdy-motion-light/src/recipe_validator.c
 
 CMakeFiles/HydroMotionLib.dir/src/recipe_validator.c.i: cmake_force
@@ -170,7 +198,7 @@ CMakeFiles/HydroMotionLib.dir/src/recipe_validator.c.s: cmake_force
 CMakeFiles/HydroMotionLib.dir/src/segment_completion.c.o: CMakeFiles/HydroMotionLib.dir/flags.make
 CMakeFiles/HydroMotionLib.dir/src/segment_completion.c.o: ../../../src/segment_completion.c
 CMakeFiles/HydroMotionLib.dir/src/segment_completion.c.o: CMakeFiles/HydroMotionLib.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/dan/project/hdy-motion-light/out/build/unixgcc/CMakeFiles --progress-num=$(CMAKE_PROGRESS_8) "Building C object CMakeFiles/HydroMotionLib.dir/src/segment_completion.c.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/dan/project/hdy-motion-light/out/build/unixgcc/CMakeFiles --progress-num=$(CMAKE_PROGRESS_10) "Building C object CMakeFiles/HydroMotionLib.dir/src/segment_completion.c.o"
 	/usr/bin/gcc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT CMakeFiles/HydroMotionLib.dir/src/segment_completion.c.o -MF CMakeFiles/HydroMotionLib.dir/src/segment_completion.c.o.d -o CMakeFiles/HydroMotionLib.dir/src/segment_completion.c.o -c /home/dan/project/hdy-motion-light/src/segment_completion.c
 
 CMakeFiles/HydroMotionLib.dir/src/segment_completion.c.i: cmake_force
@@ -184,7 +212,7 @@ CMakeFiles/HydroMotionLib.dir/src/segment_completion.c.s: cmake_force
 CMakeFiles/HydroMotionLib.dir/src/segment_limits.c.o: CMakeFiles/HydroMotionLib.dir/flags.make
 CMakeFiles/HydroMotionLib.dir/src/segment_limits.c.o: ../../../src/segment_limits.c
 CMakeFiles/HydroMotionLib.dir/src/segment_limits.c.o: CMakeFiles/HydroMotionLib.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/dan/project/hdy-motion-light/out/build/unixgcc/CMakeFiles --progress-num=$(CMAKE_PROGRESS_9) "Building C object CMakeFiles/HydroMotionLib.dir/src/segment_limits.c.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/dan/project/hdy-motion-light/out/build/unixgcc/CMakeFiles --progress-num=$(CMAKE_PROGRESS_11) "Building C object CMakeFiles/HydroMotionLib.dir/src/segment_limits.c.o"
 	/usr/bin/gcc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT CMakeFiles/HydroMotionLib.dir/src/segment_limits.c.o -MF CMakeFiles/HydroMotionLib.dir/src/segment_limits.c.o.d -o CMakeFiles/HydroMotionLib.dir/src/segment_limits.c.o -c /home/dan/project/hdy-motion-light/src/segment_limits.c
 
 CMakeFiles/HydroMotionLib.dir/src/segment_limits.c.i: cmake_force
@@ -198,7 +226,7 @@ CMakeFiles/HydroMotionLib.dir/src/segment_limits.c.s: cmake_force
 CMakeFiles/HydroMotionLib.dir/src/state_reporter.c.o: CMakeFiles/HydroMotionLib.dir/flags.make
 CMakeFiles/HydroMotionLib.dir/src/state_reporter.c.o: ../../../src/state_reporter.c
 CMakeFiles/HydroMotionLib.dir/src/state_reporter.c.o: CMakeFiles/HydroMotionLib.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/dan/project/hdy-motion-light/out/build/unixgcc/CMakeFiles --progress-num=$(CMAKE_PROGRESS_10) "Building C object CMakeFiles/HydroMotionLib.dir/src/state_reporter.c.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/dan/project/hdy-motion-light/out/build/unixgcc/CMakeFiles --progress-num=$(CMAKE_PROGRESS_12) "Building C object CMakeFiles/HydroMotionLib.dir/src/state_reporter.c.o"
 	/usr/bin/gcc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT CMakeFiles/HydroMotionLib.dir/src/state_reporter.c.o -MF CMakeFiles/HydroMotionLib.dir/src/state_reporter.c.o.d -o CMakeFiles/HydroMotionLib.dir/src/state_reporter.c.o -c /home/dan/project/hdy-motion-light/src/state_reporter.c
 
 CMakeFiles/HydroMotionLib.dir/src/state_reporter.c.i: cmake_force
@@ -214,6 +242,8 @@ HydroMotionLib_OBJECTS = \
 "CMakeFiles/HydroMotionLib.dir/src/diagnostics.c.o" \
 "CMakeFiles/HydroMotionLib.dir/src/motion_control.c.o" \
 "CMakeFiles/HydroMotionLib.dir/src/motion_planner.c.o" \
+"CMakeFiles/HydroMotionLib.dir/src/pressure_controller.c.o" \
+"CMakeFiles/HydroMotionLib.dir/src/protection_manager.c.o" \
 "CMakeFiles/HydroMotionLib.dir/src/pump_converter.c.o" \
 "CMakeFiles/HydroMotionLib.dir/src/ramp_controller.c.o" \
 "CMakeFiles/HydroMotionLib.dir/src/rbf_pid.c.o" \
@@ -228,6 +258,8 @@ HydroMotionLib_EXTERNAL_OBJECTS =
 libHydroMotionLib.a: CMakeFiles/HydroMotionLib.dir/src/diagnostics.c.o
 libHydroMotionLib.a: CMakeFiles/HydroMotionLib.dir/src/motion_control.c.o
 libHydroMotionLib.a: CMakeFiles/HydroMotionLib.dir/src/motion_planner.c.o
+libHydroMotionLib.a: CMakeFiles/HydroMotionLib.dir/src/pressure_controller.c.o
+libHydroMotionLib.a: CMakeFiles/HydroMotionLib.dir/src/protection_manager.c.o
 libHydroMotionLib.a: CMakeFiles/HydroMotionLib.dir/src/pump_converter.c.o
 libHydroMotionLib.a: CMakeFiles/HydroMotionLib.dir/src/ramp_controller.c.o
 libHydroMotionLib.a: CMakeFiles/HydroMotionLib.dir/src/rbf_pid.c.o
@@ -237,7 +269,7 @@ libHydroMotionLib.a: CMakeFiles/HydroMotionLib.dir/src/segment_limits.c.o
 libHydroMotionLib.a: CMakeFiles/HydroMotionLib.dir/src/state_reporter.c.o
 libHydroMotionLib.a: CMakeFiles/HydroMotionLib.dir/build.make
 libHydroMotionLib.a: CMakeFiles/HydroMotionLib.dir/link.txt
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --bold --progress-dir=/home/dan/project/hdy-motion-light/out/build/unixgcc/CMakeFiles --progress-num=$(CMAKE_PROGRESS_11) "Linking C static library libHydroMotionLib.a"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --bold --progress-dir=/home/dan/project/hdy-motion-light/out/build/unixgcc/CMakeFiles --progress-num=$(CMAKE_PROGRESS_13) "Linking C static library libHydroMotionLib.a"
 	$(CMAKE_COMMAND) -P CMakeFiles/HydroMotionLib.dir/cmake_clean_target.cmake
 	$(CMAKE_COMMAND) -E cmake_link_script CMakeFiles/HydroMotionLib.dir/link.txt --verbose=$(VERBOSE)
 

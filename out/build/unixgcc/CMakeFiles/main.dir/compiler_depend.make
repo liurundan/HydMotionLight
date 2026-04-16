@@ -3,7 +3,7 @@
 
 CMakeFiles/main.dir/tests/main.c.o: ../../../tests/main.c \
   /usr/include/stdc-predef.h \
-  ../../../include/motion_control.h \
+  ../../../include/diagnostics.h \
   ../../../include/common_types.h \
   /usr/lib/gcc/x86_64-linux-gnu/11/include/stdbool.h \
   /usr/lib/gcc/x86_64-linux-gnu/11/include/stddef.h \
@@ -24,6 +24,9 @@ CMakeFiles/main.dir/tests/main.c.o: ../../../tests/main.c \
   /usr/include/x86_64-linux-gnu/bits/wchar.h \
   /usr/include/x86_64-linux-gnu/bits/stdint-intn.h \
   /usr/include/x86_64-linux-gnu/bits/stdint-uintn.h \
+  ../../../include/motion_control.h \
+  ../../../include/pressure_controller.h \
+  ../../../include/rbf_pid.h \
   ../../../include/ramp_controller.h \
   /usr/include/stdio.h \
   /usr/lib/gcc/x86_64-linux-gnu/11/include/stdarg.h \
@@ -51,8 +54,6 @@ CMakeFiles/main.dir/tests/main.c.o: ../../../tests/main.c \
 
 /usr/include/x86_64-linux-gnu/bits/endian.h:
 
-/usr/include/x86_64-linux-gnu/bits/types/struct_timespec.h:
-
 /usr/include/x86_64-linux-gnu/bits/types/time_t.h:
 
 /usr/include/x86_64-linux-gnu/bits/time.h:
@@ -65,15 +66,17 @@ CMakeFiles/main.dir/tests/main.c.o: ../../../tests/main.c \
 
 /usr/include/x86_64-linux-gnu/bits/types/__FILE.h:
 
+/usr/include/x86_64-linux-gnu/bits/types/__fpos64_t.h:
+
 /usr/include/x86_64-linux-gnu/bits/wordsize.h:
 
 /usr/lib/gcc/x86_64-linux-gnu/11/include/stdbool.h:
 
+/usr/include/x86_64-linux-gnu/bits/types/struct_timespec.h:
+
+../../../include/diagnostics.h:
+
 /usr/include/features-time64.h:
-
-/usr/include/x86_64-linux-gnu/bits/types/FILE.h:
-
-/usr/include/features.h:
 
 /usr/include/x86_64-linux-gnu/bits/libc-header-start.h:
 
@@ -87,8 +90,6 @@ CMakeFiles/main.dir/tests/main.c.o: ../../../tests/main.c \
 
 ../../../include/common_types.h:
 
-../../../include/motion_control.h:
-
 /usr/lib/gcc/x86_64-linux-gnu/11/include/stddef.h:
 
 ../../../tests/main.c:
@@ -98,10 +99,6 @@ CMakeFiles/main.dir/tests/main.c.o: ../../../tests/main.c \
 /usr/include/x86_64-linux-gnu/bits/types/clock_t.h:
 
 /usr/include/x86_64-linux-gnu/sys/cdefs.h:
-
-/usr/include/x86_64-linux-gnu/bits/types/__fpos_t.h:
-
-/usr/include/x86_64-linux-gnu/bits/time64.h:
 
 /usr/include/x86_64-linux-gnu/bits/long-double.h:
 
@@ -123,13 +120,7 @@ CMakeFiles/main.dir/tests/main.c.o: ../../../tests/main.c \
 
 /usr/include/x86_64-linux-gnu/bits/stdint-intn.h:
 
-/usr/include/stdio.h:
-
-/usr/include/stdint.h:
-
-/usr/include/x86_64-linux-gnu/bits/timesize.h:
-
-/usr/lib/gcc/x86_64-linux-gnu/11/include/stdarg.h:
+/usr/include/x86_64-linux-gnu/bits/types/__mbstate_t.h:
 
 /usr/include/x86_64-linux-gnu/bits/wchar.h:
 
@@ -137,6 +128,24 @@ CMakeFiles/main.dir/tests/main.c.o: ../../../tests/main.c \
 
 /usr/include/x86_64-linux-gnu/bits/stdint-uintn.h:
 
-/usr/include/x86_64-linux-gnu/bits/types/__mbstate_t.h:
+../../../include/motion_control.h:
 
-/usr/include/x86_64-linux-gnu/bits/types/__fpos64_t.h:
+/usr/include/x86_64-linux-gnu/bits/types/__fpos_t.h:
+
+/usr/include/x86_64-linux-gnu/bits/time64.h:
+
+../../../include/pressure_controller.h:
+
+/usr/include/stdio.h:
+
+/usr/include/x86_64-linux-gnu/bits/types/FILE.h:
+
+/usr/include/features.h:
+
+../../../include/rbf_pid.h:
+
+/usr/include/stdint.h:
+
+/usr/include/x86_64-linux-gnu/bits/timesize.h:
+
+/usr/lib/gcc/x86_64-linux-gnu/11/include/stdarg.h:

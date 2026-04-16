@@ -75,6 +75,28 @@ static void test_validate_runtime_config(void) {
     printf("✓ Runtime config validation test passed\n");
 }
 
+static void test_validate_pressure_derivative_filter_alpha(void) {
+    HDY_MotionSegment segment;
+    HDY_DiagnosticCode code = HDY_DIAG_CODE_NONE;
+    char message[HDY_MESSAGE_MAX] = {0};
+
+    printf("Testing pressure derivative filter alpha validation...\n");
+    segment = make_valid_segment();
+    segment.mode = HDY_MODE_PRESSURE_CLOSED_LOOP;
+    segment.direction = HDY_DIRECTION_HOLD;
+    segment.velocityToFlowGain = 0.0;
+    segment.pressureController = HDY_PRESSURE_CONTROLLER_PID;
+    segment.pressureKp = 0.5;
+    segment.pressureKi = 0.5;
+    segment.pressureKd = 0.1;
+    segment.pressureDerivativeFilterAlpha = 1.5;
+
+    assert(!HDY_RecipeValidator_ValidateSegment(&segment, 0, &code, message, sizeof(message)));
+    assert(code == HDY_DIAG_CODE_SEGMENT_INVALID);
+    assert(strstr(message, "pressureDerivativeFilterAlpha") != NULL);
+    printf("✓ Pressure derivative filter alpha validation test passed\n");
+}
+
 static void test_validate_start_context_direction_conflict(void) {
     HDY_MotionSegment segment;
     HDY_AxisRef axisRef = {0};
@@ -102,6 +124,7 @@ int main(void) {
     test_validate_recipe_success();
     test_validate_recipe_rejects_speed_ramp_non_time_planner();
     test_validate_runtime_config();
+    test_validate_pressure_derivative_filter_alpha();
     test_validate_start_context_direction_conflict();
 
     printf("\n✅ All RecipeValidator tests passed successfully!\n");

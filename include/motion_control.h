@@ -2,6 +2,7 @@
 #define HDY_MOTION_CONTROL_H
 
 #include "common_types.h"
+#include "pressure_controller.h"
 #include "ramp_controller.h"
 
 /*
@@ -35,12 +36,33 @@
  * - SEGMENT_CHANGED:
  *   One-cycle pulse asserted on the first Execute() after StartSegment() or a
  *   successful NextSegment() transition.
+ * - DIAGNOSTIC:
+ *   Live diagnostic result for the current command/cycle. In non-fault idle/
+ *   finished/disabled hold states it auto-clears on the next Execute(), while
+ *   retention remains available through DIAGNOSTIC_LATCH / snapshots / history.
+ * - DIAGNOSTIC_LATCH / LAST_DIAGNOSTIC_SNAPSHOT / DIAGNOSTIC_HISTORY:
+ *   Bounded diagnostic-retention outputs for commissioning and service. They
+ *   keep the last non-NONE event and a small history until Init()/RESET or
+ *   an explicit AcknowledgeDiagnostics() after the live event has cleared.
+ * - LAST_FAULT_SNAPSHOT:
+ *   Captures the most recent fault-state transition with axis feedback,
+ *   references, segment index/name, and controller status for root-cause review.
  *
  * Direction semantics for HDY_MODE_POSITION / HDY_MODE_SPEED_RAMP:
  * - Each segment must declare EXTEND or RETRACT direction explicitly.
  * - The process layer still owns valve actions.
  * - This library therefore plans signed velocity internally, while PUMP_SPEED
  *   remains a nonnegative pump-side magnitude command.
+ *
+ * Pressure-control semantics for HDY_MODE_PRESSURE_CLOSED_LOOP:
+ * - targetPressure is first smoothed by RampController.
+ * - targetFlow acts as the feedforward bias / nominal holding flow.
+ * - pressureController selects P / PI / PID / RBF-PID strategy; PI/PID keep
+ *   classical integral/derivative state in the FB, while RBF-PID keeps its
+ *   adaptive learning state there for cycle-to-cycle continuity.
+ * - STATE.pressureLoop exposes the currently applied pressure-loop telemetry
+ *   (filtered pressure, controller contribution, saturation, adaptive gains)
+ *   so HMI / commissioning code can inspect closed-loop behavior uniformly.
  *
  * Mode contract:
  * - HDY_MODE_POSITION accepts POSITION_BASED or TIME_BASED planner selection.
@@ -68,14 +90,25 @@ typedef struct {
     HDY_REAL PUMP_SPEED;
     HDY_BOOL SEGMENT_COMPLETED;
     HDY_BOOL SEGMENT_CHANGED;
-    HDY_MotionState STATE;
-    HDY_DiagnosticInfo DIAGNOSTIC;
-    char CURRENT_SEGMENT_NAME[HDY_NAME_MAX];
+    HDY_MotionState STATE;      /* Includes currentSegmentName and pressure-loop telemetry as embedded-facing runtime state. */
+    HDY_DiagnosticInfo DIAGNOSTIC;         /* Live current-cycle / current-command diagnostic. */
+    HDY_DiagnosticInfo DIAGNOSTIC_LATCH;   /* Last non-NONE diagnostic event retained until Init()/RESET. */
+    HDY_DiagnosticSnapshot LAST_DIAGNOSTIC_SNAPSHOT;
+    HDY_DiagnosticSnapshot LAST_FAULT_SNAPSHOT;
+    HDY_DiagnosticHistory DIAGNOSTIC_HISTORY;
 
     /* Internal */
     HDY_REAL _segmentStartTime;
     HDY_BOOL _segmentChangedFlag;
+    HDY_REAL _lastCommandedFlow;
+    HDY_TIME _lastFeedbackTimestamp;
+    HDY_BOOL _feedbackTimestampValid;
     HDY_RampController _rampController;
+    HDY_PressureControllerState _pressureController;
+    HDY_DiagnosticCode _lastRecordedDiagnosticCode;
+    HDY_DiagnosticSeverity _lastRecordedDiagnosticSeverity;
+    HDY_DiagnosticFlags _lastRecordedDiagnosticFlags;
+    HDY_ProtectionAction _lastRecordedProtectionAction;
 } HDY_MotionControlFB;
 
 /* Full reset of configuration, recipe, runtime state, and internal helpers. */
@@ -104,6 +137,13 @@ HDY_BOOL HDY_MotionControlFB_NextSegment(HDY_MotionControlFB* fb, HDY_TIME times
 
 /* Immediately enters a safe finished state and clears any pending start command. */
 HDY_BOOL HDY_MotionControlFB_Abort(HDY_MotionControlFB* fb);
+
+/*
+ * Clears retained diagnostic latch/snapshot/history after the live event has
+ * cleared (typically on the next non-fault Execute() in a hold state). Fault-
+ * state retention is intentionally not clearable without RESET.
+ */
+HDY_BOOL HDY_MotionControlFB_AcknowledgeDiagnostics(HDY_MotionControlFB* fb);
 
 /* Cyclic execution entry point. Consumes START_SEGMENT as a one-shot command. */
 void HDY_MotionControlFB_Execute(HDY_MotionControlFB* fb);

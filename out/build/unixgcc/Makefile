@@ -179,6 +179,19 @@ test_recipe_validator/fast:
 .PHONY : test_recipe_validator/fast
 
 #=============================================================================
+# Target rules for targets named test_pressure_controller
+
+# Build rule for target.
+test_pressure_controller: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 test_pressure_controller
+.PHONY : test_pressure_controller
+
+# fast build rule for target.
+test_pressure_controller/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_pressure_controller.dir/build.make CMakeFiles/test_pressure_controller.dir/build
+.PHONY : test_pressure_controller/fast
+
+#=============================================================================
 # Target rules for targets named test_pump_converter
 
 # Build rule for target.
@@ -229,6 +242,19 @@ ramp_controller_test: cmake_check_build_system
 ramp_controller_test/fast:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/ramp_controller_test.dir/build.make CMakeFiles/ramp_controller_test.dir/build
 .PHONY : ramp_controller_test/fast
+
+#=============================================================================
+# Target rules for targets named test_scenario_matrix
+
+# Build rule for target.
+test_scenario_matrix: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 test_scenario_matrix
+.PHONY : test_scenario_matrix
+
+# fast build rule for target.
+test_scenario_matrix/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_scenario_matrix.dir/build.make CMakeFiles/test_scenario_matrix.dir/build
+.PHONY : test_scenario_matrix/fast
 
 #=============================================================================
 # Target rules for targets named main
@@ -314,6 +340,54 @@ src/motion_planner.s: src/motion_planner.c.s
 src/motion_planner.c.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/HydroMotionLib.dir/build.make CMakeFiles/HydroMotionLib.dir/src/motion_planner.c.s
 .PHONY : src/motion_planner.c.s
+
+src/pressure_controller.o: src/pressure_controller.c.o
+.PHONY : src/pressure_controller.o
+
+# target to build an object file
+src/pressure_controller.c.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/HydroMotionLib.dir/build.make CMakeFiles/HydroMotionLib.dir/src/pressure_controller.c.o
+.PHONY : src/pressure_controller.c.o
+
+src/pressure_controller.i: src/pressure_controller.c.i
+.PHONY : src/pressure_controller.i
+
+# target to preprocess a source file
+src/pressure_controller.c.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/HydroMotionLib.dir/build.make CMakeFiles/HydroMotionLib.dir/src/pressure_controller.c.i
+.PHONY : src/pressure_controller.c.i
+
+src/pressure_controller.s: src/pressure_controller.c.s
+.PHONY : src/pressure_controller.s
+
+# target to generate assembly for a file
+src/pressure_controller.c.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/HydroMotionLib.dir/build.make CMakeFiles/HydroMotionLib.dir/src/pressure_controller.c.s
+.PHONY : src/pressure_controller.c.s
+
+src/protection_manager.o: src/protection_manager.c.o
+.PHONY : src/protection_manager.o
+
+# target to build an object file
+src/protection_manager.c.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/HydroMotionLib.dir/build.make CMakeFiles/HydroMotionLib.dir/src/protection_manager.c.o
+.PHONY : src/protection_manager.c.o
+
+src/protection_manager.i: src/protection_manager.c.i
+.PHONY : src/protection_manager.i
+
+# target to preprocess a source file
+src/protection_manager.c.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/HydroMotionLib.dir/build.make CMakeFiles/HydroMotionLib.dir/src/protection_manager.c.i
+.PHONY : src/protection_manager.c.i
+
+src/protection_manager.s: src/protection_manager.c.s
+.PHONY : src/protection_manager.s
+
+# target to generate assembly for a file
+src/protection_manager.c.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/HydroMotionLib.dir/build.make CMakeFiles/HydroMotionLib.dir/src/protection_manager.c.s
+.PHONY : src/protection_manager.c.s
 
 src/pump_converter.o: src/pump_converter.c.o
 .PHONY : src/pump_converter.o
@@ -627,6 +701,30 @@ tests/test_motion_planner.c.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_motion_planner.dir/build.make CMakeFiles/test_motion_planner.dir/tests/test_motion_planner.c.s
 .PHONY : tests/test_motion_planner.c.s
 
+tests/test_pressure_controller.o: tests/test_pressure_controller.c.o
+.PHONY : tests/test_pressure_controller.o
+
+# target to build an object file
+tests/test_pressure_controller.c.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_pressure_controller.dir/build.make CMakeFiles/test_pressure_controller.dir/tests/test_pressure_controller.c.o
+.PHONY : tests/test_pressure_controller.c.o
+
+tests/test_pressure_controller.i: tests/test_pressure_controller.c.i
+.PHONY : tests/test_pressure_controller.i
+
+# target to preprocess a source file
+tests/test_pressure_controller.c.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_pressure_controller.dir/build.make CMakeFiles/test_pressure_controller.dir/tests/test_pressure_controller.c.i
+.PHONY : tests/test_pressure_controller.c.i
+
+tests/test_pressure_controller.s: tests/test_pressure_controller.c.s
+.PHONY : tests/test_pressure_controller.s
+
+# target to generate assembly for a file
+tests/test_pressure_controller.c.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_pressure_controller.dir/build.make CMakeFiles/test_pressure_controller.dir/tests/test_pressure_controller.c.s
+.PHONY : tests/test_pressure_controller.c.s
+
 tests/test_pump_converter.o: tests/test_pump_converter.c.o
 .PHONY : tests/test_pump_converter.o
 
@@ -675,6 +773,30 @@ tests/test_recipe_validator.c.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_recipe_validator.dir/build.make CMakeFiles/test_recipe_validator.dir/tests/test_recipe_validator.c.s
 .PHONY : tests/test_recipe_validator.c.s
 
+tests/test_scenario_matrix.o: tests/test_scenario_matrix.c.o
+.PHONY : tests/test_scenario_matrix.o
+
+# target to build an object file
+tests/test_scenario_matrix.c.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_scenario_matrix.dir/build.make CMakeFiles/test_scenario_matrix.dir/tests/test_scenario_matrix.c.o
+.PHONY : tests/test_scenario_matrix.c.o
+
+tests/test_scenario_matrix.i: tests/test_scenario_matrix.c.i
+.PHONY : tests/test_scenario_matrix.i
+
+# target to preprocess a source file
+tests/test_scenario_matrix.c.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_scenario_matrix.dir/build.make CMakeFiles/test_scenario_matrix.dir/tests/test_scenario_matrix.c.i
+.PHONY : tests/test_scenario_matrix.c.i
+
+tests/test_scenario_matrix.s: tests/test_scenario_matrix.c.s
+.PHONY : tests/test_scenario_matrix.s
+
+# target to generate assembly for a file
+tests/test_scenario_matrix.c.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_scenario_matrix.dir/build.make CMakeFiles/test_scenario_matrix.dir/tests/test_scenario_matrix.c.s
+.PHONY : tests/test_scenario_matrix.c.s
+
 # Help Target
 help:
 	@echo "The following are some of the valid targets for this Makefile:"
@@ -691,8 +813,10 @@ help:
 	@echo "... segment_completion_test"
 	@echo "... test_motion_control"
 	@echo "... test_motion_planner"
+	@echo "... test_pressure_controller"
 	@echo "... test_pump_converter"
 	@echo "... test_recipe_validator"
+	@echo "... test_scenario_matrix"
 	@echo "... src/diagnostics.o"
 	@echo "... src/diagnostics.i"
 	@echo "... src/diagnostics.s"
@@ -702,6 +826,12 @@ help:
 	@echo "... src/motion_planner.o"
 	@echo "... src/motion_planner.i"
 	@echo "... src/motion_planner.s"
+	@echo "... src/pressure_controller.o"
+	@echo "... src/pressure_controller.i"
+	@echo "... src/pressure_controller.s"
+	@echo "... src/protection_manager.o"
+	@echo "... src/protection_manager.i"
+	@echo "... src/protection_manager.s"
 	@echo "... src/pump_converter.o"
 	@echo "... src/pump_converter.i"
 	@echo "... src/pump_converter.s"
@@ -741,12 +871,18 @@ help:
 	@echo "... tests/test_motion_planner.o"
 	@echo "... tests/test_motion_planner.i"
 	@echo "... tests/test_motion_planner.s"
+	@echo "... tests/test_pressure_controller.o"
+	@echo "... tests/test_pressure_controller.i"
+	@echo "... tests/test_pressure_controller.s"
 	@echo "... tests/test_pump_converter.o"
 	@echo "... tests/test_pump_converter.i"
 	@echo "... tests/test_pump_converter.s"
 	@echo "... tests/test_recipe_validator.o"
 	@echo "... tests/test_recipe_validator.i"
 	@echo "... tests/test_recipe_validator.s"
+	@echo "... tests/test_scenario_matrix.o"
+	@echo "... tests/test_scenario_matrix.i"
+	@echo "... tests/test_scenario_matrix.s"
 .PHONY : help
 
 
