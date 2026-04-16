@@ -1,0 +1,1 @@
+/usr/bin/gcc -g -O0 -Wall -g CMakeFiles/segment_completion_test.dir/tests/segment_completion_test.c.o -o segment_completion_test  libHydroMotionLib.a -lm 

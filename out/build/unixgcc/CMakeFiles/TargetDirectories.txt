@@ -1,5 +1,9 @@
 /home/dan/project/hdy-motion-light/out/build/unixgcc/CMakeFiles/HydroMotionLib.dir
 /home/dan/project/hdy-motion-light/out/build/unixgcc/CMakeFiles/test_motion_planner.dir
+/home/dan/project/hdy-motion-light/out/build/unixgcc/CMakeFiles/test_motion_control.dir
+/home/dan/project/hdy-motion-light/out/build/unixgcc/CMakeFiles/test_recipe_validator.dir
+/home/dan/project/hdy-motion-light/out/build/unixgcc/CMakeFiles/test_pump_converter.dir
+/home/dan/project/hdy-motion-light/out/build/unixgcc/CMakeFiles/segment_completion_test.dir
 /home/dan/project/hdy-motion-light/out/build/unixgcc/CMakeFiles/rbf_pid_test.dir
 /home/dan/project/hdy-motion-light/out/build/unixgcc/CMakeFiles/ramp_controller_test.dir
 /home/dan/project/hdy-motion-light/out/build/unixgcc/CMakeFiles/main.dir

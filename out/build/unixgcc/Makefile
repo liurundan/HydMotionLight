@@ -153,6 +153,58 @@ test_motion_planner/fast:
 .PHONY : test_motion_planner/fast
 
 #=============================================================================
+# Target rules for targets named test_motion_control
+
+# Build rule for target.
+test_motion_control: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 test_motion_control
+.PHONY : test_motion_control
+
+# fast build rule for target.
+test_motion_control/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_motion_control.dir/build.make CMakeFiles/test_motion_control.dir/build
+.PHONY : test_motion_control/fast
+
+#=============================================================================
+# Target rules for targets named test_recipe_validator
+
+# Build rule for target.
+test_recipe_validator: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 test_recipe_validator
+.PHONY : test_recipe_validator
+
+# fast build rule for target.
+test_recipe_validator/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_recipe_validator.dir/build.make CMakeFiles/test_recipe_validator.dir/build
+.PHONY : test_recipe_validator/fast
+
+#=============================================================================
+# Target rules for targets named test_pump_converter
+
+# Build rule for target.
+test_pump_converter: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 test_pump_converter
+.PHONY : test_pump_converter
+
+# fast build rule for target.
+test_pump_converter/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_pump_converter.dir/build.make CMakeFiles/test_pump_converter.dir/build
+.PHONY : test_pump_converter/fast
+
+#=============================================================================
+# Target rules for targets named segment_completion_test
+
+# Build rule for target.
+segment_completion_test: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 segment_completion_test
+.PHONY : segment_completion_test
+
+# fast build rule for target.
+segment_completion_test/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/segment_completion_test.dir/build.make CMakeFiles/segment_completion_test.dir/build
+.PHONY : segment_completion_test/fast
+
+#=============================================================================
 # Target rules for targets named rbf_pid_test
 
 # Build rule for target.
@@ -190,6 +242,30 @@ main: cmake_check_build_system
 main/fast:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/main.dir/build.make CMakeFiles/main.dir/build
 .PHONY : main/fast
+
+src/diagnostics.o: src/diagnostics.c.o
+.PHONY : src/diagnostics.o
+
+# target to build an object file
+src/diagnostics.c.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/HydroMotionLib.dir/build.make CMakeFiles/HydroMotionLib.dir/src/diagnostics.c.o
+.PHONY : src/diagnostics.c.o
+
+src/diagnostics.i: src/diagnostics.c.i
+.PHONY : src/diagnostics.i
+
+# target to preprocess a source file
+src/diagnostics.c.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/HydroMotionLib.dir/build.make CMakeFiles/HydroMotionLib.dir/src/diagnostics.c.i
+.PHONY : src/diagnostics.c.i
+
+src/diagnostics.s: src/diagnostics.c.s
+.PHONY : src/diagnostics.s
+
+# target to generate assembly for a file
+src/diagnostics.c.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/HydroMotionLib.dir/build.make CMakeFiles/HydroMotionLib.dir/src/diagnostics.c.s
+.PHONY : src/diagnostics.c.s
 
 src/motion_control.o: src/motion_control.c.o
 .PHONY : src/motion_control.o
@@ -239,6 +315,30 @@ src/motion_planner.c.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/HydroMotionLib.dir/build.make CMakeFiles/HydroMotionLib.dir/src/motion_planner.c.s
 .PHONY : src/motion_planner.c.s
 
+src/pump_converter.o: src/pump_converter.c.o
+.PHONY : src/pump_converter.o
+
+# target to build an object file
+src/pump_converter.c.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/HydroMotionLib.dir/build.make CMakeFiles/HydroMotionLib.dir/src/pump_converter.c.o
+.PHONY : src/pump_converter.c.o
+
+src/pump_converter.i: src/pump_converter.c.i
+.PHONY : src/pump_converter.i
+
+# target to preprocess a source file
+src/pump_converter.c.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/HydroMotionLib.dir/build.make CMakeFiles/HydroMotionLib.dir/src/pump_converter.c.i
+.PHONY : src/pump_converter.c.i
+
+src/pump_converter.s: src/pump_converter.c.s
+.PHONY : src/pump_converter.s
+
+# target to generate assembly for a file
+src/pump_converter.c.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/HydroMotionLib.dir/build.make CMakeFiles/HydroMotionLib.dir/src/pump_converter.c.s
+.PHONY : src/pump_converter.c.s
+
 src/ramp_controller.o: src/ramp_controller.c.o
 .PHONY : src/ramp_controller.o
 
@@ -286,6 +386,102 @@ src/rbf_pid.s: src/rbf_pid.c.s
 src/rbf_pid.c.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/HydroMotionLib.dir/build.make CMakeFiles/HydroMotionLib.dir/src/rbf_pid.c.s
 .PHONY : src/rbf_pid.c.s
+
+src/recipe_validator.o: src/recipe_validator.c.o
+.PHONY : src/recipe_validator.o
+
+# target to build an object file
+src/recipe_validator.c.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/HydroMotionLib.dir/build.make CMakeFiles/HydroMotionLib.dir/src/recipe_validator.c.o
+.PHONY : src/recipe_validator.c.o
+
+src/recipe_validator.i: src/recipe_validator.c.i
+.PHONY : src/recipe_validator.i
+
+# target to preprocess a source file
+src/recipe_validator.c.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/HydroMotionLib.dir/build.make CMakeFiles/HydroMotionLib.dir/src/recipe_validator.c.i
+.PHONY : src/recipe_validator.c.i
+
+src/recipe_validator.s: src/recipe_validator.c.s
+.PHONY : src/recipe_validator.s
+
+# target to generate assembly for a file
+src/recipe_validator.c.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/HydroMotionLib.dir/build.make CMakeFiles/HydroMotionLib.dir/src/recipe_validator.c.s
+.PHONY : src/recipe_validator.c.s
+
+src/segment_completion.o: src/segment_completion.c.o
+.PHONY : src/segment_completion.o
+
+# target to build an object file
+src/segment_completion.c.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/HydroMotionLib.dir/build.make CMakeFiles/HydroMotionLib.dir/src/segment_completion.c.o
+.PHONY : src/segment_completion.c.o
+
+src/segment_completion.i: src/segment_completion.c.i
+.PHONY : src/segment_completion.i
+
+# target to preprocess a source file
+src/segment_completion.c.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/HydroMotionLib.dir/build.make CMakeFiles/HydroMotionLib.dir/src/segment_completion.c.i
+.PHONY : src/segment_completion.c.i
+
+src/segment_completion.s: src/segment_completion.c.s
+.PHONY : src/segment_completion.s
+
+# target to generate assembly for a file
+src/segment_completion.c.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/HydroMotionLib.dir/build.make CMakeFiles/HydroMotionLib.dir/src/segment_completion.c.s
+.PHONY : src/segment_completion.c.s
+
+src/segment_limits.o: src/segment_limits.c.o
+.PHONY : src/segment_limits.o
+
+# target to build an object file
+src/segment_limits.c.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/HydroMotionLib.dir/build.make CMakeFiles/HydroMotionLib.dir/src/segment_limits.c.o
+.PHONY : src/segment_limits.c.o
+
+src/segment_limits.i: src/segment_limits.c.i
+.PHONY : src/segment_limits.i
+
+# target to preprocess a source file
+src/segment_limits.c.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/HydroMotionLib.dir/build.make CMakeFiles/HydroMotionLib.dir/src/segment_limits.c.i
+.PHONY : src/segment_limits.c.i
+
+src/segment_limits.s: src/segment_limits.c.s
+.PHONY : src/segment_limits.s
+
+# target to generate assembly for a file
+src/segment_limits.c.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/HydroMotionLib.dir/build.make CMakeFiles/HydroMotionLib.dir/src/segment_limits.c.s
+.PHONY : src/segment_limits.c.s
+
+src/state_reporter.o: src/state_reporter.c.o
+.PHONY : src/state_reporter.o
+
+# target to build an object file
+src/state_reporter.c.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/HydroMotionLib.dir/build.make CMakeFiles/HydroMotionLib.dir/src/state_reporter.c.o
+.PHONY : src/state_reporter.c.o
+
+src/state_reporter.i: src/state_reporter.c.i
+.PHONY : src/state_reporter.i
+
+# target to preprocess a source file
+src/state_reporter.c.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/HydroMotionLib.dir/build.make CMakeFiles/HydroMotionLib.dir/src/state_reporter.c.i
+.PHONY : src/state_reporter.c.i
+
+src/state_reporter.s: src/state_reporter.c.s
+.PHONY : src/state_reporter.s
+
+# target to generate assembly for a file
+src/state_reporter.c.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/HydroMotionLib.dir/build.make CMakeFiles/HydroMotionLib.dir/src/state_reporter.c.s
+.PHONY : src/state_reporter.c.s
 
 tests/main.o: tests/main.c.o
 .PHONY : tests/main.o
@@ -359,6 +555,54 @@ tests/rbf_pid_test.c.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/rbf_pid_test.dir/build.make CMakeFiles/rbf_pid_test.dir/tests/rbf_pid_test.c.s
 .PHONY : tests/rbf_pid_test.c.s
 
+tests/segment_completion_test.o: tests/segment_completion_test.c.o
+.PHONY : tests/segment_completion_test.o
+
+# target to build an object file
+tests/segment_completion_test.c.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/segment_completion_test.dir/build.make CMakeFiles/segment_completion_test.dir/tests/segment_completion_test.c.o
+.PHONY : tests/segment_completion_test.c.o
+
+tests/segment_completion_test.i: tests/segment_completion_test.c.i
+.PHONY : tests/segment_completion_test.i
+
+# target to preprocess a source file
+tests/segment_completion_test.c.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/segment_completion_test.dir/build.make CMakeFiles/segment_completion_test.dir/tests/segment_completion_test.c.i
+.PHONY : tests/segment_completion_test.c.i
+
+tests/segment_completion_test.s: tests/segment_completion_test.c.s
+.PHONY : tests/segment_completion_test.s
+
+# target to generate assembly for a file
+tests/segment_completion_test.c.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/segment_completion_test.dir/build.make CMakeFiles/segment_completion_test.dir/tests/segment_completion_test.c.s
+.PHONY : tests/segment_completion_test.c.s
+
+tests/test_motion_control.o: tests/test_motion_control.c.o
+.PHONY : tests/test_motion_control.o
+
+# target to build an object file
+tests/test_motion_control.c.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_motion_control.dir/build.make CMakeFiles/test_motion_control.dir/tests/test_motion_control.c.o
+.PHONY : tests/test_motion_control.c.o
+
+tests/test_motion_control.i: tests/test_motion_control.c.i
+.PHONY : tests/test_motion_control.i
+
+# target to preprocess a source file
+tests/test_motion_control.c.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_motion_control.dir/build.make CMakeFiles/test_motion_control.dir/tests/test_motion_control.c.i
+.PHONY : tests/test_motion_control.c.i
+
+tests/test_motion_control.s: tests/test_motion_control.c.s
+.PHONY : tests/test_motion_control.s
+
+# target to generate assembly for a file
+tests/test_motion_control.c.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_motion_control.dir/build.make CMakeFiles/test_motion_control.dir/tests/test_motion_control.c.s
+.PHONY : tests/test_motion_control.c.s
+
 tests/test_motion_planner.o: tests/test_motion_planner.c.o
 .PHONY : tests/test_motion_planner.o
 
@@ -383,6 +627,54 @@ tests/test_motion_planner.c.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_motion_planner.dir/build.make CMakeFiles/test_motion_planner.dir/tests/test_motion_planner.c.s
 .PHONY : tests/test_motion_planner.c.s
 
+tests/test_pump_converter.o: tests/test_pump_converter.c.o
+.PHONY : tests/test_pump_converter.o
+
+# target to build an object file
+tests/test_pump_converter.c.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_pump_converter.dir/build.make CMakeFiles/test_pump_converter.dir/tests/test_pump_converter.c.o
+.PHONY : tests/test_pump_converter.c.o
+
+tests/test_pump_converter.i: tests/test_pump_converter.c.i
+.PHONY : tests/test_pump_converter.i
+
+# target to preprocess a source file
+tests/test_pump_converter.c.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_pump_converter.dir/build.make CMakeFiles/test_pump_converter.dir/tests/test_pump_converter.c.i
+.PHONY : tests/test_pump_converter.c.i
+
+tests/test_pump_converter.s: tests/test_pump_converter.c.s
+.PHONY : tests/test_pump_converter.s
+
+# target to generate assembly for a file
+tests/test_pump_converter.c.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_pump_converter.dir/build.make CMakeFiles/test_pump_converter.dir/tests/test_pump_converter.c.s
+.PHONY : tests/test_pump_converter.c.s
+
+tests/test_recipe_validator.o: tests/test_recipe_validator.c.o
+.PHONY : tests/test_recipe_validator.o
+
+# target to build an object file
+tests/test_recipe_validator.c.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_recipe_validator.dir/build.make CMakeFiles/test_recipe_validator.dir/tests/test_recipe_validator.c.o
+.PHONY : tests/test_recipe_validator.c.o
+
+tests/test_recipe_validator.i: tests/test_recipe_validator.c.i
+.PHONY : tests/test_recipe_validator.i
+
+# target to preprocess a source file
+tests/test_recipe_validator.c.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_recipe_validator.dir/build.make CMakeFiles/test_recipe_validator.dir/tests/test_recipe_validator.c.i
+.PHONY : tests/test_recipe_validator.c.i
+
+tests/test_recipe_validator.s: tests/test_recipe_validator.c.s
+.PHONY : tests/test_recipe_validator.s
+
+# target to generate assembly for a file
+tests/test_recipe_validator.c.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_recipe_validator.dir/build.make CMakeFiles/test_recipe_validator.dir/tests/test_recipe_validator.c.s
+.PHONY : tests/test_recipe_validator.c.s
+
 # Help Target
 help:
 	@echo "The following are some of the valid targets for this Makefile:"
@@ -396,19 +688,41 @@ help:
 	@echo "... main"
 	@echo "... ramp_controller_test"
 	@echo "... rbf_pid_test"
+	@echo "... segment_completion_test"
+	@echo "... test_motion_control"
 	@echo "... test_motion_planner"
+	@echo "... test_pump_converter"
+	@echo "... test_recipe_validator"
+	@echo "... src/diagnostics.o"
+	@echo "... src/diagnostics.i"
+	@echo "... src/diagnostics.s"
 	@echo "... src/motion_control.o"
 	@echo "... src/motion_control.i"
 	@echo "... src/motion_control.s"
 	@echo "... src/motion_planner.o"
 	@echo "... src/motion_planner.i"
 	@echo "... src/motion_planner.s"
+	@echo "... src/pump_converter.o"
+	@echo "... src/pump_converter.i"
+	@echo "... src/pump_converter.s"
 	@echo "... src/ramp_controller.o"
 	@echo "... src/ramp_controller.i"
 	@echo "... src/ramp_controller.s"
 	@echo "... src/rbf_pid.o"
 	@echo "... src/rbf_pid.i"
 	@echo "... src/rbf_pid.s"
+	@echo "... src/recipe_validator.o"
+	@echo "... src/recipe_validator.i"
+	@echo "... src/recipe_validator.s"
+	@echo "... src/segment_completion.o"
+	@echo "... src/segment_completion.i"
+	@echo "... src/segment_completion.s"
+	@echo "... src/segment_limits.o"
+	@echo "... src/segment_limits.i"
+	@echo "... src/segment_limits.s"
+	@echo "... src/state_reporter.o"
+	@echo "... src/state_reporter.i"
+	@echo "... src/state_reporter.s"
 	@echo "... tests/main.o"
 	@echo "... tests/main.i"
 	@echo "... tests/main.s"
@@ -418,9 +732,21 @@ help:
 	@echo "... tests/rbf_pid_test.o"
 	@echo "... tests/rbf_pid_test.i"
 	@echo "... tests/rbf_pid_test.s"
+	@echo "... tests/segment_completion_test.o"
+	@echo "... tests/segment_completion_test.i"
+	@echo "... tests/segment_completion_test.s"
+	@echo "... tests/test_motion_control.o"
+	@echo "... tests/test_motion_control.i"
+	@echo "... tests/test_motion_control.s"
 	@echo "... tests/test_motion_planner.o"
 	@echo "... tests/test_motion_planner.i"
 	@echo "... tests/test_motion_planner.s"
+	@echo "... tests/test_pump_converter.o"
+	@echo "... tests/test_pump_converter.i"
+	@echo "... tests/test_pump_converter.s"
+	@echo "... tests/test_recipe_validator.o"
+	@echo "... tests/test_recipe_validator.i"
+	@echo "... tests/test_recipe_validator.s"
 .PHONY : help
 
 

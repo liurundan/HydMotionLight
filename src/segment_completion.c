@@ -1,22 +1,65 @@
 #include "segment_completion.h"
+#include "segment_limits.h"
 #include <math.h>
+
+static HDY_MotionDirection HDY_ResolvePositionDirection(const HDY_MotionSegment* segment,
+                                                        const HDY_AxisRef* axisRef) {
+    HDY_REAL delta;
+    HDY_REAL positionTolerance;
+
+    if (segment == NULL || axisRef == NULL) {
+        return HDY_DIRECTION_HOLD;
+    }
+
+    if (segment->direction == HDY_DIRECTION_EXTEND ||
+        segment->direction == HDY_DIRECTION_RETRACT ||
+        segment->direction == HDY_DIRECTION_HOLD) {
+        return segment->direction;
+    }
+
+    positionTolerance = HDY_Segment_GetPositionTolerance(segment);
+    delta = segment->targetPosition - axisRef->position;
+    if (delta > positionTolerance) {
+        return HDY_DIRECTION_EXTEND;
+    }
+    if (delta < -positionTolerance) {
+        return HDY_DIRECTION_RETRACT;
+    }
+    return HDY_DIRECTION_HOLD;
+}
 
 HDY_BOOL HDY_SegmentCompletion_Check(const HDY_MotionSegment* segment,
                                      const HDY_AxisRef* axisRef,
                                      HDY_REAL elapsed) {
+    HDY_MotionDirection direction;
+    HDY_REAL positionTolerance;
+    HDY_REAL pressureTolerance;
+    HDY_REAL flowTolerance;
+
     if (segment == NULL || axisRef == NULL) {
         return false;
     }
 
+    positionTolerance = HDY_Segment_GetPositionTolerance(segment);
+    pressureTolerance = HDY_Segment_GetPressureTolerance(segment);
+    flowTolerance = HDY_Segment_GetFlowTolerance(segment);
+
     switch (segment->endCondition) {
         case HDY_END_POSITION:
-            return axisRef->position >= segment->targetPosition - segment->tolerance;
+            direction = HDY_ResolvePositionDirection(segment, axisRef);
+            if (direction == HDY_DIRECTION_EXTEND) {
+                return axisRef->position >= segment->targetPosition - positionTolerance;
+            }
+            if (direction == HDY_DIRECTION_RETRACT) {
+                return axisRef->position <= segment->targetPosition + positionTolerance;
+            }
+            return fabs(axisRef->position - segment->targetPosition) <= positionTolerance;
         case HDY_END_TIME:
             return elapsed >= segment->duration;
         case HDY_END_PRESSURE:
-            return fabs(axisRef->pressure - segment->targetPressure) <= segment->tolerance;
+            return fabs(axisRef->pressure - segment->targetPressure) <= pressureTolerance;
         case HDY_END_FLOW:
-            return fabs(axisRef->flow - segment->targetFlow) <= segment->tolerance;
+            return fabs(fabs(axisRef->flow) - fabs(segment->targetFlow)) <= flowTolerance;
         case HDY_END_MANUAL:
             return false;
         default:

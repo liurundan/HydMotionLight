@@ -1,0 +1,185 @@
+Start testing: Apr 16 11:26 CST
+----------------------------------------------------------
+1/6 Testing: test_motion_planner
+1/6 Test: test_motion_planner
+Command: "/home/dan/project/hdy-motion-light/out/build/unixgcc/test_motion_planner"
+Directory: /home/dan/project/hdy-motion-light/out/build/unixgcc
+"test_motion_planner" start time: Apr 16 11:26 CST
+Output:
+----------------------------------------------------------
+Running MotionPlanner tests...
+
+Testing position-based extend planning...
+✓ Position-based extend planning test passed
+Testing position-based retract planning...
+✓ Position-based retract planning test passed
+Testing speed-ramp directional planning...
+✓ Speed-ramp directional planning test passed
+Testing position-mode time planner braking near target...
+✓ Position-mode time planner braking test passed
+Testing pressure closed loop maxFlow clamping...
+✓ Pressure closed loop maxFlow clamping test passed
+Testing planner edge cases...
+✓ Planner edge cases test passed
+
+✅ All MotionPlanner tests passed successfully!
+<end of output>
+Test time =   0.00 sec
+----------------------------------------------------------
+Test Passed.
+"test_motion_planner" end time: Apr 16 11:26 CST
+"test_motion_planner" time elapsed: 00:00:00
+----------------------------------------------------------
+
+2/6 Testing: test_motion_control
+2/6 Test: test_motion_control
+Command: "/home/dan/project/hdy-motion-light/out/build/unixgcc/test_motion_control"
+Directory: /home/dan/project/hdy-motion-light/out/build/unixgcc
+"test_motion_control" start time: Apr 16 11:26 CST
+Output:
+----------------------------------------------------------
+Running MotionControl tests...
+
+Testing LoadRecipe idle semantics...
+✓ LoadRecipe idle semantics test passed
+Testing StartSegment execution semantics...
+✓ StartSegment execution semantics test passed
+Testing START_SEGMENT command input semantics...
+✓ START_SEGMENT command input semantics test passed
+Testing segment completion and NextSegment behavior...
+✓ Segment completion and NextSegment behavior test passed
+Testing retract position directional planning...
+✓ Retract position directional planning test passed
+Testing speed-ramp retract directional planning...
+✓ Speed-ramp retract directional planning test passed
+Testing EN disable safety semantics...
+✓ EN disable safety semantics test passed
+Testing Abort safety semantics...
+✓ Abort safety semantics test passed
+Testing RESET full reinitialization semantics...
+✓ RESET full reinitialization semantics test passed
+Testing typed diagnostic thresholds override legacy tolerance...
+✓ Typed diagnostic thresholds test passed
+Testing timeoutLimit safe-stop behavior...
+✓ timeoutLimit safe-stop test passed
+Testing runtime validation fault behavior...
+✓ Runtime validation fault test passed
+Testing recipe and runtime parameter validation...
+✓ Recipe and runtime parameter validation test passed
+
+✅ All MotionControl tests passed successfully!
+<end of output>
+Test time =   0.00 sec
+----------------------------------------------------------
+Test Passed.
+"test_motion_control" end time: Apr 16 11:26 CST
+"test_motion_control" time elapsed: 00:00:00
+----------------------------------------------------------
+
+3/6 Testing: test_recipe_validator
+3/6 Test: test_recipe_validator
+Command: "/home/dan/project/hdy-motion-light/out/build/unixgcc/test_recipe_validator"
+Directory: /home/dan/project/hdy-motion-light/out/build/unixgcc
+"test_recipe_validator" start time: Apr 16 11:26 CST
+Output:
+----------------------------------------------------------
+Running RecipeValidator tests...
+
+Testing recipe validator success path...
+✓ Recipe validator success path test passed
+Testing speed-ramp/time-planner contract validation...
+✓ Speed-ramp/time-planner contract test passed
+Testing runtime config validation...
+✓ Runtime config validation test passed
+Testing start context directional conflict validation...
+✓ Start context directional conflict test passed
+
+✅ All RecipeValidator tests passed successfully!
+<end of output>
+Test time =   0.00 sec
+----------------------------------------------------------
+Test Passed.
+"test_recipe_validator" end time: Apr 16 11:26 CST
+"test_recipe_validator" time elapsed: 00:00:00
+----------------------------------------------------------
+
+4/6 Testing: test_pump_converter
+4/6 Test: test_pump_converter
+Command: "/home/dan/project/hdy-motion-light/out/build/unixgcc/test_pump_converter"
+Directory: /home/dan/project/hdy-motion-light/out/build/unixgcc
+"test_pump_converter" start time: Apr 16 11:26 CST
+Output:
+----------------------------------------------------------
+Running PumpConverter tests...
+
+Testing basic pump conversion...
+✓ Basic pump conversion test passed
+Testing pump speed limit back-projection...
+✓ Pump speed limit back-projection test passed
+Testing invalid pump converter input handling...
+✓ Invalid pump converter input handling test passed
+
+✅ All PumpConverter tests passed successfully!
+<end of output>
+Test time =   0.00 sec
+----------------------------------------------------------
+Test Passed.
+"test_pump_converter" end time: Apr 16 11:26 CST
+"test_pump_converter" time elapsed: 00:00:00
+----------------------------------------------------------
+
+5/6 Testing: test_segment_completion
+5/6 Test: test_segment_completion
+Command: "/home/dan/project/hdy-motion-light/out/build/unixgcc/segment_completion_test"
+Directory: /home/dan/project/hdy-motion-light/out/build/unixgcc
+"test_segment_completion" start time: Apr 16 11:26 CST
+Output:
+----------------------------------------------------------
+Running SegmentCompletion tests...
+
+Testing segment completion by extend position...
+✓ Extend position completion test passed
+Testing segment completion by retract position...
+✓ Retract position completion test passed
+Testing segment completion by time...
+✓ Time completion test passed
+Testing segment completion by pressure...
+✓ Pressure completion test passed
+Testing segment completion by flow...
+✓ Flow completion test passed
+Testing segment completion by manual end condition...
+✓ Manual completion test passed
+
+✅ All SegmentCompletion tests passed successfully!
+<end of output>
+Test time =   0.00 sec
+----------------------------------------------------------
+Test Passed.
+"test_segment_completion" end time: Apr 16 11:26 CST
+"test_segment_completion" time elapsed: 00:00:00
+----------------------------------------------------------
+
+6/6 Testing: test_ramp_controller
+6/6 Test: test_ramp_controller
+Command: "/home/dan/project/hdy-motion-light/out/build/unixgcc/ramp_controller_test"
+Directory: /home/dan/project/hdy-motion-light/out/build/unixgcc
+"test_ramp_controller" start time: Apr 16 11:26 CST
+Output:
+----------------------------------------------------------
+Running RampController tests...
+
+Testing ramp controller linear ramp...
+✓ Ramp controller linear ramp test passed
+Testing ramp controller instant target...
+✓ Ramp controller instant target test passed
+
+✅ All RampController tests passed successfully!
+<end of output>
+Test time =   0.00 sec
+----------------------------------------------------------
+Test Passed.
+"test_ramp_controller" end time: Apr 16 11:26 CST
+"test_ramp_controller" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Apr 16 11:26 CST

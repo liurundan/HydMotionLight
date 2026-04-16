@@ -1,0 +1,1 @@
+/usr/bin/gcc -g -O0 -Wall -g CMakeFiles/test_motion_control.dir/tests/test_motion_control.c.o -o test_motion_control  libHydroMotionLib.a -lm 

@@ -42,6 +42,10 @@ set(CMAKE_MAKEFILE_PRODUCTS
 set(CMAKE_DEPEND_INFO_FILES
   "CMakeFiles/HydroMotionLib.dir/DependInfo.cmake"
   "CMakeFiles/test_motion_planner.dir/DependInfo.cmake"
+  "CMakeFiles/test_motion_control.dir/DependInfo.cmake"
+  "CMakeFiles/test_recipe_validator.dir/DependInfo.cmake"
+  "CMakeFiles/test_pump_converter.dir/DependInfo.cmake"
+  "CMakeFiles/segment_completion_test.dir/DependInfo.cmake"
   "CMakeFiles/rbf_pid_test.dir/DependInfo.cmake"
   "CMakeFiles/ramp_controller_test.dir/DependInfo.cmake"
   "CMakeFiles/main.dir/DependInfo.cmake"

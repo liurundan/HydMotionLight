@@ -1,33 +1,76 @@
 #include "motion_control.h"
+#include "diagnostics.h"
 #include "motion_planner.h"
+#include "pump_converter.h"
 #include "ramp_controller.h"
-#include <math.h>
+#include "recipe_validator.h"
+#include "segment_completion.h"
+#include "state_reporter.h"
 #include <string.h>
 
-static HDY_REAL HDY_ClampReal(HDY_REAL value, HDY_REAL minimum, HDY_REAL maximum) {
-    if (value < minimum) {
-        return minimum;
+static void HDY_ClearPendingStartCommand(HDY_MotionControlFB* fb) {
+    if (fb == NULL) {
+        return;
     }
-    if (value > maximum) {
-        return maximum;
-    }
-    return value;
+
+    fb->START_SEGMENT = false;
+    fb->START_SEGMENT_INDEX = 0U;
 }
 
-static HDY_BOOL HDY_CheckSegmentComplete(const HDY_MotionSegment* segment, const HDY_AxisRef* axisRef, HDY_REAL elapsed) {
-    switch (segment->endCondition) {
-        case HDY_END_POSITION:
-            return axisRef->position >= segment->targetPosition - segment->tolerance;
-        case HDY_END_TIME:
-            return elapsed >= segment->duration;
-        case HDY_END_PRESSURE:
-            return fabs(axisRef->pressure - segment->targetPressure) <= segment->tolerance;
-        case HDY_END_FLOW:
-            return fabs(axisRef->flow - segment->targetFlow) <= segment->tolerance;
-        case HDY_END_MANUAL:
-            return false;
-        default:
-            return false;
+static void HDY_PrepareRecipeLoadState(HDY_MotionControlFB* fb) {
+    if (fb == NULL) {
+        return;
+    }
+
+    fb->STATE.currentSegmentIndex = 0U;
+    fb->_segmentStartTime = 0.0;
+    HDY_ClearPendingStartCommand(fb);
+    HDY_StateReporter_SetIdleState(fb, false, false);
+    HDY_StateReporter_ClearSegmentName(fb);
+}
+
+static void HDY_ReportDiagnostic(HDY_MotionControlFB* fb,
+                                 HDY_DiagnosticCode code,
+                                 HDY_DiagnosticSeverity severity,
+                                 const char* message) {
+    if (fb == NULL) {
+        return;
+    }
+
+    HDY_Diagnostics_SetEvent(&fb->DIAGNOSTIC, code, severity, message);
+}
+
+static void HDY_ReportFault(HDY_MotionControlFB* fb,
+                            HDY_DiagnosticCode code,
+                            const char* message) {
+    if (fb == NULL) {
+        return;
+    }
+
+    HDY_StateReporter_EnterFaultState(fb);
+    HDY_ReportDiagnostic(fb, code, HDY_DIAG_SEVERITY_FAULT, message);
+}
+
+static void HDY_UpdateDisabledState(HDY_MotionControlFB* fb) {
+    if (fb == NULL) {
+        return;
+    }
+
+    HDY_StateReporter_ResetTransitionFlags(fb);
+    HDY_StateReporter_ApplySafeOutputs(fb);
+    fb->SEGMENT_COMPLETED = false;
+
+    if (fb->FAULT) {
+        HDY_StateReporter_SetStatus(fb, HDY_STATUS_FAULT);
+        return;
+    }
+
+    if (fb->FINISHED) {
+        HDY_StateReporter_SetStatus(fb, HDY_STATUS_FINISHED);
+    } else if (fb->RECIPE_SIZE > 0U) {
+        HDY_StateReporter_SetStatus(fb, HDY_STATUS_READY);
+    } else {
+        HDY_StateReporter_SetStatus(fb, HDY_STATUS_IDLE);
     }
 }
 
@@ -35,84 +78,185 @@ void HDY_MotionControlFB_Init(HDY_MotionControlFB* fb) {
     if (fb == NULL) {
         return;
     }
+
     memset(fb, 0, sizeof(*fb));
     fb->ENO = true;
-    fb->_segmentChangedFlag = false;
+    HDY_StateReporter_SetPlannedDirection(fb, HDY_DIRECTION_HOLD);
+    HDY_StateReporter_SetStatus(fb, HDY_STATUS_IDLE);
+    HDY_StateReporter_SetFault(fb, false);
+    HDY_StateReporter_ClearSegmentName(fb);
+    HDY_Diagnostics_Clear(&fb->DIAGNOSTIC);
     HDY_RampController_Init(&fb->_rampController, 0.0, 0.0);
 }
 
-void HDY_MotionControlFB_LoadRecipe(HDY_MotionControlFB* fb, const HDY_MotionSegment* recipe, size_t recipeSize) {
-    if (fb == NULL || recipe == NULL) {
-        return;
+HDY_BOOL HDY_MotionControlFB_LoadRecipe(HDY_MotionControlFB* fb,
+                                        const HDY_MotionSegment* recipe,
+                                        size_t recipeSize) {
+    HDY_DiagnosticCode code = HDY_DIAG_CODE_NONE;
+    char message[HDY_MESSAGE_MAX] = {0};
+
+    if (fb == NULL) {
+        return false;
     }
-    if (recipeSize > HDY_MAX_SEGMENTS) {
-        recipeSize = HDY_MAX_SEGMENTS;
+
+    if (!HDY_RecipeValidator_ValidateRecipe(recipe, recipeSize, &code, message, sizeof(message))) {
+        memset(fb->RECIPE, 0, sizeof(fb->RECIPE));
+        fb->RECIPE_SIZE = 0U;
+        HDY_PrepareRecipeLoadState(fb);
+        HDY_ReportDiagnostic(fb, code, HDY_DIAG_SEVERITY_WARNING, message);
+        return false;
     }
+
+    memset(fb->RECIPE, 0, sizeof(fb->RECIPE));
     memcpy(fb->RECIPE, recipe, recipeSize * sizeof(HDY_MotionSegment));
     fb->RECIPE_SIZE = recipeSize;
-    fb->STATE.currentSegmentIndex = 0;
-    fb->STATE.finished = (recipeSize == 0);
-    fb->ACTIVE = (recipeSize > 0);
-    if (fb->ACTIVE) {
-        strncpy(fb->CURRENT_SEGMENT_NAME, fb->RECIPE[0].name, HDY_NAME_MAX - 1);
-        fb->CURRENT_SEGMENT_NAME[HDY_NAME_MAX - 1] = '\0';
-    }
+    HDY_PrepareRecipeLoadState(fb);
+    HDY_Diagnostics_Clear(&fb->DIAGNOSTIC);
+    return true;
 }
 
-void HDY_MotionControlFB_StartSegment(HDY_MotionControlFB* fb, size_t segmentIndex, HDY_TIME timestamp) {
-    if (fb == NULL || segmentIndex >= fb->RECIPE_SIZE) {
-        return;
+HDY_BOOL HDY_MotionControlFB_StartSegment(HDY_MotionControlFB* fb,
+                                          size_t segmentIndex,
+                                          HDY_TIME timestamp) {
+    HDY_DiagnosticCode code = HDY_DIAG_CODE_NONE;
+    char message[HDY_MESSAGE_MAX] = {0};
+
+    if (fb == NULL) {
+        return false;
     }
+
+    HDY_ClearPendingStartCommand(fb);
+
+    if (fb->RECIPE_SIZE == 0U) {
+        HDY_StateReporter_SetIdleState(fb, false, false);
+        HDY_ReportDiagnostic(fb, HDY_DIAG_CODE_NO_RECIPE, HDY_DIAG_SEVERITY_WARNING, "No recipe loaded");
+        return false;
+    }
+
+    if (segmentIndex >= fb->RECIPE_SIZE) {
+        HDY_StateReporter_SetIdleState(fb, false, false);
+        HDY_ReportDiagnostic(fb,
+                             HDY_DIAG_CODE_SEGMENT_INDEX_OUT_OF_RANGE,
+                             HDY_DIAG_SEVERITY_WARNING,
+                             "Start segment index is out of range");
+        return false;
+    }
+
+    if (!HDY_RecipeValidator_ValidateRuntimeConfig(fb->FLOW_TO_PUMP_SPEED_GAIN,
+                                                   fb->PUMP_SPEED_LIMIT,
+                                                   &code,
+                                                   message,
+                                                   sizeof(message)) ||
+        !HDY_RecipeValidator_ValidateSegment(&fb->RECIPE[segmentIndex],
+                                             segmentIndex,
+                                             &code,
+                                             message,
+                                             sizeof(message)) ||
+        !HDY_RecipeValidator_ValidateStartContext(&fb->RECIPE[segmentIndex],
+                                                  segmentIndex,
+                                                  &fb->AXIS_REF,
+                                                  &code,
+                                                  message,
+                                                  sizeof(message))) {
+        HDY_StateReporter_SetIdleState(fb, false, false);
+        HDY_ReportDiagnostic(fb, code, HDY_DIAG_SEVERITY_WARNING, message);
+        return false;
+    }
+
     fb->STATE.currentSegmentIndex = segmentIndex;
-    fb->STATE.active = true;
-    fb->STATE.finished = false;
-    fb->ACTIVE = true;
-    fb->FINISHED = false;
-    fb->STATE.currentSegmentIndex = segmentIndex;
-    fb->STATE.commandedPumpSpeed = 0.0;
     fb->_segmentStartTime = timestamp;
-    HDY_RampController_Init(&fb->_rampController, fb->AXIS_REF.pressure, timestamp); /* Start ramp from current pressure */
-    strncpy(fb->CURRENT_SEGMENT_NAME, fb->RECIPE[segmentIndex].name, HDY_NAME_MAX - 1);
-    fb->CURRENT_SEGMENT_NAME[HDY_NAME_MAX - 1] = '\0';
-    memset(&fb->DIAGNOSTIC, 0, sizeof(fb->DIAGNOSTIC));
+    HDY_StateReporter_SetIdleState(fb, false, false);
     fb->_segmentChangedFlag = true;
+    HDY_RampController_Init(&fb->_rampController, fb->AXIS_REF.pressure, timestamp);
+    HDY_StateReporter_SetSegmentName(fb, fb->RECIPE[segmentIndex].name);
+    HDY_Diagnostics_Clear(&fb->DIAGNOSTIC);
+    HDY_StateReporter_SetActive(fb, true);
+    HDY_StateReporter_SetFault(fb, false);
+    HDY_StateReporter_SetStatus(fb, HDY_STATUS_RUNNING);
+    HDY_StateReporter_SetPlannedDirection(fb, fb->RECIPE[segmentIndex].direction);
+    return true;
 }
 
-void HDY_MotionControlFB_NextSegment(HDY_MotionControlFB* fb, HDY_TIME timestamp) {
+HDY_BOOL HDY_MotionControlFB_NextSegment(HDY_MotionControlFB* fb, HDY_TIME timestamp) {
     if (fb == NULL) {
-        return;
+        return false;
     }
-    if (fb->STATE.currentSegmentIndex + 1 < fb->RECIPE_SIZE) {
-        HDY_MotionControlFB_StartSegment(fb, fb->STATE.currentSegmentIndex + 1, timestamp);
-    } else {
-        fb->ACTIVE = false;
-        fb->STATE.active = false;
-        fb->STATE.finished = true;
-        fb->FINISHED = true;
-        fb->CURRENT_SEGMENT_NAME[0] = '\0';
+
+    HDY_ClearPendingStartCommand(fb);
+
+    if (fb->RECIPE_SIZE == 0U) {
+        HDY_StateReporter_SetIdleState(fb, false, false);
+        HDY_ReportDiagnostic(fb, HDY_DIAG_CODE_NO_RECIPE, HDY_DIAG_SEVERITY_WARNING, "No recipe loaded");
+        return false;
     }
+
+    if (fb->FINISHED) {
+        HDY_StateReporter_SetIdleState(fb, true, true);
+        HDY_ReportDiagnostic(fb,
+                             HDY_DIAG_CODE_RECIPE_ALREADY_FINISHED,
+                             HDY_DIAG_SEVERITY_INFO,
+                             "Recipe is already finished");
+        return false;
+    }
+
+    if (!fb->SEGMENT_COMPLETED) {
+        HDY_StateReporter_ResetTransitionFlags(fb);
+        HDY_ReportDiagnostic(fb,
+                             HDY_DIAG_CODE_SEGMENT_NOT_COMPLETED,
+                             HDY_DIAG_SEVERITY_WARNING,
+                             "Current segment has not completed");
+        return false;
+    }
+
+    if (fb->STATE.currentSegmentIndex + 1U < fb->RECIPE_SIZE) {
+        return HDY_MotionControlFB_StartSegment(fb, fb->STATE.currentSegmentIndex + 1U, timestamp);
+    }
+
+    HDY_StateReporter_SetIdleState(fb, true, true);
+    HDY_StateReporter_ClearSegmentName(fb);
+    HDY_Diagnostics_Clear(&fb->DIAGNOSTIC);
+    return true;
 }
 
-void HDY_MotionControlFB_Abort(HDY_MotionControlFB* fb) {
+HDY_BOOL HDY_MotionControlFB_Abort(HDY_MotionControlFB* fb) {
     if (fb == NULL) {
-        return;
+        return false;
     }
-    fb->ACTIVE = false;
-    fb->STATE.active = false;
-    fb->STATE.finished = true;
-    fb->FINISHED = true;
-    fb->STATE.commandedPumpSpeed = 0.0;
-    strncpy(fb->DIAGNOSTIC.message, "Aborted by caller", HDY_MESSAGE_MAX - 1);
-    fb->DIAGNOSTIC.message[HDY_MESSAGE_MAX - 1] = '\0';
+
+    HDY_ClearPendingStartCommand(fb);
+    HDY_StateReporter_SetIdleState(fb, true, false);
+    fb->_segmentStartTime = 0.0;
+    HDY_StateReporter_ClearSegmentName(fb);
+    HDY_ReportDiagnostic(fb, HDY_DIAG_CODE_ABORTED, HDY_DIAG_SEVERITY_INFO, "Aborted by caller");
+    return true;
 }
 
 void HDY_MotionControlFB_Execute(HDY_MotionControlFB* fb) {
+    HDY_DiagnosticCode code = HDY_DIAG_CODE_NONE;
+    char message[HDY_MESSAGE_MAX] = {0};
+    const HDY_MotionSegment* segment;
+    HDY_REAL elapsed;
+    HDY_REAL pressureReference;
+    HDY_RampControllerInput rampInput;
+    HDY_RampControllerOutput rampOutput;
+    HDY_MotionPlannerInput plannerInput;
+    HDY_MotionPlannerOutput plannerOutput;
+    HDY_PumpConverterInput pumpInput;
+    HDY_PumpConverterOutput pumpOutput;
+    HDY_DiagnosticsContext diagnosticContext;
+    HDY_BOOL segmentCompleted;
+    HDY_BOOL recipeFinished;
+
     if (fb == NULL) {
         return;
     }
 
+    fb->SEGMENT_CHANGED = false;
+
     if (!fb->EN) {
         fb->ENO = false;
+        HDY_ClearPendingStartCommand(fb);
+        HDY_UpdateDisabledState(fb);
         return;
     }
 
@@ -123,72 +267,101 @@ void HDY_MotionControlFB_Execute(HDY_MotionControlFB* fb) {
     }
 
     if (fb->START_SEGMENT) {
-        if (fb->START_SEGMENT_INDEX < fb->RECIPE_SIZE) {
-            HDY_MotionControlFB_StartSegment(fb, fb->START_SEGMENT_INDEX, fb->AXIS_REF.timestamp);
-        }
-        fb->START_SEGMENT = false;
+        (void)HDY_MotionControlFB_StartSegment(fb, fb->START_SEGMENT_INDEX, fb->AXIS_REF.timestamp);
     }
 
-    if (!fb->ACTIVE || fb->STATE.finished || fb->STATE.currentSegmentIndex >= fb->RECIPE_SIZE) {
-        fb->PUMP_SPEED = 0.0;
-        fb->SEGMENT_COMPLETED = fb->STATE.finished;
-        fb->ACTIVE = false;
+    fb->SEGMENT_CHANGED = fb->_segmentChangedFlag;
+    fb->_segmentChangedFlag = false;
+
+    if (fb->RECIPE_SIZE == 0U) {
+        HDY_StateReporter_ApplySafeOutputs(fb);
+        HDY_StateReporter_SetStatus(fb, HDY_STATUS_IDLE);
         return;
     }
 
-    const HDY_MotionSegment* segment = &fb->RECIPE[fb->STATE.currentSegmentIndex];
-    HDY_REAL elapsed = fb->AXIS_REF.timestamp - fb->_segmentStartTime;
+    if (fb->FINISHED) {
+        HDY_StateReporter_ApplySafeOutputs(fb);
+        HDY_StateReporter_SetStatus(fb, HDY_STATUS_FINISHED);
+        return;
+    }
+
+    if (fb->FAULT) {
+        HDY_StateReporter_ApplySafeOutputs(fb);
+        HDY_StateReporter_SetStatus(fb, HDY_STATUS_FAULT);
+        return;
+    }
+
+    if (!fb->ACTIVE) {
+        HDY_StateReporter_ApplySafeOutputs(fb);
+        return;
+    }
+
+    if (fb->STATE.currentSegmentIndex >= fb->RECIPE_SIZE) {
+        HDY_ReportFault(fb, HDY_DIAG_CODE_INTERNAL_ERROR, "Current segment index is out of range");
+        return;
+    }
+
+    if (!HDY_RecipeValidator_ValidateRuntimeConfig(fb->FLOW_TO_PUMP_SPEED_GAIN,
+                                                   fb->PUMP_SPEED_LIMIT,
+                                                   &code,
+                                                   message,
+                                                   sizeof(message)) ||
+        !HDY_RecipeValidator_ValidateSegment(&fb->RECIPE[fb->STATE.currentSegmentIndex],
+                                             fb->STATE.currentSegmentIndex,
+                                             &code,
+                                             message,
+                                             sizeof(message))) {
+        HDY_ReportFault(fb, code, message);
+        return;
+    }
+
+    segment = &fb->RECIPE[fb->STATE.currentSegmentIndex];
+    elapsed = fb->AXIS_REF.timestamp - fb->_segmentStartTime;
     if (elapsed < 0.0) {
         elapsed = 0.0;
     }
 
-    /* Ramp pressure to prevent sudden changes */
-    HDY_RampControllerInput rampInput;
-    HDY_RampControllerOutput rampOutput;
-
     rampInput.targetPressure = segment->targetPressure;
     rampInput.rampRate = segment->pressureRampRate;
     rampInput.currentTime = fb->AXIS_REF.timestamp;
-
     HDY_RampController_Execute(&fb->_rampController, &rampInput, &rampOutput);
-
-    HDY_MotionPlannerInput plannerInput;
-    HDY_MotionPlannerOutput plannerOutput;
 
     plannerInput.axisRef = &fb->AXIS_REF;
     plannerInput.segment = segment;
     plannerInput.elapsedTime = elapsed;
-    plannerInput.flowToPumpSpeedGain = fb->FLOW_TO_PUMP_SPEED_GAIN;
-    plannerInput.pumpSpeedLimit = fb->PUMP_SPEED_LIMIT;
     plannerInput.rampedPressure = rampOutput.rampedPressure;
-
     HDY_MotionPlanner_Execute(&plannerInput, &plannerOutput);
 
-    fb->PUMP_SPEED = plannerOutput.pumpSpeed;
-    fb->STATE.plannedVelocity = plannerOutput.targetVelocity;
-    fb->STATE.plannedFlow = plannerOutput.targetFlow;
-    fb->STATE.commandedPumpSpeed = fb->PUMP_SPEED;
-    fb->STATE.active = true;
-    fb->ACTIVE = true;
+    pumpInput.requestedFlow = plannerOutput.targetFlow;
+    pumpInput.flowToPumpSpeedGain = fb->FLOW_TO_PUMP_SPEED_GAIN;
+    pumpInput.pumpSpeedLimit = fb->PUMP_SPEED_LIMIT;
+    pumpInput.direction = plannerOutput.direction;
+    HDY_PumpConverter_Execute(&pumpInput, &pumpOutput);
 
-    fb->STATE.finished = HDY_CheckSegmentComplete(segment, &fb->AXIS_REF, elapsed);
-    fb->SEGMENT_COMPLETED = fb->STATE.finished;
-    fb->FINISHED = fb->STATE.finished;
+    pressureReference = (segment->mode == HDY_MODE_PRESSURE_CLOSED_LOOP)
+        ? rampOutput.rampedPressure
+        : segment->targetPressure;
 
-    fb->DIAGNOSTIC.pressureError = segment->targetPressure - fb->AXIS_REF.pressure;
-    fb->DIAGNOSTIC.flowError = segment->targetFlow - fb->AXIS_REF.flow;
-    fb->DIAGNOSTIC.velocityError = plannerOutput.targetVelocity - fb->AXIS_REF.velocity;
-    fb->DIAGNOSTIC.overPressure = fb->AXIS_REF.pressure > segment->targetPressure + segment->tolerance;
-    fb->DIAGNOSTIC.underPressure = fb->AXIS_REF.pressure < segment->targetPressure - segment->tolerance;
-    fb->DIAGNOSTIC.flowDeviation = fabs(fb->DIAGNOSTIC.flowError) > HDY_ClampReal(0.1, 0.0, segment->tolerance);
-    fb->DIAGNOSTIC.positionDeviation = (segment->endCondition == HDY_END_POSITION) &&
-        (fabs(segment->targetPosition - fb->AXIS_REF.position) > segment->tolerance);
+    diagnosticContext.axisRef = &fb->AXIS_REF;
+    diagnosticContext.segment = segment;
+    diagnosticContext.plannerOutput = &plannerOutput;
+    diagnosticContext.commandedFlow = pumpOutput.commandFlow;
+    diagnosticContext.pressureReference = pressureReference;
+    diagnosticContext.elapsedTime = elapsed;
+    HDY_Diagnostics_UpdateExecution(&fb->DIAGNOSTIC, &diagnosticContext);
 
-    if ((segment->endCondition == HDY_END_TIME) && (elapsed > segment->duration * 1.5)) {
-        fb->DIAGNOSTIC.timeout = true;
-        strncpy(fb->DIAGNOSTIC.message, "Segment exceeded expected duration", HDY_MESSAGE_MAX - 1);
-        fb->DIAGNOSTIC.message[HDY_MESSAGE_MAX - 1] = '\0';
+    if (fb->DIAGNOSTIC.timeout) {
+        HDY_StateReporter_EnterFaultState(fb);
+        return;
     }
-    fb->SEGMENT_CHANGED = fb->_segmentChangedFlag;
-    fb->_segmentChangedFlag = false;
+
+    segmentCompleted = HDY_SegmentCompletion_Check(segment, &fb->AXIS_REF, elapsed);
+    if (segmentCompleted) {
+        recipeFinished = (fb->STATE.currentSegmentIndex + 1U >= fb->RECIPE_SIZE);
+        HDY_StateReporter_SetIdleState(fb, recipeFinished, true);
+        return;
+    }
+
+    HDY_StateReporter_ReportExecution(fb, &plannerOutput, &pumpOutput);
+    fb->SEGMENT_COMPLETED = false;
 }

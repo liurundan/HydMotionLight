@@ -22,11 +22,7 @@
 
 ## 编译与运行
 
-```bash
-mkdir -p build
-gcc -std=c99 src/motion_control.c src/main.c -o build/motion_control_example -lm
-./build/motion_control_example
-```
+- bulid with the CMake Tools extension.
 
 ## 下一步
 

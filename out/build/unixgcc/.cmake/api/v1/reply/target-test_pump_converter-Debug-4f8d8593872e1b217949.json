@@ -1,9 +1,8 @@
 {
-	"archive" : {},
 	"artifacts" : 
 	[
 		{
-			"path" : "libHydroMotionLib.a"
+			"path" : "test_pump_converter"
 		}
 	],
 	"backtrace" : 1,
@@ -11,8 +10,8 @@
 	{
 		"commands" : 
 		[
-			"add_library",
-			"target_include_directories"
+			"add_executable",
+			"target_link_libraries"
 		],
 		"files" : 
 		[
@@ -26,13 +25,13 @@
 			{
 				"command" : 0,
 				"file" : 0,
-				"line" : 21,
+				"line" : 29,
 				"parent" : 0
 			},
 			{
 				"command" : 1,
 				"file" : 0,
-				"line" : 22,
+				"line" : 30,
 				"parent" : 0
 			}
 		]
@@ -67,16 +66,44 @@
 			},
 			"sourceIndexes" : 
 			[
-				0,
-				1,
-				2,
-				3
+				0
 			]
 		}
 	],
-	"id" : "HydroMotionLib::@6890427a1f51a3e7e1df",
-	"name" : "HydroMotionLib",
-	"nameOnDisk" : "libHydroMotionLib.a",
+	"dependencies" : 
+	[
+		{
+			"backtrace" : 2,
+			"id" : "HydroMotionLib::@6890427a1f51a3e7e1df"
+		}
+	],
+	"id" : "test_pump_converter::@6890427a1f51a3e7e1df",
+	"link" : 
+	{
+		"commandFragments" : 
+		[
+			{
+				"fragment" : "-g -O0 -Wall -g",
+				"role" : "flags"
+			},
+			{
+				"fragment" : "",
+				"role" : "flags"
+			},
+			{
+				"backtrace" : 2,
+				"fragment" : "libHydroMotionLib.a",
+				"role" : "libraries"
+			},
+			{
+				"fragment" : "-lm",
+				"role" : "libraries"
+			}
+		],
+		"language" : "C"
+	},
+	"name" : "test_pump_converter",
+	"nameOnDisk" : "test_pump_converter",
 	"paths" : 
 	{
 		"build" : ".",
@@ -88,10 +115,7 @@
 			"name" : "Source Files",
 			"sourceIndexes" : 
 			[
-				0,
-				1,
-				2,
-				3
+				0
 			]
 		}
 	],
@@ -100,27 +124,9 @@
 		{
 			"backtrace" : 1,
 			"compileGroupIndex" : 0,
-			"path" : "src/motion_control.c",
-			"sourceGroupIndex" : 0
-		},
-		{
-			"backtrace" : 1,
-			"compileGroupIndex" : 0,
-			"path" : "src/motion_planner.c",
-			"sourceGroupIndex" : 0
-		},
-		{
-			"backtrace" : 1,
-			"compileGroupIndex" : 0,
-			"path" : "src/ramp_controller.c",
-			"sourceGroupIndex" : 0
-		},
-		{
-			"backtrace" : 1,
-			"compileGroupIndex" : 0,
-			"path" : "src/rbf_pid.c",
+			"path" : "tests/test_pump_converter.c",
 			"sourceGroupIndex" : 0
 		}
 	],
-	"type" : "STATIC_LIBRARY"
+	"type" : "EXECUTABLE"
 }
