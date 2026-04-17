@@ -1,10 +1,10 @@
-Start testing: Apr 16 17:47 CST
+Start testing: Apr 17 19:22 CST
 ----------------------------------------------------------
 1/9 Testing: test_motion_planner
 1/9 Test: test_motion_planner
 Command: "/home/dan/project/hdy-motion-light/out/build/unixgcc/test_motion_planner"
 Directory: /home/dan/project/hdy-motion-light/out/build/unixgcc
-"test_motion_planner" start time: Apr 16 17:47 CST
+"test_motion_planner" start time: Apr 17 19:22 CST
 Output:
 ----------------------------------------------------------
 Running MotionPlanner tests...
@@ -27,7 +27,7 @@ Testing planner edge cases...
 Test time =   0.00 sec
 ----------------------------------------------------------
 Test Passed.
-"test_motion_planner" end time: Apr 16 17:47 CST
+"test_motion_planner" end time: Apr 17 19:22 CST
 "test_motion_planner" time elapsed: 00:00:00
 ----------------------------------------------------------
 
@@ -35,7 +35,7 @@ Test Passed.
 2/9 Test: test_motion_control
 Command: "/home/dan/project/hdy-motion-light/out/build/unixgcc/test_motion_control"
 Directory: /home/dan/project/hdy-motion-light/out/build/unixgcc
-"test_motion_control" start time: Apr 16 17:47 CST
+"test_motion_control" start time: Apr 17 19:22 CST
 Output:
 ----------------------------------------------------------
 Running MotionControl tests...
@@ -46,6 +46,14 @@ Testing StartSegment execution semantics...
 ✓ StartSegment execution semantics test passed
 Testing START_SEGMENT command input semantics...
 ✓ START_SEGMENT command input semantics test passed
+Testing START_SEGMENT rising-edge semantics...
+✓ START_SEGMENT rising-edge test passed
+Testing Start command legality while running...
+✓ Start command legality while running test passed
+Testing Abort command legality in READY state...
+✓ Abort command legality in READY state test passed
+Testing Ack legality while running...
+✓ Ack legality while running test passed
 Testing segment completion and NextSegment behavior...
 ✓ Segment completion and NextSegment behavior test passed
 Testing retract position directional planning...
@@ -104,7 +112,7 @@ Testing recipe and runtime parameter validation...
 Test time =   0.00 sec
 ----------------------------------------------------------
 Test Passed.
-"test_motion_control" end time: Apr 16 17:47 CST
+"test_motion_control" end time: Apr 17 19:22 CST
 "test_motion_control" time elapsed: 00:00:00
 ----------------------------------------------------------
 
@@ -112,7 +120,7 @@ Test Passed.
 3/9 Test: test_recipe_validator
 Command: "/home/dan/project/hdy-motion-light/out/build/unixgcc/test_recipe_validator"
 Directory: /home/dan/project/hdy-motion-light/out/build/unixgcc
-"test_recipe_validator" start time: Apr 16 17:47 CST
+"test_recipe_validator" start time: Apr 17 19:22 CST
 Output:
 ----------------------------------------------------------
 Running RecipeValidator tests...
@@ -133,7 +141,7 @@ Testing start context directional conflict validation...
 Test time =   0.00 sec
 ----------------------------------------------------------
 Test Passed.
-"test_recipe_validator" end time: Apr 16 17:47 CST
+"test_recipe_validator" end time: Apr 17 19:22 CST
 "test_recipe_validator" time elapsed: 00:00:00
 ----------------------------------------------------------
 
@@ -141,7 +149,7 @@ Test Passed.
 4/9 Test: test_pressure_controller
 Command: "/home/dan/project/hdy-motion-light/out/build/unixgcc/test_pressure_controller"
 Directory: /home/dan/project/hdy-motion-light/out/build/unixgcc
-"test_pressure_controller" start time: Apr 16 17:47 CST
+"test_pressure_controller" start time: Apr 17 19:22 CST
 Output:
 ----------------------------------------------------------
 Running PressureController tests...
@@ -170,7 +178,7 @@ Testing RBF-PID strategy switch bumpless tracking...
 Test time =   0.00 sec
 ----------------------------------------------------------
 Test Passed.
-"test_pressure_controller" end time: Apr 16 17:47 CST
+"test_pressure_controller" end time: Apr 17 19:22 CST
 "test_pressure_controller" time elapsed: 00:00:00
 ----------------------------------------------------------
 
@@ -178,7 +186,7 @@ Test Passed.
 5/9 Test: test_pump_converter
 Command: "/home/dan/project/hdy-motion-light/out/build/unixgcc/test_pump_converter"
 Directory: /home/dan/project/hdy-motion-light/out/build/unixgcc
-"test_pump_converter" start time: Apr 16 17:47 CST
+"test_pump_converter" start time: Apr 17 19:22 CST
 Output:
 ----------------------------------------------------------
 Running PumpConverter tests...
@@ -195,7 +203,7 @@ Testing invalid pump converter input handling...
 Test time =   0.00 sec
 ----------------------------------------------------------
 Test Passed.
-"test_pump_converter" end time: Apr 16 17:47 CST
+"test_pump_converter" end time: Apr 17 19:22 CST
 "test_pump_converter" time elapsed: 00:00:00
 ----------------------------------------------------------
 
@@ -203,7 +211,7 @@ Test Passed.
 6/9 Test: test_segment_completion
 Command: "/home/dan/project/hdy-motion-light/out/build/unixgcc/segment_completion_test"
 Directory: /home/dan/project/hdy-motion-light/out/build/unixgcc
-"test_segment_completion" start time: Apr 16 17:47 CST
+"test_segment_completion" start time: Apr 17 19:22 CST
 Output:
 ----------------------------------------------------------
 Running SegmentCompletion tests...
@@ -228,7 +236,7 @@ Testing runtime reference context override behavior...
 Test time =   0.00 sec
 ----------------------------------------------------------
 Test Passed.
-"test_segment_completion" end time: Apr 16 17:47 CST
+"test_segment_completion" end time: Apr 17 19:22 CST
 "test_segment_completion" time elapsed: 00:00:00
 ----------------------------------------------------------
 
@@ -236,7 +244,7 @@ Test Passed.
 7/9 Test: test_rbf_pid
 Command: "/home/dan/project/hdy-motion-light/out/build/unixgcc/rbf_pid_test"
 Directory: /home/dan/project/hdy-motion-light/out/build/unixgcc
-"test_rbf_pid" start time: Apr 16 17:47 CST
+"test_rbf_pid" start time: Apr 17 19:22 CST
 Output:
 ----------------------------------------------------------
 Running RBF_PID tests...
@@ -253,7 +261,7 @@ Testing RBF_PID explicit reset behavior...
 Test time =   0.00 sec
 ----------------------------------------------------------
 Test Passed.
-"test_rbf_pid" end time: Apr 16 17:47 CST
+"test_rbf_pid" end time: Apr 17 19:22 CST
 "test_rbf_pid" time elapsed: 00:00:00
 ----------------------------------------------------------
 
@@ -261,7 +269,7 @@ Test Passed.
 8/9 Test: test_ramp_controller
 Command: "/home/dan/project/hdy-motion-light/out/build/unixgcc/ramp_controller_test"
 Directory: /home/dan/project/hdy-motion-light/out/build/unixgcc
-"test_ramp_controller" start time: Apr 16 17:47 CST
+"test_ramp_controller" start time: Apr 17 19:22 CST
 Output:
 ----------------------------------------------------------
 Running RampController tests...
@@ -276,7 +284,7 @@ Testing ramp controller instant target...
 Test time =   0.00 sec
 ----------------------------------------------------------
 Test Passed.
-"test_ramp_controller" end time: Apr 16 17:47 CST
+"test_ramp_controller" end time: Apr 17 19:22 CST
 "test_ramp_controller" time elapsed: 00:00:00
 ----------------------------------------------------------
 
@@ -284,7 +292,7 @@ Test Passed.
 9/9 Test: test_scenario_matrix
 Command: "/home/dan/project/hdy-motion-light/out/build/unixgcc/test_scenario_matrix"
 Directory: /home/dan/project/hdy-motion-light/out/build/unixgcc
-"test_scenario_matrix" start time: Apr 16 17:47 CST
+"test_scenario_matrix" start time: Apr 17 19:22 CST
 Output:
 ----------------------------------------------------------
 Running scenario matrix tests...
@@ -301,8 +309,8 @@ Testing max-segment boundary recipe execution...
 Test time =   0.00 sec
 ----------------------------------------------------------
 Test Passed.
-"test_scenario_matrix" end time: Apr 16 17:47 CST
+"test_scenario_matrix" end time: Apr 17 19:22 CST
 "test_scenario_matrix" time elapsed: 00:00:00
 ----------------------------------------------------------
 
-End testing: Apr 16 17:47 CST
+End testing: Apr 17 19:22 CST

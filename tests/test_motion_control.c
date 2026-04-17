@@ -114,6 +114,7 @@ static void test_load_recipe_requires_start_command(void) {
     assert(!fb.ACTIVE);
     assert(!fb.FAULT);
     assert(fb.STATUS == HDY_STATUS_READY);
+    assert(fb.FB_STATE == HDY_FB_STATE_READY);
     assert(!fb.STATE.active);
     assert(!fb.FINISHED);
     assert(!fb.SEGMENT_COMPLETED);
@@ -144,12 +145,15 @@ static void test_start_segment_and_segment_changed_pulse(void) {
     fb.AXIS_REF.pressure = 2.0;
     fb.AXIS_REF.timestamp = 0.0;
     assert(HDY_MotionControlFB_StartSegment(&fb, 0, fb.AXIS_REF.timestamp));
-    assert(fb.STATUS == HDY_STATUS_RUNNING);
+    assert(!fb.ACTIVE);
+    assert(fb.STATUS == HDY_STATUS_READY);
+    assert(fb.FB_STATE == HDY_FB_STATE_READY);
 
     HDY_MotionControlFB_Execute(&fb);
     assert(fb.ACTIVE);
     assert(!fb.FAULT);
     assert(fb.STATUS == HDY_STATUS_RUNNING);
+    assert(fb.FB_STATE == HDY_FB_STATE_RUNNING);
     assert(fb.STATE.status == HDY_STATUS_RUNNING);
     assert(fb.SEGMENT_CHANGED);
     assert(!fb.SEGMENT_COMPLETED);
@@ -194,6 +198,133 @@ static void test_start_segment_command_input(void) {
     printf("✓ START_SEGMENT command input semantics test passed\n");
 }
 
+static void test_start_segment_input_uses_rising_edge(void) {
+    HDY_MotionControlFB fb;
+    HDY_MotionSegment recipe[1];
+
+    printf("Testing START_SEGMENT rising-edge semantics...\n");
+    init_controller(&fb);
+    recipe[0] = make_position_segment("EdgeStart", 10.0, HDY_DIRECTION_EXTEND);
+    assert(HDY_MotionControlFB_LoadRecipe(&fb, recipe, 1));
+
+    fb.AXIS_REF.position = 0.0;
+    fb.AXIS_REF.pressure = 1.0;
+    fb.AXIS_REF.timestamp = 0.0;
+    fb.START_SEGMENT = true;
+    fb.START_SEGMENT_INDEX = 0U;
+    HDY_MotionControlFB_Scan(&fb);
+    assert(fb.ACTIVE);
+    assert(fb.SEGMENT_CHANGED);
+    assert(fb.FB_STATE == HDY_FB_STATE_RUNNING);
+
+    fb.AXIS_REF.timestamp = 0.1;
+    fb.START_SEGMENT = true;
+    fb.START_SEGMENT_INDEX = 0U;
+    HDY_MotionControlFB_Scan(&fb);
+    assert(!fb.SEGMENT_CHANGED);
+    assert(fb.ACTIVE);
+    assert(fb.STATE.references.elapsedTime > 0.09);
+
+    fb.AXIS_REF.timestamp = 0.2;
+    fb.START_SEGMENT = false;
+    HDY_MotionControlFB_Scan(&fb);
+
+    fb.AXIS_REF.timestamp = 0.3;
+    fb.START_SEGMENT = true;
+    fb.START_SEGMENT_INDEX = 0U;
+    HDY_MotionControlFB_Scan(&fb);
+    assert(!fb.SEGMENT_CHANGED);
+    assert(fb.ACTIVE);
+    assert(fb.STATE.references.elapsedTime > 0.29);
+    printf("✓ START_SEGMENT rising-edge test passed\n");
+}
+
+static void test_start_command_rejected_while_running(void) {
+    HDY_MotionControlFB fb;
+    HDY_MotionSegment recipe[1];
+
+    printf("Testing Start command legality while running...\n");
+    init_controller(&fb);
+    recipe[0] = make_time_segment("BusyStart", 1.0, HDY_DIRECTION_EXTEND);
+    assert(HDY_MotionControlFB_LoadRecipe(&fb, recipe, 1));
+
+    fb.AXIS_REF.position = 0.0;
+    fb.AXIS_REF.velocity = 0.0;
+    fb.AXIS_REF.flow = 0.0;
+    fb.AXIS_REF.pressure = recipe[0].targetPressure;
+    fb.AXIS_REF.timestamp = 0.0;
+    assert(HDY_MotionControlFB_StartSegment(&fb, 0, 0.0));
+    HDY_MotionControlFB_Execute(&fb);
+    assert(fb.ACTIVE);
+    assert(fb.DIAGNOSTIC.code == HDY_DIAG_CODE_NONE);
+
+    assert(!HDY_MotionControlFB_StartSegment(&fb, 0, 0.0));
+    assert(fb.ACTIVE);
+    assert(fb.STATUS == HDY_STATUS_RUNNING);
+    assert(fb.FB_STATE == HDY_FB_STATE_RUNNING);
+    assert(fb.DIAGNOSTIC.code == HDY_DIAG_CODE_COMMAND_NOT_ALLOWED);
+    assert(fb.DIAGNOSTIC.source == HDY_DIAG_SOURCE_COMMAND);
+    assert(fb.DIAGNOSTIC.recovery == HDY_DIAG_RECOVERY_CHECK_COMMAND);
+    assert(fb.DIAGNOSTIC.protectionAction == HDY_PROTECTION_ACTION_WARNING);
+    assert(strstr(fb.DIAGNOSTIC.message, "START") != NULL);
+    assert(strstr(fb.DIAGNOSTIC.message, "RUNNING") != NULL);
+
+    fb.AXIS_REF.timestamp = 0.1;
+    HDY_MotionControlFB_Execute(&fb);
+    assert(fb.ACTIVE);
+    assert(fb.FB_STATE == HDY_FB_STATE_RUNNING);
+    printf("✓ Start command legality while running test passed\n");
+}
+
+static void test_abort_rejected_in_ready_state(void) {
+    HDY_MotionControlFB fb;
+    HDY_MotionSegment recipe[1];
+
+    printf("Testing Abort command legality in READY state...\n");
+    init_controller(&fb);
+    recipe[0] = make_position_segment("AbortReady", 10.0, HDY_DIRECTION_EXTEND);
+    assert(HDY_MotionControlFB_LoadRecipe(&fb, recipe, 1));
+
+    assert(!HDY_MotionControlFB_Abort(&fb));
+    assert(!fb.ACTIVE);
+    assert(!fb.FINISHED);
+    assert(fb.STATUS == HDY_STATUS_READY);
+    assert(fb.FB_STATE == HDY_FB_STATE_READY);
+    assert(fb.DIAGNOSTIC.code == HDY_DIAG_CODE_COMMAND_NOT_ALLOWED);
+    assert(fb.DIAGNOSTIC.source == HDY_DIAG_SOURCE_COMMAND);
+    assert(fb.DIAGNOSTIC.recovery == HDY_DIAG_RECOVERY_CHECK_COMMAND);
+    assert(fb.DIAGNOSTIC.protectionAction == HDY_PROTECTION_ACTION_WARNING);
+    assert(strstr(fb.DIAGNOSTIC.message, "ABORT") != NULL);
+    assert(strstr(fb.DIAGNOSTIC.message, "READY") != NULL);
+    printf("✓ Abort command legality in READY state test passed\n");
+}
+
+static void test_acknowledge_rejected_while_running_even_without_live_diagnostic(void) {
+    HDY_MotionControlFB fb;
+    HDY_MotionSegment recipe[1];
+
+    printf("Testing Ack legality while running...\n");
+    init_controller(&fb);
+    recipe[0] = make_time_segment("AckRunning", 1.0, HDY_DIRECTION_EXTEND);
+    assert(HDY_MotionControlFB_LoadRecipe(&fb, recipe, 1));
+
+    fb.AXIS_REF.position = 0.0;
+    fb.AXIS_REF.velocity = 0.0;
+    fb.AXIS_REF.flow = 0.0;
+    fb.AXIS_REF.pressure = recipe[0].targetPressure;
+    fb.AXIS_REF.timestamp = 0.0;
+    assert(HDY_MotionControlFB_StartSegment(&fb, 0, 0.0));
+    HDY_MotionControlFB_Execute(&fb);
+    assert(fb.ACTIVE);
+    assert(fb.DIAGNOSTIC.code == HDY_DIAG_CODE_NONE);
+
+    assert(!HDY_MotionControlFB_AcknowledgeDiagnostics(&fb));
+    assert(fb.ACTIVE);
+    assert(fb.DIAGNOSTIC.code == HDY_DIAG_CODE_NONE);
+    assert(fb.DIAGNOSTIC_LATCH.code == HDY_DIAG_CODE_NONE);
+    printf("✓ Ack legality while running test passed\n");
+}
+
 static void test_segment_completion_and_next_segment(void) {
     HDY_MotionControlFB fb;
     HDY_MotionSegment recipe[2];
@@ -218,6 +349,7 @@ static void test_segment_completion_and_next_segment(void) {
     assert(fb.DIAGNOSTIC.code == HDY_DIAG_CODE_SEGMENT_NOT_COMPLETED);
     assert(strstr(fb.DIAGNOSTIC.message, "not completed") != NULL);
 
+
     fb.AXIS_REF.position = 1.0;
     HDY_MotionControlFB_Execute(&fb);
 
@@ -230,18 +362,23 @@ static void test_segment_completion_and_next_segment(void) {
     assert(strcmp(fb.STATE.currentSegmentName, "SegmentA") == 0);
 
     assert(HDY_MotionControlFB_NextSegment(&fb, fb.AXIS_REF.timestamp));
-    assert(fb.ACTIVE);
-    assert(!fb.SEGMENT_COMPLETED);
+    assert(!fb.ACTIVE);
+    assert(fb.SEGMENT_COMPLETED);
     assert(!fb.FINISHED);
-    assert(fb.STATUS == HDY_STATUS_RUNNING);
-    assert(fb.STATE.currentSegmentIndex == 1U);
-    assert(strcmp(fb.STATE.currentSegmentName, "SegmentB") == 0);
+    assert(fb.STATUS == HDY_STATUS_SEGMENT_COMPLETE);
+    assert(fb.FB_STATE == HDY_FB_STATE_SEGMENT_COMPLETE);
+    assert(fb.STATE.currentSegmentIndex == 0U);
+    assert(strcmp(fb.STATE.currentSegmentName, "SegmentA") == 0);
 
     fb.AXIS_REF.timestamp = 0.1;
     HDY_MotionControlFB_Execute(&fb);
     assert(fb.SEGMENT_CHANGED);
     assert(fb.ACTIVE);
     assert(!fb.SEGMENT_COMPLETED);
+    assert(fb.STATUS == HDY_STATUS_RUNNING);
+    assert(fb.FB_STATE == HDY_FB_STATE_RUNNING);
+    assert(fb.STATE.currentSegmentIndex == 1U);
+    assert(strcmp(fb.STATE.currentSegmentName, "SegmentB") == 0);
 
     fb.AXIS_REF.timestamp = 0.6;
     HDY_MotionControlFB_Execute(&fb);
@@ -930,10 +1067,16 @@ static void test_abort_forces_safe_outputs(void) {
     fb.START_SEGMENT = true;
     fb.START_SEGMENT_INDEX = 0U;
     assert(HDY_MotionControlFB_Abort(&fb));
+    assert(fb.ACTIVE);
+    assert(!fb.FINISHED);
+    assert(fb.STATUS == HDY_STATUS_RUNNING);
+
+    HDY_MotionControlFB_Execute(&fb);
     assert(!fb.ACTIVE);
     assert(fb.FINISHED);
     assert(!fb.FAULT);
     assert(fb.STATUS == HDY_STATUS_FINISHED);
+    assert(fb.FB_STATE == HDY_FB_STATE_ABORTED);
     assert(!fb.SEGMENT_COMPLETED);
     assert(fb.PUMP_SPEED == 0.0);
     assert(!fb.START_SEGMENT);
@@ -966,10 +1109,12 @@ static void test_abort_diagnostic_auto_clears_in_finished_hold(void) {
     assert(HDY_MotionControlFB_StartSegment(&fb, 0, 0.0));
     HDY_MotionControlFB_Execute(&fb);
     assert(HDY_MotionControlFB_Abort(&fb));
-    assert(fb.DIAGNOSTIC.code == HDY_DIAG_CODE_ABORTED);
-    assert(fb.DIAGNOSTIC_LATCH.code == HDY_DIAG_CODE_ABORTED);
 
     fb.AXIS_REF.timestamp = 0.1;
+    HDY_MotionControlFB_Execute(&fb);
+    assert(fb.DIAGNOSTIC_LATCH.code == HDY_DIAG_CODE_ABORTED);
+
+    fb.AXIS_REF.timestamp = 0.2;
     HDY_MotionControlFB_Execute(&fb);
     assert(fb.FINISHED);
     assert(!fb.FAULT);
@@ -1235,6 +1380,10 @@ int main(void) {
     test_load_recipe_requires_start_command();
     test_start_segment_and_segment_changed_pulse();
     test_start_segment_command_input();
+    test_start_segment_input_uses_rising_edge();
+    test_start_command_rejected_while_running();
+    test_abort_rejected_in_ready_state();
+    test_acknowledge_rejected_while_running_even_without_live_diagnostic();
     test_segment_completion_and_next_segment();
     test_retract_position_directional_planning();
     test_speed_ramp_retract_directional_planning();

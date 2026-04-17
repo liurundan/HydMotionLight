@@ -7,17 +7,17 @@
 
 /*
  * PLCopen-style motion control function block lifecycle:
- *   Init -> LoadRecipe -> StartSegment / START_SEGMENT -> Execute -> Complete / Abort
+ *   Init -> LoadRecipe -> StartSegment / START_SEGMENT -> Cycle / Scan -> Complete / Abort
  *
  * Signal semantics:
  * - EN=false:
  *   Immediately applies safe zero outputs, forces ACTIVE=false, sets ENO=false,
- *   and clears any pending START_SEGMENT command. Re-enabling does not resume
- *   motion automatically; the caller must issue StartSegment() or START_SEGMENT again.
+ *   and clears any pending start request. Re-enabling does not resume motion
+ *   automatically; the caller must issue StartSegment() or START_SEGMENT again.
  * - RESET=true:
- *   The next Execute() performs a full reinitialization equivalent to Init().
- *   This clears runtime state, recipe contents, and configuration gains, so the
- *   caller must reload configuration and recipe afterwards.
+ *   The next Cycle()/Scan()/Execute() performs a full reinitialization
+ *   equivalent to Init(). This clears runtime state, recipe contents, and
+ *   configuration gains, so the caller must reload configuration and recipe.
  * - ACTIVE:
  *   True only while an already started segment is executing in the current cycle.
  *   LoadRecipe() alone never sets ACTIVE=true.
@@ -28,18 +28,22 @@
  *   a protected stop state such as timeout or runtime configuration corruption.
  * - STATUS:
  *   Aggregated controller status output for HMI / upper-layer integration.
+ * - FB_STATE:
+ *   Explicit framework-layer state machine output used to distinguish READY /
+ *   RUNNING / SEGMENT_COMPLETE / DONE / ABORTED / FAULT / DISABLED states.
  * - SEGMENT_COMPLETED:
  *   Latched true when the active segment reaches its end condition. For middle
  *   segments it stays true until the caller advances with NextSegment() or starts
  *   another segment explicitly. For the last segment it is raised together with
  *   FINISHED=true.
  * - SEGMENT_CHANGED:
- *   One-cycle pulse asserted on the first Execute() after StartSegment() or a
- *   successful NextSegment() transition.
+ *   One-cycle pulse asserted on the first Cycle()/Scan()/Execute() after a
+ *   successful StartSegment() / START_SEGMENT or NextSegment() transition.
  * - DIAGNOSTIC:
  *   Live diagnostic result for the current command/cycle. In non-fault idle/
- *   finished/disabled hold states it auto-clears on the next Execute(), while
- *   retention remains available through DIAGNOSTIC_LATCH / snapshots / history.
+ *   finished/disabled hold states it auto-clears on the next Cycle()/Scan()/
+ *   Execute(), while retention remains available through DIAGNOSTIC_LATCH /
+ *   snapshots / history.
  * - DIAGNOSTIC_LATCH / LAST_DIAGNOSTIC_SNAPSHOT / DIAGNOSTIC_HISTORY:
  *   Bounded diagnostic-retention outputs for commissioning and service. They
  *   keep the last non-NONE event and a small history until Init()/RESET or
@@ -70,7 +74,41 @@
  *   with HDY_END_POSITION it only adds braking protection near targetPosition.
  * - Typed tolerances (position/pressure/flow/velocity) should be configured in
  *   new recipes; the legacy generic tolerance field is kept only as fallback.
+ *
+ * Current command legality matrix (framework-layer contract):
+ * - START: READY / SEGMENT_COMPLETE / DONE / ABORTED
+ * - NEXT: SEGMENT_COMPLETE only
+ * - ABORT: STARTING / RUNNING / SEGMENT_COMPLETE / HOLD
+ * - ACK: DISABLED / IDLE / READY / SEGMENT_COMPLETE / HOLD / DONE / ABORTED
+ * - RESET: handled by RESET input and consumed on the next Cycle()/Scan()/Execute()
+ * Unsupported future commands (STOP / HOLD / RESUME) remain reserved in the enum and
+ * are intentionally rejected until their state semantics are implemented.
  */
+typedef enum {
+    HDY_CMD_NONE,
+    HDY_CMD_START,
+    HDY_CMD_NEXT,
+    HDY_CMD_STOP,
+    HDY_CMD_HOLD,
+    HDY_CMD_RESUME,
+    HDY_CMD_ABORT,
+    HDY_CMD_RESET,
+    HDY_CMD_ACK
+} HDY_FbCommand;
+
+typedef enum {
+    HDY_FB_STATE_DISABLED,
+    HDY_FB_STATE_IDLE,
+    HDY_FB_STATE_READY,
+    HDY_FB_STATE_STARTING,
+    HDY_FB_STATE_RUNNING,
+    HDY_FB_STATE_SEGMENT_COMPLETE,
+    HDY_FB_STATE_HOLD,
+    HDY_FB_STATE_DONE,
+    HDY_FB_STATE_ABORTED,
+    HDY_FB_STATE_FAULT
+} HDY_FbState;
+
 typedef struct {
     HDY_BOOL EN;
     HDY_BOOL RESET;
@@ -87,6 +125,7 @@ typedef struct {
     HDY_BOOL FINISHED;
     HDY_BOOL FAULT;
     HDY_ControllerStatus STATUS;
+    HDY_FbState FB_STATE;
     HDY_REAL PUMP_SPEED;
     HDY_BOOL SEGMENT_COMPLETED;
     HDY_BOOL SEGMENT_CHANGED;
@@ -103,6 +142,12 @@ typedef struct {
     HDY_REAL _lastCommandedFlow;
     HDY_TIME _lastFeedbackTimestamp;
     HDY_BOOL _feedbackTimestampValid;
+    HDY_BOOL _startSegmentSignalPrev;
+    HDY_FbCommand _pendingCommand;
+    HDY_UINT _pendingCommandSegmentIndex;
+    HDY_TIME _pendingCommandTimestamp;
+    HDY_MotionSegment _activeSegment;
+    HDY_BOOL _activeSegmentValid;
     HDY_RampController _rampController;
     HDY_PressureControllerState _pressureController;
     HDY_DiagnosticCode _lastRecordedDiagnosticCode;
@@ -117,35 +162,39 @@ void HDY_MotionControlFB_Init(HDY_MotionControlFB* fb);
 /*
  * Validates and loads a recipe into the function block.
  * This call only prepares the controller; it does not start execution and keeps
- * ACTIVE=false until StartSegment() or START_SEGMENT is issued.
+ * ACTIVE=false until StartSegment() / START_SEGMENT is consumed in Cycle()/Scan().
  */
 HDY_BOOL HDY_MotionControlFB_LoadRecipe(HDY_MotionControlFB* fb, const HDY_MotionSegment* recipe, size_t recipeSize);
 
 /*
- * Explicitly arms the requested segment for cyclic execution.
- * Safe outputs are applied before the new segment becomes active, and the next
- * Execute() emits SEGMENT_CHANGED for one cycle.
+ * Validates and queues a segment-start command.
+ * The actual state transition occurs on the next Cycle()/Scan()/Execute().
  */
 HDY_BOOL HDY_MotionControlFB_StartSegment(HDY_MotionControlFB* fb, size_t segmentIndex, HDY_TIME timestamp);
 
 /*
- * Advances to the next segment only after SEGMENT_COMPLETED=true.
- * When the current segment is already the last one, the caller should observe
- * FINISHED instead of expecting another successful transition.
+ * Validates and queues an advance-to-next-segment command.
+ * The actual transition occurs on the next Cycle()/Scan()/Execute().
  */
 HDY_BOOL HDY_MotionControlFB_NextSegment(HDY_MotionControlFB* fb, HDY_TIME timestamp);
 
-/* Immediately enters a safe finished state and clears any pending start command. */
+/* Queues an abort command. Safe outputs are applied on the next Cycle()/Scan()/Execute(). */
 HDY_BOOL HDY_MotionControlFB_Abort(HDY_MotionControlFB* fb);
 
 /*
  * Clears retained diagnostic latch/snapshot/history after the live event has
- * cleared (typically on the next non-fault Execute() in a hold state). Fault-
- * state retention is intentionally not clearable without RESET.
+ * cleared (typically on the next non-fault Cycle()/Scan()/Execute() in a hold
+ * state). Fault-state retention is intentionally not clearable without RESET.
  */
 HDY_BOOL HDY_MotionControlFB_AcknowledgeDiagnostics(HDY_MotionControlFB* fb);
 
-/* Cyclic execution entry point. Consumes START_SEGMENT as a one-shot command. */
+/* Executes the already-sampled pending command and the explicit state machine. */
+void HDY_MotionControlFB_Cycle(HDY_MotionControlFB* fb);
+
+/* Samples edge-triggered command inputs (for example START_SEGMENT) then calls Cycle(). */
+void HDY_MotionControlFB_Scan(HDY_MotionControlFB* fb);
+
+/* Compatibility cyclic entry; currently equivalent to Scan(). */
 void HDY_MotionControlFB_Execute(HDY_MotionControlFB* fb);
 
 #endif /* HDY_MOTION_CONTROL_H */

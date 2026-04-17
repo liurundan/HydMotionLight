@@ -49,6 +49,12 @@ static const HDY_DiagnosticSpec HDY_DIAGNOSTIC_SPECS[] = {
      HDY_DIAG_RECOVERY_CHECK_COMMAND,
      HDY_PROTECTION_ACTION_WARNING,
      "Start context is invalid"},
+    {HDY_DIAG_CODE_COMMAND_NOT_ALLOWED,
+     HDY_DIAG_SEVERITY_WARNING,
+     HDY_DIAG_SOURCE_COMMAND,
+     HDY_DIAG_RECOVERY_CHECK_COMMAND,
+     HDY_PROTECTION_ACTION_WARNING,
+     "Command is not allowed in the current state"},
     {HDY_DIAG_CODE_NO_RECIPE,
      HDY_DIAG_SEVERITY_WARNING,
      HDY_DIAG_SOURCE_COMMAND,
@@ -482,6 +488,8 @@ const char* HDY_Diagnostics_CodeToString(HDY_DiagnosticCode code) {
             return "RUNTIME_CONFIG_INVALID";
         case HDY_DIAG_CODE_START_CONTEXT_INVALID:
             return "START_CONTEXT_INVALID";
+        case HDY_DIAG_CODE_COMMAND_NOT_ALLOWED:
+            return "COMMAND_NOT_ALLOWED";
         case HDY_DIAG_CODE_NO_RECIPE:
             return "NO_RECIPE";
         case HDY_DIAG_CODE_SEGMENT_INDEX_OUT_OF_RANGE:
