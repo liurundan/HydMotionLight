@@ -559,7 +559,7 @@ static HDY_BOOL HDY_ValidateNextRequest(const HDY_MotionControlFB* fb,
         return false;
     }
 
-    if (effectiveState == HDY_FB_STATE_DONE || fb->FINISHED) {
+    if (effectiveState == HDY_FB_STATE_DONE) {
         if (code != NULL) {
             *code = HDY_DIAG_CODE_RECIPE_ALREADY_FINISHED;
         }
