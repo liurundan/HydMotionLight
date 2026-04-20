@@ -24,11 +24,39 @@
 	ProcessorClockFrequency="3000"
 	>
 	<Testing>
-		<StartDateTime>Apr 20 10:12 CST</StartDateTime>
-		<StartTestTime>1776651149</StartTestTime>
-		<TestList/>
-		<EndDateTime>Apr 20 10:12 CST</EndDateTime>
-		<EndTestTime>1776651149</EndTestTime>
+		<StartDateTime>Apr 20 14:07 CST</StartDateTime>
+		<StartTestTime>1776665243</StartTestTime>
+		<TestList>
+			<Test>./test_segment_completion</Test>
+		</TestList>
+		<Test Status="passed">
+			<Name>test_segment_completion</Name>
+			<Path>.</Path>
+			<FullName>./test_segment_completion</FullName>
+			<FullCommandLine>/home/dan/project/hdy-motion-light/out/build/unixgcc/segment_completion_test</FullCommandLine>
+			<Results>
+				<NamedMeasurement type="numeric/double" name="Execution Time">
+					<Value>0.00109156</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="numeric/double" name="Processors">
+					<Value>1</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Completion Status">
+					<Value>Completed</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Command Line">
+					<Value>/home/dan/project/hdy-motion-light/out/build/unixgcc/segment_completion_test</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Environment">
+					<Value>#CTEST_RESOURCE_GROUP_COUNT=</Value>
+				</NamedMeasurement>
+				<Measurement>
+					<Value encoding="base64" compression="gzip">eJydks0NwjAMhe+dwizQHRCCGxICFgipC5FSp7IdfgZgAq5MxyQk4h+EKvXmOO99Vvwyj0SO1rDAdYOko9C0HtUFAkVRKcuyKJapyhq5acC+RKsD4F6RKmiDuNzKjsv5BOPP9rspk6E1Ilh1sBmVjdUf+Pyr34+ursEHcZnqfpSWUSTykzS7n/vRah92D9Ik1f0ojaFoPOQAbKDqY3fT210HlyPl9aQEamQkm59DmrKGsEVmVyGscGO2LvAzlG7L+6TkOcLQ+39f764DidamjdbR+8OguALFRwUU====</Value>
+				</Measurement>
+			</Results>
+		</Test>
+		<EndDateTime>Apr 20 14:07 CST</EndDateTime>
+		<EndTestTime>1776665243</EndTestTime>
 		<ElapsedMinutes>0</ElapsedMinutes>
 	</Testing>
 </Site>

@@ -12,6 +12,18 @@ static void init_controller(HDY_MotionControlFB* fb) {
     fb->PUMP_SPEED_LIMIT = 3000.0;
 }
 
+static void assert_standard_outputs(const HDY_MotionControlFB* fb,
+                                    HDY_BOOL busy,
+                                    HDY_BOOL done,
+                                    HDY_BOOL error,
+                                    HDY_DiagnosticCode errorId) {
+    assert(fb != NULL);
+    assert(fb->BUSY == busy);
+    assert(fb->DONE == done);
+    assert(fb->ERROR == error);
+    assert(fb->ERROR_ID == errorId);
+}
+
 static HDY_MotionSegment make_position_segment(const char* name,
                                                HDY_REAL targetPosition,
                                                HDY_MotionDirection direction) {
@@ -138,6 +150,105 @@ static void test_load_recipe_requires_start_command(void) {
     assert(fb.STATUS == HDY_STATUS_READY);
     assert(fb.STATE.plannedDirection == HDY_DIRECTION_HOLD);
     printf("✓ LoadRecipe idle semantics test passed\n");
+}
+
+static void test_standard_outputs_follow_plcopen_state_machine(void) {
+    HDY_MotionControlFB fb;
+    HDY_MotionSegment recipe[2];
+
+    printf("Testing PLCopen Busy/Done/Error/ErrorID output matrix...\n");
+    init_controller(&fb);
+    assert(fb.FB_STATE == HDY_FB_STATE_IDLE);
+    assert_standard_outputs(&fb, false, false, false, HDY_DIAG_CODE_NONE);
+
+    recipe[0] = make_position_segment("StdOutA", 1.0, HDY_DIRECTION_EXTEND);
+    recipe[1] = make_time_segment("StdOutB", 0.5, HDY_DIRECTION_EXTEND);
+    assert(HDY_MotionControlFB_LoadRecipe(&fb, recipe, 2));
+    assert(fb.FB_STATE == HDY_FB_STATE_READY);
+    assert_standard_outputs(&fb, false, false, false, HDY_DIAG_CODE_NONE);
+
+    fb.AXIS_REF.position = 0.0;
+    fb.AXIS_REF.velocity = 0.0;
+    fb.AXIS_REF.flow = 0.0;
+    fb.AXIS_REF.pressure = recipe[0].targetPressure;
+    fb.AXIS_REF.timestamp = 0.0;
+    assert(HDY_MotionControlFB_StartSegment(&fb, 0, 0.0));
+    HDY_MotionControlFB_Execute(&fb);
+    assert(fb.FB_STATE == HDY_FB_STATE_RUNNING);
+    assert_standard_outputs(&fb, true, false, false, HDY_DIAG_CODE_NONE);
+
+    fb.AXIS_REF.velocity = fb.STATE.plannedVelocity;
+    fb.AXIS_REF.flow = fb.STATE.plannedFlow;
+    fb.AXIS_REF.timestamp = 0.1;
+    assert(HDY_MotionControlFB_Hold(&fb));
+    HDY_MotionControlFB_Cycle(&fb);
+    assert(fb.FB_STATE == HDY_FB_STATE_HOLD);
+    assert_standard_outputs(&fb, true, false, false, HDY_DIAG_CODE_NONE);
+
+    fb.AXIS_REF.timestamp = 0.2;
+    assert(HDY_MotionControlFB_Resume(&fb));
+    HDY_MotionControlFB_Cycle(&fb);
+    assert(fb.FB_STATE == HDY_FB_STATE_RUNNING);
+    assert_standard_outputs(&fb, true, false, false, HDY_DIAG_CODE_NONE);
+
+    fb.AXIS_REF.position = 1.0;
+    fb.AXIS_REF.velocity = 0.0;
+    fb.AXIS_REF.flow = 0.0;
+    fb.AXIS_REF.timestamp = 0.3;
+    HDY_MotionControlFB_Execute(&fb);
+    assert(fb.FB_STATE == HDY_FB_STATE_SEGMENT_COMPLETE);
+    assert_standard_outputs(&fb, true, false, false, HDY_DIAG_CODE_NONE);
+
+    assert(HDY_MotionControlFB_NextSegment(&fb, 0.3));
+    fb.AXIS_REF.timestamp = 0.4;
+    fb.AXIS_REF.pressure = recipe[1].targetPressure;
+    HDY_MotionControlFB_Execute(&fb);
+    assert(fb.FB_STATE == HDY_FB_STATE_RUNNING);
+    assert_standard_outputs(&fb, true, false, false, HDY_DIAG_CODE_NONE);
+
+    assert(HDY_MotionControlFB_Abort(&fb));
+    fb.AXIS_REF.timestamp = 0.5;
+    HDY_MotionControlFB_Execute(&fb);
+    assert(fb.FB_STATE == HDY_FB_STATE_ABORTED);
+    assert_standard_outputs(&fb, false, false, false, HDY_DIAG_CODE_NONE);
+
+    init_controller(&fb);
+    recipe[0] = make_position_segment("StdOutDone", 1.0, HDY_DIRECTION_EXTEND);
+    assert(HDY_MotionControlFB_LoadRecipe(&fb, recipe, 1));
+    fb.AXIS_REF.position = 0.0;
+    fb.AXIS_REF.pressure = recipe[0].targetPressure;
+    fb.AXIS_REF.timestamp = 0.0;
+    assert(HDY_MotionControlFB_StartSegment(&fb, 0, 0.0));
+    HDY_MotionControlFB_Execute(&fb);
+    fb.AXIS_REF.position = 1.0;
+    fb.AXIS_REF.timestamp = 0.1;
+    HDY_MotionControlFB_Execute(&fb);
+    assert(fb.FB_STATE == HDY_FB_STATE_DONE);
+    assert_standard_outputs(&fb, false, true, false, HDY_DIAG_CODE_NONE);
+
+    init_controller(&fb);
+    recipe[0] = make_position_segment("StdOutDisabled", 1.0, HDY_DIRECTION_EXTEND);
+    assert(HDY_MotionControlFB_LoadRecipe(&fb, recipe, 1));
+    fb.EN = false;
+    fb.AXIS_REF.timestamp = 0.0;
+    HDY_MotionControlFB_Execute(&fb);
+    assert(fb.FB_STATE == HDY_FB_STATE_DISABLED);
+    assert_standard_outputs(&fb, false, false, false, HDY_DIAG_CODE_NONE);
+
+    init_controller(&fb);
+    recipe[0] = make_position_segment("StdOutFault", 10.0, HDY_DIRECTION_EXTEND);
+    assert(HDY_MotionControlFB_LoadRecipe(&fb, recipe, 1));
+    fb.AXIS_REF.position = 0.0;
+    fb.AXIS_REF.pressure = recipe[0].targetPressure;
+    fb.AXIS_REF.timestamp = 0.0;
+    assert(HDY_MotionControlFB_StartSegment(&fb, 0, 0.0));
+    HDY_MotionControlFB_Execute(&fb);
+    fb.AXIS_REF.timestamp = 0.1;
+    fb.AXIS_REF.pressure = -0.5;
+    HDY_MotionControlFB_Execute(&fb);
+    assert(fb.FB_STATE == HDY_FB_STATE_FAULT);
+    assert_standard_outputs(&fb, false, false, true, HDY_DIAG_CODE_SENSOR_FAULT);
+    printf("✓ PLCopen Busy/Done/Error/ErrorID output matrix test passed\n");
 }
 
 static void test_start_segment_and_segment_changed_pulse(void) {
@@ -2024,6 +2135,7 @@ int main(void) {
     printf("Running MotionControl tests...\n\n");
 
     test_load_recipe_requires_start_command();
+    test_standard_outputs_follow_plcopen_state_machine();
     test_start_segment_and_segment_changed_pulse();
     test_start_segment_command_input();
     test_start_segment_input_uses_rising_edge();

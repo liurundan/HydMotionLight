@@ -62,6 +62,33 @@ ctest --test-dir out/build/unixgcc --output-on-failure
 - 最后一段完成后，控制器进入 `FINISHED=true`。
 - `EN=false` 会立即输出安全零值，重新使能后不会自动恢复，需要上层重新启动段。
 
+## Direct / Recipe 模式语义（补充）
+
+- 概述：FB 同时持有 `RECIPE[]` 与 `DIRECT_SEGMENT` 两套段参数缓存。启动时由 `USE_RECIPE` 决定使用哪套来源；当 `StartSegment()` / `START_SEGMENT` 被消费并进入运行态后，库会将活动段的参数与来源锁存（latched），后续外部对 `USE_RECIPE` 或 `DIRECT_SEGMENT` 的修改不会影响当前已启动段。
+
+- `USE_RECIPE = true`：`StartSegment()` 使用 `RECIPE[segmentIndex]` 作为启动段；`segmentIndex` 指向配方索引；`NextSegment()` 可用于推进到 recipe 的下一段（若存在）。
+
+- `USE_RECIPE = false`：`StartSegment()` 忽略 `segmentIndex`，使用 `DIRECT_SEGMENT` 作为单段直接执行来源。必须先通过 `HDY_MotionControlFB_LoadDirectSegment()` 装载 `DIRECT_SEGMENT` 并使 `DIRECT_SEGMENT_VALID=true`。Direct 模式下 `NextSegment()` 是不被允许的，库会拒绝并上报诊断（例如 `HDY_DIAG_CODE_COMMAND_NOT_ALLOWED` 或 `HDY_DIAG_CODE_NO_DIRECT_SEGMENT`）。
+
+- Direct 模式语义：
+  - 启动：`StartSegment()` 将 `DIRECT_SEGMENT` 的参数锁存为当前活动段。
+  - 执行：按段内定义执行，状态与诊断行为与 recipe 段相同。
+  - 完成：Direct 模式为单段语义，段完成后控制器直接进入终端完成态（`FB_STATE=DONE` / `FINISHED=true`），不会等待或依赖 `NextSegment()`。
+
+- `STATE.segmentSource`：控制器通过 `STATE.segmentSource`（枚举值 `HDY_SEGMENT_SOURCE_NONE/RECIPE/DIRECT`）对外暴露当前（或最近）活动段的来源。HMI 与工艺层可据此判断当前执行语义（例如禁止在 `DIRECT` 来源下调用 `NextSegment()`）。
+
+- `DIRECT_SEGMENT_VALID`：当 `DIRECT_SEGMENT` 已装载并通过校验时为 true；`HDY_MotionControlFB_LoadDirectSegment()` 会设置该标志并更新 Ready/Idle 判定。
+
+示例：Direct 模式调用
+
+```c
+fb->USE_RECIPE = HDY_FALSE;
+HDY_MotionControlFB_LoadDirectSegment(&fb, &segment);
+HDY_MotionControlFB_StartSegment(&fb, 0, timestamp); // index 被忽略
+```
+
+注意：Direct 模式下 `segmentIndex` 仅为兼容接口保留，不代表 recipe 索引。
+
 ## 当前发布基线说明
 
 ### 基线定位

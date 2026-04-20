@@ -1,3 +1,36 @@
-Start testing: Apr 20 10:12 CST
+Start testing: Apr 20 14:07 CST
 ----------------------------------------------------------
-End testing: Apr 20 10:12 CST
+6/9 Testing: test_segment_completion
+6/9 Test: test_segment_completion
+Command: "/home/dan/project/hdy-motion-light/out/build/unixgcc/segment_completion_test"
+Directory: /home/dan/project/hdy-motion-light/out/build/unixgcc
+"test_segment_completion" start time: Apr 20 14:07 CST
+Output:
+----------------------------------------------------------
+Running SegmentCompletion tests...
+
+Testing segment completion by extend position...
+✓ Extend position completion test passed
+Testing segment completion by retract position...
+✓ Retract position completion test passed
+Testing segment completion by time...
+✓ Time completion test passed
+Testing segment completion by pressure...
+✓ Pressure completion test passed
+Testing segment completion by flow...
+✓ Flow completion test passed
+Testing segment completion by manual end condition...
+✓ Manual completion test passed
+Testing runtime reference context override behavior...
+✓ Runtime reference context override test passed
+
+✅ All SegmentCompletion tests passed successfully!
+<end of output>
+Test time =   0.00 sec
+----------------------------------------------------------
+Test Passed.
+"test_segment_completion" end time: Apr 20 14:07 CST
+"test_segment_completion" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Apr 20 14:07 CST
