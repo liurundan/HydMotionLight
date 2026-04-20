@@ -2,6 +2,18 @@
 #include "state_reporter.h"
 #include "pressure_controller.h"
 
+static HDY_BOOL HDY_ProtectionManager_HasSelectedStartSource(const HDY_MotionControlFB* fb) {
+    if (fb == NULL) {
+        return false;
+    }
+
+    if (fb->USE_RECIPE) {
+        return fb->RECIPE_SIZE > 0U;
+    }
+
+    return fb->DIRECT_SEGMENT_VALID;
+}
+
 void HDY_ProtectionManager_ResetRuntimeActuation(HDY_MotionControlFB* fb) {
     if (fb == NULL) {
         return;
@@ -11,7 +23,9 @@ void HDY_ProtectionManager_ResetRuntimeActuation(HDY_MotionControlFB* fb) {
     fb->_lastFeedbackTimestamp = 0.0;
     fb->_feedbackTimestampValid = false;
     fb->_segmentStartTime = 0.0;
+    fb->_holdStateTime = 0.0;
     fb->_activeSegmentValid = false;
+    fb->_activeSegmentSource = HDY_SEGMENT_SOURCE_NONE;
 }
 
 void HDY_ProtectionManager_ApplyIdleState(HDY_MotionControlFB* fb,
@@ -45,7 +59,7 @@ void HDY_ProtectionManager_ApplyDisabledState(HDY_MotionControlFB* fb) {
 
     if (fb->FINISHED) {
         HDY_StateReporter_SetStatus(fb, HDY_STATUS_FINISHED);
-    } else if (fb->RECIPE_SIZE > 0U) {
+    } else if (HDY_ProtectionManager_HasSelectedStartSource(fb)) {
         HDY_StateReporter_SetStatus(fb, HDY_STATUS_READY);
     } else {
         HDY_StateReporter_SetStatus(fb, HDY_STATUS_IDLE);

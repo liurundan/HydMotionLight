@@ -1,6 +1,18 @@
 #include "state_reporter.h"
 #include <string.h>
 
+static HDY_BOOL HDY_StateReporter_HasSelectedStartSource(const HDY_MotionControlFB* fb) {
+    if (fb == NULL) {
+        return false;
+    }
+
+    if (fb->USE_RECIPE) {
+        return fb->RECIPE_SIZE > 0U;
+    }
+
+    return fb->DIRECT_SEGMENT_VALID;
+}
+
 static HDY_ControllerStatus HDY_StateReporter_ResolveIdleStatus(const HDY_MotionControlFB* fb,
                                                                 HDY_BOOL finished,
                                                                 HDY_BOOL segmentCompleted) {
@@ -12,7 +24,7 @@ static HDY_ControllerStatus HDY_StateReporter_ResolveIdleStatus(const HDY_Motion
         return HDY_STATUS_SEGMENT_COMPLETE;
     }
 
-    if (fb != NULL && fb->RECIPE_SIZE > 0U) {
+    if (HDY_StateReporter_HasSelectedStartSource(fb)) {
         return HDY_STATUS_READY;
     }
 
@@ -30,7 +42,7 @@ static HDY_FbState HDY_StateReporter_ResolveIdleFbState(const HDY_MotionControlF
         return HDY_FB_STATE_SEGMENT_COMPLETE;
     }
 
-    if (fb != NULL && fb->RECIPE_SIZE > 0U) {
+    if (HDY_StateReporter_HasSelectedStartSource(fb)) {
         return HDY_FB_STATE_READY;
     }
 
@@ -47,6 +59,67 @@ static HDY_ControllerStatus HDY_StateReporter_ResolveExecutionStatus(const HDY_D
     }
 
     return HDY_STATUS_RUNNING;
+}
+
+static HDY_BOOL HDY_StateReporter_ResolveBusy(const HDY_MotionControlFB* fb) {
+    if (fb == NULL) {
+        return false;
+    }
+
+    switch (fb->FB_STATE) {
+        case HDY_FB_STATE_STARTING:
+        case HDY_FB_STATE_RUNNING:
+        case HDY_FB_STATE_SEGMENT_COMPLETE:
+        case HDY_FB_STATE_HOLD:
+            return true;
+        case HDY_FB_STATE_DISABLED:
+        case HDY_FB_STATE_IDLE:
+        case HDY_FB_STATE_READY:
+        case HDY_FB_STATE_DONE:
+        case HDY_FB_STATE_ABORTED:
+        case HDY_FB_STATE_FAULT:
+        default:
+            return false;
+    }
+}
+
+static HDY_BOOL HDY_StateReporter_ResolveDone(const HDY_MotionControlFB* fb) {
+    if (fb == NULL) {
+        return false;
+    }
+
+    return fb->FB_STATE == HDY_FB_STATE_DONE;
+}
+
+static HDY_BOOL HDY_StateReporter_ResolveError(const HDY_MotionControlFB* fb) {
+    if (fb == NULL) {
+        return false;
+    }
+
+    return fb->FAULT || fb->FB_STATE == HDY_FB_STATE_FAULT ||
+        fb->DIAGNOSTIC.severity == HDY_DIAG_SEVERITY_FAULT;
+}
+
+static HDY_DiagnosticCode HDY_StateReporter_ResolveErrorId(const HDY_MotionControlFB* fb) {
+    if (!HDY_StateReporter_ResolveError(fb)) {
+        return HDY_DIAG_CODE_NONE;
+    }
+
+    if (fb->DIAGNOSTIC.code != HDY_DIAG_CODE_NONE) {
+        return fb->DIAGNOSTIC.code;
+    }
+
+    if (fb->LAST_FAULT_SNAPSHOT.valid &&
+        fb->LAST_FAULT_SNAPSHOT.diagnostic.code != HDY_DIAG_CODE_NONE) {
+        return fb->LAST_FAULT_SNAPSHOT.diagnostic.code;
+    }
+
+    if (fb->DIAGNOSTIC_LATCH.severity == HDY_DIAG_SEVERITY_FAULT &&
+        fb->DIAGNOSTIC_LATCH.code != HDY_DIAG_CODE_NONE) {
+        return fb->DIAGNOSTIC_LATCH.code;
+    }
+
+    return HDY_DIAG_CODE_NONE;
 }
 
 static void HDY_StateReporter_ClearPressureLoopState(HDY_MotionControlFB* fb) {
@@ -137,6 +210,7 @@ void HDY_StateReporter_SetFault(HDY_MotionControlFB* fb, HDY_BOOL fault) {
 
     fb->FAULT = fault;
     fb->STATE.faultActive = fault;
+    HDY_StateReporter_RefreshStandardOutputs(fb);
 }
 
 void HDY_StateReporter_SetStatus(HDY_MotionControlFB* fb, HDY_ControllerStatus status) {
@@ -154,6 +228,7 @@ void HDY_StateReporter_SetFbState(HDY_MotionControlFB* fb, HDY_FbState state) {
     }
 
     fb->FB_STATE = state;
+    HDY_StateReporter_RefreshStandardOutputs(fb);
 }
 
 void HDY_StateReporter_SetProtectionAction(HDY_MotionControlFB* fb, HDY_ProtectionAction action) {
@@ -170,6 +245,25 @@ void HDY_StateReporter_SetPlannedDirection(HDY_MotionControlFB* fb, HDY_MotionDi
     }
 
     fb->STATE.plannedDirection = direction;
+}
+
+void HDY_StateReporter_SetSegmentSource(HDY_MotionControlFB* fb, HDY_SegmentSource source) {
+    if (fb == NULL) {
+        return;
+    }
+
+    fb->STATE.segmentSource = source;
+}
+
+void HDY_StateReporter_RefreshStandardOutputs(HDY_MotionControlFB* fb) {
+    if (fb == NULL) {
+        return;
+    }
+
+    fb->BUSY = HDY_StateReporter_ResolveBusy(fb);
+    fb->DONE = HDY_StateReporter_ResolveDone(fb);
+    fb->ERROR = HDY_StateReporter_ResolveError(fb);
+    fb->ERROR_ID = HDY_StateReporter_ResolveErrorId(fb);
 }
 
 void HDY_StateReporter_ResetTransitionFlags(HDY_MotionControlFB* fb) {
@@ -238,6 +332,21 @@ void HDY_StateReporter_SetIdleState(HDY_MotionControlFB* fb,
     HDY_StateReporter_ResetTransitionFlags(fb);
     HDY_StateReporter_SetStatus(fb, status);
     HDY_StateReporter_SetFbState(fb, fbState);
+}
+
+void HDY_StateReporter_SetHoldState(HDY_MotionControlFB* fb) {
+    if (fb == NULL) {
+        return;
+    }
+
+    HDY_StateReporter_ApplySafeOutputs(fb);
+    HDY_StateReporter_SetFinished(fb, false);
+    HDY_StateReporter_SetFault(fb, false);
+    HDY_StateReporter_SetProtectionAction(fb, HDY_PROTECTION_ACTION_NONE);
+    fb->SEGMENT_COMPLETED = false;
+    HDY_StateReporter_ResetTransitionFlags(fb);
+    HDY_StateReporter_SetStatus(fb, HDY_STATUS_HOLD);
+    HDY_StateReporter_SetFbState(fb, HDY_FB_STATE_HOLD);
 }
 
 void HDY_StateReporter_EnterFaultState(HDY_MotionControlFB* fb) {

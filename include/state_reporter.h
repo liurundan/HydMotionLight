@@ -12,6 +12,8 @@ void HDY_StateReporter_SetStatus(HDY_MotionControlFB* fb, HDY_ControllerStatus s
 void HDY_StateReporter_SetFbState(HDY_MotionControlFB* fb, HDY_FbState state);
 void HDY_StateReporter_SetProtectionAction(HDY_MotionControlFB* fb, HDY_ProtectionAction action);
 void HDY_StateReporter_SetPlannedDirection(HDY_MotionControlFB* fb, HDY_MotionDirection direction);
+void HDY_StateReporter_SetSegmentSource(HDY_MotionControlFB* fb, HDY_SegmentSource source);
+void HDY_StateReporter_RefreshStandardOutputs(HDY_MotionControlFB* fb);
 void HDY_StateReporter_ResetTransitionFlags(HDY_MotionControlFB* fb);
 void HDY_StateReporter_ApplySafeOutputs(HDY_MotionControlFB* fb);
 void HDY_StateReporter_ClearSegmentName(HDY_MotionControlFB* fb);
@@ -19,6 +21,7 @@ void HDY_StateReporter_SetSegmentName(HDY_MotionControlFB* fb, const char* name)
 void HDY_StateReporter_SetIdleState(HDY_MotionControlFB* fb,
                                     HDY_BOOL finished,
                                     HDY_BOOL segmentCompleted);
+void HDY_StateReporter_SetHoldState(HDY_MotionControlFB* fb);
 void HDY_StateReporter_EnterFaultState(HDY_MotionControlFB* fb);
 void HDY_StateReporter_ReportExecution(HDY_MotionControlFB* fb,
                                        const HDY_MotionPlannerOutput* plannerOutput,

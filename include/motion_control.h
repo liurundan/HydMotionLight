@@ -21,6 +21,20 @@
  * - ACTIVE:
  *   True only while an already started segment is executing in the current cycle.
  *   LoadRecipe() alone never sets ACTIVE=true.
+ * - BUSY:
+ *   Standard PLCopen-style progress output. It is true while a started motion
+ *   context is still owned by the FB, including RUNNING, HOLD, and middle-stage
+ *   SEGMENT_COMPLETE waiting states. It is false in READY / IDLE / DISABLED and
+ *   after terminal DONE / ABORTED / FAULT outcomes.
+ * - DONE:
+ *   Standard normal-completion output. It is true only for FB_STATE=DONE and is
+ *   intentionally separate from SEGMENT_COMPLETED / FINISHED so Abort() and fault
+ *   paths never raise DONE.
+ * - ERROR / ERROR_ID:
+ *   Standard fault-summary outputs. ERROR is asserted only for fault-level
+ *   diagnostics / protected-stop states; warnings and info events stay available
+ *   through DIAGNOSTIC but do not raise ERROR. ERROR_ID mirrors the active fault
+ *   diagnostic code when ERROR=true, otherwise HDY_DIAG_CODE_NONE.
  * - FINISHED:
  *   True after the last segment reaches its end condition or after Abort().
  * - FAULT:
@@ -75,14 +89,34 @@
  * - Typed tolerances (position/pressure/flow/velocity) should be configured in
  *   new recipes; the legacy generic tolerance field is kept only as fallback.
  *
+ * Segment-parameter source contract:
+ * - USE_RECIPE=true:
+ *   START uses RECIPE[segmentIndex] and preserves the current multi-segment
+ *   semantics with NextSegment().
+ * - USE_RECIPE=false:
+ *   START ignores segmentIndex and locks DIRECT_SEGMENT as a single direct-run
+ *   action. Direct mode finishes after that one segment; NextSegment() is not
+ *   meaningful there.
+ * - RECIPE and DIRECT_SEGMENT may coexist in memory. The active segment always
+ *   latches the source selected at start time, so changing USE_RECIPE or editing
+ *   DIRECT_SEGMENT while running does not disturb the current execution.
+ *
  * Current command legality matrix (framework-layer contract):
- * - START: READY / SEGMENT_COMPLETE / DONE / ABORTED
+ * - START: IDLE / READY / SEGMENT_COMPLETE / DONE / ABORTED
  * - NEXT: SEGMENT_COMPLETE only
+ * - HOLD: STARTING / RUNNING
+ * - RESUME: HOLD only
  * - ABORT: STARTING / RUNNING / SEGMENT_COMPLETE / HOLD
  * - ACK: DISABLED / IDLE / READY / SEGMENT_COMPLETE / HOLD / DONE / ABORTED
  * - RESET: handled by RESET input and consumed on the next Cycle()/Scan()/Execute()
- * Unsupported future commands (STOP / HOLD / RESUME) remain reserved in the enum and
- * are intentionally rejected until their state semantics are implemented.
+ * - STOP: still reserved and intentionally rejected until its state semantics are implemented
+ *
+ * Hold / Resume semantics in the current minimal skeleton:
+ * - HOLD drives safe zero outputs, preserves the active segment context, and freezes
+ *   elapsed segment time until RESUME is consumed.
+ * - RESUME re-primes ramp / pressure-controller state from the current feedback and
+ *   continues the same segment without advancing the recipe index.
+ * - HOLD / RESUME are currently exposed through API calls, not dedicated BOOL inputs.
  */
 typedef enum {
     HDY_CMD_NONE,
@@ -114,14 +148,20 @@ typedef struct {
     HDY_BOOL RESET;
     HDY_BOOL START_SEGMENT;
     HDY_UINT START_SEGMENT_INDEX;
+    HDY_BOOL USE_RECIPE; /* true: start from RECIPE[index], false: start from DIRECT_SEGMENT */
     HDY_REAL FLOW_TO_PUMP_SPEED_GAIN;
     HDY_REAL PUMP_SPEED_LIMIT;
     HDY_UINT RECIPE_SIZE;
     HDY_AxisRef AXIS_REF;
     HDY_MotionSegment RECIPE[HDY_MAX_SEGMENTS];
+    HDY_MotionSegment DIRECT_SEGMENT;
 
     HDY_BOOL ENO;
     HDY_BOOL ACTIVE;
+    HDY_BOOL BUSY;
+    HDY_BOOL DONE;
+    HDY_BOOL ERROR;
+    HDY_DiagnosticCode ERROR_ID;
     HDY_BOOL FINISHED;
     HDY_BOOL FAULT;
     HDY_ControllerStatus STATUS;
@@ -135,6 +175,7 @@ typedef struct {
     HDY_DiagnosticSnapshot LAST_DIAGNOSTIC_SNAPSHOT;
     HDY_DiagnosticSnapshot LAST_FAULT_SNAPSHOT;
     HDY_DiagnosticHistory DIAGNOSTIC_HISTORY;
+    HDY_BOOL DIRECT_SEGMENT_VALID;
 
     /* Internal */
     HDY_REAL _segmentStartTime;
@@ -148,6 +189,8 @@ typedef struct {
     HDY_TIME _pendingCommandTimestamp;
     HDY_MotionSegment _activeSegment;
     HDY_BOOL _activeSegmentValid;
+    HDY_SegmentSource _activeSegmentSource;
+    HDY_TIME _holdStateTime;
     HDY_RampController _rampController;
     HDY_PressureControllerState _pressureController;
     HDY_DiagnosticCode _lastRecordedDiagnosticCode;
@@ -167,7 +210,18 @@ void HDY_MotionControlFB_Init(HDY_MotionControlFB* fb);
 HDY_BOOL HDY_MotionControlFB_LoadRecipe(HDY_MotionControlFB* fb, const HDY_MotionSegment* recipe, size_t recipeSize);
 
 /*
+ * Validates and stores the single direct-mode segment buffer.
+ * This does not start execution and can coexist with an already loaded recipe.
+ */
+HDY_BOOL HDY_MotionControlFB_LoadDirectSegment(HDY_MotionControlFB* fb, const HDY_MotionSegment* segment);
+
+/* Clears the stored direct-mode segment buffer without affecting recipe memory. */
+void HDY_MotionControlFB_ClearDirectSegment(HDY_MotionControlFB* fb);
+
+/*
  * Validates and queues a segment-start command.
+ * When USE_RECIPE=true, segmentIndex addresses RECIPE[segmentIndex].
+ * When USE_RECIPE=false, segmentIndex is ignored and DIRECT_SEGMENT is used.
  * The actual state transition occurs on the next Cycle()/Scan()/Execute().
  */
 HDY_BOOL HDY_MotionControlFB_StartSegment(HDY_MotionControlFB* fb, size_t segmentIndex, HDY_TIME timestamp);
@@ -177,6 +231,12 @@ HDY_BOOL HDY_MotionControlFB_StartSegment(HDY_MotionControlFB* fb, size_t segmen
  * The actual transition occurs on the next Cycle()/Scan()/Execute().
  */
 HDY_BOOL HDY_MotionControlFB_NextSegment(HDY_MotionControlFB* fb, HDY_TIME timestamp);
+
+/* Queues a hold command for the current active segment. Safe zero outputs are applied on the next Cycle()/Scan()/Execute(). */
+HDY_BOOL HDY_MotionControlFB_Hold(HDY_MotionControlFB* fb);
+
+/* Queues a resume command for the currently held segment. Execution continues on the next Cycle()/Scan()/Execute(). */
+HDY_BOOL HDY_MotionControlFB_Resume(HDY_MotionControlFB* fb);
 
 /* Queues an abort command. Safe outputs are applied on the next Cycle()/Scan()/Execute(). */
 HDY_BOOL HDY_MotionControlFB_Abort(HDY_MotionControlFB* fb);

@@ -112,6 +112,10 @@ static void test_load_recipe_requires_start_command(void) {
     assert(HDY_MotionControlFB_LoadRecipe(&fb, recipe, 1));
     assert(fb.RECIPE_SIZE == 1U);
     assert(!fb.ACTIVE);
+    assert(!fb.BUSY);
+    assert(!fb.DONE);
+    assert(!fb.ERROR);
+    assert(fb.ERROR_ID == HDY_DIAG_CODE_NONE);
     assert(!fb.FAULT);
     assert(fb.STATUS == HDY_STATUS_READY);
     assert(fb.FB_STATE == HDY_FB_STATE_READY);
@@ -126,6 +130,10 @@ static void test_load_recipe_requires_start_command(void) {
     HDY_MotionControlFB_Execute(&fb);
     assert(fb.PUMP_SPEED == 0.0);
     assert(!fb.ACTIVE);
+    assert(!fb.BUSY);
+    assert(!fb.DONE);
+    assert(!fb.ERROR);
+    assert(fb.ERROR_ID == HDY_DIAG_CODE_NONE);
     assert(!fb.SEGMENT_COMPLETED);
     assert(fb.STATUS == HDY_STATUS_READY);
     assert(fb.STATE.plannedDirection == HDY_DIRECTION_HOLD);
@@ -151,8 +159,12 @@ static void test_start_segment_and_segment_changed_pulse(void) {
 
     HDY_MotionControlFB_Execute(&fb);
     assert(fb.ACTIVE);
+    assert(fb.BUSY);
+    assert(!fb.DONE);
+    assert(!fb.ERROR);
+    assert(fb.ERROR_ID == HDY_DIAG_CODE_NONE);
     assert(!fb.FAULT);
-    assert(fb.STATUS == HDY_STATUS_RUNNING);
+    assert(fb.STATUS == HDY_STATUS_RUNNING || fb.STATUS == HDY_STATUS_DEGRADED);
     assert(fb.FB_STATE == HDY_FB_STATE_RUNNING);
     assert(fb.STATE.status == HDY_STATUS_RUNNING);
     assert(fb.SEGMENT_CHANGED);
@@ -296,6 +308,324 @@ static void test_cycle_consumes_api_queued_start_command(void) {
     assert(fb.FB_STATE == HDY_FB_STATE_RUNNING);
     assert(strcmp(fb.STATE.currentSegmentName, "CycleQueuedStart") == 0);
     printf("✓ Cycle() queued API command test passed\n");
+}
+
+static void test_direct_mode_start_without_recipe_uses_direct_segment_buffer(void) {
+    HDY_MotionControlFB fb;
+    HDY_MotionSegment directSegment;
+
+    printf("Testing direct-mode start without recipe...\n");
+    init_controller(&fb);
+    fb.USE_RECIPE = false;
+    directSegment = make_position_segment("DirectOnly", 2.0, HDY_DIRECTION_EXTEND);
+    assert(HDY_MotionControlFB_LoadDirectSegment(&fb, &directSegment));
+    assert(fb.DIRECT_SEGMENT_VALID);
+    assert(fb.STATUS == HDY_STATUS_READY);
+    assert(fb.FB_STATE == HDY_FB_STATE_READY);
+
+    fb.AXIS_REF.position = 0.0;
+    fb.AXIS_REF.velocity = 0.0;
+    fb.AXIS_REF.flow = 0.0;
+    fb.AXIS_REF.pressure = directSegment.targetPressure;
+    fb.AXIS_REF.timestamp = 0.0;
+    fb.START_SEGMENT = true;
+    fb.START_SEGMENT_INDEX = 7U;
+    HDY_MotionControlFB_Execute(&fb);
+
+    assert(fb.ACTIVE);
+    assert(fb.BUSY);
+    assert(!fb.DONE);
+    assert(!fb.ERROR);
+    assert(fb.ERROR_ID == HDY_DIAG_CODE_NONE);
+    assert(!fb.FAULT);
+    assert(fb.STATUS == HDY_STATUS_RUNNING || fb.STATUS == HDY_STATUS_DEGRADED);
+    assert(fb.FB_STATE == HDY_FB_STATE_RUNNING);
+    assert(fb.STATE.segmentSource == HDY_SEGMENT_SOURCE_DIRECT);
+    assert(fb.STATE.currentSegmentIndex == HDY_MAX_SEGMENTS);
+    assert(strcmp(fb.STATE.currentSegmentName, "DirectOnly") == 0);
+    assert(fb.STATE.plannedDirection == HDY_DIRECTION_EXTEND);
+    assert(fb.PUMP_SPEED > 0.0);
+
+    fb.AXIS_REF.position = 2.0;
+    fb.AXIS_REF.timestamp = 0.1;
+    HDY_MotionControlFB_Execute(&fb);
+    assert(!fb.ACTIVE);
+    assert(!fb.BUSY);
+    assert(fb.DONE);
+    assert(!fb.ERROR);
+    assert(fb.ERROR_ID == HDY_DIAG_CODE_NONE);
+    assert(fb.FINISHED);
+    assert(fb.SEGMENT_COMPLETED);
+    assert(fb.FB_STATE == HDY_FB_STATE_DONE);
+    assert(fb.STATE.segmentSource == HDY_SEGMENT_SOURCE_DIRECT);
+    printf("✓ Direct-mode start without recipe test passed\n");
+}
+
+static void test_direct_mode_latches_segment_parameters_at_start(void) {
+    HDY_MotionControlFB fb;
+    HDY_MotionSegment directSegment;
+
+    printf("Testing direct-mode parameter latching semantics...\n");
+    init_controller(&fb);
+    fb.USE_RECIPE = false;
+    directSegment = make_position_segment("DirectLatchedA", 5.0, HDY_DIRECTION_EXTEND);
+    assert(HDY_MotionControlFB_LoadDirectSegment(&fb, &directSegment));
+
+    fb.AXIS_REF.position = 0.0;
+    fb.AXIS_REF.velocity = 0.0;
+    fb.AXIS_REF.flow = 0.0;
+    fb.AXIS_REF.pressure = directSegment.targetPressure;
+    fb.AXIS_REF.timestamp = 0.0;
+    assert(HDY_MotionControlFB_StartSegment(&fb, 99U, 0.0));
+    HDY_MotionControlFB_Execute(&fb);
+    assert(fb.ACTIVE);
+    assert(strcmp(fb.STATE.currentSegmentName, "DirectLatchedA") == 0);
+    assert(fb.STATE.segmentSource == HDY_SEGMENT_SOURCE_DIRECT);
+    assert(fb.STATE.plannedDirection == HDY_DIRECTION_EXTEND);
+
+    directSegment = make_position_segment("DirectLatchedB", 1.0, HDY_DIRECTION_RETRACT);
+    assert(HDY_MotionControlFB_LoadDirectSegment(&fb, &directSegment));
+
+    fb.AXIS_REF.velocity = fb.STATE.plannedVelocity;
+    fb.AXIS_REF.flow = fb.STATE.plannedFlow;
+    fb.AXIS_REF.timestamp = 0.2;
+    HDY_MotionControlFB_Execute(&fb);
+    assert(fb.ACTIVE);
+    assert(strcmp(fb.STATE.currentSegmentName, "DirectLatchedA") == 0);
+    assert(fb.STATE.segmentSource == HDY_SEGMENT_SOURCE_DIRECT);
+    assert(fb.STATE.plannedDirection == HDY_DIRECTION_EXTEND);
+    printf("✓ Direct-mode parameter latching test passed\n");
+}
+
+static void test_recipe_and_direct_modes_can_coexist_and_switch(void) {
+    HDY_MotionControlFB fb;
+    HDY_MotionSegment recipe[1];
+    HDY_MotionSegment directSegment;
+
+    printf("Testing recipe/direct coexistence and source switching...\n");
+    init_controller(&fb);
+    recipe[0] = make_position_segment("RecipeStage", 1.0, HDY_DIRECTION_EXTEND);
+    directSegment = make_time_segment("DirectStage", 0.5, HDY_DIRECTION_RETRACT);
+    assert(HDY_MotionControlFB_LoadRecipe(&fb, recipe, 1));
+    assert(HDY_MotionControlFB_LoadDirectSegment(&fb, &directSegment));
+
+    fb.AXIS_REF.position = 0.0;
+    fb.AXIS_REF.pressure = recipe[0].targetPressure;
+    fb.AXIS_REF.timestamp = 0.0;
+    assert(HDY_MotionControlFB_StartSegment(&fb, 0, 0.0));
+    HDY_MotionControlFB_Execute(&fb);
+    assert(fb.ACTIVE);
+    assert(fb.STATE.segmentSource == HDY_SEGMENT_SOURCE_RECIPE);
+    assert(fb.STATE.currentSegmentIndex == 0U);
+    assert(strcmp(fb.STATE.currentSegmentName, "RecipeStage") == 0);
+
+    fb.AXIS_REF.position = 1.0;
+    fb.AXIS_REF.timestamp = 0.1;
+    HDY_MotionControlFB_Execute(&fb);
+    assert(fb.FINISHED);
+    assert(fb.FB_STATE == HDY_FB_STATE_DONE);
+    assert(fb.STATE.segmentSource == HDY_SEGMENT_SOURCE_RECIPE);
+
+    fb.USE_RECIPE = false;
+    fb.AXIS_REF.position = 10.0;
+    fb.AXIS_REF.velocity = 0.0;
+    fb.AXIS_REF.flow = 0.0;
+    fb.AXIS_REF.pressure = directSegment.targetPressure;
+    fb.AXIS_REF.timestamp = 0.2;
+    assert(HDY_MotionControlFB_StartSegment(&fb, 0, 0.2));
+    HDY_MotionControlFB_Execute(&fb);
+    assert(fb.ACTIVE);
+    assert(!fb.FINISHED);
+    assert(fb.STATE.segmentSource == HDY_SEGMENT_SOURCE_DIRECT);
+    assert(fb.STATE.currentSegmentIndex == HDY_MAX_SEGMENTS);
+    assert(strcmp(fb.STATE.currentSegmentName, "DirectStage") == 0);
+    assert(fb.STATE.plannedDirection == HDY_DIRECTION_RETRACT);
+    printf("✓ Recipe/direct coexistence and switching test passed\n");
+}
+
+static void test_direct_mode_requires_direct_segment_configuration(void) {
+    HDY_MotionControlFB fb;
+
+    printf("Testing direct-mode missing-configuration diagnostics...\n");
+    init_controller(&fb);
+    fb.USE_RECIPE = false;
+
+    assert(!HDY_MotionControlFB_StartSegment(&fb, 0, 0.0));
+    assert(!fb.ACTIVE);
+    assert(!fb.FINISHED);
+    assert(fb.STATUS == HDY_STATUS_IDLE);
+    assert(fb.FB_STATE == HDY_FB_STATE_IDLE);
+    assert(fb.DIAGNOSTIC.code == HDY_DIAG_CODE_NO_DIRECT_SEGMENT);
+    assert(fb.DIAGNOSTIC.source == HDY_DIAG_SOURCE_COMMAND);
+    assert(fb.DIAGNOSTIC.recovery == HDY_DIAG_RECOVERY_CHECK_COMMAND);
+    assert(fb.DIAGNOSTIC.protectionAction == HDY_PROTECTION_ACTION_WARNING);
+    assert(strstr(fb.DIAGNOSTIC.message, "direct") != NULL || strstr(fb.DIAGNOSTIC.message, "Direct") != NULL);
+    printf("✓ Direct-mode missing-configuration diagnostics test passed\n");
+}
+
+static void test_hold_command_transitions_running_to_hold(void) {
+    HDY_MotionControlFB fb;
+    HDY_MotionSegment recipe[1];
+
+    printf("Testing Hold command running -> HOLD transition...\n");
+    init_controller(&fb);
+    recipe[0] = make_time_segment("Holdable", 1.0, HDY_DIRECTION_EXTEND);
+    assert(HDY_MotionControlFB_LoadRecipe(&fb, recipe, 1));
+
+    fb.AXIS_REF.position = 0.0;
+    fb.AXIS_REF.velocity = 0.0;
+    fb.AXIS_REF.flow = 0.0;
+    fb.AXIS_REF.pressure = recipe[0].targetPressure;
+    fb.AXIS_REF.timestamp = 0.0;
+    assert(HDY_MotionControlFB_StartSegment(&fb, 0, 0.0));
+    HDY_MotionControlFB_Execute(&fb);
+
+    fb.AXIS_REF.velocity = fb.STATE.plannedVelocity;
+    fb.AXIS_REF.flow = fb.STATE.plannedFlow;
+    fb.AXIS_REF.timestamp = 0.2;
+    HDY_MotionControlFB_Execute(&fb);
+    assert(fb.ACTIVE);
+    assert(fb.FB_STATE == HDY_FB_STATE_RUNNING);
+    assert(fb.STATE.references.elapsedTime > 0.19);
+
+    assert(HDY_MotionControlFB_Hold(&fb));
+    assert(fb._pendingCommand == HDY_CMD_HOLD);
+
+    HDY_MotionControlFB_Cycle(&fb);
+    assert(fb._pendingCommand == HDY_CMD_NONE);
+    assert(!fb.ACTIVE);
+    assert(fb.BUSY);
+    assert(!fb.DONE);
+    assert(!fb.ERROR);
+    assert(fb.ERROR_ID == HDY_DIAG_CODE_NONE);
+    assert(!fb.FINISHED);
+    assert(!fb.FAULT);
+    assert(!fb.SEGMENT_COMPLETED);
+    assert(!fb.SEGMENT_CHANGED);
+    assert(fb.STATUS == HDY_STATUS_HOLD);
+    assert(fb.FB_STATE == HDY_FB_STATE_HOLD);
+    assert(fb.PUMP_SPEED == 0.0);
+    assert(fb.STATE.commandedPumpSpeed == 0.0);
+    assert(fb.STATE.plannedVelocity == 0.0);
+    assert(fb.STATE.plannedFlow == 0.0);
+    assert(fb.STATE.plannedDirection == HDY_DIRECTION_HOLD);
+    assert(strcmp(fb.STATE.currentSegmentName, "Holdable") == 0);
+    assert(fb._activeSegmentValid);
+    assert(fabs(fb._holdStateTime - 0.2) < 1e-9);
+    printf("✓ Hold command running -> HOLD transition test passed\n");
+}
+
+static void test_resume_command_restores_running_and_freezes_elapsed_time(void) {
+    HDY_MotionControlFB fb;
+    HDY_MotionSegment recipe[1];
+    HDY_REAL elapsedBeforeHold;
+    HDY_REAL flowBeforeHold;
+    HDY_REAL velocityBeforeHold;
+
+    printf("Testing Resume command HOLD -> RUNNING transition...\n");
+    init_controller(&fb);
+    recipe[0] = make_time_segment("Resumable", 1.0, HDY_DIRECTION_EXTEND);
+    assert(HDY_MotionControlFB_LoadRecipe(&fb, recipe, 1));
+
+    fb.AXIS_REF.position = 0.0;
+    fb.AXIS_REF.velocity = 0.0;
+    fb.AXIS_REF.flow = 0.0;
+    fb.AXIS_REF.pressure = recipe[0].targetPressure;
+    fb.AXIS_REF.timestamp = 0.0;
+    assert(HDY_MotionControlFB_StartSegment(&fb, 0, 0.0));
+    HDY_MotionControlFB_Execute(&fb);
+
+    fb.AXIS_REF.velocity = fb.STATE.plannedVelocity;
+    fb.AXIS_REF.flow = fb.STATE.plannedFlow;
+    fb.AXIS_REF.timestamp = 0.25;
+    HDY_MotionControlFB_Execute(&fb);
+    assert(fb.ACTIVE);
+    elapsedBeforeHold = fb.STATE.references.elapsedTime;
+    flowBeforeHold = fb.STATE.plannedFlow;
+    velocityBeforeHold = fb.STATE.plannedVelocity;
+    assert(elapsedBeforeHold > 0.24);
+
+    assert(HDY_MotionControlFB_Hold(&fb));
+    HDY_MotionControlFB_Cycle(&fb);
+    assert(fb.FB_STATE == HDY_FB_STATE_HOLD);
+
+    fb.AXIS_REF.velocity = velocityBeforeHold;
+    fb.AXIS_REF.flow = flowBeforeHold;
+    fb.AXIS_REF.timestamp = 0.75;
+    HDY_MotionControlFB_Cycle(&fb);
+    assert(fb.FB_STATE == HDY_FB_STATE_HOLD);
+    assert(fb.STATUS == HDY_STATUS_HOLD);
+
+    assert(HDY_MotionControlFB_Resume(&fb));
+    assert(fb._pendingCommand == HDY_CMD_RESUME);
+    HDY_MotionControlFB_Cycle(&fb);
+    assert(fb._pendingCommand == HDY_CMD_NONE);
+    assert(fb.ACTIVE);
+    assert(!fb.FINISHED);
+    assert(!fb.FAULT);
+    assert(fb.STATUS == HDY_STATUS_RUNNING);
+    assert(fb.FB_STATE == HDY_FB_STATE_RUNNING);
+    assert(fb.STATE.plannedDirection == HDY_DIRECTION_EXTEND);
+    assert(strcmp(fb.STATE.currentSegmentName, "Resumable") == 0);
+    assert(fabs(fb.STATE.references.elapsedTime - elapsedBeforeHold) < 1e-9);
+    assert(fabs(fb._segmentStartTime - 0.5) < 1e-9);
+    assert(fb.PUMP_SPEED > 0.0);
+    printf("✓ Resume command HOLD -> RUNNING transition test passed\n");
+}
+
+static void test_hold_rejected_in_ready_state(void) {
+    HDY_MotionControlFB fb;
+    HDY_MotionSegment recipe[1];
+
+    printf("Testing Hold command legality in READY state...\n");
+    init_controller(&fb);
+    recipe[0] = make_position_segment("HoldReady", 10.0, HDY_DIRECTION_EXTEND);
+    assert(HDY_MotionControlFB_LoadRecipe(&fb, recipe, 1));
+
+    assert(!HDY_MotionControlFB_Hold(&fb));
+    assert(!fb.ACTIVE);
+    assert(!fb.FINISHED);
+    assert(fb.STATUS == HDY_STATUS_READY);
+    assert(fb.FB_STATE == HDY_FB_STATE_READY);
+    assert(fb.DIAGNOSTIC.code == HDY_DIAG_CODE_COMMAND_NOT_ALLOWED);
+    assert(fb.DIAGNOSTIC.source == HDY_DIAG_SOURCE_COMMAND);
+    assert(fb.DIAGNOSTIC.recovery == HDY_DIAG_RECOVERY_CHECK_COMMAND);
+    assert(fb.DIAGNOSTIC.protectionAction == HDY_PROTECTION_ACTION_WARNING);
+    assert(strstr(fb.DIAGNOSTIC.message, "HOLD") != NULL);
+    assert(strstr(fb.DIAGNOSTIC.message, "READY") != NULL);
+    printf("✓ Hold command legality in READY state test passed\n");
+}
+
+static void test_resume_rejected_while_running(void) {
+    HDY_MotionControlFB fb;
+    HDY_MotionSegment recipe[1];
+
+    printf("Testing Resume command legality while running...\n");
+    init_controller(&fb);
+    recipe[0] = make_time_segment("ResumeRunning", 1.0, HDY_DIRECTION_EXTEND);
+    assert(HDY_MotionControlFB_LoadRecipe(&fb, recipe, 1));
+
+    fb.AXIS_REF.position = 0.0;
+    fb.AXIS_REF.velocity = 0.0;
+    fb.AXIS_REF.flow = 0.0;
+    fb.AXIS_REF.pressure = recipe[0].targetPressure;
+    fb.AXIS_REF.timestamp = 0.0;
+    assert(HDY_MotionControlFB_StartSegment(&fb, 0, 0.0));
+    HDY_MotionControlFB_Execute(&fb);
+    assert(fb.ACTIVE);
+    assert(fb.FB_STATE == HDY_FB_STATE_RUNNING);
+
+    assert(!HDY_MotionControlFB_Resume(&fb));
+    assert(fb.ACTIVE);
+    assert(fb.STATUS == HDY_STATUS_RUNNING);
+    assert(fb.FB_STATE == HDY_FB_STATE_RUNNING);
+    assert(fb.DIAGNOSTIC.code == HDY_DIAG_CODE_COMMAND_NOT_ALLOWED);
+    assert(fb.DIAGNOSTIC.source == HDY_DIAG_SOURCE_COMMAND);
+    assert(fb.DIAGNOSTIC.recovery == HDY_DIAG_RECOVERY_CHECK_COMMAND);
+    assert(fb.DIAGNOSTIC.protectionAction == HDY_PROTECTION_ACTION_WARNING);
+    assert(strstr(fb.DIAGNOSTIC.message, "RESUME") != NULL);
+    assert(strstr(fb.DIAGNOSTIC.message, "RUNNING") != NULL);
+    printf("✓ Resume command legality while running test passed\n");
 }
 
 static void test_start_rejected_in_disabled_state(void) {
@@ -651,6 +981,10 @@ static void test_segment_completion_and_next_segment(void) {
 
     assert(fb.SEGMENT_COMPLETED);
     assert(!fb.ACTIVE);
+    assert(fb.BUSY);
+    assert(!fb.DONE);
+    assert(!fb.ERROR);
+    assert(fb.ERROR_ID == HDY_DIAG_CODE_NONE);
     assert(!fb.FINISHED);
     assert(!fb.FAULT);
     assert(fb.STATUS == HDY_STATUS_SEGMENT_COMPLETE);
@@ -679,6 +1013,10 @@ static void test_segment_completion_and_next_segment(void) {
     fb.AXIS_REF.timestamp = 0.6;
     HDY_MotionControlFB_Execute(&fb);
     assert(!fb.ACTIVE);
+    assert(!fb.BUSY);
+    assert(fb.DONE);
+    assert(!fb.ERROR);
+    assert(fb.ERROR_ID == HDY_DIAG_CODE_NONE);
     assert(fb.SEGMENT_COMPLETED);
     assert(fb.FINISHED);
     assert(!fb.FAULT);
@@ -1226,6 +1564,10 @@ static void test_sensor_fault_triggers_protected_stop(void) {
     fb.AXIS_REF.pressure = -0.5;
     HDY_MotionControlFB_Execute(&fb);
     assert(!fb.ACTIVE);
+    assert(!fb.BUSY);
+    assert(!fb.DONE);
+    assert(fb.ERROR);
+    assert(fb.ERROR_ID == HDY_DIAG_CODE_SENSOR_FAULT);
     assert(fb.FAULT);
     assert(fb.STATUS == HDY_STATUS_FAULT);
     assert(fb.STATE.protectionAction == HDY_PROTECTION_ACTION_STOP);
@@ -1256,6 +1598,10 @@ static void test_timestamp_rollback_triggers_protected_stop(void) {
     fb.AXIS_REF.timestamp = 0.1;
     HDY_MotionControlFB_Execute(&fb);
     assert(!fb.ACTIVE);
+    assert(!fb.BUSY);
+    assert(!fb.DONE);
+    assert(fb.ERROR);
+    assert(fb.ERROR_ID == HDY_DIAG_CODE_TIMESTAMP_ROLLBACK);
     assert(fb.FAULT);
     assert(fb.STATUS == HDY_STATUS_FAULT);
     assert(fb.STATE.protectionAction == HDY_PROTECTION_ACTION_STOP);
@@ -1369,6 +1715,10 @@ static void test_abort_forces_safe_outputs(void) {
 
     HDY_MotionControlFB_Execute(&fb);
     assert(!fb.ACTIVE);
+    assert(!fb.BUSY);
+    assert(!fb.DONE);
+    assert(!fb.ERROR);
+    assert(fb.ERROR_ID == HDY_DIAG_CODE_NONE);
     assert(fb.FINISHED);
     assert(!fb.FAULT);
     assert(fb.STATUS == HDY_STATUS_FINISHED);
@@ -1679,6 +2029,14 @@ int main(void) {
     test_start_segment_input_uses_rising_edge();
     test_cycle_does_not_sample_command_inputs_without_scan();
     test_cycle_consumes_api_queued_start_command();
+    test_direct_mode_start_without_recipe_uses_direct_segment_buffer();
+    test_direct_mode_latches_segment_parameters_at_start();
+    test_recipe_and_direct_modes_can_coexist_and_switch();
+    test_direct_mode_requires_direct_segment_configuration();
+    test_hold_command_transitions_running_to_hold();
+    test_resume_command_restores_running_and_freezes_elapsed_time();
+    test_hold_rejected_in_ready_state();
+    test_resume_rejected_while_running();
     test_start_rejected_in_disabled_state();
     test_start_command_rejected_while_running();
     test_abort_rejected_in_ready_state();

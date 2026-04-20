@@ -57,9 +57,16 @@ typedef enum {
 } HDY_MotionDirection;
 
 typedef enum {
+    HDY_SEGMENT_SOURCE_NONE,
+    HDY_SEGMENT_SOURCE_RECIPE,
+    HDY_SEGMENT_SOURCE_DIRECT
+} HDY_SegmentSource;
+
+typedef enum {
     HDY_STATUS_IDLE,
     HDY_STATUS_READY,
     HDY_STATUS_RUNNING,
+    HDY_STATUS_HOLD,
     HDY_STATUS_DEGRADED,
     HDY_STATUS_SEGMENT_COMPLETE,
     HDY_STATUS_FINISHED,
@@ -109,6 +116,7 @@ typedef enum {
     HDY_DIAG_CODE_START_CONTEXT_INVALID,
     HDY_DIAG_CODE_COMMAND_NOT_ALLOWED,
     HDY_DIAG_CODE_NO_RECIPE,
+    HDY_DIAG_CODE_NO_DIRECT_SEGMENT,
     HDY_DIAG_CODE_SEGMENT_INDEX_OUT_OF_RANGE,
     HDY_DIAG_CODE_SEGMENT_NOT_COMPLETED,
     HDY_DIAG_CODE_RECIPE_ALREADY_FINISHED,
@@ -305,6 +313,7 @@ typedef struct {
     HDY_PressureLoopState pressureLoop;    /* Embedded-facing pressure-loop telemetry / adaptive summary. */
     HDY_ProtectionAction protectionAction;
     HDY_MotionDirection plannedDirection;
+    HDY_SegmentSource segmentSource;       /* Latched source of the active/last executed segment. */
     HDY_ControllerStatus status;
     char currentSegmentName[HDY_NAME_MAX];
 } HDY_MotionState;
