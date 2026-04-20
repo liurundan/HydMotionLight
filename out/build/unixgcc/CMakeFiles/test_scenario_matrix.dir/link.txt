@@ -1,1 +1,0 @@
-/usr/bin/gcc -g -O0 -Wall -g CMakeFiles/test_scenario_matrix.dir/tests/test_scenario_matrix.c.o -o test_scenario_matrix  libHydroMotionLib.a -lm 

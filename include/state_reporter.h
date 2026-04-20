@@ -31,4 +31,36 @@ void HDY_StateReporter_ReportExecution(HDY_MotionControlFB* fb,
                                        const HDY_PressureControllerOutput* pressureOutput,
                                        const HDY_DiagnosticInfo* diagnostic);
 
+/* High-level reporting helpers that compose diagnostics, update standard
+ * outputs, and capture snapshots/history. `ReportFault` additionally
+ * triggers a protected fault stop via the ProtectionManager.
+ */
+void HDY_StateReporter_ReportDiagnostic(HDY_MotionControlFB* fb,
+                                        HDY_DiagnosticCode code,
+                                        HDY_DiagnosticSeverity severity,
+                                        const char* message,
+                                        HDY_TIME eventTimestamp,
+                                        const HDY_MotionSegment* segment,
+                                        const HDY_ExecutionReference* references);
+
+void HDY_StateReporter_ReportFault(HDY_MotionControlFB* fb,
+                                   HDY_DiagnosticCode code,
+                                   const char* message,
+                                   HDY_TIME eventTimestamp,
+                                   const HDY_MotionSegment* segment,
+                                   const HDY_ExecutionReference* references);
+
+/* Diagnostic helper APIs moved from motion_control to centralize recording
+ * and retention logic in the StateReporter module. These API calls operate on
+ * the FB instance and manage DIAGNOSTIC, DIAGNOSTIC_LATCH and history.
+ */
+void HDY_StateReporter_ClearCurrentDiagnostic(HDY_MotionControlFB* fb);
+void HDY_StateReporter_ClearDiagnosticRetentionOnly(HDY_MotionControlFB* fb);
+void HDY_StateReporter_ResetDiagnosticRetention(HDY_MotionControlFB* fb);
+void HDY_StateReporter_ClearLiveDiagnosticInNonFaultHold(HDY_MotionControlFB* fb);
+void HDY_StateReporter_RecordDiagnosticEvent(HDY_MotionControlFB* fb,
+                                              HDY_TIME eventTimestamp,
+                                              const HDY_MotionSegment* segment,
+                                              const HDY_ExecutionReference* references);
+
 #endif /* HDY_STATE_REPORTER_H */

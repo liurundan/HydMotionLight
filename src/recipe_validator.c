@@ -1,6 +1,7 @@
 #include "recipe_validator.h"
 #include "rbf_pid.h"
 #include "segment_limits.h"
+#include "pump_converter.h"
 #include <stdarg.h>
 #include <stdio.h>
 
@@ -529,29 +530,14 @@ HDY_BOOL HDY_RecipeValidator_ValidateRuntimeConfig(HDY_REAL flowToPumpSpeedGain,
                                                   HDY_DiagnosticCode* code,
                                                   char* message,
                                                   size_t messageSize) {
-    if (flowToPumpSpeedGain <= 0.0) {
-        return HDY_RecipeValidator_Fail(code,
-                                        HDY_DIAG_CODE_RUNTIME_CONFIG_INVALID,
-                                        message,
-                                        messageSize,
-                                        "FLOW_TO_PUMP_SPEED_GAIN must be > 0");
-    }
-
-    if (pumpSpeedLimit < 0.0) {
-        return HDY_RecipeValidator_Fail(code,
-                                        HDY_DIAG_CODE_RUNTIME_CONFIG_INVALID,
-                                        message,
-                                        messageSize,
-                                        "PUMP_SPEED_LIMIT must be >= 0");
-    }
-
-    if (code != NULL) {
-        *code = HDY_DIAG_CODE_NONE;
-    }
-    if (message != NULL && messageSize > 0U) {
-        message[0] = '\0';
-    }
-    return true;
+    /* Delegate pump-related runtime config checks to the PumpConverter to
+     * centralize validation logic and avoid duplication.
+     */
+    return HDY_PumpConverter_ValidateConfig(flowToPumpSpeedGain,
+                                            pumpSpeedLimit,
+                                            code,
+                                            message,
+                                            messageSize);
 }
 
 HDY_BOOL HDY_RecipeValidator_ValidateStartContext(const HDY_MotionSegment* segment,

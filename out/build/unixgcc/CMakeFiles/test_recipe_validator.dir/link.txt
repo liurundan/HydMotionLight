@@ -1,1 +1,0 @@
-/usr/bin/gcc -g -O0 -Wall -g CMakeFiles/test_recipe_validator.dir/tests/test_recipe_validator.c.o -o test_recipe_validator  libHydroMotionLib.a -lm 

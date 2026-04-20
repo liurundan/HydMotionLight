@@ -1,1 +1,0 @@
-/usr/bin/gcc -g -O0 -Wall -g CMakeFiles/ramp_controller_test.dir/tests/ramp_controller_test.c.o -o ramp_controller_test  libHydroMotionLib.a -lm 

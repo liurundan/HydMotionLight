@@ -1,1 +1,0 @@
-/usr/bin/gcc -g -O0 -Wall -g CMakeFiles/rbf_pid_test.dir/tests/rbf_pid_test.c.o -o rbf_pid_test  libHydroMotionLib.a -lm 

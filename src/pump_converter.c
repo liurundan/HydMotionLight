@@ -1,4 +1,10 @@
 #include "pump_converter.h"
+#include <math.h>
+#include <stdio.h>
+
+static HDY_BOOL HDY_PumpConverter_IsFiniteReal(HDY_REAL value) {
+    return isfinite(value) ? true : false;
+}
 
 static HDY_REAL HDY_ClampReal(HDY_REAL value, HDY_REAL minimum, HDY_REAL maximum) {
     if (value < minimum) {
@@ -28,7 +34,11 @@ void HDY_PumpConverter_Execute(const HDY_PumpConverterInput* input,
 
     (void)input->direction;
 
-    if (input->flowToPumpSpeedGain <= 0.0 || input->pumpSpeedLimit < 0.0) {
+    if (!HDY_PumpConverter_IsFiniteReal(input->requestedFlow) ||
+        !HDY_PumpConverter_IsFiniteReal(input->flowToPumpSpeedGain) ||
+        !HDY_PumpConverter_IsFiniteReal(input->pumpSpeedLimit) ||
+        input->flowToPumpSpeedGain <= 0.0 ||
+        input->pumpSpeedLimit < 0.0) {
         return;
     }
 
@@ -40,4 +50,44 @@ void HDY_PumpConverter_Execute(const HDY_PumpConverterInput* input,
     maxFlowFromPumpLimit = input->pumpSpeedLimit / input->flowToPumpSpeedGain;
     output->commandFlow = HDY_ClampReal(requestedFlow, 0.0, maxFlowFromPumpLimit);
     output->pumpSpeed = output->commandFlow * input->flowToPumpSpeedGain;
+}
+
+HDY_BOOL HDY_PumpConverter_ValidateConfig(HDY_REAL flowToPumpSpeedGain,
+                                          HDY_REAL pumpSpeedLimit,
+                                          HDY_DiagnosticCode* code,
+                                          char* message,
+                                          size_t messageSize) {
+    if (!HDY_PumpConverter_IsFiniteReal(flowToPumpSpeedGain) || flowToPumpSpeedGain <= 0.0) {
+        if (code != NULL) {
+            *code = HDY_DIAG_CODE_RUNTIME_CONFIG_INVALID;
+        }
+        if (message != NULL && messageSize > 0U) {
+            (void)snprintf(message,
+                           messageSize,
+                           "FLOW_TO_PUMP_SPEED_GAIN must be finite and > 0");
+            message[messageSize - 1] = '\0';
+        }
+        return false;
+    }
+
+    if (!HDY_PumpConverter_IsFiniteReal(pumpSpeedLimit) || pumpSpeedLimit < 0.0) {
+        if (code != NULL) {
+            *code = HDY_DIAG_CODE_RUNTIME_CONFIG_INVALID;
+        }
+        if (message != NULL && messageSize > 0U) {
+            (void)snprintf(message,
+                           messageSize,
+                           "PUMP_SPEED_LIMIT must be finite and >= 0");
+            message[messageSize - 1] = '\0';
+        }
+        return false;
+    }
+
+    if (code != NULL) {
+        *code = HDY_DIAG_CODE_NONE;
+    }
+    if (message != NULL && messageSize > 0U) {
+        message[0] = '\0';
+    }
+    return true;
 }

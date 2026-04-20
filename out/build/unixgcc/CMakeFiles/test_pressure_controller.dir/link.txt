@@ -1,1 +1,0 @@
-/usr/bin/gcc -g -O0 -Wall -g CMakeFiles/test_pressure_controller.dir/tests/test_pressure_controller.c.o -o test_pressure_controller  libHydroMotionLib.a -lm 
