@@ -707,6 +707,30 @@ static void test_hold_rejected_in_ready_state(void) {
     printf("✓ Hold command legality in READY state test passed\n");
 }
 
+static void test_command_warning_syncs_and_clears_state_protection_action(void) {
+    HDY_MotionControlFB fb;
+    HDY_MotionSegment recipe[1];
+
+    printf("Testing command-warning protection-action sync and clear semantics...\n");
+    init_controller(&fb);
+    recipe[0] = make_position_segment("CommandWarn", 10.0, HDY_DIRECTION_EXTEND);
+    assert(HDY_MotionControlFB_LoadRecipe(&fb, recipe, 1));
+
+    assert(!HDY_MotionControlFB_Hold(&fb));
+    assert(fb.DIAGNOSTIC.code == HDY_DIAG_CODE_COMMAND_NOT_ALLOWED);
+    assert(fb.DIAGNOSTIC.protectionAction == HDY_PROTECTION_ACTION_WARNING);
+    assert(fb.STATE.protectionAction == HDY_PROTECTION_ACTION_WARNING);
+    assert(fb.STATUS == HDY_STATUS_READY);
+    assert(fb.STATE.status == HDY_STATUS_READY);
+
+    assert(HDY_MotionControlFB_LoadRecipe(&fb, recipe, 1));
+    assert(fb.DIAGNOSTIC.code == HDY_DIAG_CODE_NONE);
+    assert(fb.STATE.protectionAction == HDY_PROTECTION_ACTION_NONE);
+    assert(fb.STATUS == HDY_STATUS_READY);
+    assert(fb.STATE.status == HDY_STATUS_READY);
+    printf("✓ Command-warning protection-action sync and clear test passed\n");
+}
+
 static void test_resume_rejected_while_running(void) {
     HDY_MotionControlFB fb;
     HDY_MotionSegment recipe[1];
@@ -2148,6 +2172,7 @@ int main(void) {
     test_hold_command_transitions_running_to_hold();
     test_resume_command_restores_running_and_freezes_elapsed_time();
     test_hold_rejected_in_ready_state();
+    test_command_warning_syncs_and_clears_state_protection_action();
     test_resume_rejected_while_running();
     test_start_rejected_in_disabled_state();
     test_start_command_rejected_while_running();

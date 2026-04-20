@@ -406,6 +406,7 @@ void HDY_StateReporter_ReportDiagnostic(HDY_MotionControlFB* fb,
     }
 
     HDY_Diagnostics_SetEvent(&fb->DIAGNOSTIC, code, severity, message);
+    HDY_StateReporter_SetProtectionAction(fb, fb->DIAGNOSTIC.protectionAction);
     HDY_StateReporter_RefreshStandardOutputs(fb);
     HDY_StateReporter_RecordDiagnosticEvent(fb, eventTimestamp, segment, references);
 }
@@ -434,6 +435,7 @@ void HDY_StateReporter_ClearCurrentDiagnostic(HDY_MotionControlFB* fb) {
     fb->_lastRecordedDiagnosticSeverity = HDY_DIAG_SEVERITY_NONE;
     fb->_lastRecordedDiagnosticFlags = HDY_DIAG_FLAG_NONE;
     fb->_lastRecordedProtectionAction = HDY_PROTECTION_ACTION_NONE;
+    HDY_StateReporter_SetProtectionAction(fb, HDY_PROTECTION_ACTION_NONE);
     HDY_StateReporter_RefreshStandardOutputs(fb);
 }
 

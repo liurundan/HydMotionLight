@@ -31,9 +31,10 @@ void HDY_StateReporter_ReportExecution(HDY_MotionControlFB* fb,
                                        const HDY_PressureControllerOutput* pressureOutput,
                                        const HDY_DiagnosticInfo* diagnostic);
 
-/* High-level reporting helpers that compose diagnostics, update standard
- * outputs, and capture snapshots/history. `ReportFault` additionally
- * triggers a protected fault stop via the ProtectionManager.
+/* High-level reporting helpers that compose diagnostics, synchronize live
+ * protection action/state outputs, and capture snapshots/history.
+ * `ReportFault` additionally triggers a protected fault stop via the
+ * ProtectionManager.
  */
 void HDY_StateReporter_ReportDiagnostic(HDY_MotionControlFB* fb,
                                         HDY_DiagnosticCode code,
