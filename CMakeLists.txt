@@ -56,6 +56,10 @@ target_link_libraries(test_sprint3_integration PRIVATE HydroMotionLib)
 add_executable(main tests/main.c)
 target_link_libraries(main PRIVATE HydroMotionLib)
 
+# Performance benchmark executable
+add_executable(benchmark_performance tests/benchmark_performance.c)
+target_link_libraries(benchmark_performance PRIVATE HydroMotionLib)
+
 enable_testing()
 add_test(NAME test_motion_planner COMMAND test_motion_planner)
 add_test(NAME test_motion_control COMMAND test_motion_control)

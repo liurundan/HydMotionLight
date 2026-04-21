@@ -4,20 +4,27 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include "hdy_config.h"
 
-/* Basic type definitions */
+/* ============================================================================
+ * 基本类型定义
+ * 从hdy_config.h继承HDY_REAL和HDY_TIME的精度配置
+ * ============================================================================ */
 typedef bool HDY_BOOL;
-typedef double HDY_REAL;
-typedef double HDY_TIME;
+/* HDY_REAL已在hdy_config.h中定义 */
+/* HDY_TIME已在hdy_config.h中定义 */
 typedef uint8_t HDY_UINT8;
 typedef uint16_t HDY_UINT16;
 typedef size_t HDY_UINT;
 
-/* Constants */
-#define HDY_MAX_SEGMENTS 16
-#define HDY_NAME_MAX 32
-#define HDY_MESSAGE_MAX 64
-#define HDY_DIAG_HISTORY_DEPTH 4
+/* ============================================================================
+ * 常量定义
+ * 从hdy_config.h继承各MAX值，支持平台裁剪
+ * ============================================================================ */
+/* HDY_MAX_SEGMENTS已在hdy_config.h中定义 */
+/* HDY_NAME_MAX已在hdy_config.h中定义 */
+/* HDY_MESSAGE_MAX已在hdy_config.h中定义 */
+/* HDY_DIAG_HISTORY_DEPTH已在hdy_config.h中定义 */
 
 /* Enums shared between modules */
 typedef enum {
@@ -179,6 +186,7 @@ typedef struct {
     HDY_REAL outputFlow;
     HDY_REAL unsaturatedOutputFlow;
     HDY_REAL samplingPeriod;
+#if HDY_ENABLE_PRESSURE_LOOP_TELEMETRY
     HDY_REAL adaptiveKp;
     HDY_REAL adaptiveKi;
     HDY_REAL adaptiveKd;
@@ -186,6 +194,7 @@ typedef struct {
     HDY_BOOL trackingApplied;
     HDY_BOOL saturated;
     HDY_BOOL adaptiveActive;
+#endif
 } HDY_PressureLoopState;
 
 /* Data structures */
@@ -256,7 +265,9 @@ typedef struct {
     HDY_DiagnosticSource source;
     HDY_DiagnosticRecovery recovery;
     HDY_ProtectionAction protectionAction;
+#if HDY_ENABLE_DIAGNOSTIC_FLAGS
     HDY_DiagnosticFlags flags;  /* Compact embedded-facing summary of active diagnostic conditions. */
+#endif
     HDY_BOOL overPressure;
     HDY_BOOL underPressure;
     HDY_BOOL flowDeviation;
@@ -268,14 +279,18 @@ typedef struct {
     HDY_REAL pressureError;
     HDY_REAL flowError;
     HDY_REAL velocityError;
+#if HDY_ENABLE_DIAGNOSTIC_MESSAGE
     char message[HDY_MESSAGE_MAX]; /* Optional debug text; upper layers should prefer code/source/action/flags. */
+#endif
 } HDY_DiagnosticInfo;
 
 typedef struct {
     HDY_REAL elapsedTime;
+#if HDY_ENABLE_EXECUTION_REFERENCE
     HDY_REAL pressureReference;
     HDY_REAL flowReference;
     HDY_REAL velocityReference;
+#endif
 } HDY_ExecutionReference;
 
 typedef struct {
@@ -288,10 +303,13 @@ typedef struct {
     HDY_BOOL fault;
     HDY_DiagnosticInfo diagnostic;
     HDY_AxisRef axisRef;
+#if HDY_ENABLE_EXECUTION_REFERENCE
     HDY_ExecutionReference references;
+#endif
     char segmentName[HDY_NAME_MAX];
 } HDY_DiagnosticSnapshot;
 
+#if HDY_ENABLE_DIAGNOSTIC_HISTORY
 typedef struct {
     HDY_DiagnosticSnapshot entries[HDY_DIAG_HISTORY_DEPTH];
     HDY_UINT8 count;
@@ -299,6 +317,16 @@ typedef struct {
     HDY_UINT16 totalRecorded;
     HDY_BOOL wrapped;
 } HDY_DiagnosticHistory;
+#else
+/* 禁用诊断历史时，使用最小化结构以节省RAM */
+typedef struct {
+    HDY_DiagnosticSnapshot entries[1];  /* 只保留一个当前快照 */
+    HDY_UINT8 count;
+    HDY_UINT8 nextWriteIndex;
+    HDY_UINT16 totalRecorded;
+    HDY_BOOL wrapped;
+} HDY_DiagnosticHistory;
+#endif
 
 typedef struct {
     HDY_UINT currentSegmentIndex;
@@ -308,9 +336,13 @@ typedef struct {
     HDY_REAL plannedVelocity;             /* mm/s, signed */
     HDY_REAL plannedFlow;                 /* L/min, nonnegative pump-side magnitude */
     HDY_REAL commandedPumpSpeed;          /* rpm, nonnegative */
+#if HDY_ENABLE_EXECUTION_REFERENCE
     HDY_ExecutionReference references;    /* Current runtime reference bundle shared by diagnostics/completion/HMI */
+#endif
     HDY_PressureControllerType pressureControllerApplied;
+#if HDY_ENABLE_PRESSURE_LOOP_TELEMETRY
     HDY_PressureLoopState pressureLoop;    /* Embedded-facing pressure-loop telemetry / adaptive summary. */
+#endif
     HDY_ProtectionAction protectionAction;
     HDY_MotionDirection plannedDirection;
     HDY_SegmentSource segmentSource;       /* Latched source of the active/last executed segment. */
