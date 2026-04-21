@@ -44,6 +44,15 @@ target_link_libraries(ramp_controller_test PRIVATE HydroMotionLib)
 add_executable(test_scenario_matrix tests/test_scenario_matrix.c)
 target_link_libraries(test_scenario_matrix PRIVATE HydroMotionLib)
 
+add_executable(test_diagnostic_monitor tests/test_diagnostic_monitor.c)
+target_link_libraries(test_diagnostic_monitor PRIVATE HydroMotionLib)
+
+add_executable(test_diagnostic_criteria tests/test_diagnostic_criteria.c)
+target_link_libraries(test_diagnostic_criteria PRIVATE HydroMotionLib)
+
+add_executable(test_sprint3_integration tests/test_sprint3_integration.c)
+target_link_libraries(test_sprint3_integration PRIVATE HydroMotionLib)
+
 add_executable(main tests/main.c)
 target_link_libraries(main PRIVATE HydroMotionLib)
 
@@ -57,3 +66,6 @@ add_test(NAME test_segment_completion COMMAND segment_completion_test)
 add_test(NAME test_rbf_pid COMMAND rbf_pid_test)
 add_test(NAME test_ramp_controller COMMAND ramp_controller_test)
 add_test(NAME test_scenario_matrix COMMAND test_scenario_matrix)
+add_test(NAME test_diagnostic_monitor COMMAND test_diagnostic_monitor)
+add_test(NAME test_diagnostic_criteria COMMAND test_diagnostic_criteria)
+add_test(NAME test_sprint3_integration COMMAND test_sprint3_integration)
