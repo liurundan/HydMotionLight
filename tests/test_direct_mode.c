@@ -366,7 +366,7 @@ int main(void) {
     
     /* Execute holding phase */
     HDY_UINT holdingStep = 0;
-    while (holdingStep < 3000 && !fb.SEGMENT_COMPLETED) {
+    while (holdingStep < 3000) {
         /* Update plant feedback with pressure response */
         /* Simulate pressure buildup towards target */
         HDY_REAL pressureError = holdingSeg.targetPressure - plant.pressure;
@@ -387,6 +387,11 @@ int main(void) {
         
         /* Execute control cycle */
         HDY_MotionControlFB_Execute(&fb);
+        
+        /* Check if segment completed AFTER executing */
+        if (fb.SEGMENT_COMPLETED) {
+            break;
+        }
         
         /* Check continuity */
         HDY_REAL currentAcceleration = 0.0;
@@ -450,7 +455,7 @@ int main(void) {
     
     /* Execute retraction phase */
     HDY_UINT retractionStep = 0;
-    while (retractionStep < 3000 && !fb.SEGMENT_COMPLETED) {
+    while (retractionStep < 3000) {
         /* Update plant feedback */
         plant.position += fb.STATE.plannedVelocity * CYCLE_PERIOD;
         plant.velocity = fb.STATE.plannedVelocity;
@@ -467,6 +472,11 @@ int main(void) {
         
         /* Execute control cycle */
         HDY_MotionControlFB_Execute(&fb);
+        
+        /* Check if segment completed AFTER executing */
+        if (fb.SEGMENT_COMPLETED) {
+            break;
+        }
         
         /* Check continuity */
         HDY_REAL currentAcceleration = 0.0;
