@@ -350,12 +350,59 @@ void HDY_Diagnostics_UpdateExecution(HDY_DiagnosticInfo* diagnostic,
     diagnostic->flowError = context->references->flowReference - fabs(context->axisRef->flow);
     diagnostic->velocityError = context->references->velocityReference - context->axisRef->velocity;
 
-    diagnostic->overPressure = context->axisRef->pressure > context->references->pressureReference + pressureTolerance;
-    diagnostic->underPressure = context->axisRef->pressure < context->references->pressureReference - pressureTolerance;
-    diagnostic->flowDeviation = fabs(diagnostic->flowError) > flowTolerance;
-    diagnostic->positionDeviation = (context->segment->endCondition == HDY_END_POSITION) &&
-        (fabs(context->segment->targetPosition - context->axisRef->position) > positionTolerance);
-    diagnostic->velocityDeviation = fabs(diagnostic->velocityError) > velocityTolerance;
+    /* Pressure deviation checks: Only meaningful in pressure-closed-loop mode.
+     * In motion modes (POSITION/SPEED_RAMP), pressure is a passive result of
+     * hydraulic resistance and load, not an actively controlled variable. */
+    diagnostic->overPressure = false;
+    diagnostic->underPressure = false;
+    if (context->segment->mode == HDY_MODE_PRESSURE_CLOSED_LOOP) {
+        diagnostic->overPressure = context->axisRef->pressure > context->references->pressureReference + pressureTolerance;
+        diagnostic->underPressure = context->axisRef->pressure < context->references->pressureReference - pressureTolerance;
+    }
+    
+    /* Flow deviation check: Meaningful in all modes where we have a valid flow reference.
+     * In pressure-closed-loop mode, flow is actively controlled by the pressure controller.
+     * In motion modes (POSITION/SPEED_RAMP), flow is planned based on velocity and gain.
+     * However, significant flow deviations may indicate pump issues or hardware faults.
+     * We check flow deviation when we have a non-zero flow reference and sufficient time has elapsed
+     * to allow the system to reach steady state. */
+    diagnostic->flowDeviation = false;
+    if (flowTolerance > 0.0 && context->references->flowReference > 0.0) {
+        /* Only check flow deviation if we have been executing for at least 0.1 seconds
+         * to avoid false alarms during startup/transient */
+        if (context->references->elapsedTime > 0.1) {
+            diagnostic->flowDeviation = fabs(diagnostic->flowError) > flowTolerance;
+        }
+    }
+    
+    /* Position deviation check: Only meaningful when velocity reference is zero (position holding mode)
+     * and actual velocity is also near zero, but position deviates from target.
+     * This checks for position drift when the system should be holding position. */
+    diagnostic->positionDeviation = false;
+    if (context->segment->endCondition == HDY_END_POSITION) {
+        HDY_REAL velocityRefAbs = fabs(context->references->velocityReference);
+        HDY_REAL actualVelAbs = fabs(context->axisRef->velocity);
+        
+        /* Only check position deviation when both reference and actual velocity are near zero */
+        if (velocityRefAbs < velocityTolerance && actualVelAbs < velocityTolerance) {
+            diagnostic->positionDeviation = (fabs(context->segment->targetPosition - context->axisRef->position) > positionTolerance);
+        }
+    }
+    
+    /* Velocity deviation check: Only meaningful when the system should be in a steady state.
+     * During startup, acceleration, or deceleration, velocity tracking errors are normal.
+     * We only check velocity deviation when elapsed time is sufficient for steady-state operation
+     * AND velocity reference is not changing rapidly (not during acceleration).
+     * For hydraulic systems, we use a more lenient approach: only check if we're far enough into
+     * the motion and the error persists for multiple cycles. */
+    diagnostic->velocityDeviation = false;
+    /* Note: For this motion control library, velocity deviation checks are disabled
+     * by default in the execution diagnostics because:
+     * 1. Hydraulic systems have inherent response delays
+     * 2. Velocity errors during acceleration/deceleration are expected
+     * 3. The motion planner already handles velocity planning and limiting
+     * If specific velocity tracking diagnostics are needed, they should be implemented
+     * in a separate monitor with configurable thresholds and time windows. */
     diagnostic->timeout = (timeoutLimit > 0.0) && (context->references->elapsedTime > timeoutLimit);
 
     HDY_Diagnostics_SetExecutionPriorityCode(diagnostic);

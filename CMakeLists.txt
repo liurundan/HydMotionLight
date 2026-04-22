@@ -8,14 +8,26 @@ set(HYDRO_INCLUDE_DIRS
     ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 
-# 自动搜索 src 目录下所有 .c 源文件（推荐）
+# ==================================================================
+# 核心运动控制库 (HydroMotionLib) - 始终构建
+# ==================================================================
 file(GLOB_RECURSE HYDRO_CORE_SRCS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/*.c
 )
 
+# 过滤掉仿真器源文件
+list(FILTER HYDRO_CORE_SRCS EXCLUDE REGEX ".*hydro_sim\\.c$")
+
 add_library(HydroMotionLib STATIC ${HYDRO_CORE_SRCS})
 target_include_directories(HydroMotionLib PUBLIC ${HYDRO_INCLUDE_DIRS})
 target_link_libraries(HydroMotionLib PUBLIC m)
+
+# ==================================================================
+# 独立仿真器库 (HydroSimLib) - 仅用于集成测试
+# ==================================================================
+add_library(HydroSimLib STATIC ${CMAKE_CURRENT_SOURCE_DIR}/src/hydro_sim.c)
+target_include_directories(HydroSimLib PUBLIC ${HYDRO_INCLUDE_DIRS})
+target_link_libraries(HydroSimLib PUBLIC m)
 
 add_executable(test_motion_planner tests/test_motion_planner.c)
 target_link_libraries(test_motion_planner PRIVATE HydroMotionLib)
@@ -59,8 +71,11 @@ target_link_libraries(test_direct_mode PRIVATE HydroMotionLib)
 add_executable(test_direct_mode_simple tests/test_direct_mode_simple.c)
 target_link_libraries(test_direct_mode_simple PRIVATE HydroMotionLib)
 
-add_executable(test_hydro_sim_simplified tests/test_hydro_sim_simplified.c)
-target_link_libraries(test_hydro_sim_simplified PRIVATE HydroMotionLib)
+# ==================================================================
+# 集成测试 - 需要同时链接核心库和仿真器库
+# ==================================================================
+add_executable(test_motion_sim_integration tests/test_motion_sim_integration.c)
+target_link_libraries(test_motion_sim_integration PRIVATE HydroMotionLib HydroSimLib)
 
 add_executable(test_ramp_controller tests/test_ramp_controller.c)
 target_link_libraries(test_ramp_controller PRIVATE HydroMotionLib)
@@ -86,5 +101,5 @@ add_test(NAME test_diagnostic_monitor COMMAND test_diagnostic_monitor)
 add_test(NAME test_diagnostic_criteria COMMAND test_diagnostic_criteria)
 add_test(NAME test_sprint3_integration COMMAND test_sprint3_integration)
 add_test(NAME test_direct_mode COMMAND test_direct_mode)
-add_test(NAME test_hydro_sim_simplified COMMAND test_hydro_sim_simplified)
+add_test(NAME test_motion_sim_integration COMMAND test_motion_sim_integration)
 add_test(NAME test_ramp_controller_detailed COMMAND test_ramp_controller)

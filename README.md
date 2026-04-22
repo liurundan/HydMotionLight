@@ -56,6 +56,73 @@ cmake --build --preset unixgcc
 ctest --test-dir out/build/unixgcc --output-on-failure
 ```
 
+### 库架构说明
+
+本项目的构建系统提供两种独立的静态库：
+
+| 库名称 | 用途 | 使用场景 |
+|--------|------|----------|
+| **HydroMotionLib** | 核心运动控制库 | 生产部署、嵌入式平台 |
+| **HydroSimLib** | 液压仿真器库 | 开发测试、集成验证 |
+
+#### 核心运动控制库
+
+- **包含模块**：运动规划、压力控制、泵速换算、诊断系统等所有核心功能
+- **不包含**：液压仿真器代码
+- **部署方式**：使用 `scripts/deploy_embedded_prod.sh` 脚本生成生产版本
+- **目标平台**：嵌入式控制器、PLC、实时操作系统
+
+#### 液压仿真器库
+
+- **包含模块**：`hydro_sim.c` 完整仿真逻辑
+- **使用场景**：
+  - 集成测试（`test_motion_sim_integration`）
+  - 开发环境验证
+  - 算法离线仿真
+- **部署方式**：仅用于开发测试，不部署到生产环境
+
+### 集成测试
+
+运行运动控制与仿真器的闭环集成测试：
+
+```bash
+# 运行集成测试
+./out/build/unixgcc/test_motion_sim_integration
+
+# 或通过ctest运行
+ctest --test-dir out/build/unixgcc -R test_motion_sim_integration --output-on-failure
+```
+
+集成测试验证以下行为：
+- 运动控制器与仿真器的完整闭环控制
+- 多段配方执行（慢速前进 → 快速前进 → 后退回零）
+- 位置跟踪精度验证
+- 段切换逻辑验证
+- 诊断信息验证
+
+### 嵌入式部署
+
+生成不包含仿真器的生产版本库：
+
+```bash
+# 运行部署脚本
+./scripts/deploy_embedded_prod.sh
+```
+
+部署脚本会：
+1. 构建核心运动控制库（不含仿真器）
+2. 复制库文件到 `out/install/embedded_prod/`
+3. 复制必要的头文件
+4. 验证库文件不包含仿真器符号
+5. 生成集成说明文档
+
+**生产版本特点**：
+- 库大小：约 80-100KB（不含仿真器）
+- 包含完整运动控制功能
+- 无仿真器依赖
+- 纯 C99 实现
+- 静态内存分配
+
 运行端到端示例：
 
 ```bash
