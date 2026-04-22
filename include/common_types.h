@@ -350,4 +350,26 @@ typedef struct {
     char currentSegmentName[HDY_NAME_MAX];
 } HDY_MotionState;
 
+/* ============================================================================
+ * 公共工具函数
+ * 这些函数在多个模块中使用，集中在此处避免代码重复
+ * ============================================================================ */
+
+/**
+ * @brief 将值限制在 [minimum, maximum] 范围内
+ * @param value 要限制的值
+ * @param minimum 下界
+ * @param maximum 上界
+ * @return 限制后的值
+ */
+static inline HDY_REAL HDY_ClampReal(HDY_REAL value, HDY_REAL minimum, HDY_REAL maximum) {
+    if (value < minimum) {
+        return minimum;
+    }
+    if (value > maximum) {
+        return maximum;
+    }
+    return value;
+}
+
 #endif /* HDY_COMMON_TYPES_H */

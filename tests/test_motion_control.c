@@ -1415,7 +1415,12 @@ static void test_execution_diagnostics_promote_degraded_status(void) {
     assert(HDY_MotionControlFB_StartSegment(&fb, 0, 0.0));
     HDY_MotionControlFB_Execute(&fb);
 
-    /* Startup cycle should not immediately raise a flow-deviation warning. */
+    /* Startup cycle should not immediately raise a flow-deviation warning.
+     * Note: The new criteria layer has startup suppress enabled by default (0.5s).
+     * Disable it for this test to verify immediate triggering behavior. */
+    fb._flowCriteria.enableStartupSuppress = false;
+    fb._flowCriteria.startupSuppressTime = 0.0;
+
     assert(fb.ACTIVE);
     assert(fb.STATUS == HDY_STATUS_RUNNING);
     assert(fb.STATE.status == HDY_STATUS_RUNNING);

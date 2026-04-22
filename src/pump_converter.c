@@ -6,16 +6,6 @@ static HDY_BOOL HDY_PumpConverter_IsFiniteReal(HDY_REAL value) {
     return isfinite(value) ? true : false;
 }
 
-static HDY_REAL HDY_ClampReal(HDY_REAL value, HDY_REAL minimum, HDY_REAL maximum) {
-    if (value < minimum) {
-        return minimum;
-    }
-    if (value > maximum) {
-        return maximum;
-    }
-    return value;
-}
-
 void HDY_PumpConverter_Execute(const HDY_PumpConverterInput* input,
                                HDY_PumpConverterOutput* output) {
     HDY_REAL requestedFlow;

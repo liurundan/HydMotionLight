@@ -2,16 +2,6 @@
 #include "segment_limits.h"
 #include <math.h>
 
-static HDY_REAL HDY_ClampReal(HDY_REAL value, HDY_REAL minimum, HDY_REAL maximum) {
-    if (value < minimum) {
-        return minimum;
-    }
-    if (value > maximum) {
-        return maximum;
-    }
-    return value;
-}
-
 static HDY_REAL HDY_MinReal(HDY_REAL left, HDY_REAL right) {
     return (left < right) ? left : right;
 }

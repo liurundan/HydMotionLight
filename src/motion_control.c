@@ -10,6 +10,7 @@
 #include "state_reporter.h"
 #include "motion_utils.h"
 #include "motion_validator.h"
+#include "segment_limits.h"
 #include "hdy_config.h"
 #include <math.h>
 #include <stdio.h>
@@ -25,6 +26,18 @@ static void HDY_PrimeSegmentControllers(HDY_MotionControlFB* fb,
                                         const HDY_MotionSegment* segment,
                                         HDY_TIME timestamp,
                                         HDY_BOOL allowFlowCarryover);
+static void HDY_ExecuteActiveSegmentControl(HDY_MotionControlFB* fb,
+                                            const HDY_MotionSegment* segment,
+                                            HDY_REAL elapsed,
+                                            HDY_RampControllerOutput* rampOutput,
+                                            HDY_MotionPlannerOutput* plannerOutput,
+                                            HDY_PressureControllerOutput* pressureOutput,
+                                            HDY_PumpConverterOutput* pumpOutput,
+                                            HDY_ExecutionReference* executionReference);
+static void HDY_UpdateExecutionDiagnostics(HDY_MotionControlFB* fb,
+                                           const HDY_MotionSegment* segment,
+                                           const HDY_ExecutionReference* executionReference,
+                                           HDY_REAL elapsed);
 
 /* Diagnostic reporting moved to StateReporter: use
  * HDY_StateReporter_ReportDiagnostic / HDY_StateReporter_ReportFault
@@ -510,6 +523,15 @@ static HDY_BOOL HDY_BeginSegment(HDY_MotionControlFB* fb,
     fb->_segmentChangedFlag = true;
     fb->SEGMENT_COMPLETED = false;
 
+    /* Reset diagnostic criteria layer for new segment */
+    HDY_ErrorMonitor_Reset(&fb->_errorMonitor);
+    HDY_DiagnosticCriteria_ResetState(&fb->_pressureCriteriaState);
+    HDY_DiagnosticCriteria_ResetState(&fb->_flowCriteriaState);
+    HDY_DiagnosticCriteria_ResetState(&fb->_velocityCriteriaState);
+    HDY_DiagnosticCriteria_ResetState(&fb->_positionCriteriaState);
+    /* Enable startup suppress for first 500ms, then switch suppress for next 300ms */
+    fb->_isSwitchPhase = true;  /* Start in switch phase for smooth transition */
+
     HDY_PrimeSegmentControllers(fb, &fb->_activeSegment, timestamp, preserveFlowCarryover);
 
     HDY_StateReporter_SetSegmentName(fb, fb->_activeSegment.name);
@@ -842,21 +864,293 @@ static void HDY_MotionControlFB_PublishOutputs(HDY_MotionControlFB* fb,
     HDY_UpdateSegmentChangedPulse(fb);
 }
 
+static void HDY_ConfigureExecutionCriteriaLegacyEquivalent(HDY_DiagnosticCriteria* criteria,
+                                                           HDY_REAL baseThreshold,
+                                                           HDY_DiagnosticCode code,
+                                                           HDY_ProtectionAction action) {
+    if (criteria == NULL) {
+        return;
+    }
+
+    memset(criteria, 0, sizeof(*criteria));
+    criteria->baseThreshold = baseThreshold;
+    criteria->diagnosticCode = code;
+    criteria->severity = HDY_DIAG_SEVERITY_WARNING;
+    criteria->protectionAction = action;
+}
+
+static void HDY_UpdateMonitorPositionError(HDY_ErrorMonitor* monitor,
+                                           const HDY_MotionSegment* segment,
+                                           const HDY_AxisRef* axisRef,
+                                           HDY_TIME currentTime) {
+    HDY_BOOL wasActive;
+
+    if (monitor == NULL || segment == NULL || axisRef == NULL) {
+        return;
+    }
+
+    wasActive = monitor->positionErrorActive;
+    monitor->positionError = segment->targetPosition - axisRef->position;
+    monitor->positionErrorActive = (monitor->positionError != 0.0) ? true : false;
+
+    if (!monitor->positionErrorActive) {
+        monitor->positionErrorDuration = 0.0;
+        return;
+    }
+
+    if (!wasActive) {
+        monitor->positionErrorStartTime = currentTime;
+        monitor->positionErrorDuration = 0.0;
+        return;
+    }
+
+    monitor->positionErrorDuration = currentTime - monitor->positionErrorStartTime;
+}
+
+static void HDY_ExecuteActiveSegmentControl(HDY_MotionControlFB* fb,
+                                            const HDY_MotionSegment* segment,
+                                            HDY_REAL elapsed,
+                                            HDY_RampControllerOutput* rampOutput,
+                                            HDY_MotionPlannerOutput* plannerOutput,
+                                            HDY_PressureControllerOutput* pressureOutput,
+                                            HDY_PumpConverterOutput* pumpOutput,
+                                            HDY_ExecutionReference* executionReference) {
+    HDY_RampControllerInput rampInput;
+    HDY_MotionPlannerInput plannerInput;
+    HDY_PressureControllerInput pressureInput;
+    HDY_PumpConverterInput pumpInput;
+
+    if (fb == NULL || segment == NULL || rampOutput == NULL || plannerOutput == NULL ||
+        pressureOutput == NULL || pumpOutput == NULL || executionReference == NULL) {
+        return;
+    }
+
+    rampInput.targetPressure = segment->targetPressure;
+    rampInput.rampRate = segment->pressureRampRate;
+    rampInput.currentTime = fb->AXIS_REF.timestamp;
+    HDY_RampController_Execute(&fb->_rampController, &rampInput, rampOutput);
+
+    memset(plannerOutput, 0, sizeof(*plannerOutput));
+    memset(pressureOutput, 0, sizeof(*pressureOutput));
+    plannerOutput->direction = HDY_DIRECTION_HOLD;
+    pressureOutput->appliedStrategy = HDY_PRESSURE_CONTROLLER_NONE;
+
+    if (segment->mode == HDY_MODE_PRESSURE_CLOSED_LOOP) {
+        pressureInput.targetPressure = rampOutput->rampedPressure;
+        pressureInput.measuredPressure = fb->AXIS_REF.pressure;
+        pressureInput.feedforwardFlow = segment->targetFlow;
+        pressureInput.outputMin = 0.0;
+        pressureInput.outputMax = segment->maxFlow;
+        pressureInput.timestamp = fb->AXIS_REF.timestamp;
+        HDY_PressureController_Execute(segment,
+                                       &fb->_pressureController,
+                                       &pressureInput,
+                                       pressureOutput);
+        plannerOutput->targetFlow = pressureOutput->outputFlow;
+        plannerOutput->direction = segment->direction;
+    } else {
+        plannerInput.axisRef = &fb->AXIS_REF;
+        plannerInput.segment = segment;
+        plannerInput.elapsedTime = elapsed;
+        plannerInput.rampedPressure = rampOutput->rampedPressure;
+        HDY_MotionPlanner_Execute(&plannerInput, plannerOutput);
+    }
+
+    pumpInput.requestedFlow = plannerOutput->targetFlow;
+    pumpInput.flowToPumpSpeedGain = fb->FLOW_TO_PUMP_SPEED_GAIN;
+    pumpInput.pumpSpeedLimit = fb->PUMP_SPEED_LIMIT;
+    pumpInput.direction = plannerOutput->direction;
+    HDY_PumpConverter_Execute(&pumpInput, pumpOutput);
+
+    executionReference->elapsedTime = elapsed;
+    executionReference->pressureReference = (segment->mode == HDY_MODE_PRESSURE_CLOSED_LOOP)
+        ? rampOutput->rampedPressure
+        : segment->targetPressure;
+    executionReference->flowReference = pumpOutput->commandFlow;
+    executionReference->velocityReference = plannerOutput->targetVelocity;
+}
+
+static void HDY_UpdateExecutionDiagnostics(HDY_MotionControlFB* fb,
+                                           const HDY_MotionSegment* segment,
+                                           const HDY_ExecutionReference* executionReference,
+                                           HDY_REAL elapsed) {
+    HDY_REAL pressureTolerance;
+    HDY_REAL flowTolerance;
+    HDY_REAL positionTolerance;
+    HDY_REAL velocityTolerance;
+    HDY_TIME timeoutLimit;
+    HDY_REAL velocityReferenceAbs;
+    HDY_REAL actualVelocityAbs;
+    HDY_DiagnosticResult pressureResult;
+    HDY_DiagnosticResult flowResult;
+    HDY_DiagnosticResult positionResult;
+    HDY_DiagnosticsContext diagnosticContext;
+    HDY_DiagnosticCode priorityCode = HDY_DIAG_CODE_NONE;
+    HDY_DiagnosticSeverity prioritySeverity = HDY_DIAG_SEVERITY_NONE;
+    HDY_BOOL overPressure = false;
+    HDY_BOOL underPressure = false;
+    HDY_BOOL flowDeviation = false;
+    HDY_BOOL positionDeviation = false;
+    HDY_BOOL velocityDeviation = false;
+    HDY_BOOL timeout = false;
+    HDY_REAL pressureError = 0.0;
+    HDY_REAL flowError = 0.0;
+    HDY_REAL velocityError = 0.0;
+
+    if (fb == NULL || segment == NULL || executionReference == NULL) {
+        return;
+    }
+
+    if (!fb->_criteriaLayerEnabled) {
+        memset(&diagnosticContext, 0, sizeof(diagnosticContext));
+        diagnosticContext.axisRef = &fb->AXIS_REF;
+        diagnosticContext.segment = segment;
+        diagnosticContext.references = executionReference;
+        HDY_Diagnostics_UpdateExecution(&fb->DIAGNOSTIC, &diagnosticContext);
+        return;
+    }
+
+    pressureTolerance = HDY_Segment_GetPressureTolerance(segment);
+    flowTolerance = HDY_Segment_GetFlowTolerance(segment);
+    positionTolerance = HDY_Segment_GetPositionTolerance(segment);
+    velocityTolerance = HDY_Segment_GetVelocityTolerance(segment);
+    timeoutLimit = HDY_Segment_GetTimeoutLimit(segment);
+
+    HDY_ErrorMonitor_Update(&fb->_errorMonitor,
+                            &fb->AXIS_REF,
+                            executionReference,
+                            fb->AXIS_REF.timestamp);
+    HDY_UpdateMonitorPositionError(&fb->_errorMonitor,
+                                   segment,
+                                   &fb->AXIS_REF,
+                                   fb->AXIS_REF.timestamp);
+    pressureError = fb->_errorMonitor.pressureError;
+    flowError = fb->_errorMonitor.flowError;
+    velocityError = fb->_errorMonitor.velocityError;
+
+    if (segment->mode == HDY_MODE_PRESSURE_CLOSED_LOOP && pressureTolerance > 0.0) {
+        HDY_ConfigureExecutionCriteriaLegacyEquivalent(&fb->_pressureCriteria,
+                                                       pressureTolerance,
+                                                       HDY_DIAG_CODE_OVER_PRESSURE,
+                                                       HDY_PROTECTION_ACTION_DERATE);
+        if (HDY_DiagnosticCriteria_CheckPressure(&pressureResult,
+                                                 &fb->_errorMonitor,
+                                                 &fb->_pressureCriteria,
+                                                 &fb->_pressureCriteriaState,
+                                                 fb->AXIS_REF.timestamp,
+                                                 elapsed,
+                                                 false,
+                                                 false)) {
+            pressureError = fb->_errorMonitor.pressureError;
+            if (pressureError < -pressureTolerance) {
+                overPressure = true;
+            } else if (pressureError > pressureTolerance) {
+                underPressure = true;
+            }
+        }
+    } else {
+        HDY_DiagnosticCriteria_ResetState(&fb->_pressureCriteriaState);
+    }
+
+    if (flowTolerance > 0.0 && executionReference->flowReference > 0.0 && elapsed > 0.1) {
+        HDY_ConfigureExecutionCriteriaLegacyEquivalent(&fb->_flowCriteria,
+                                                       flowTolerance,
+                                                       HDY_DIAG_CODE_FLOW_DEVIATION,
+                                                       HDY_PROTECTION_ACTION_DERATE);
+        if (HDY_DiagnosticCriteria_CheckFlow(&flowResult,
+                                             &fb->_errorMonitor,
+                                             &fb->_flowCriteria,
+                                             &fb->_flowCriteriaState,
+                                             fb->AXIS_REF.timestamp,
+                                             elapsed,
+                                             false,
+                                             false)) {
+            flowDeviation = true;
+            flowError = fb->_errorMonitor.flowError;
+        }
+    } else {
+        HDY_DiagnosticCriteria_ResetState(&fb->_flowCriteriaState);
+    }
+
+    velocityReferenceAbs = fabs(executionReference->velocityReference);
+    actualVelocityAbs = fabs(fb->AXIS_REF.velocity);
+    if (segment->endCondition == HDY_END_POSITION &&
+        positionTolerance > 0.0 &&
+        velocityTolerance > 0.0 &&
+        velocityReferenceAbs < velocityTolerance &&
+        actualVelocityAbs < velocityTolerance) {
+        HDY_ConfigureExecutionCriteriaLegacyEquivalent(&fb->_positionCriteria,
+                                                       positionTolerance,
+                                                       HDY_DIAG_CODE_POSITION_DEVIATION,
+                                                       HDY_PROTECTION_ACTION_WARNING);
+        if (HDY_DiagnosticCriteria_CheckPosition(&positionResult,
+                                                 &fb->_errorMonitor,
+                                                 &fb->_positionCriteria,
+                                                 &fb->_positionCriteriaState,
+                                                 fb->AXIS_REF.timestamp,
+                                                 elapsed,
+                                                 false)) {
+            positionDeviation = true;
+        }
+    } else {
+        HDY_DiagnosticCriteria_ResetState(&fb->_positionCriteriaState);
+    }
+
+    HDY_DiagnosticCriteria_ResetState(&fb->_velocityCriteriaState);
+
+    timeout = (timeoutLimit > 0.0) && (elapsed > timeoutLimit);
+    if (timeout) {
+        priorityCode = HDY_DIAG_CODE_TIMEOUT;
+        prioritySeverity = HDY_DIAG_SEVERITY_FAULT;
+    } else if (overPressure) {
+        priorityCode = HDY_DIAG_CODE_OVER_PRESSURE;
+        prioritySeverity = HDY_DIAG_SEVERITY_WARNING;
+    } else if (underPressure) {
+        priorityCode = HDY_DIAG_CODE_UNDER_PRESSURE;
+        prioritySeverity = HDY_DIAG_SEVERITY_WARNING;
+    } else if (flowDeviation) {
+        priorityCode = HDY_DIAG_CODE_FLOW_DEVIATION;
+        prioritySeverity = HDY_DIAG_SEVERITY_WARNING;
+    } else if (positionDeviation) {
+        priorityCode = HDY_DIAG_CODE_POSITION_DEVIATION;
+        prioritySeverity = HDY_DIAG_SEVERITY_WARNING;
+    } else if (velocityDeviation) {
+        priorityCode = HDY_DIAG_CODE_VELOCITY_DEVIATION;
+        prioritySeverity = HDY_DIAG_SEVERITY_WARNING;
+    }
+
+    if (priorityCode != HDY_DIAG_CODE_NONE) {
+        HDY_Diagnostics_SetEvent(&fb->DIAGNOSTIC, priorityCode, prioritySeverity, NULL);
+    } else {
+        HDY_Diagnostics_Clear(&fb->DIAGNOSTIC);
+    }
+
+    fb->DIAGNOSTIC.overPressure = overPressure;
+    fb->DIAGNOSTIC.underPressure = underPressure;
+    fb->DIAGNOSTIC.flowDeviation = flowDeviation;
+    fb->DIAGNOSTIC.positionDeviation = positionDeviation;
+    fb->DIAGNOSTIC.velocityDeviation = velocityDeviation;
+    fb->DIAGNOSTIC.timeout = timeout;
+    fb->DIAGNOSTIC.pressureError = pressureError;
+    fb->DIAGNOSTIC.flowError = flowError;
+    fb->DIAGNOSTIC.velocityError = velocityError;
+    fb->DIAGNOSTIC.flags = HDY_Diagnostics_GetFlagMask(&fb->DIAGNOSTIC);
+
+    if (fb->_isSwitchPhase && elapsed >= fb->_pressureCriteria.startupSuppressTime) {
+        fb->_isSwitchPhase = false;
+    }
+}
+
 static void HDY_MotionControlFB_RunRunningState(HDY_MotionControlFB* fb) {
     HDY_DiagnosticCode code = HDY_DIAG_CODE_NONE;
     char message[HDY_MESSAGE_MAX] = {0};
     const HDY_MotionSegment* segment;
     HDY_REAL elapsed;
-    HDY_RampControllerInput rampInput;
     HDY_RampControllerOutput rampOutput;
-    HDY_MotionPlannerInput plannerInput;
     HDY_MotionPlannerOutput plannerOutput;
-    HDY_PressureControllerInput pressureInput;
     HDY_PressureControllerOutput pressureOutput;
-    HDY_PumpConverterInput pumpInput;
     HDY_PumpConverterOutput pumpOutput;
     HDY_ExecutionReference executionReference;
-    HDY_DiagnosticsContext diagnosticContext;
     HDY_SegmentCompletionContext completionContext;
     HDY_BOOL segmentCompleted;
     HDY_BOOL recipeFinished;
@@ -937,54 +1231,15 @@ static void HDY_MotionControlFB_RunRunningState(HDY_MotionControlFB* fb) {
         elapsed = 0.0;
     }
 
-    rampInput.targetPressure = segment->targetPressure;
-    rampInput.rampRate = segment->pressureRampRate;
-    rampInput.currentTime = fb->AXIS_REF.timestamp;
-    HDY_RampController_Execute(&fb->_rampController, &rampInput, &rampOutput);
-
-    memset(&plannerOutput, 0, sizeof(plannerOutput));
-    memset(&pressureOutput, 0, sizeof(pressureOutput));
-    plannerOutput.direction = HDY_DIRECTION_HOLD;
-    pressureOutput.appliedStrategy = HDY_PRESSURE_CONTROLLER_NONE;
-
-    if (segment->mode == HDY_MODE_PRESSURE_CLOSED_LOOP) {
-        pressureInput.targetPressure = rampOutput.rampedPressure;
-        pressureInput.measuredPressure = fb->AXIS_REF.pressure;
-        pressureInput.feedforwardFlow = segment->targetFlow;
-        pressureInput.outputMin = 0.0;
-        pressureInput.outputMax = segment->maxFlow;
-        pressureInput.timestamp = fb->AXIS_REF.timestamp;
-        HDY_PressureController_Execute(segment,
-                                       &fb->_pressureController,
-                                       &pressureInput,
-                                       &pressureOutput);
-        plannerOutput.targetFlow = pressureOutput.outputFlow;
-        plannerOutput.direction = segment->direction;
-    } else {
-        plannerInput.axisRef = &fb->AXIS_REF;
-        plannerInput.segment = segment;
-        plannerInput.elapsedTime = elapsed;
-        plannerInput.rampedPressure = rampOutput.rampedPressure;
-        HDY_MotionPlanner_Execute(&plannerInput, &plannerOutput);
-    }
-
-    pumpInput.requestedFlow = plannerOutput.targetFlow;
-    pumpInput.flowToPumpSpeedGain = fb->FLOW_TO_PUMP_SPEED_GAIN;
-    pumpInput.pumpSpeedLimit = fb->PUMP_SPEED_LIMIT;
-    pumpInput.direction = plannerOutput.direction;
-    HDY_PumpConverter_Execute(&pumpInput, &pumpOutput);
-
-    executionReference.elapsedTime = elapsed;
-    executionReference.pressureReference = (segment->mode == HDY_MODE_PRESSURE_CLOSED_LOOP)
-        ? rampOutput.rampedPressure
-        : segment->targetPressure;
-    executionReference.flowReference = pumpOutput.commandFlow;
-    executionReference.velocityReference = plannerOutput.targetVelocity;
-
-    diagnosticContext.axisRef = &fb->AXIS_REF;
-    diagnosticContext.segment = segment;
-    diagnosticContext.references = &executionReference;
-    HDY_Diagnostics_UpdateExecution(&fb->DIAGNOSTIC, &diagnosticContext);
+    HDY_ExecuteActiveSegmentControl(fb,
+                                    segment,
+                                    elapsed,
+                                    &rampOutput,
+                                    &plannerOutput,
+                                    &pressureOutput,
+                                    &pumpOutput,
+                                    &executionReference);
+    HDY_UpdateExecutionDiagnostics(fb, segment, &executionReference, elapsed);
 
     fb->_lastCommandedFlow = pumpOutput.commandFlow;
 
@@ -1162,6 +1417,19 @@ void HDY_MotionControlFB_Init(HDY_MotionControlFB* fb) {
     HDY_PressureController_ClearState(&fb->_pressureController);
     HDY_ClearPendingCommand(fb);
     HDY_StateReporter_RefreshStandardOutputs(fb);
+
+    /* Initialize diagnostic criteria layer */
+    HDY_ErrorMonitor_Init(&fb->_errorMonitor);
+    HDY_DiagnosticCriteria_CreateDefaultPressureCriteria(&fb->_pressureCriteria);
+    HDY_DiagnosticCriteria_InitState(&fb->_pressureCriteriaState);
+    HDY_DiagnosticCriteria_CreateDefaultFlowCriteria(&fb->_flowCriteria);
+    HDY_DiagnosticCriteria_InitState(&fb->_flowCriteriaState);
+    HDY_DiagnosticCriteria_CreateDefaultVelocityCriteria(&fb->_velocityCriteria);
+    HDY_DiagnosticCriteria_InitState(&fb->_velocityCriteriaState);
+    HDY_DiagnosticCriteria_CreateDefaultPositionCriteria(&fb->_positionCriteria);
+    HDY_DiagnosticCriteria_InitState(&fb->_positionCriteriaState);
+    fb->_isSwitchPhase = false;
+    fb->_criteriaLayerEnabled = true;  /* Enable criteria-based diagnostics by default */
 }
 
 HDY_BOOL HDY_MotionControlFB_LoadRecipe(HDY_MotionControlFB* fb,

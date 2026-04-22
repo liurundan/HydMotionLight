@@ -54,16 +54,6 @@ static const HDY_PressureStrategySpec HDY_PRESSURE_STRATEGY_SPECS[] = {
     {HDY_PRESSURE_CONTROLLER_RBF_PID, true, true, true}
 };
 
-static HDY_REAL HDY_ClampReal(HDY_REAL value, HDY_REAL minimum, HDY_REAL maximum) {
-    if (value < minimum) {
-        return minimum;
-    }
-    if (value > maximum) {
-        return maximum;
-    }
-    return value;
-}
-
 static const HDY_PressureStrategySpec* HDY_FindPressureStrategySpec(HDY_PressureControllerType strategy) {
     size_t index;
 
@@ -328,10 +318,7 @@ static void HDY_SynchronizeRbfPidState(HDY_PressureControllerState* state,
         return;
     }
 
-    HDY_EnsureRbfPidInitialized(state, config->samplingPeriod, config->outputMax);
-    HDY_ApplyRbfPidConfig(state, config);
     RBF_PID_Reset(&state->rbfPid);
-    HDY_EnsureRbfPidInitialized(state, config->samplingPeriod, config->outputMax);
     HDY_ApplyRbfPidConfig(state, config);
 
     seededOutput = HDY_ClampReal(trackedOutputFlow, config->outputMin, config->outputMax);

@@ -394,15 +394,29 @@ void HDY_Diagnostics_UpdateExecution(HDY_DiagnosticInfo* diagnostic,
      * We only check velocity deviation when elapsed time is sufficient for steady-state operation
      * AND velocity reference is not changing rapidly (not during acceleration).
      * For hydraulic systems, we use a more lenient approach: only check if we're far enough into
-     * the motion and the error persists for multiple cycles. */
-    diagnostic->velocityDeviation = false;
-    /* Note: For this motion control library, velocity deviation checks are disabled
-     * by default in the execution diagnostics because:
+     * the motion and the error persists for multiple cycles.
+     *
+     * This diagnostic is DISABLED by default (enableVelocityDeviationCheck=false in context)
+     * because:
      * 1. Hydraulic systems have inherent response delays
      * 2. Velocity errors during acceleration/deceleration are expected
      * 3. The motion planner already handles velocity planning and limiting
-     * If specific velocity tracking diagnostics are needed, they should be implemented
-     * in a separate monitor with configurable thresholds and time windows. */
+     * 4. False positives can cause unnecessary warnings/alarms in normal operation
+     *
+     * Enable only when specific velocity tracking diagnostics are required and the
+     * application can tolerate potential false positives during transients. */
+    diagnostic->velocityDeviation = false;
+    if (context->enableVelocityDeviationCheck && velocityTolerance > 0.0) {
+        /* Only check velocity deviation after startup grace period to avoid false alarms */
+        if (context->references->elapsedTime > 0.5) {
+            HDY_REAL velocityRefAbs = fabs(context->references->velocityReference);
+
+            /* Only check when velocity reference is stable (not rapidly changing) */
+            if (velocityRefAbs > velocityTolerance) {
+                diagnostic->velocityDeviation = fabs(diagnostic->velocityError) > velocityTolerance;
+            }
+        }
+    }
     diagnostic->timeout = (timeoutLimit > 0.0) && (context->references->elapsedTime > timeoutLimit);
 
     HDY_Diagnostics_SetExecutionPriorityCode(diagnostic);

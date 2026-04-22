@@ -7,6 +7,7 @@ typedef struct {
     const HDY_AxisRef* axisRef;
     const HDY_MotionSegment* segment;
     const HDY_ExecutionReference* references;
+    HDY_BOOL enableVelocityDeviationCheck;  /* 默认false，设为true启用速度偏差诊断 */
 } HDY_DiagnosticsContext;
 
 void HDY_Diagnostics_Clear(HDY_DiagnosticInfo* diagnostic);

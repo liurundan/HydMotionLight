@@ -4,6 +4,8 @@
 #include "common_types.h"
 #include "pressure_controller.h"
 #include "ramp_controller.h"
+#include "diagnostics_monitor.h"
+#include "diagnostics_criteria.h"
 
 /*
  * PLCopen-style motion control function block lifecycle:
@@ -197,6 +199,21 @@ typedef struct {
     HDY_DiagnosticSeverity _lastRecordedDiagnosticSeverity;
     HDY_DiagnosticFlags _lastRecordedDiagnosticFlags;
     HDY_ProtectionAction _lastRecordedProtectionAction;
+
+    /* Diagnostic criteria layer - unified through diagnostics_monitor + diagnostics_criteria
+     * This replaces the legacy direct diagnostics update path.
+     * Supports: startup suppress, switch suppress, loop-build suppress, debounce, hysteresis, fault escalation. */
+    HDY_ErrorMonitor _errorMonitor;
+    HDY_DiagnosticCriteria _pressureCriteria;
+    HDY_DiagnosticCriteriaState _pressureCriteriaState;
+    HDY_DiagnosticCriteria _flowCriteria;
+    HDY_DiagnosticCriteriaState _flowCriteriaState;
+    HDY_DiagnosticCriteria _velocityCriteria;
+    HDY_DiagnosticCriteriaState _velocityCriteriaState;
+    HDY_DiagnosticCriteria _positionCriteria;
+    HDY_DiagnosticCriteriaState _positionCriteriaState;
+    HDY_BOOL _isSwitchPhase;  /* True during segment transition window for switch suppress */
+    HDY_BOOL _criteriaLayerEnabled;  /* Master switch for criteria-based diagnostics */
 } HDY_MotionControlFB;
 
 /* Full reset of configuration, recipe, runtime state, and internal helpers. */
