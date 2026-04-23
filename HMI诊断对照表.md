@@ -17,7 +17,7 @@
 | `DIAGNOSTIC_LATCH` | 最近一次事件 | 用于报警复盘、事件列表 |
 | `LAST_DIAGNOSTIC_SNAPSHOT` | 最近一次诊断快照 | 用于联调详情页 |
 | `LAST_FAULT_SNAPSHOT` | 最近一次故障快照 | 用于售后故障页、导出报表 |
-| `DIAGNOSTIC_HISTORY` | 循环历史 | 用于最近若干条事件记录 |
+| `DIAGNOSTIC_HISTORY` | 最近快照历史 | 用于最近一条事件记录（单快照模型，附带累计事件计数） |
 
 ## 2. 等级、颜色与声音建议
 

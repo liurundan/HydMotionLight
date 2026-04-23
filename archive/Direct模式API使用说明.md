@@ -65,8 +65,8 @@ fb.FB_STATE            // 功能块状态机状态
 fb.STATE.plannedVelocity         // 规划速度
 fb.STATE.plannedFlow             // 规划流量
 fb.STATE.commandedPumpSpeed      // 命令泵速
-fb.STATE.currentSegmentName      // 当前段名称
-fb.STATE.pressureLoop            // 压力循环遥测数据
+fb.STATE.currentSegmentTag       // 当前段标签（uint8_t，替代原currentSegmentName）
+fb.STATE.pressureLoop            // 压力循环遥测数据（需启用HDY_ENABLE_PRESSURE_LOOP_TELEMETRY）
 ```
 
 ### 5. 诊断信息
@@ -186,7 +186,7 @@ fb.PUMP_SPEED_LIMIT = 3000.0;
 // 2. 配置并启动注射段
 HDY_MotionSegment injectionSeg;
 memset(&injectionSeg, 0, sizeof(injectionSeg));
-strcpy(injectionSeg.name, "INJECTION");
+injectionSeg.segmentTag = 1;  // 段标签（替代原name字段）
 injectionSeg.mode = HDY_MODE_SPEED_RAMP;
 injectionSeg.endCondition = HDY_END_POSITION;
 injectionSeg.direction = HDY_DIRECTION_EXTEND;
@@ -228,7 +228,7 @@ while (!fb.SEGMENT_COMPLETED) {
 // 4. 工艺层决定切换到保压段
 HDY_MotionSegment holdingSeg;
 memset(&holdingSeg, 0, sizeof(holdingSeg));
-strcpy(holdingSeg.name, "HOLDING");
+holdingSeg.segmentTag = 2;  // 段标签（替代原name字段）
 holdingSeg.mode = HDY_MODE_PRESSURE_CLOSED_LOOP;
 holdingSeg.endCondition = HDY_END_TIME;
 holdingSeg.direction = HDY_DIRECTION_HOLD;
