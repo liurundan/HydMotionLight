@@ -328,7 +328,7 @@ void HDY_Diagnostics_CaptureSnapshot(HDY_DiagnosticSnapshot* snapshot,
                                      const HDY_ExecutionReference* references,
                                      HDY_TIME eventTimestamp,
                                      HDY_UINT8 segmentIndex,
-                                     const char* segmentName,
+                                     HDY_UINT8 segmentTag,
                                      HDY_ControllerStatus status,
                                      HDY_BOOL active,
                                      HDY_BOOL finished,
@@ -341,6 +341,7 @@ void HDY_Diagnostics_CaptureSnapshot(HDY_DiagnosticSnapshot* snapshot,
     snapshot->valid = (diagnostic != NULL) && (diagnostic->code != HDY_DIAG_CODE_NONE);
     snapshot->eventTimestamp = eventTimestamp;
     snapshot->segmentIndex = segmentIndex;
+    snapshot->segmentTag = segmentTag;
     snapshot->status = status;
     snapshot->active = active;
     snapshot->finished = finished;
@@ -358,11 +359,6 @@ void HDY_Diagnostics_CaptureSnapshot(HDY_DiagnosticSnapshot* snapshot,
 
     if (references != NULL) {
         snapshot->references = *references;
-    }
-
-    if (segmentName != NULL) {
-        strncpy(snapshot->segmentName, segmentName, HDY_NAME_MAX - 1);
-        snapshot->segmentName[HDY_NAME_MAX - 1] = '\0';
     }
 }
 

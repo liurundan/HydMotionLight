@@ -74,7 +74,7 @@ int main(void) {
     
     HDY_MotionSegment injection;
     memset(&injection, 0, sizeof(injection));
-    strcpy(injection.name, "INJECTION");
+    injection.segmentTag = HDY_SEGMENT_TYPE_INJECTION;
     injection.mode = HDY_MODE_SPEED_RAMP;
     injection.endCondition = HDY_END_POSITION;
     injection.direction = HDY_DIRECTION_EXTEND;
@@ -139,7 +139,7 @@ int main(void) {
     
     HDY_MotionSegment injection2;
     memset(&injection2, 0, sizeof(injection2));
-    strcpy(injection2.name, "INJECTION2");
+    injection2.segmentTag = HDY_SEGMENT_TYPE_INJECTION + 1;
     injection2.mode = HDY_MODE_SPEED_RAMP;
     injection2.endCondition = HDY_END_TIME;
     injection2.direction = HDY_DIRECTION_EXTEND;
@@ -198,7 +198,7 @@ int main(void) {
     
     HDY_MotionSegment holding;
     memset(&holding, 0, sizeof(holding));
-    strcpy(holding.name, "HOLDING");
+    holding.segmentTag = HDY_SEGMENT_TYPE_HOLDING;
     holding.mode = HDY_MODE_PRESSURE_CLOSED_LOOP;
     holding.endCondition = HDY_END_TIME;
     holding.direction = HDY_DIRECTION_HOLD;

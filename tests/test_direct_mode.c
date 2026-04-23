@@ -165,7 +165,7 @@ void PrintStateInfo(const HDY_MotionControlFB* fb) {
     printf("  PumpSpeed=%.3f rpm, Direction=%d\n",
            state->commandedPumpSpeed, state->plannedDirection);
     printf("  Segment: %s (Source=%d)\n",
-           state->currentSegmentName, state->segmentSource);
+           (state->currentSegmentTag == 0 ? "(none)" : "active"), state->segmentSource);
     
     #if HDY_ENABLE_PRESSURE_LOOP_TELEMETRY
     printf("  PressureLoop: Target=%.3f, Filtered=%.3f, Error=%.3f\n",
@@ -179,7 +179,7 @@ HDY_MotionSegment CreateInjectionSegment(HDY_TIME startTime) {
     HDY_MotionSegment segment;
     memset(&segment, 0, sizeof(segment));
     
-    strcpy(segment.name, "INJECTION");
+    segment.segmentTag = HDY_SEGMENT_TYPE_INJECTION;
     segment.type = HDY_SEGMENT_TYPE_INJECTION;
     segment.mode = HDY_MODE_SPEED_RAMP;
     segment.endCondition = HDY_END_POSITION;
@@ -207,7 +207,7 @@ HDY_MotionSegment CreateHoldingSegment(HDY_TIME startTime) {
     HDY_MotionSegment segment;
     memset(&segment, 0, sizeof(segment));
     
-    strcpy(segment.name, "HOLDING");
+    segment.segmentTag = HDY_SEGMENT_TYPE_HOLDING;
     segment.type = HDY_SEGMENT_TYPE_HOLDING;
     segment.mode = HDY_MODE_PRESSURE_CLOSED_LOOP;
     segment.endCondition = HDY_END_TIME;
@@ -235,7 +235,7 @@ HDY_MotionSegment CreateRetractionSegment(HDY_TIME startTime) {
     HDY_MotionSegment segment;
     memset(&segment, 0, sizeof(segment));
     
-    strcpy(segment.name, "RETRACTION");
+    segment.segmentTag = HDY_SEGMENT_TYPE_OPENING;
     segment.type = HDY_SEGMENT_TYPE_OPENING;
     segment.mode = HDY_MODE_SPEED_RAMP;
     segment.endCondition = HDY_END_POSITION;

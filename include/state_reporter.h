@@ -16,8 +16,8 @@ void HDY_StateReporter_SetSegmentSource(HDY_MotionControlFB* fb, HDY_SegmentSour
 void HDY_StateReporter_RefreshStandardOutputs(HDY_MotionControlFB* fb);
 void HDY_StateReporter_ResetTransitionFlags(HDY_MotionControlFB* fb);
 void HDY_StateReporter_ApplySafeOutputs(HDY_MotionControlFB* fb);
-void HDY_StateReporter_ClearSegmentName(HDY_MotionControlFB* fb);
-void HDY_StateReporter_SetSegmentName(HDY_MotionControlFB* fb, const char* name);
+void HDY_StateReporter_ClearSegmentTag(HDY_MotionControlFB* fb);
+void HDY_StateReporter_SetSegmentTag(HDY_MotionControlFB* fb, HDY_UINT8 tag);
 void HDY_StateReporter_SetIdleState(HDY_MotionControlFB* fb,
                                     HDY_BOOL finished,
                                     HDY_BOOL segmentCompleted);

@@ -21,8 +21,8 @@ static HDY_MotionSegment recipe[TEST_SEGMENTS];
 static void init_segments(void) {
     /* 段0：慢速前进 (0 → 100mm) */
     memset(&recipe[0], 0, sizeof(HDY_MotionSegment));
-    strncpy(recipe[0].name, "SlowFwd", HDY_NAME_MAX - 1);
-    recipe[0].name[HDY_NAME_MAX - 1] = '\0';
+    recipe[0].segmentTag = 1;
+    /* tag set above */;
     recipe[0].type = HDY_SEGMENT_TYPE_INJECTION;
     recipe[0].planner = HDY_PLANNER_TIME_BASED;
     recipe[0].mode = HDY_MODE_SPEED_RAMP;
@@ -40,8 +40,7 @@ static void init_segments(void) {
 
     /* 段1：快速前进 (100 → 200mm) */
     memset(&recipe[1], 0, sizeof(HDY_MotionSegment));
-    strncpy(recipe[1].name, "FastFwd", HDY_NAME_MAX - 1);
-    recipe[1].name[HDY_NAME_MAX - 1] = '\0';
+    recipe[1].segmentTag = 2;
     recipe[1].type = HDY_SEGMENT_TYPE_INJECTION;
     recipe[1].planner = HDY_PLANNER_TIME_BASED;
     recipe[1].mode = HDY_MODE_SPEED_RAMP;
@@ -59,8 +58,7 @@ static void init_segments(void) {
 
     /* 段2：后退回零 (200 → 0mm) */
     memset(&recipe[2], 0, sizeof(HDY_MotionSegment));
-    strncpy(recipe[2].name, "Retract", HDY_NAME_MAX - 1);
-    recipe[2].name[HDY_NAME_MAX - 1] = '\0';
+    recipe[2].segmentTag = 3;
     recipe[2].type = HDY_SEGMENT_TYPE_INJECTION;
     recipe[2].planner = HDY_PLANNER_TIME_BASED;
     recipe[2].mode = HDY_MODE_SPEED_RAMP;
@@ -87,8 +85,8 @@ static void print_segment_info(int segment_idx) {
     }
 
     const HDY_MotionSegment* seg = &recipe[segment_idx];
-    printf("  [Segment %d: %s] Mode=%d, TargetPos=%.2fmm, MaxVel=%.2fmm/s\n",
-           segment_idx, seg->name, seg->mode, seg->targetPosition, seg->maxVelocity);
+    printf("  [Segment %d: tag=%d] Mode=%d, TargetPos=%.2fmm, MaxVel=%.2fmm/s\n",
+           segment_idx, (int)seg->segmentTag, seg->mode, seg->targetPosition, seg->maxVelocity);
 }
 
 static void print_controller_state(const HDY_MotionControlFB* controller) {

@@ -6,8 +6,7 @@
 
 static HDY_MotionSegment make_pressure_segment(void) {
     HDY_MotionSegment segment = {0};
-    strncpy(segment.name, "PressureSegment", HDY_NAME_MAX - 1);
-    segment.name[HDY_NAME_MAX - 1] = '\0';
+    segment.segmentTag = 1;
     segment.mode = HDY_MODE_PRESSURE_CLOSED_LOOP;
     segment.endCondition = HDY_END_TIME;
     segment.direction = HDY_DIRECTION_HOLD;

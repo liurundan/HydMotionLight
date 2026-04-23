@@ -5,8 +5,7 @@
 
 static HDY_MotionSegment make_valid_segment(void) {
     HDY_MotionSegment segment = {0};
-    strncpy(segment.name, "Valid", HDY_NAME_MAX - 1);
-    segment.name[HDY_NAME_MAX - 1] = '\0';
+    segment.segmentTag = 1;
     segment.type = HDY_SEGMENT_TYPE_INJECTION;
     segment.planner = HDY_PLANNER_TIME_BASED;
     segment.mode = HDY_MODE_SPEED_RAMP;

@@ -48,7 +48,7 @@ static void create_test_axis_ref(HDY_AxisRef* axis_ref, HDY_TIME time_offset) {
 }
 
 static void create_test_segment(HDY_MotionSegment* segment, HDY_ControlMode mode) {
-    snprintf(segment->name, HDY_NAME_MAX, "TestSegment");
+    segment->segmentTag = 1;
     segment->type = HDY_SEGMENT_TYPE_INJECTION;
     segment->planner = HDY_PLANNER_TIME_BASED;
     segment->mode = mode;

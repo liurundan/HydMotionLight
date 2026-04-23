@@ -16,8 +16,7 @@ static HDY_AxisRef create_test_axis_ref(HDY_REAL position) {
 
 static HDY_MotionSegment create_test_segment(void) {
     HDY_MotionSegment segment = {0};
-    strncpy(segment.name, "TestSegment", HDY_NAME_MAX - 1);
-    segment.name[HDY_NAME_MAX - 1] = '\0';
+    segment.segmentTag = 1;
     segment.planner = HDY_PLANNER_POSITION_BASED;
     segment.mode = HDY_MODE_POSITION;
     segment.endCondition = HDY_END_POSITION;

@@ -86,7 +86,8 @@ HDY_ConfigInfo HDY_GetConfigInfo(void) {
     memset(&config, 0, sizeof(config));
 
     config.maxSegments = HDY_MAX_SEGMENTS;
-    config.maxNameLength = HDY_NAME_MAX;
+    config.maxSegmentTagValue = HDY_SEGMENT_TAG_MAX;
+    config.maxNameLength = HDY_SEGMENT_TAG_MAX;
     config.maxMessageLength = HDY_MESSAGE_MAX;
     config.maxHistoryDepth = HDY_DIAG_HISTORY_DEPTH;
     config.diagnosticMessageEnabled = HDY_ENABLE_DIAGNOSTIC_MESSAGE;

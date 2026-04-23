@@ -24,7 +24,7 @@
  * HDY_REAL_PRECISION_FLOAT  - 使用float（32位，节省RAM，精度较低）
  * HDY_REAL_PRECISION_DOUBLE - 使用double（64位，精度较高，默认）
  */
-#define HDY_REAL_PRECISION_DOUBLE 1
+#define HDY_REAL_PRECISION_FLOAT 1
 
 /* 根据精度配置选择HDY_REAL类型 */
 #if HDY_REAL_PRECISION_FLOAT
@@ -48,12 +48,17 @@
  */
 #define HDY_MAX_SEGMENTS 16
 
-/* 段名称最大长度
- * 默认: 32字符
- * 最小: 16字符
- * 影响: RAM和Flash占用
+/* 段标签最大值
+ * 默认: 255 (uint8_t full range)
+ * 说明: segmentTag 使用 uint8_t，此配置保留用于向后兼容查询接口
+ * 影响: 每个段从 char[16] 降到 1 字节，显著节省 RAM
  */
-#define HDY_NAME_MAX 32
+#define HDY_SEGMENT_TAG_MAX 255
+
+/* 段名称最大长度（已弃用，保留用于配置查询接口兼容性）
+ * 新代码应使用 HDY_SEGMENT_TAG_MAX 和 segmentTag 字段
+ */
+#define HDY_NAME_MAX 16
 
 /* 诊断消息最大长度
  * 默认: 64字符
@@ -67,7 +72,7 @@
  * 最小: 1条
  * 影响: RAM占用约 sizeof(HDY_DiagnosticSnapshot) * HDY_DIAG_HISTORY_DEPTH 字节
  */
-#define HDY_DIAG_HISTORY_DEPTH 4
+#define HDY_DIAG_HISTORY_DEPTH 2
 
 /* ============================================================================
  * 3. 功能开关
@@ -267,10 +272,6 @@ typedef double HDY_TIME;
     #error "HDY_MAX_SEGMENTS must be at least 4"
 #endif
 
-#if HDY_NAME_MAX < 16
-    #error "HDY_NAME_MAX must be at least 16"
-#endif
-
 #if HDY_DIAG_HISTORY_DEPTH < 1
     #error "HDY_DIAG_HISTORY_DEPTH must be at least 1"
 #endif
@@ -324,7 +325,8 @@ typedef double HDY_TIME;
 /* 获取配置信息的接口（用于运行时查询） */
 typedef struct {
     int maxSegments;
-    int maxNameLength;
+    int maxSegmentTagValue;
+    int maxNameLength;       /* Legacy: kept for backward compatibility, same as maxSegmentTagValue */
     int maxMessageLength;
     int maxHistoryDepth;
     int diagnosticMessageEnabled;

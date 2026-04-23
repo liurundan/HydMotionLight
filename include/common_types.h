@@ -217,9 +217,16 @@ typedef struct {
  * - HDY_MODE_PRESSURE_CLOSED_LOOP:
  *   Uses targetPressure as the closed-loop reference and targetFlow as the
  *   feedforward bias / nominal hold flow.
+ *
+ * segmentTag:
+ *   Replaces the former name[HDY_NAME_MAX] char array to save RAM on
+ *   embedded targets. The tag is an opaque identifier assigned by the
+ *   process layer; the library only stores and copies it. Tag-to-name
+ *   resolution is the caller's responsibility (e.g. HMI lookup table).
+ *   Value 0 means "not set" / anonymous.
  */
 typedef struct {
-    char name[HDY_NAME_MAX];
+    HDY_UINT8 segmentTag;
     HDY_SegmentType type;
     HDY_PlannerType planner;
     HDY_ControlMode mode;
@@ -306,7 +313,7 @@ typedef struct {
 #if HDY_ENABLE_EXECUTION_REFERENCE
     HDY_ExecutionReference references;
 #endif
-    char segmentName[HDY_NAME_MAX];
+    HDY_UINT8 segmentTag;
 } HDY_DiagnosticSnapshot;
 
 #if HDY_ENABLE_DIAGNOSTIC_HISTORY
@@ -347,7 +354,7 @@ typedef struct {
     HDY_MotionDirection plannedDirection;
     HDY_SegmentSource segmentSource;       /* Latched source of the active/last executed segment. */
     HDY_ControllerStatus status;
-    char currentSegmentName[HDY_NAME_MAX];
+    HDY_UINT8 currentSegmentTag;
 } HDY_MotionState;
 
 /* ============================================================================

@@ -292,26 +292,20 @@ void HDY_StateReporter_ApplySafeOutputs(HDY_MotionControlFB* fb) {
     HDY_StateReporter_SetActive(fb, false);
 }
 
-void HDY_StateReporter_ClearSegmentName(HDY_MotionControlFB* fb) {
+void HDY_StateReporter_ClearSegmentTag(HDY_MotionControlFB* fb) {
     if (fb == NULL) {
         return;
     }
 
-    fb->STATE.currentSegmentName[0] = '\0';
+    fb->STATE.currentSegmentTag = 0;
 }
 
-void HDY_StateReporter_SetSegmentName(HDY_MotionControlFB* fb, const char* name) {
+void HDY_StateReporter_SetSegmentTag(HDY_MotionControlFB* fb, HDY_UINT8 tag) {
     if (fb == NULL) {
         return;
     }
 
-    if (name == NULL) {
-        HDY_StateReporter_ClearSegmentName(fb);
-        return;
-    }
-
-    strncpy(fb->STATE.currentSegmentName, name, HDY_NAME_MAX - 1);
-    fb->STATE.currentSegmentName[HDY_NAME_MAX - 1] = '\0';
+    fb->STATE.currentSegmentTag = tag;
 }
 
 void HDY_StateReporter_SetIdleState(HDY_MotionControlFB* fb,
@@ -498,17 +492,17 @@ static HDY_UINT8 HDY_StateReporter_ResolveDiagnosticSegmentIndex(const HDY_Motio
     return (HDY_UINT8)fb->STATE.currentSegmentIndex;
 }
 
-static const char* HDY_StateReporter_ResolveDiagnosticSegmentName(const HDY_MotionControlFB* fb,
-                                                                   const HDY_MotionSegment* segment) {
-    if (segment != NULL && segment->name[0] != '\0') {
-        return segment->name;
+static HDY_UINT8 HDY_StateReporter_ResolveDiagnosticSegmentTag(const HDY_MotionControlFB* fb,
+                                                                const HDY_MotionSegment* segment) {
+    if (segment != NULL && segment->segmentTag != 0) {
+        return segment->segmentTag;
     }
 
-    if (fb != NULL && fb->STATE.currentSegmentName[0] != '\0') {
-        return fb->STATE.currentSegmentName;
+    if (fb != NULL && fb->STATE.currentSegmentTag != 0) {
+        return fb->STATE.currentSegmentTag;
     }
 
-    return NULL;
+    return 0;
 }
 
 void HDY_StateReporter_RecordDiagnosticEvent(HDY_MotionControlFB* fb,
@@ -537,7 +531,7 @@ void HDY_StateReporter_RecordDiagnosticEvent(HDY_MotionControlFB* fb,
                                     references,
                                     eventTimestamp,
                                     HDY_StateReporter_ResolveDiagnosticSegmentIndex(fb, segment),
-                                    HDY_StateReporter_ResolveDiagnosticSegmentName(fb, segment),
+                                    HDY_StateReporter_ResolveDiagnosticSegmentTag(fb, segment),
                                     fb->STATUS,
                                     fb->ACTIVE,
                                     fb->FINISHED,

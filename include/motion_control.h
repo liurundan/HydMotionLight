@@ -174,7 +174,7 @@ typedef struct {
     HDY_REAL PUMP_SPEED;
     HDY_BOOL SEGMENT_COMPLETED;
     HDY_BOOL SEGMENT_CHANGED;
-    HDY_MotionState STATE;      /* Includes currentSegmentName and pressure-loop telemetry as embedded-facing runtime state. */
+    HDY_MotionState STATE;      /* Includes currentSegmentTag and pressure-loop telemetry as embedded-facing runtime state. */
     HDY_DiagnosticInfo DIAGNOSTIC;         /* Live current-cycle / current-command diagnostic. */
     HDY_DiagnosticInfo DIAGNOSTIC_LATCH;   /* Last non-NONE diagnostic event retained until Init()/RESET. */
     HDY_DiagnosticSnapshot LAST_DIAGNOSTIC_SNAPSHOT;

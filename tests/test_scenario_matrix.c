@@ -29,7 +29,7 @@ static void init_axis(HDY_AxisRef* axis, HDY_REAL position, HDY_REAL pressure) {
     axis->timestamp = 0.0;
 }
 
-static HDY_MotionSegment make_linear_segment(const char* name,
+static HDY_MotionSegment make_linear_segment(HDY_UINT8 tag,
                                              HDY_SegmentType type,
                                              HDY_ControlMode mode,
                                              HDY_MotionDirection direction,
@@ -42,8 +42,8 @@ static HDY_MotionSegment make_linear_segment(const char* name,
                                              HDY_TIME timeoutLimit) {
     HDY_MotionSegment segment = {0};
 
-    strncpy(segment.name, name, HDY_NAME_MAX - 1);
-    segment.name[HDY_NAME_MAX - 1] = '\0';
+    segment.segmentTag = tag;
+    /* tag set above */;
     segment.type = type;
     segment.planner = (mode == HDY_MODE_POSITION)
         ? HDY_PLANNER_POSITION_BASED
@@ -69,7 +69,7 @@ static HDY_MotionSegment make_linear_segment(const char* name,
     return segment;
 }
 
-static HDY_MotionSegment make_pressure_segment(const char* name,
+static HDY_MotionSegment make_pressure_segment(HDY_UINT8 tag,
                                                HDY_SegmentType type,
                                                HDY_EndConditionType endCondition,
                                                HDY_REAL targetPressure,
@@ -78,8 +78,8 @@ static HDY_MotionSegment make_pressure_segment(const char* name,
                                                HDY_TIME timeoutLimit) {
     HDY_MotionSegment segment = {0};
 
-    strncpy(segment.name, name, HDY_NAME_MAX - 1);
-    segment.name[HDY_NAME_MAX - 1] = '\0';
+    segment.segmentTag = tag;
+    /* tag set above */;
     segment.type = type;
     segment.planner = HDY_PLANNER_TIME_BASED;
     segment.mode = HDY_MODE_PRESSURE_CLOSED_LOOP;
@@ -113,7 +113,7 @@ static HDY_MotionSegment make_pressure_segment(const char* name,
 static size_t build_full_cycle_recipe(HDY_MotionSegment* recipe) {
     size_t size = 0U;
 
-    recipe[size++] = make_linear_segment("SlowClamp",
+    recipe[size++] = make_linear_segment(1,
                                          HDY_SEGMENT_TYPE_CLAMPING,
                                          HDY_MODE_SPEED_RAMP,
                                          HDY_DIRECTION_EXTEND,
@@ -124,7 +124,7 @@ static size_t build_full_cycle_recipe(HDY_MotionSegment* recipe) {
                                          30.0,
                                          10.0,
                                          4.0);
-    recipe[size++] = make_linear_segment("FastClamp",
+    recipe[size++] = make_linear_segment(2,
                                          HDY_SEGMENT_TYPE_CLAMPING,
                                          HDY_MODE_SPEED_RAMP,
                                          HDY_DIRECTION_EXTEND,
@@ -135,21 +135,21 @@ static size_t build_full_cycle_recipe(HDY_MotionSegment* recipe) {
                                          70.0,
                                          18.0,
                                          4.0);
-    recipe[size++] = make_pressure_segment("LowPressureProtect",
+    recipe[size++] = make_pressure_segment(51,
                                            HDY_SEGMENT_TYPE_CLAMPING,
                                            HDY_END_TIME,
                                            8.0,
                                            3.0,
                                            0.30,
                                            2.0);
-    recipe[size++] = make_pressure_segment("HighPressureLock",
+    recipe[size++] = make_pressure_segment(52,
                                            HDY_SEGMENT_TYPE_CLAMPING,
                                            HDY_END_PRESSURE,
                                            14.0,
                                            5.0,
                                            0.0,
                                            2.0);
-    recipe[size++] = make_linear_segment("InjectionStage1",
+    recipe[size++] = make_linear_segment(3,
                                          HDY_SEGMENT_TYPE_INJECTION,
                                          HDY_MODE_SPEED_RAMP,
                                          HDY_DIRECTION_EXTEND,
@@ -160,7 +160,7 @@ static size_t build_full_cycle_recipe(HDY_MotionSegment* recipe) {
                                          90.0,
                                          26.0,
                                          4.0);
-    recipe[size++] = make_linear_segment("InjectionStage2",
+    recipe[size++] = make_linear_segment(4,
                                          HDY_SEGMENT_TYPE_INJECTION,
                                          HDY_MODE_SPEED_RAMP,
                                          HDY_DIRECTION_EXTEND,
@@ -171,21 +171,21 @@ static size_t build_full_cycle_recipe(HDY_MotionSegment* recipe) {
                                          60.0,
                                          18.0,
                                          4.0);
-    recipe[size++] = make_pressure_segment("HoldStage1",
+    recipe[size++] = make_pressure_segment(53,
                                            HDY_SEGMENT_TYPE_HOLDING,
                                            HDY_END_TIME,
                                            12.0,
                                            4.0,
                                            0.30,
                                            2.0);
-    recipe[size++] = make_pressure_segment("HoldStage2",
+    recipe[size++] = make_pressure_segment(54,
                                            HDY_SEGMENT_TYPE_HOLDING,
                                            HDY_END_TIME,
                                            10.0,
                                            3.0,
                                            0.40,
                                            2.0);
-    recipe[size++] = make_linear_segment("SuckBack",
+    recipe[size++] = make_linear_segment(5,
                                          HDY_SEGMENT_TYPE_INJECTION,
                                          HDY_MODE_SPEED_RAMP,
                                          HDY_DIRECTION_RETRACT,
@@ -196,7 +196,7 @@ static size_t build_full_cycle_recipe(HDY_MotionSegment* recipe) {
                                          40.0,
                                          12.0,
                                          4.0);
-    recipe[size++] = make_linear_segment("MoldOpen",
+    recipe[size++] = make_linear_segment(6,
                                          HDY_SEGMENT_TYPE_OPENING,
                                          HDY_MODE_SPEED_RAMP,
                                          HDY_DIRECTION_RETRACT,
@@ -207,7 +207,7 @@ static size_t build_full_cycle_recipe(HDY_MotionSegment* recipe) {
                                          80.0,
                                          24.0,
                                          5.0);
-    recipe[size++] = make_linear_segment("EjectorForward",
+    recipe[size++] = make_linear_segment(7,
                                          HDY_SEGMENT_TYPE_EJECTION,
                                          HDY_MODE_POSITION,
                                          HDY_DIRECTION_EXTEND,
@@ -218,7 +218,7 @@ static size_t build_full_cycle_recipe(HDY_MotionSegment* recipe) {
                                          25.0,
                                          10.0,
                                          4.0);
-    recipe[size++] = make_linear_segment("CorePullBack",
+    recipe[size++] = make_linear_segment(8,
                                          HDY_SEGMENT_TYPE_CORE_PULL,
                                          HDY_MODE_POSITION,
                                          HDY_DIRECTION_RETRACT,
@@ -246,11 +246,9 @@ static size_t build_boundary_recipe(HDY_MotionSegment* recipe) {
     };
     size_t pairIndex;
     size_t size = 0U;
-    char name[HDY_NAME_MAX];
 
     for (pairIndex = 0U; pairIndex < 8U; ++pairIndex) {
-        snprintf(name, sizeof(name), "BoundaryMotion%02u", (unsigned int)(pairIndex + 1U));
-        recipe[size++] = make_linear_segment(name,
+        recipe[size++] = make_linear_segment((HDY_UINT8)(60 + pairIndex),
                                              (pairIndex % 2U == 0U)
                                                  ? HDY_SEGMENT_TYPE_CLAMPING
                                                  : HDY_SEGMENT_TYPE_OPENING,
@@ -264,8 +262,7 @@ static size_t build_boundary_recipe(HDY_MotionSegment* recipe) {
                                              12.0,
                                              2.0);
 
-        snprintf(name, sizeof(name), "BoundaryHold%02u", (unsigned int)(pairIndex + 1U));
-        recipe[size++] = make_pressure_segment(name,
+        recipe[size++] = make_pressure_segment((HDY_UINT8)(70 + pairIndex),
                                                HDY_SEGMENT_TYPE_HOLDING,
                                                HDY_END_TIME,
                                                6.0 + 0.5 * (HDY_REAL)pairIndex,
@@ -365,7 +362,7 @@ static ScenarioStats run_recipe_and_collect(const HDY_MotionSegment* recipe,
             (fb.ACTIVE || fb.SEGMENT_COMPLETED || fb.FINISHED)) {
             assert(expectedSegmentStart < recipeSize);
             assert(fb.STATE.currentSegmentIndex == expectedSegmentStart);
-            assert(strcmp(fb.STATE.currentSegmentName, recipe[expectedSegmentStart].name) == 0);
+            assert(fb.STATE.currentSegmentTag == recipe[expectedSegmentStart].segmentTag);
             lastObservedSegmentIndex = fb.STATE.currentSegmentIndex;
             ++stats.segmentChangeCount;
             ++expectedSegmentStart;
@@ -378,7 +375,7 @@ static ScenarioStats run_recipe_and_collect(const HDY_MotionSegment* recipe,
 
         if (fb.ACTIVE) {
             assert(fb.STATE.currentSegmentIndex < recipeSize);
-            assert(fb.STATE.currentSegmentName[0] != '\0');
+            assert(fb.STATE.currentSegmentTag != 0);
             activeSegment = &recipe[fb.STATE.currentSegmentIndex];
             if (activeSegment->mode == HDY_MODE_PRESSURE_CLOSED_LOOP) {
                 assert(fb.STATE.pressureControllerApplied == HDY_PRESSURE_CONTROLLER_PI);
@@ -397,7 +394,7 @@ static ScenarioStats run_recipe_and_collect(const HDY_MotionSegment* recipe,
         if (completedThisCycle) {
             assert(expectedSegmentComplete < recipeSize);
             assert(completedIndex == expectedSegmentComplete);
-            assert(strcmp(fb.STATE.currentSegmentName, recipe[expectedSegmentComplete].name) == 0);
+            assert(fb.STATE.currentSegmentTag == recipe[expectedSegmentComplete].segmentTag);
             ++stats.segmentCompletedCount;
             ++expectedSegmentComplete;
 

@@ -38,7 +38,7 @@ static void print_retained_diagnostics(const HDY_MotionControlFB* controller) {
     if (HDY_DiagnosticsHistory_GetLatest(&controller->DIAGNOSTIC_HISTORY, &latestSnapshot)) {
         printf("    History latest: t=%.2f segment=%s code=%s action=%s\n",
                latestSnapshot.eventTimestamp,
-               latestSnapshot.segmentName,
+               (latestSnapshot.segmentTag == 0 ? "(none)" : "active"),
                HDY_Diagnostics_CodeToString(latestSnapshot.diagnostic.code),
                HDY_Diagnostics_ProtectionActionToString(latestSnapshot.diagnostic.protectionAction));
     }
@@ -46,7 +46,7 @@ static void print_retained_diagnostics(const HDY_MotionControlFB* controller) {
     if (controller->LAST_FAULT_SNAPSHOT.valid) {
         printf("    Last fault snapshot: t=%.2f segment=%s code=%s\n",
                controller->LAST_FAULT_SNAPSHOT.eventTimestamp,
-               controller->LAST_FAULT_SNAPSHOT.segmentName,
+               (controller->LAST_FAULT_SNAPSHOT.segmentTag == 0 ? "(none)" : "fault"),
                HDY_Diagnostics_CodeToString(controller->LAST_FAULT_SNAPSHOT.diagnostic.code));
     }
 }
@@ -60,7 +60,7 @@ int main(void) {
 
     HDY_MotionSegment recipe[5] = {
         {
-            .name = "Slow Clamping",
+            .segmentTag = 1,
             .type = HDY_SEGMENT_TYPE_CLAMPING,
             .planner = HDY_PLANNER_TIME_BASED,
             .mode = HDY_MODE_SPEED_RAMP,
@@ -82,7 +82,7 @@ int main(void) {
             .pressureRampRate = 5.0
         },
         {
-            .name = "Fast Clamping",
+            .segmentTag = 2,
             .type = HDY_SEGMENT_TYPE_CLAMPING,
             .planner = HDY_PLANNER_TIME_BASED,
             .mode = HDY_MODE_SPEED_RAMP,
@@ -104,7 +104,7 @@ int main(void) {
             .pressureRampRate = 8.0
         },
         {
-            .name = "Low Pressure Hold",
+            .segmentTag = 3,
             .type = HDY_SEGMENT_TYPE_CLAMPING,
             .planner = HDY_PLANNER_TIME_BASED,
             .mode = HDY_MODE_PRESSURE_CLOSED_LOOP,
@@ -130,7 +130,7 @@ int main(void) {
             .pressureFilterAlpha = 0.35
         },
         {
-            .name = "Injection Stage 1",
+            .segmentTag = 4,
             .type = HDY_SEGMENT_TYPE_INJECTION,
             .planner = HDY_PLANNER_TIME_BASED,
             .mode = HDY_MODE_SPEED_RAMP,
@@ -152,7 +152,7 @@ int main(void) {
             .pressureRampRate = 5.0
         },
         {
-            .name = "Holding Stage 1",
+            .segmentTag = 5,
             .type = HDY_SEGMENT_TYPE_HOLDING,
             .planner = HDY_PLANNER_TIME_BASED,
             .mode = HDY_MODE_PRESSURE_CLOSED_LOOP,
@@ -193,7 +193,7 @@ int main(void) {
 
         printf("[%.1f s] %s | PumpSpeed=%.1f rpm | Flow=%.1f | Velocity=%.2f | Pressure=%.2f MPa | Status=%s | Changed=%s\n",
                ref.timestamp,
-               controller.STATE.currentSegmentName,
+               (controller.STATE.currentSegmentTag == 0 ? "(none)" : "active"),
                controller.PUMP_SPEED,
                controller.STATE.plannedFlow,
                controller.STATE.plannedVelocity,
@@ -213,7 +213,7 @@ int main(void) {
                 printf("Recipe finished.\n");
                 break;
             }
-            printf("Switching to next segment: %s\n", controller.STATE.currentSegmentName);
+            printf("Switching to next segment: %s\n", (controller.STATE.currentSegmentTag == 0 ? "(none)" : "active"));
         }
 
         if (controller.ACTIVE) {

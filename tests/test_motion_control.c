@@ -46,12 +46,11 @@ static void assert_standard_outputs(const HDY_MotionControlFB* fb,
     assert(fb->ERROR_ID == errorId);
 }
 
-static HDY_MotionSegment make_position_segment(const char* name,
+static HDY_MotionSegment make_position_segment(HDY_UINT8 tag,
                                                HDY_REAL targetPosition,
                                                HDY_MotionDirection direction) {
     HDY_MotionSegment segment = {0};
-    strncpy(segment.name, name, HDY_NAME_MAX - 1);
-    segment.name[HDY_NAME_MAX - 1] = '\0';
+    segment.segmentTag = tag;
     segment.type = HDY_SEGMENT_TYPE_CLAMPING;
     segment.planner = HDY_PLANNER_POSITION_BASED;
     segment.mode = HDY_MODE_POSITION;
@@ -75,12 +74,11 @@ static HDY_MotionSegment make_position_segment(const char* name,
     return segment;
 }
 
-static HDY_MotionSegment make_time_segment(const char* name,
+static HDY_MotionSegment make_time_segment(HDY_UINT8 tag,
                                            HDY_TIME duration,
                                            HDY_MotionDirection direction) {
     HDY_MotionSegment segment = {0};
-    strncpy(segment.name, name, HDY_NAME_MAX - 1);
-    segment.name[HDY_NAME_MAX - 1] = '\0';
+    segment.segmentTag = tag;
     segment.type = HDY_SEGMENT_TYPE_HOLDING;
     segment.planner = HDY_PLANNER_TIME_BASED;
     segment.mode = HDY_MODE_SPEED_RAMP;
@@ -104,13 +102,12 @@ static HDY_MotionSegment make_time_segment(const char* name,
     return segment;
 }
 
-static HDY_MotionSegment make_pressure_segment(const char* name,
+static HDY_MotionSegment make_pressure_segment(HDY_UINT8 tag,
                                                HDY_TIME duration,
                                                HDY_REAL targetPressure,
                                                HDY_REAL targetFlow) {
     HDY_MotionSegment segment = {0};
-    strncpy(segment.name, name, HDY_NAME_MAX - 1);
-    segment.name[HDY_NAME_MAX - 1] = '\0';
+    segment.segmentTag = tag;
     segment.type = HDY_SEGMENT_TYPE_HOLDING;
     segment.planner = HDY_PLANNER_TIME_BASED;
     segment.mode = HDY_MODE_PRESSURE_CLOSED_LOOP;
@@ -141,7 +138,7 @@ static void test_load_recipe_requires_start_command(void) {
 
     printf("Testing LoadRecipe idle semantics...\n");
     init_controller(&fb);
-    recipe[0] = make_position_segment("Clamp", 10.0, HDY_DIRECTION_EXTEND);
+    recipe[0] = make_position_segment(1, 10.0, HDY_DIRECTION_EXTEND);
 
     assert(HDY_MotionControlFB_LoadRecipe(&fb, recipe, 1));
     assert(fb.RECIPE_SIZE == 1U);
@@ -156,7 +153,7 @@ static void test_load_recipe_requires_start_command(void) {
     assert(!fb.STATE.active);
     assert(!fb.FINISHED);
     assert(!fb.SEGMENT_COMPLETED);
-    assert(fb.STATE.currentSegmentName[0] == '\0');
+    assert(fb.STATE.currentSegmentTag == 0);
     assert(fb.STATE.status == HDY_STATUS_READY);
 
     fb.AXIS_REF.position = 0.0;
@@ -183,8 +180,8 @@ static void test_standard_outputs_follow_plcopen_state_machine(void) {
     assert(fb.FB_STATE == HDY_FB_STATE_IDLE);
     assert_standard_outputs(&fb, false, false, false, HDY_DIAG_CODE_NONE);
 
-    recipe[0] = make_position_segment("StdOutA", 1.0, HDY_DIRECTION_EXTEND);
-    recipe[1] = make_time_segment("StdOutB", 0.5, HDY_DIRECTION_EXTEND);
+    recipe[0] = make_position_segment(11, 1.0, HDY_DIRECTION_EXTEND);
+    recipe[1] = make_time_segment(12, 0.5, HDY_DIRECTION_EXTEND);
     assert(HDY_MotionControlFB_LoadRecipe(&fb, recipe, 2));
     assert(fb.FB_STATE == HDY_FB_STATE_READY);
     assert_standard_outputs(&fb, false, false, false, HDY_DIAG_CODE_NONE);
@@ -235,7 +232,7 @@ static void test_standard_outputs_follow_plcopen_state_machine(void) {
     assert_standard_outputs(&fb, false, false, false, HDY_DIAG_CODE_NONE);
 
     init_controller(&fb);
-    recipe[0] = make_position_segment("StdOutDone", 1.0, HDY_DIRECTION_EXTEND);
+    recipe[0] = make_position_segment(13, 1.0, HDY_DIRECTION_EXTEND);
     assert(HDY_MotionControlFB_LoadRecipe(&fb, recipe, 1));
     fb.AXIS_REF.position = 0.0;
     fb.AXIS_REF.pressure = recipe[0].targetPressure;
@@ -249,7 +246,7 @@ static void test_standard_outputs_follow_plcopen_state_machine(void) {
     assert_standard_outputs(&fb, false, true, false, HDY_DIAG_CODE_NONE);
 
     init_controller(&fb);
-    recipe[0] = make_position_segment("StdOutDisabled", 1.0, HDY_DIRECTION_EXTEND);
+    recipe[0] = make_position_segment(14, 1.0, HDY_DIRECTION_EXTEND);
     assert(HDY_MotionControlFB_LoadRecipe(&fb, recipe, 1));
     fb.EN = false;
     fb.AXIS_REF.timestamp = 0.0;
@@ -258,7 +255,7 @@ static void test_standard_outputs_follow_plcopen_state_machine(void) {
     assert_standard_outputs(&fb, false, false, false, HDY_DIAG_CODE_NONE);
 
     init_controller(&fb);
-    recipe[0] = make_position_segment("StdOutFault", 10.0, HDY_DIRECTION_EXTEND);
+    recipe[0] = make_position_segment(15, 10.0, HDY_DIRECTION_EXTEND);
     assert(HDY_MotionControlFB_LoadRecipe(&fb, recipe, 1));
     fb.AXIS_REF.position = 0.0;
     fb.AXIS_REF.pressure = recipe[0].targetPressure;
@@ -279,7 +276,7 @@ static void test_start_segment_and_segment_changed_pulse(void) {
 
     printf("Testing StartSegment execution semantics...\n");
     init_controller(&fb);
-    recipe[0] = make_position_segment("Inject", 20.0, HDY_DIRECTION_EXTEND);
+    recipe[0] = make_position_segment(2, 20.0, HDY_DIRECTION_EXTEND);
     assert(HDY_MotionControlFB_LoadRecipe(&fb, recipe, 1));
 
     fb.AXIS_REF.position = 0.0;
@@ -306,7 +303,7 @@ static void test_start_segment_and_segment_changed_pulse(void) {
     assert(fb.STATE.plannedVelocity > 0.0);
     assert(fb.STATE.plannedFlow > 0.0);
     assert(fb.STATE.plannedDirection == HDY_DIRECTION_EXTEND);
-    assert(strcmp(fb.STATE.currentSegmentName, "Inject") == 0);
+    assert(fb.STATE.currentSegmentTag == 2);
 
     fb.AXIS_REF.timestamp = 0.1;
     HDY_MotionControlFB_Execute(&fb);
@@ -323,7 +320,7 @@ static void test_start_segment_command_input(void) {
 
     printf("Testing START_SEGMENT command input semantics...\n");
     init_controller(&fb);
-    recipe[0] = make_position_segment("CommandStart", 12.0, HDY_DIRECTION_EXTEND);
+    recipe[0] = make_position_segment(3, 12.0, HDY_DIRECTION_EXTEND);
     assert(HDY_MotionControlFB_LoadRecipe(&fb, recipe, 1));
 
     fb.AXIS_REF.position = 0.0;
@@ -339,7 +336,7 @@ static void test_start_segment_command_input(void) {
     assert(fb.SEGMENT_CHANGED);
     assert(fb.STATUS == HDY_STATUS_RUNNING);
     assert(fb.STATE.plannedDirection == HDY_DIRECTION_EXTEND);
-    assert(strcmp(fb.STATE.currentSegmentName, "CommandStart") == 0);
+    assert(fb.STATE.currentSegmentTag == 3);
     printf("✓ START_SEGMENT command input semantics test passed\n");
 }
 
@@ -349,7 +346,7 @@ static void test_start_segment_input_uses_rising_edge(void) {
 
     printf("Testing START_SEGMENT rising-edge semantics...\n");
     init_controller(&fb);
-    recipe[0] = make_position_segment("EdgeStart", 10.0, HDY_DIRECTION_EXTEND);
+    recipe[0] = make_position_segment(4, 10.0, HDY_DIRECTION_EXTEND);
     assert(HDY_MotionControlFB_LoadRecipe(&fb, recipe, 1));
 
     fb.AXIS_REF.position = 0.0;
@@ -390,7 +387,7 @@ static void test_cycle_does_not_sample_command_inputs_without_scan(void) {
 
     printf("Testing Cycle() command/input separation...\n");
     init_controller(&fb);
-    recipe[0] = make_position_segment("CycleOnly", 10.0, HDY_DIRECTION_EXTEND);
+    recipe[0] = make_position_segment(5, 10.0, HDY_DIRECTION_EXTEND);
     assert(HDY_MotionControlFB_LoadRecipe(&fb, recipe, 1));
 
     fb.AXIS_REF.position = 0.0;
@@ -423,7 +420,7 @@ static void test_cycle_consumes_api_queued_start_command(void) {
 
     printf("Testing Cycle() consumes queued API commands...\n");
     init_controller(&fb);
-    recipe[0] = make_position_segment("CycleQueuedStart", 12.0, HDY_DIRECTION_EXTEND);
+    recipe[0] = make_position_segment(6, 12.0, HDY_DIRECTION_EXTEND);
     assert(HDY_MotionControlFB_LoadRecipe(&fb, recipe, 1));
 
     fb.AXIS_REF.position = 0.0;
@@ -439,7 +436,7 @@ static void test_cycle_consumes_api_queued_start_command(void) {
     assert(fb.SEGMENT_CHANGED);
     assert(fb.STATUS == HDY_STATUS_RUNNING);
     assert(fb.FB_STATE == HDY_FB_STATE_RUNNING);
-    assert(strcmp(fb.STATE.currentSegmentName, "CycleQueuedStart") == 0);
+    assert(fb.STATE.currentSegmentTag == 6);
     printf("✓ Cycle() queued API command test passed\n");
 }
 
@@ -450,7 +447,7 @@ static void test_direct_mode_start_without_recipe_uses_direct_segment_buffer(voi
     printf("Testing direct-mode start without recipe...\n");
     init_controller(&fb);
     fb.USE_RECIPE = false;
-    directSegment = make_position_segment("DirectOnly", 2.0, HDY_DIRECTION_EXTEND);
+    directSegment = make_position_segment(7, 2.0, HDY_DIRECTION_EXTEND);
     assert(HDY_MotionControlFB_LoadDirectSegment(&fb, &directSegment));
     assert(fb.DIRECT_SEGMENT_VALID);
     assert(fb.STATUS == HDY_STATUS_READY);
@@ -475,7 +472,7 @@ static void test_direct_mode_start_without_recipe_uses_direct_segment_buffer(voi
     assert(fb.FB_STATE == HDY_FB_STATE_RUNNING);
     assert(fb.STATE.segmentSource == HDY_SEGMENT_SOURCE_DIRECT);
     assert(fb.STATE.currentSegmentIndex == HDY_MAX_SEGMENTS);
-    assert(strcmp(fb.STATE.currentSegmentName, "DirectOnly") == 0);
+    assert(fb.STATE.currentSegmentTag == 7);
     assert(fb.STATE.plannedDirection == HDY_DIRECTION_EXTEND);
     assert(fb.PUMP_SPEED > 0.0);
 
@@ -501,7 +498,7 @@ static void test_direct_mode_latches_segment_parameters_at_start(void) {
     printf("Testing direct-mode parameter latching semantics...\n");
     init_controller(&fb);
     fb.USE_RECIPE = false;
-    directSegment = make_position_segment("DirectLatchedA", 5.0, HDY_DIRECTION_EXTEND);
+    directSegment = make_position_segment(8, 5.0, HDY_DIRECTION_EXTEND);
     assert(HDY_MotionControlFB_LoadDirectSegment(&fb, &directSegment));
 
     fb.AXIS_REF.position = 0.0;
@@ -512,11 +509,11 @@ static void test_direct_mode_latches_segment_parameters_at_start(void) {
     assert(HDY_MotionControlFB_StartSegment(&fb, 99U, 0.0));
     HDY_MotionControlFB_Execute(&fb);
     assert(fb.ACTIVE);
-    assert(strcmp(fb.STATE.currentSegmentName, "DirectLatchedA") == 0);
+    assert(fb.STATE.currentSegmentTag == 8);
     assert(fb.STATE.segmentSource == HDY_SEGMENT_SOURCE_DIRECT);
     assert(fb.STATE.plannedDirection == HDY_DIRECTION_EXTEND);
 
-    directSegment = make_position_segment("DirectLatchedB", 1.0, HDY_DIRECTION_RETRACT);
+    directSegment = make_position_segment(9, 1.0, HDY_DIRECTION_RETRACT);
     assert(HDY_MotionControlFB_LoadDirectSegment(&fb, &directSegment));
 
     fb.AXIS_REF.velocity = fb.STATE.plannedVelocity;
@@ -524,7 +521,7 @@ static void test_direct_mode_latches_segment_parameters_at_start(void) {
     fb.AXIS_REF.timestamp = 0.2;
     HDY_MotionControlFB_Execute(&fb);
     assert(fb.ACTIVE);
-    assert(strcmp(fb.STATE.currentSegmentName, "DirectLatchedA") == 0);
+    assert(fb.STATE.currentSegmentTag == 8);
     assert(fb.STATE.segmentSource == HDY_SEGMENT_SOURCE_DIRECT);
     assert(fb.STATE.plannedDirection == HDY_DIRECTION_EXTEND);
     printf("✓ Direct-mode parameter latching test passed\n");
@@ -537,8 +534,8 @@ static void test_recipe_and_direct_modes_can_coexist_and_switch(void) {
 
     printf("Testing recipe/direct coexistence and source switching...\n");
     init_controller(&fb);
-    recipe[0] = make_position_segment("RecipeStage", 1.0, HDY_DIRECTION_EXTEND);
-    directSegment = make_time_segment("DirectStage", 0.5, HDY_DIRECTION_RETRACT);
+    recipe[0] = make_position_segment(10, 1.0, HDY_DIRECTION_EXTEND);
+    directSegment = make_time_segment(107, 0.5, HDY_DIRECTION_RETRACT);
     assert(HDY_MotionControlFB_LoadRecipe(&fb, recipe, 1));
     assert(HDY_MotionControlFB_LoadDirectSegment(&fb, &directSegment));
 
@@ -550,7 +547,7 @@ static void test_recipe_and_direct_modes_can_coexist_and_switch(void) {
     assert(fb.ACTIVE);
     assert(fb.STATE.segmentSource == HDY_SEGMENT_SOURCE_RECIPE);
     assert(fb.STATE.currentSegmentIndex == 0U);
-    assert(strcmp(fb.STATE.currentSegmentName, "RecipeStage") == 0);
+    assert(fb.STATE.currentSegmentTag == 10);
 
     fb.AXIS_REF.position = 1.0;
     fb.AXIS_REF.timestamp = 0.1;
@@ -571,7 +568,7 @@ static void test_recipe_and_direct_modes_can_coexist_and_switch(void) {
     assert(!fb.FINISHED);
     assert(fb.STATE.segmentSource == HDY_SEGMENT_SOURCE_DIRECT);
     assert(fb.STATE.currentSegmentIndex == HDY_MAX_SEGMENTS);
-    assert(strcmp(fb.STATE.currentSegmentName, "DirectStage") == 0);
+    assert(fb.STATE.currentSegmentTag == 107);
     assert(fb.STATE.plannedDirection == HDY_DIRECTION_RETRACT);
     printf("✓ Recipe/direct coexistence and switching test passed\n");
 }
@@ -602,7 +599,7 @@ static void test_hold_command_transitions_running_to_hold(void) {
 
     printf("Testing Hold command running -> HOLD transition...\n");
     init_controller(&fb);
-    recipe[0] = make_time_segment("Holdable", 1.0, HDY_DIRECTION_EXTEND);
+    recipe[0] = make_time_segment(101, 1.0, HDY_DIRECTION_EXTEND);
     assert(HDY_MotionControlFB_LoadRecipe(&fb, recipe, 1));
 
     fb.AXIS_REF.position = 0.0;
@@ -642,7 +639,7 @@ static void test_hold_command_transitions_running_to_hold(void) {
     assert(fb.STATE.plannedVelocity == 0.0);
     assert(fb.STATE.plannedFlow == 0.0);
     assert(fb.STATE.plannedDirection == HDY_DIRECTION_HOLD);
-    assert(strcmp(fb.STATE.currentSegmentName, "Holdable") == 0);
+    assert(fb.STATE.currentSegmentTag == 101);
     assert(fb._activeSegmentValid);
     assert(fabs(fb._holdStateTime - 0.2) < 1e-9);
     printf("✓ Hold command running -> HOLD transition test passed\n");
@@ -657,7 +654,7 @@ static void test_resume_command_restores_running_and_freezes_elapsed_time(void) 
 
     printf("Testing Resume command HOLD -> RUNNING transition...\n");
     init_controller(&fb);
-    recipe[0] = make_time_segment("Resumable", 1.0, HDY_DIRECTION_EXTEND);
+    recipe[0] = make_time_segment(102, 1.0, HDY_DIRECTION_EXTEND);
     assert(HDY_MotionControlFB_LoadRecipe(&fb, recipe, 1));
 
     fb.AXIS_REF.position = 0.0;
@@ -699,7 +696,7 @@ static void test_resume_command_restores_running_and_freezes_elapsed_time(void) 
     assert(fb.STATUS == HDY_STATUS_RUNNING);
     assert(fb.FB_STATE == HDY_FB_STATE_RUNNING);
     assert(fb.STATE.plannedDirection == HDY_DIRECTION_EXTEND);
-    assert(strcmp(fb.STATE.currentSegmentName, "Resumable") == 0);
+    assert(fb.STATE.currentSegmentTag == 102);
     assert(fabs(fb.STATE.references.elapsedTime - elapsedBeforeHold) < 1e-9);
     assert(fabs(fb._segmentStartTime - 0.5) < 1e-9);
     assert(fb.PUMP_SPEED > 0.0);
@@ -712,7 +709,7 @@ static void test_hold_rejected_in_ready_state(void) {
 
     printf("Testing Hold command legality in READY state...\n");
     init_controller(&fb);
-    recipe[0] = make_position_segment("HoldReady", 10.0, HDY_DIRECTION_EXTEND);
+    recipe[0] = make_position_segment(16, 10.0, HDY_DIRECTION_EXTEND);
     assert(HDY_MotionControlFB_LoadRecipe(&fb, recipe, 1));
 
     assert(!HDY_MotionControlFB_Hold(&fb));
@@ -735,7 +732,7 @@ static void test_command_warning_syncs_and_clears_state_protection_action(void) 
 
     printf("Testing command-warning protection-action sync and clear semantics...\n");
     init_controller(&fb);
-    recipe[0] = make_position_segment("CommandWarn", 10.0, HDY_DIRECTION_EXTEND);
+    recipe[0] = make_position_segment(17, 10.0, HDY_DIRECTION_EXTEND);
     assert(HDY_MotionControlFB_LoadRecipe(&fb, recipe, 1));
 
     assert(!HDY_MotionControlFB_Hold(&fb));
@@ -759,7 +756,7 @@ static void test_resume_rejected_while_running(void) {
 
     printf("Testing Resume command legality while running...\n");
     init_controller(&fb);
-    recipe[0] = make_time_segment("ResumeRunning", 1.0, HDY_DIRECTION_EXTEND);
+    recipe[0] = make_time_segment(103, 1.0, HDY_DIRECTION_EXTEND);
     assert(HDY_MotionControlFB_LoadRecipe(&fb, recipe, 1));
 
     fb.AXIS_REF.position = 0.0;
@@ -791,7 +788,7 @@ static void test_start_rejected_in_disabled_state(void) {
 
     printf("Testing Start command legality in DISABLED state...\n");
     init_controller(&fb);
-    recipe[0] = make_position_segment("DisabledStart", 10.0, HDY_DIRECTION_EXTEND);
+    recipe[0] = make_position_segment(18, 10.0, HDY_DIRECTION_EXTEND);
     assert(HDY_MotionControlFB_LoadRecipe(&fb, recipe, 1));
 
     fb.EN = false;
@@ -812,7 +809,7 @@ static void test_start_command_rejected_while_running(void) {
 
     printf("Testing Start command legality while running...\n");
     init_controller(&fb);
-    recipe[0] = make_time_segment("BusyStart", 1.0, HDY_DIRECTION_EXTEND);
+    recipe[0] = make_time_segment(104, 1.0, HDY_DIRECTION_EXTEND);
     assert(HDY_MotionControlFB_LoadRecipe(&fb, recipe, 1));
 
     fb.AXIS_REF.position = 0.0;
@@ -849,7 +846,7 @@ static void test_abort_rejected_in_ready_state(void) {
 
     printf("Testing Abort command legality in READY state...\n");
     init_controller(&fb);
-    recipe[0] = make_position_segment("AbortReady", 10.0, HDY_DIRECTION_EXTEND);
+    recipe[0] = make_position_segment(19, 10.0, HDY_DIRECTION_EXTEND);
     assert(HDY_MotionControlFB_LoadRecipe(&fb, recipe, 1));
 
     assert(!HDY_MotionControlFB_Abort(&fb));
@@ -872,7 +869,7 @@ static void test_acknowledge_rejected_while_running_even_without_live_diagnostic
 
     printf("Testing Ack legality while running...\n");
     init_controller(&fb);
-    recipe[0] = make_time_segment("AckRunning", 1.0, HDY_DIRECTION_EXTEND);
+    recipe[0] = make_time_segment(106, 1.0, HDY_DIRECTION_EXTEND);
     assert(HDY_MotionControlFB_LoadRecipe(&fb, recipe, 1));
 
     fb.AXIS_REF.position = 0.0;
@@ -898,7 +895,7 @@ static void test_next_rejected_in_aborted_state(void) {
 
     printf("Testing Next command legality in ABORTED state...\n");
     init_controller(&fb);
-    recipe[0] = make_time_segment("AbortNext", 1.0, HDY_DIRECTION_EXTEND);
+    recipe[0] = make_time_segment(105, 1.0, HDY_DIRECTION_EXTEND);
     assert(HDY_MotionControlFB_LoadRecipe(&fb, recipe, 1));
 
     fb.AXIS_REF.position = 0.0;
@@ -933,7 +930,7 @@ static void test_abort_rejected_in_done_state(void) {
 
     printf("Testing Abort command legality in DONE state...\n");
     init_controller(&fb);
-    recipe[0] = make_position_segment("AbortDone", 1.0, HDY_DIRECTION_EXTEND);
+    recipe[0] = make_position_segment(21, 1.0, HDY_DIRECTION_EXTEND);
     assert(HDY_MotionControlFB_LoadRecipe(&fb, recipe, 1));
 
     fb.AXIS_REF.position = 0.0;
@@ -967,7 +964,7 @@ static void test_acknowledge_allowed_in_disabled_state(void) {
 
     printf("Testing Ack command legality in DISABLED state...\n");
     init_controller(&fb);
-    recipe[0] = make_position_segment("AckDisabled", 20.0, HDY_DIRECTION_EXTEND);
+    recipe[0] = make_position_segment(20, 20.0, HDY_DIRECTION_EXTEND);
     assert(HDY_MotionControlFB_LoadRecipe(&fb, recipe, 1));
 
     fb.AXIS_REF.position = 0.0;
@@ -1010,7 +1007,7 @@ static void test_start_allowed_in_aborted_state(void) {
 
     printf("Testing Start command legality in ABORTED state...\n");
     init_controller(&fb);
-    recipe[0] = make_time_segment("RestartAfterAbort", 1.0, HDY_DIRECTION_EXTEND);
+    recipe[0] = make_time_segment(37, 1.0, HDY_DIRECTION_EXTEND);
     assert(HDY_MotionControlFB_LoadRecipe(&fb, recipe, 1));
 
     fb.AXIS_REF.position = 0.0;
@@ -1039,7 +1036,7 @@ static void test_start_allowed_in_aborted_state(void) {
     assert(!fb.FINISHED);
     assert(!fb.FAULT);
     assert(fb.FB_STATE == HDY_FB_STATE_RUNNING);
-    assert(strcmp(fb.STATE.currentSegmentName, "RestartAfterAbort") == 0);
+    assert(fb.STATE.currentSegmentTag == 37);
     printf("✓ Start command legality in ABORTED state test passed\n");
 }
 
@@ -1055,8 +1052,8 @@ static void test_multiple_instances_are_isolated(void) {
     printf("Testing multi-instance isolation...\n");
     init_controller(&fbA);
     init_controller(&fbB);
-    recipeA[0] = make_position_segment("IsoA", 20.0, HDY_DIRECTION_EXTEND);
-    recipeB[0] = make_time_segment("IsoB", 1.0, HDY_DIRECTION_RETRACT);
+    recipeA[0] = make_position_segment(36, 20.0, HDY_DIRECTION_EXTEND);
+    recipeB[0] = make_time_segment(111, 1.0, HDY_DIRECTION_RETRACT);
     assert(HDY_MotionControlFB_LoadRecipe(&fbA, recipeA, 1));
     assert(HDY_MotionControlFB_LoadRecipe(&fbB, recipeB, 1));
 
@@ -1067,7 +1064,7 @@ static void test_multiple_instances_are_isolated(void) {
     assert(HDY_MotionControlFB_StartSegment(&fbA, 0, 0.0));
     HDY_MotionControlFB_Cycle(&fbA);
     assert(fbA.ACTIVE);
-    assert(strcmp(fbA.STATE.currentSegmentName, "IsoA") == 0);
+    assert(fbA.STATE.currentSegmentTag == 36);
     aDiagnosticCode = fbA.DIAGNOSTIC.code;
     aHistoryCount = fbA.DIAGNOSTIC_HISTORY.count;
     aPumpSpeed = fbA.PUMP_SPEED;
@@ -1086,11 +1083,11 @@ static void test_multiple_instances_are_isolated(void) {
     fbB.START_SEGMENT_INDEX = 0U;
     HDY_MotionControlFB_Scan(&fbB);
     assert(fbB.ACTIVE);
-    assert(strcmp(fbB.STATE.currentSegmentName, "IsoB") == 0);
+    assert(fbB.STATE.currentSegmentTag == 111);
     assert(fbB.STATE.plannedDirection == HDY_DIRECTION_RETRACT);
 
     assert(fbA.ACTIVE);
-    assert(strcmp(fbA.STATE.currentSegmentName, "IsoA") == 0);
+    assert(fbA.STATE.currentSegmentTag == 36);
     assert(fbA.DIAGNOSTIC.code == aDiagnosticCode);
     assert(fbA.DIAGNOSTIC_HISTORY.count == aHistoryCount);
     assert(fbA.PUMP_SPEED == aPumpSpeed);
@@ -1106,9 +1103,9 @@ static void test_multiple_instances_are_isolated(void) {
     HDY_MotionControlFB_Execute(&fbA);
     assert(fbA.ACTIVE);
     assert(fbA.FB_STATE == HDY_FB_STATE_RUNNING);
-    assert(strcmp(fbA.STATE.currentSegmentName, "IsoA") == 0);
+    assert(fbA.STATE.currentSegmentTag == 36);
     assert(fbB.FB_STATE == HDY_FB_STATE_ABORTED);
-    assert(strcmp(fbB.STATE.currentSegmentName, "") == 0);
+    assert(fbB.STATE.currentSegmentTag == 0);
     printf("✓ Multi-instance isolation test passed\n");
 }
 
@@ -1118,8 +1115,8 @@ static void test_segment_completion_and_next_segment(void) {
 
     printf("Testing segment completion and NextSegment behavior...\n");
     init_controller(&fb);
-    recipe[0] = make_position_segment("SegmentA", 1.0, HDY_DIRECTION_EXTEND);
-    recipe[1] = make_time_segment("SegmentB", 0.5, HDY_DIRECTION_EXTEND);
+    recipe[0] = make_position_segment(35, 1.0, HDY_DIRECTION_EXTEND);
+    recipe[1] = make_time_segment(110, 0.5, HDY_DIRECTION_EXTEND);
     assert(HDY_MotionControlFB_LoadRecipe(&fb, recipe, 2));
 
     fb.AXIS_REF.position = 0.0;
@@ -1150,7 +1147,7 @@ static void test_segment_completion_and_next_segment(void) {
     assert(!fb.FAULT);
     assert(fb.STATUS == HDY_STATUS_SEGMENT_COMPLETE);
     assert(fb.PUMP_SPEED == 0.0);
-    assert(strcmp(fb.STATE.currentSegmentName, "SegmentA") == 0);
+    assert(fb.STATE.currentSegmentTag == 35);
 
     assert(HDY_MotionControlFB_NextSegment(&fb, fb.AXIS_REF.timestamp));
     assert(!fb.ACTIVE);
@@ -1159,7 +1156,7 @@ static void test_segment_completion_and_next_segment(void) {
     assert(fb.STATUS == HDY_STATUS_SEGMENT_COMPLETE);
     assert(fb.FB_STATE == HDY_FB_STATE_SEGMENT_COMPLETE);
     assert(fb.STATE.currentSegmentIndex == 0U);
-    assert(strcmp(fb.STATE.currentSegmentName, "SegmentA") == 0);
+    assert(fb.STATE.currentSegmentTag == 35);
 
     fb.AXIS_REF.timestamp = 0.1;
     HDY_MotionControlFB_Execute(&fb);
@@ -1169,7 +1166,7 @@ static void test_segment_completion_and_next_segment(void) {
     assert(fb.STATUS == HDY_STATUS_RUNNING);
     assert(fb.FB_STATE == HDY_FB_STATE_RUNNING);
     assert(fb.STATE.currentSegmentIndex == 1U);
-    assert(strcmp(fb.STATE.currentSegmentName, "SegmentB") == 0);
+    assert(fb.STATE.currentSegmentTag == 110);
 
     fb.AXIS_REF.timestamp = 0.6;
     HDY_MotionControlFB_Execute(&fb);
@@ -1197,7 +1194,7 @@ static void test_retract_position_directional_planning(void) {
 
     printf("Testing retract position directional planning...\n");
     init_controller(&fb);
-    recipe[0] = make_position_segment("RetractPosition", 2.0, HDY_DIRECTION_RETRACT);
+    recipe[0] = make_position_segment(22, 2.0, HDY_DIRECTION_RETRACT);
     assert(HDY_MotionControlFB_LoadRecipe(&fb, recipe, 1));
 
     fb.AXIS_REF.position = 10.0;
@@ -1226,7 +1223,7 @@ static void test_speed_ramp_retract_directional_planning(void) {
 
     printf("Testing speed-ramp retract directional planning...\n");
     init_controller(&fb);
-    recipe[0] = make_time_segment("RetractRamp", 0.5, HDY_DIRECTION_RETRACT);
+    recipe[0] = make_time_segment(109, 0.5, HDY_DIRECTION_RETRACT);
     assert(HDY_MotionControlFB_LoadRecipe(&fb, recipe, 1));
 
     fb.AXIS_REF.position = 10.0;
@@ -1256,7 +1253,7 @@ static void test_pressure_closed_loop_pi_strategy_accumulates_flow(void) {
 
     printf("Testing pressure closed-loop PI strategy integration...\n");
     init_controller(&fb);
-    recipe[0] = make_pressure_segment("PressurePI", 2.0, 10.0, 2.0);
+    recipe[0] = make_pressure_segment(201, 2.0, 10.0, 2.0);
     recipe[0].pressureController = HDY_PRESSURE_CONTROLLER_PI;
     recipe[0].pressureKp = 0.2;
     recipe[0].pressureKi = 1.0;
@@ -1293,12 +1290,12 @@ static void test_pressure_mode_transition_tracks_existing_flow(void) {
 
     printf("Testing pressure mode transition bumpless flow tracking...\n");
     init_controller(&fb);
-    recipe[0] = make_time_segment("VelocityStage", 0.2, HDY_DIRECTION_EXTEND);
+    recipe[0] = make_time_segment(113, 0.2, HDY_DIRECTION_EXTEND);
     recipe[0].targetFlow = 10.0;
     recipe[0].maxFlow = 10.0;
     recipe[0].maxAcceleration = 50.0;
     recipe[0].maxVelocity = 20.0;
-    recipe[1] = make_pressure_segment("PressureTrack", 1.0, 10.0, 2.0);
+    recipe[1] = make_pressure_segment(202, 1.0, 10.0, 2.0);
     recipe[1].pressureController = HDY_PRESSURE_CONTROLLER_PI;
     recipe[1].pressureKp = 0.2;
     recipe[1].pressureKi = 1.0;
@@ -1337,7 +1334,7 @@ static void test_runtime_reference_state_exposes_shared_execution_context(void) 
 
     printf("Testing runtime reference state exposure...\n");
     init_controller(&fb);
-    recipe[0] = make_pressure_segment("PressureReferenceState", 2.0, 15.0, 2.0);
+    recipe[0] = make_pressure_segment(203, 2.0, 15.0, 2.0);
     recipe[0].pressureController = HDY_PRESSURE_CONTROLLER_PI;
     recipe[0].pressureKp = 0.5;
     recipe[0].pressureKi = 1.0;
@@ -1376,7 +1373,7 @@ static void test_pressure_loop_state_exposes_adaptive_rbf_telemetry(void) {
 
     printf("Testing pressure-loop adaptive telemetry exposure...\n");
     init_controller(&fb);
-    recipe[0] = make_pressure_segment("PressureRbfState", 2.0, 18.0, 0.3);
+    recipe[0] = make_pressure_segment(204, 2.0, 18.0, 0.3);
     recipe[0].pressureController = HDY_PRESSURE_CONTROLLER_RBF_PID;
     recipe[0].maxFlow = 1.2;
     recipe[0].pressureRbfConfig.minKp = 0.81;
@@ -1427,7 +1424,7 @@ static void test_execution_diagnostics_promote_degraded_status(void) {
     printf("Testing execution diagnostics degraded-state behavior...\n");
     init_controller(&fb);
     /* Use pressure-closed-loop mode to trigger a real flow deviation after startup transient. */
-    recipe[0] = make_pressure_segment("DegradedFlow", 10.0, 12.0, 0.5);
+    recipe[0] = make_pressure_segment(25, 10.0, 12.0, 0.5);
     assert(HDY_MotionControlFB_LoadRecipe(&fb, recipe, 1));
 
     fb.AXIS_REF.position = 0.0;
@@ -1478,7 +1475,7 @@ static void test_diagnostic_flags_expose_minimal_embedded_summary(void) {
 
     printf("Testing compact diagnostic flags and string helpers...\n");
     init_controller(&fb);
-    recipe[0] = make_pressure_segment("DiagSummary", 10.0, 12.0, 2.0);
+    recipe[0] = make_pressure_segment(24, 10.0, 12.0, 2.0);
     assert(HDY_MotionControlFB_LoadRecipe(&fb, recipe, 1));
 
     fb.AXIS_REF.position = 0.0;
@@ -1522,7 +1519,7 @@ static void test_diagnostic_latch_and_history_persist_after_live_clear(void) {
 
     printf("Testing diagnostic latch/history retention semantics...\n");
     init_controller(&fb);
-    recipe[0] = make_position_segment("DiagLatch", 20.0, HDY_DIRECTION_EXTEND);
+    recipe[0] = make_position_segment(23, 20.0, HDY_DIRECTION_EXTEND);
     assert(HDY_MotionControlFB_LoadRecipe(&fb, recipe, 1));
 
     fb.AXIS_REF.position = 0.0;
@@ -1548,7 +1545,7 @@ static void test_diagnostic_latch_and_history_persist_after_live_clear(void) {
     assert(fb.LAST_DIAGNOSTIC_SNAPSHOT.diagnostic.code == HDY_DIAG_CODE_FLOW_DEVIATION);
     assert(fb.LAST_DIAGNOSTIC_SNAPSHOT.segmentIndex == 0U);
     assert(fb.LAST_DIAGNOSTIC_SNAPSHOT.status == HDY_STATUS_DEGRADED);
-    assert(strcmp(fb.LAST_DIAGNOSTIC_SNAPSHOT.segmentName, "DiagLatch") == 0);
+    assert(fb.LAST_DIAGNOSTIC_SNAPSHOT.segmentTag == 23);
     assert(fabs(fb.LAST_DIAGNOSTIC_SNAPSHOT.references.flowReference - fb.STATE.references.flowReference) < 0.001);
     assert(fb.DIAGNOSTIC_HISTORY.count == 1U);
     assert(fb.DIAGNOSTIC_HISTORY.totalRecorded == 1U);
@@ -1583,7 +1580,7 @@ static void test_diagnostic_history_helpers_preserve_chronological_order(void) {
         HDY_DIAG_CODE_SENSOR_FAULT,
         HDY_DIAG_CODE_TIMEOUT
     };
-    const char* names[5] = {"H0", "H1", "H2", "H3", "H4"};
+    HDY_UINT8 tags[5] = {0, 1, 2, 3, 4};
     size_t index;
 
     printf("Testing diagnostic history helper ordering...\n");
@@ -1597,7 +1594,7 @@ static void test_diagnostic_history_helpers_preserve_chronological_order(void) {
                                         &references,
                                         (HDY_TIME)index,
                                         (HDY_UINT8)index,
-                                        names[index],
+                                        tags[index],
                                         HDY_STATUS_RUNNING,
                                         true,
                                         false,
@@ -1608,26 +1605,27 @@ static void test_diagnostic_history_helpers_preserve_chronological_order(void) {
     assert(history.count == HDY_DIAG_HISTORY_DEPTH);
     assert(history.totalRecorded == 5U);
     assert(history.wrapped);
-    assert(!HDY_DiagnosticsHistory_GetEntry(&history, 4U, &entry));
+    assert(!HDY_DiagnosticsHistory_GetEntry(&history, (size_t)HDY_DIAG_HISTORY_DEPTH, &entry));
 
+    /* With HDY_DIAG_HISTORY_DEPTH == 2, only the last 2 of 5 entries survive:
+     *   index 3: HDY_DIAG_CODE_SENSOR_FAULT, segmentIndex=3, tag=3
+     *   index 4: HDY_DIAG_CODE_TIMEOUT, segmentIndex=4, tag=4
+     */
     assert(HDY_DiagnosticsHistory_GetEntry(&history, 0U, &entry));
-    assert(entry.diagnostic.code == HDY_DIAG_CODE_FLOW_DEVIATION);
-    assert(entry.segmentIndex == 1U);
-    assert(strcmp(entry.segmentName, "H1") == 0);
-
-    assert(HDY_DiagnosticsHistory_GetEntry(&history, 1U, &entry));
-    assert(entry.diagnostic.code == HDY_DIAG_CODE_POSITION_DEVIATION);
-    assert(entry.segmentIndex == 2U);
-
-    assert(HDY_DiagnosticsHistory_GetEntry(&history, 2U, &entry));
     assert(entry.diagnostic.code == HDY_DIAG_CODE_SENSOR_FAULT);
     assert(entry.segmentIndex == 3U);
+    assert(entry.segmentTag == 3);
+
+    assert(HDY_DiagnosticsHistory_GetEntry(&history, 1U, &entry));
+    assert(entry.diagnostic.code == HDY_DIAG_CODE_TIMEOUT);
+    assert(entry.segmentIndex == 4U);
+    assert(entry.segmentTag == 4);
 
     assert(HDY_DiagnosticsHistory_GetLatest(&history, &entry));
     assert(entry.diagnostic.code == HDY_DIAG_CODE_TIMEOUT);
     assert(entry.segmentIndex == 4U);
     assert(fabs(entry.eventTimestamp - 4.0) < 0.001);
-    assert(strcmp(entry.segmentName, "H4") == 0);
+    assert(entry.segmentTag == 4);
     printf("✓ Diagnostic history helper ordering test passed\n");
 }
 
@@ -1637,7 +1635,7 @@ static void test_acknowledge_clears_retention_and_allows_re_recording(void) {
 
     printf("Testing AcknowledgeDiagnostics retention-clear semantics...\n");
     init_controller(&fb);
-    recipe[0] = make_position_segment("AckCase", 20.0, HDY_DIRECTION_EXTEND);
+    recipe[0] = make_position_segment(41, 20.0, HDY_DIRECTION_EXTEND);
     assert(HDY_MotionControlFB_LoadRecipe(&fb, recipe, 1));
 
     fb.AXIS_REF.position = 0.0;
@@ -1704,7 +1702,7 @@ static void test_acknowledge_rejects_fault_retention(void) {
 
     printf("Testing AcknowledgeDiagnostics fault-retention guard...\n");
     init_controller(&fb);
-    recipe[0] = make_position_segment("AckFault", 10.0, HDY_DIRECTION_EXTEND);
+    recipe[0] = make_position_segment(42, 10.0, HDY_DIRECTION_EXTEND);
     assert(HDY_MotionControlFB_LoadRecipe(&fb, recipe, 1));
 
     fb.AXIS_REF.position = 0.0;
@@ -1734,7 +1732,7 @@ static void test_fault_snapshot_captures_protected_stop_context(void) {
 
     printf("Testing fault snapshot capture semantics...\n");
     init_controller(&fb);
-    recipe[0] = make_time_segment("FaultSnapshot", 1.0, HDY_DIRECTION_EXTEND);
+    recipe[0] = make_time_segment(112, 1.0, HDY_DIRECTION_EXTEND);
     assert(HDY_MotionControlFB_LoadRecipe(&fb, recipe, 1));
 
     fb.AXIS_REF.position = 0.0;
@@ -1757,7 +1755,7 @@ static void test_fault_snapshot_captures_protected_stop_context(void) {
     assert(fb.LAST_FAULT_SNAPSHOT.status == HDY_STATUS_FAULT);
     assert(fb.LAST_FAULT_SNAPSHOT.segmentIndex == 0U);
     assert(fb.LAST_FAULT_SNAPSHOT.diagnostic.code == HDY_DIAG_CODE_SENSOR_FAULT);
-    assert(strcmp(fb.LAST_FAULT_SNAPSHOT.segmentName, "FaultSnapshot") == 0);
+    assert(fb.LAST_FAULT_SNAPSHOT.segmentTag == 112);
     assert(fabs(fb.LAST_FAULT_SNAPSHOT.eventTimestamp - 0.1) < 0.001);
     assert(fb.LAST_FAULT_SNAPSHOT.axisRef.pressure == -0.5);
     assert(fb.DIAGNOSTIC_HISTORY.count == 1U);
@@ -1772,7 +1770,7 @@ static void test_sensor_fault_triggers_protected_stop(void) {
 
     printf("Testing invalid sensor feedback protected-stop behavior...\n");
     init_controller(&fb);
-    recipe[0] = make_position_segment("SensorFault", 10.0, HDY_DIRECTION_EXTEND);
+    recipe[0] = make_position_segment(26, 10.0, HDY_DIRECTION_EXTEND);
     assert(HDY_MotionControlFB_LoadRecipe(&fb, recipe, 1));
 
     fb.AXIS_REF.position = 0.0;
@@ -1807,7 +1805,7 @@ static void test_timestamp_rollback_triggers_protected_stop(void) {
 
     printf("Testing timestamp rollback protected-stop behavior...\n");
     init_controller(&fb);
-    recipe[0] = make_position_segment("TimestampRollback", 10.0, HDY_DIRECTION_EXTEND);
+    recipe[0] = make_position_segment(27, 10.0, HDY_DIRECTION_EXTEND);
     assert(HDY_MotionControlFB_LoadRecipe(&fb, recipe, 1));
 
     fb.AXIS_REF.position = 0.0;
@@ -1841,7 +1839,7 @@ static void test_pressure_segment_timeout_faults_safely(void) {
 
     printf("Testing pressure segment timeout safety behavior...\n");
     init_controller(&fb);
-    recipe[0] = make_pressure_segment("PressureTimeout", 5.0, 12.0, 3.0);
+    recipe[0] = make_pressure_segment(205, 5.0, 12.0, 3.0);
     recipe[0].pressureController = HDY_PRESSURE_CONTROLLER_PI;
     recipe[0].pressureKp = 0.5;
     recipe[0].pressureKi = 0.8;
@@ -1876,7 +1874,7 @@ static void test_disable_requires_restart(void) {
 
     printf("Testing EN disable safety semantics...\n");
     init_controller(&fb);
-    recipe[0] = make_position_segment("DisableCase", 5.0, HDY_DIRECTION_EXTEND);
+    recipe[0] = make_position_segment(43, 5.0, HDY_DIRECTION_EXTEND);
     assert(HDY_MotionControlFB_LoadRecipe(&fb, recipe, 1));
 
     fb.AXIS_REF.position = 0.0;
@@ -1919,7 +1917,7 @@ static void test_abort_forces_safe_outputs(void) {
 
     printf("Testing Abort safety semantics...\n");
     init_controller(&fb);
-    recipe[0] = make_position_segment("AbortCase", 5.0, HDY_DIRECTION_EXTEND);
+    recipe[0] = make_position_segment(28, 5.0, HDY_DIRECTION_EXTEND);
     assert(HDY_MotionControlFB_LoadRecipe(&fb, recipe, 1));
 
     fb.AXIS_REF.position = 0.0;
@@ -1949,7 +1947,7 @@ static void test_abort_forces_safe_outputs(void) {
     assert(fb.PUMP_SPEED == 0.0);
     assert(!fb.START_SEGMENT);
     assert(fb.STATE.plannedDirection == HDY_DIRECTION_HOLD);
-    assert(fb.STATE.currentSegmentName[0] == '\0');
+    assert(fb.STATE.currentSegmentTag == 0);
     assert(fb.STATE.protectionAction == HDY_PROTECTION_ACTION_NONE);
     assert(fb.DIAGNOSTIC.code == HDY_DIAG_CODE_ABORTED);
     assert(fb.DIAGNOSTIC.source == HDY_DIAG_SOURCE_COMMAND);
@@ -1969,7 +1967,7 @@ static void test_abort_diagnostic_auto_clears_in_finished_hold(void) {
 
     printf("Testing Abort diagnostic auto-clear lifecycle...\n");
     init_controller(&fb);
-    recipe[0] = make_position_segment("AbortDiag", 5.0, HDY_DIRECTION_EXTEND);
+    recipe[0] = make_position_segment(29, 5.0, HDY_DIRECTION_EXTEND);
     assert(HDY_MotionControlFB_LoadRecipe(&fb, recipe, 1));
 
     fb.AXIS_REF.position = 0.0;
@@ -2000,7 +1998,7 @@ static void test_finished_command_diagnostic_auto_clears_in_hold(void) {
 
     printf("Testing finished-state command diagnostic auto-clear lifecycle...\n");
     init_controller(&fb);
-    recipe[0] = make_position_segment("FinishedDiag", 1.0, HDY_DIRECTION_EXTEND);
+    recipe[0] = make_position_segment(30, 1.0, HDY_DIRECTION_EXTEND);
     assert(HDY_MotionControlFB_LoadRecipe(&fb, recipe, 1));
 
     fb.AXIS_REF.position = 0.0;
@@ -2035,7 +2033,7 @@ static void test_reset_soft_reset_preserves_config(void) {
     init_controller(&fb);
     fb.FLOW_TO_PUMP_SPEED_GAIN = 42.0;
     fb.PUMP_SPEED_LIMIT = 100.0;
-    recipe[0] = make_position_segment("ResetCase", 6.0, HDY_DIRECTION_EXTEND);
+    recipe[0] = make_position_segment(31, 6.0, HDY_DIRECTION_EXTEND);
     assert(HDY_MotionControlFB_LoadRecipe(&fb, recipe, 1));
     assert(HDY_MotionControlFB_StartSegment(&fb, 0, 0.0));
 
@@ -2062,7 +2060,7 @@ static void test_reset_soft_reset_preserves_config(void) {
     assert(!fb.FAULT);
     assert(!fb.SEGMENT_COMPLETED);
     assert(fb.STATE.plannedDirection == HDY_DIRECTION_HOLD);
-    assert(fb.STATE.currentSegmentName[0] == '\0');
+    assert(fb.STATE.currentSegmentTag == 0);
     assert(fb.DIAGNOSTIC.code == HDY_DIAG_CODE_NONE);
     assert(fb.DIAGNOSTIC_LATCH.code == HDY_DIAG_CODE_NONE);
     assert(!fb.LAST_DIAGNOSTIC_SNAPSHOT.valid);
@@ -2091,7 +2089,7 @@ static void test_init_hard_reset_clears_everything(void) {
     init_controller(&fb);
     fb.FLOW_TO_PUMP_SPEED_GAIN = 42.0;
     fb.PUMP_SPEED_LIMIT = 100.0;
-    recipe[0] = make_position_segment("HardResetCase", 6.0, HDY_DIRECTION_EXTEND);
+    recipe[0] = make_position_segment(32, 6.0, HDY_DIRECTION_EXTEND);
     assert(HDY_MotionControlFB_LoadRecipe(&fb, recipe, 1));
 
     /* Init() performs full hard reset: clears everything */
@@ -2117,8 +2115,8 @@ static void test_soft_reset_allows_restart(void) {
 
     printf("Testing soft reset allows restart without reload...\n");
     init_controller(&fb);
-    recipe[0] = make_position_segment("SegA", 6.0, HDY_DIRECTION_EXTEND);
-    recipe[1] = make_position_segment("SegB", 8.0, HDY_DIRECTION_EXTEND);
+    recipe[0] = make_position_segment(33, 6.0, HDY_DIRECTION_EXTEND);
+    recipe[1] = make_position_segment(34, 8.0, HDY_DIRECTION_EXTEND);
     assert(HDY_MotionControlFB_LoadRecipe(&fb, recipe, 2));
     assert(HDY_MotionControlFB_StartSegment(&fb, 0, 0.0));
 
@@ -2204,7 +2202,7 @@ static void test_timeout_limit_stops_segment_safely(void) {
 
     printf("Testing timeoutLimit safe-stop behavior...\n");
     init_controller(&fb);
-    recipe[0] = make_position_segment("TimeoutCase", 100.0, HDY_DIRECTION_EXTEND);
+    recipe[0] = make_position_segment(38, 100.0, HDY_DIRECTION_EXTEND);
     recipe[0].timeoutLimit = 0.25;
     assert(HDY_MotionControlFB_LoadRecipe(&fb, recipe, 1));
 
@@ -2241,7 +2239,7 @@ static void test_runtime_validation_fault_latches_safe_state(void) {
 
     printf("Testing runtime validation fault behavior...\n");
     init_controller(&fb);
-    recipe[0] = make_position_segment("RuntimeFault", 20.0, HDY_DIRECTION_EXTEND);
+    recipe[0] = make_position_segment(39, 20.0, HDY_DIRECTION_EXTEND);
     assert(HDY_MotionControlFB_LoadRecipe(&fb, recipe, 1));
 
     fb.AXIS_REF.position = 0.0;
@@ -2275,7 +2273,7 @@ static void test_parameter_validation(void) {
     printf("Testing recipe and runtime parameter validation...\n");
     init_controller(&fb);
 
-    badRecipe[0] = make_time_segment("BadDirection", 0.5, HDY_DIRECTION_AUTO);
+    badRecipe[0] = make_time_segment(114, 0.5, HDY_DIRECTION_AUTO);
     assert(!HDY_MotionControlFB_LoadRecipe(&fb, badRecipe, 1));
     assert(fb.RECIPE_SIZE == 0U);
     assert(!fb.FAULT);
@@ -2286,19 +2284,19 @@ static void test_parameter_validation(void) {
     assert(fb.DIAGNOSTIC.protectionAction == HDY_PROTECTION_ACTION_WARNING);
     assert(strstr(fb.DIAGNOSTIC.message, "direction") != NULL);
 
-    badRecipe[0] = make_time_segment("BadPlanner", 0.5, HDY_DIRECTION_EXTEND);
+    badRecipe[0] = make_time_segment(115, 0.5, HDY_DIRECTION_EXTEND);
     badRecipe[0].planner = HDY_PLANNER_POSITION_BASED;
     assert(!HDY_MotionControlFB_LoadRecipe(&fb, badRecipe, 1));
     assert(fb.DIAGNOSTIC.code == HDY_DIAG_CODE_SEGMENT_INVALID);
     assert(strstr(fb.DIAGNOSTIC.message, "TIME_BASED") != NULL);
 
-    badRecipe[0] = make_pressure_segment("RbfPressureCfg", 1.0, 10.0, 2.0);
+    badRecipe[0] = make_pressure_segment(206, 1.0, 10.0, 2.0);
     badRecipe[0].pressureController = HDY_PRESSURE_CONTROLLER_RBF_PID;
     assert(HDY_MotionControlFB_LoadRecipe(&fb, badRecipe, 1));
     assert(fb.RECIPE_SIZE == 1U);
     assert(fb.DIAGNOSTIC.code == HDY_DIAG_CODE_NONE);
 
-    badRecipe[0] = make_pressure_segment("BadRbfProfile", 1.0, 10.0, 2.0);
+    badRecipe[0] = make_pressure_segment(207, 1.0, 10.0, 2.0);
     badRecipe[0].pressureController = HDY_PRESSURE_CONTROLLER_RBF_PID;
     badRecipe[0].pressureRbfConfig.minKp = 0.9;
     badRecipe[0].pressureRbfConfig.maxKp = 0.85;
@@ -2306,7 +2304,7 @@ static void test_parameter_validation(void) {
     assert(fb.DIAGNOSTIC.code == HDY_DIAG_CODE_SEGMENT_INVALID);
     assert(strstr(fb.DIAGNOSTIC.message, "RBF-PID gain limits") != NULL);
 
-    badRecipe[0] = make_pressure_segment("BadFilter", 1.0, 10.0, 2.0);
+    badRecipe[0] = make_pressure_segment(208, 1.0, 10.0, 2.0);
     badRecipe[0].pressureController = HDY_PRESSURE_CONTROLLER_PI;
     badRecipe[0].pressureKp = 0.5;
     badRecipe[0].pressureKi = 0.5;
@@ -2315,7 +2313,7 @@ static void test_parameter_validation(void) {
     assert(fb.DIAGNOSTIC.code == HDY_DIAG_CODE_SEGMENT_INVALID);
     assert(strstr(fb.DIAGNOSTIC.message, "pressureFilterAlpha") != NULL);
 
-    goodRecipe[0] = make_position_segment("Good", 5.0, HDY_DIRECTION_EXTEND);
+    goodRecipe[0] = make_position_segment(40, 5.0, HDY_DIRECTION_EXTEND);
     assert(HDY_MotionControlFB_LoadRecipe(&fb, goodRecipe, 1));
     fb.FLOW_TO_PUMP_SPEED_GAIN = 0.0;
     fb.AXIS_REF.position = 0.0;
