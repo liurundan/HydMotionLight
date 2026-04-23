@@ -6,7 +6,7 @@
 static HDY_MotionSegment make_valid_segment(void) {
     HDY_MotionSegment segment = {0};
     segment.segmentTag = 1;
-    segment.type = HDY_SEGMENT_TYPE_INJECTION;
+    segment.segmentType = HDY_SEGMENT_TYPE_INJECTION;
     segment.planner = HDY_PLANNER_TIME_BASED;
     segment.mode = HDY_MODE_SPEED_RAMP;
     segment.endCondition = HDY_END_TIME;

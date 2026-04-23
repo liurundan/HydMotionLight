@@ -227,7 +227,7 @@ typedef struct {
  */
 typedef struct {
     HDY_UINT8 segmentTag;
-    HDY_SegmentType type;
+    HDY_SegmentType segmentType;
     HDY_PlannerType planner;
     HDY_ControlMode mode;
     HDY_EndConditionType endCondition;

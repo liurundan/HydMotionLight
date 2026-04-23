@@ -180,7 +180,7 @@ HDY_MotionSegment CreateInjectionSegment(HDY_TIME startTime) {
     memset(&segment, 0, sizeof(segment));
     
     segment.segmentTag = HDY_SEGMENT_TYPE_INJECTION;
-    segment.type = HDY_SEGMENT_TYPE_INJECTION;
+    segment.segmentType = HDY_SEGMENT_TYPE_INJECTION;
     segment.mode = HDY_MODE_SPEED_RAMP;
     segment.endCondition = HDY_END_POSITION;
     segment.direction = HDY_DIRECTION_EXTEND;
@@ -208,7 +208,7 @@ HDY_MotionSegment CreateHoldingSegment(HDY_TIME startTime) {
     memset(&segment, 0, sizeof(segment));
     
     segment.segmentTag = HDY_SEGMENT_TYPE_HOLDING;
-    segment.type = HDY_SEGMENT_TYPE_HOLDING;
+    segment.segmentType = HDY_SEGMENT_TYPE_HOLDING;
     segment.mode = HDY_MODE_PRESSURE_CLOSED_LOOP;
     segment.endCondition = HDY_END_TIME;
     segment.direction = HDY_DIRECTION_HOLD;
@@ -236,7 +236,7 @@ HDY_MotionSegment CreateRetractionSegment(HDY_TIME startTime) {
     memset(&segment, 0, sizeof(segment));
     
     segment.segmentTag = HDY_SEGMENT_TYPE_OPENING;
-    segment.type = HDY_SEGMENT_TYPE_OPENING;
+    segment.segmentType = HDY_SEGMENT_TYPE_OPENING;
     segment.mode = HDY_MODE_SPEED_RAMP;
     segment.endCondition = HDY_END_POSITION;
     segment.direction = HDY_DIRECTION_RETRACT;

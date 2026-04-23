@@ -23,7 +23,7 @@ static void init_segments(void) {
     memset(&recipe[0], 0, sizeof(HDY_MotionSegment));
     recipe[0].segmentTag = 1;
     /* tag set above */;
-    recipe[0].type = HDY_SEGMENT_TYPE_INJECTION;
+    recipe[0].segmentType = HDY_SEGMENT_TYPE_INJECTION;
     recipe[0].planner = HDY_PLANNER_TIME_BASED;
     recipe[0].mode = HDY_MODE_SPEED_RAMP;
     recipe[0].direction = HDY_DIRECTION_EXTEND;
@@ -41,7 +41,7 @@ static void init_segments(void) {
     /* 段1：快速前进 (100 → 200mm) */
     memset(&recipe[1], 0, sizeof(HDY_MotionSegment));
     recipe[1].segmentTag = 2;
-    recipe[1].type = HDY_SEGMENT_TYPE_INJECTION;
+    recipe[1].segmentType = HDY_SEGMENT_TYPE_INJECTION;
     recipe[1].planner = HDY_PLANNER_TIME_BASED;
     recipe[1].mode = HDY_MODE_SPEED_RAMP;
     recipe[1].direction = HDY_DIRECTION_EXTEND;
@@ -59,7 +59,7 @@ static void init_segments(void) {
     /* 段2：后退回零 (200 → 0mm) */
     memset(&recipe[2], 0, sizeof(HDY_MotionSegment));
     recipe[2].segmentTag = 3;
-    recipe[2].type = HDY_SEGMENT_TYPE_INJECTION;
+    recipe[2].segmentType = HDY_SEGMENT_TYPE_INJECTION;
     recipe[2].planner = HDY_PLANNER_TIME_BASED;
     recipe[2].mode = HDY_MODE_SPEED_RAMP;
     recipe[2].direction = HDY_DIRECTION_RETRACT;

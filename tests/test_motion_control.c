@@ -51,7 +51,7 @@ static HDY_MotionSegment make_position_segment(HDY_UINT8 tag,
                                                HDY_MotionDirection direction) {
     HDY_MotionSegment segment = {0};
     segment.segmentTag = tag;
-    segment.type = HDY_SEGMENT_TYPE_CLAMPING;
+    segment.segmentType = HDY_SEGMENT_TYPE_CLAMPING;
     segment.planner = HDY_PLANNER_POSITION_BASED;
     segment.mode = HDY_MODE_POSITION;
     segment.endCondition = HDY_END_POSITION;
@@ -79,7 +79,7 @@ static HDY_MotionSegment make_time_segment(HDY_UINT8 tag,
                                            HDY_MotionDirection direction) {
     HDY_MotionSegment segment = {0};
     segment.segmentTag = tag;
-    segment.type = HDY_SEGMENT_TYPE_HOLDING;
+    segment.segmentType = HDY_SEGMENT_TYPE_HOLDING;
     segment.planner = HDY_PLANNER_TIME_BASED;
     segment.mode = HDY_MODE_SPEED_RAMP;
     segment.endCondition = HDY_END_TIME;
@@ -108,7 +108,7 @@ static HDY_MotionSegment make_pressure_segment(HDY_UINT8 tag,
                                                HDY_REAL targetFlow) {
     HDY_MotionSegment segment = {0};
     segment.segmentTag = tag;
-    segment.type = HDY_SEGMENT_TYPE_HOLDING;
+    segment.segmentType = HDY_SEGMENT_TYPE_HOLDING;
     segment.planner = HDY_PLANNER_TIME_BASED;
     segment.mode = HDY_MODE_PRESSURE_CLOSED_LOOP;
     segment.endCondition = HDY_END_TIME;

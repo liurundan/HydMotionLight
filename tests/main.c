@@ -61,7 +61,7 @@ int main(void) {
     HDY_MotionSegment recipe[5] = {
         {
             .segmentTag = 1,
-            .type = HDY_SEGMENT_TYPE_CLAMPING,
+            .segmentType = HDY_SEGMENT_TYPE_CLAMPING,
             .planner = HDY_PLANNER_TIME_BASED,
             .mode = HDY_MODE_SPEED_RAMP,
             .endCondition = HDY_END_POSITION,
@@ -83,7 +83,7 @@ int main(void) {
         },
         {
             .segmentTag = 2,
-            .type = HDY_SEGMENT_TYPE_CLAMPING,
+            .segmentType = HDY_SEGMENT_TYPE_CLAMPING,
             .planner = HDY_PLANNER_TIME_BASED,
             .mode = HDY_MODE_SPEED_RAMP,
             .endCondition = HDY_END_POSITION,
@@ -105,7 +105,7 @@ int main(void) {
         },
         {
             .segmentTag = 3,
-            .type = HDY_SEGMENT_TYPE_CLAMPING,
+            .segmentType = HDY_SEGMENT_TYPE_CLAMPING,
             .planner = HDY_PLANNER_TIME_BASED,
             .mode = HDY_MODE_PRESSURE_CLOSED_LOOP,
             .endCondition = HDY_END_TIME,
@@ -131,7 +131,7 @@ int main(void) {
         },
         {
             .segmentTag = 4,
-            .type = HDY_SEGMENT_TYPE_INJECTION,
+            .segmentType = HDY_SEGMENT_TYPE_INJECTION,
             .planner = HDY_PLANNER_TIME_BASED,
             .mode = HDY_MODE_SPEED_RAMP,
             .endCondition = HDY_END_POSITION,
@@ -153,7 +153,7 @@ int main(void) {
         },
         {
             .segmentTag = 5,
-            .type = HDY_SEGMENT_TYPE_HOLDING,
+            .segmentType = HDY_SEGMENT_TYPE_HOLDING,
             .planner = HDY_PLANNER_TIME_BASED,
             .mode = HDY_MODE_PRESSURE_CLOSED_LOOP,
             .endCondition = HDY_END_TIME,

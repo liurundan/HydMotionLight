@@ -30,7 +30,7 @@ static void init_axis(HDY_AxisRef* axis, HDY_REAL position, HDY_REAL pressure) {
 }
 
 static HDY_MotionSegment make_linear_segment(HDY_UINT8 tag,
-                                             HDY_SegmentType type,
+                                             HDY_SegmentType segmentType,
                                              HDY_ControlMode mode,
                                              HDY_MotionDirection direction,
                                              HDY_REAL targetPosition,
@@ -44,7 +44,7 @@ static HDY_MotionSegment make_linear_segment(HDY_UINT8 tag,
 
     segment.segmentTag = tag;
     /* tag set above */;
-    segment.type = type;
+    segment.segmentType = segmentType;
     segment.planner = (mode == HDY_MODE_POSITION)
         ? HDY_PLANNER_POSITION_BASED
         : HDY_PLANNER_TIME_BASED;
@@ -70,7 +70,7 @@ static HDY_MotionSegment make_linear_segment(HDY_UINT8 tag,
 }
 
 static HDY_MotionSegment make_pressure_segment(HDY_UINT8 tag,
-                                               HDY_SegmentType type,
+                                               HDY_SegmentType segmentType,
                                                HDY_EndConditionType endCondition,
                                                HDY_REAL targetPressure,
                                                HDY_REAL targetFlow,
@@ -80,7 +80,7 @@ static HDY_MotionSegment make_pressure_segment(HDY_UINT8 tag,
 
     segment.segmentTag = tag;
     /* tag set above */;
-    segment.type = type;
+    segment.segmentType = segmentType;
     segment.planner = HDY_PLANNER_TIME_BASED;
     segment.mode = HDY_MODE_PRESSURE_CLOSED_LOOP;
     segment.endCondition = endCondition;
