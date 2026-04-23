@@ -137,7 +137,8 @@ HDY_BOOL HDY_DiagnosticCriteria_CheckVelocity(HDY_DiagnosticResult* result,
                                                 HDY_DiagnosticCriteriaState* state,
                                                 HDY_TIME currentTime,
                                                 HDY_TIME segmentElapsedTime,
-                                                HDY_BOOL isStartupPhase);
+                                                HDY_BOOL isStartupPhase,
+                                                HDY_BOOL isSwitchPhase);
 
 /*
  * 检查位置诊断判据
@@ -148,7 +149,8 @@ HDY_BOOL HDY_DiagnosticCriteria_CheckPosition(HDY_DiagnosticResult* result,
                                                HDY_DiagnosticCriteriaState* state,
                                                HDY_TIME currentTime,
                                                HDY_TIME segmentElapsedTime,
-                                               HDY_BOOL isStartupPhase);
+                                               HDY_BOOL isStartupPhase,
+                                               HDY_BOOL isSwitchPhase);
 
 /*
  * 重置诊断判据状态

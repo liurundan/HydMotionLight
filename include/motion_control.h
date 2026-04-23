@@ -17,9 +17,12 @@
  *   and clears any pending start request. Re-enabling does not resume motion
  *   automatically; the caller must issue StartSegment() or START_SEGMENT again.
  * - RESET=true:
- *   The next Cycle()/Scan()/Execute() performs a full reinitialization
- *   equivalent to Init(). This clears runtime state, recipe contents, and
- *   configuration gains, so the caller must reload configuration and recipe.
+ *   The next Cycle()/Scan()/Execute() performs a soft reset: it clears
+ *   runtime state, active segment, fault/diagnostic status, and returns
+ *   the FB to READY (if recipe/direct is loaded) or IDLE. Recipe contents,
+ *   configuration gains, DIRECT_SEGMENT, and diagnostic criteria settings
+ *   are preserved. For a full reinitialization that clears everything,
+ *   call Init() explicitly.
  * - ACTIVE:
  *   True only while an already started segment is executing in the current cycle.
  *   LoadRecipe() alone never sets ACTIVE=true.
@@ -212,12 +215,22 @@ typedef struct {
     HDY_DiagnosticCriteriaState _velocityCriteriaState;
     HDY_DiagnosticCriteria _positionCriteria;
     HDY_DiagnosticCriteriaState _positionCriteriaState;
-    HDY_BOOL _isSwitchPhase;  /* True during segment transition window for switch suppress */
-    HDY_BOOL _criteriaLayerEnabled;  /* Master switch for criteria-based diagnostics */
+    HDY_BOOL _isSwitchPhase;            /* True during segment transition window for switch suppress */
+    HDY_TIME _switchSuppressEndTime;    /* Elapsed time at which switch suppress phase expires */
 } HDY_MotionControlFB;
 
 /* Full reset of configuration, recipe, runtime state, and internal helpers. */
 void HDY_MotionControlFB_Init(HDY_MotionControlFB* fb);
+
+/*
+ * Soft reset: clears runtime execution state, active segment, fault status,
+ * diagnostic retention, and internal controllers, but preserves recipe,
+ * configuration gains (FLOW_TO_PUMP_SPEED_GAIN, PUMP_SPEED_LIMIT, USE_RECIPE),
+ * DIRECT_SEGMENT, and diagnostic criteria settings. After a soft reset the FB
+ * enters READY (if a recipe/direct segment is loaded) or IDLE.
+ * This is what RESET=true triggers in the cyclic entry points.
+ */
+void HDY_MotionControlFB_SoftReset(HDY_MotionControlFB* fb);
 
 /*
  * Validates and loads a recipe into the function block.

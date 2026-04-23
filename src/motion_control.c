@@ -38,6 +38,10 @@ static void HDY_UpdateExecutionDiagnostics(HDY_MotionControlFB* fb,
                                            const HDY_MotionSegment* segment,
                                            const HDY_ExecutionReference* executionReference,
                                            HDY_REAL elapsed);
+static void HDY_ConfigureSegmentCriteria(HDY_DiagnosticCriteria* criteria,
+                                          HDY_REAL baseThreshold,
+                                          HDY_DiagnosticCode code,
+                                          HDY_ProtectionAction action);
 
 /* Diagnostic reporting moved to StateReporter: use
  * HDY_StateReporter_ReportDiagnostic / HDY_StateReporter_ReportFault
@@ -529,8 +533,44 @@ static HDY_BOOL HDY_BeginSegment(HDY_MotionControlFB* fb,
     HDY_DiagnosticCriteria_ResetState(&fb->_flowCriteriaState);
     HDY_DiagnosticCriteria_ResetState(&fb->_velocityCriteriaState);
     HDY_DiagnosticCriteria_ResetState(&fb->_positionCriteriaState);
-    /* Enable startup suppress for first 500ms, then switch suppress for next 300ms */
-    fb->_isSwitchPhase = true;  /* Start in switch phase for smooth transition */
+    /* Enable startup suppress for first 500ms, then switch suppress for next 300ms.
+     * _switchSuppressEndTime uses the pressure criteria's startup+switch window
+     * as a unified transition period; all criteria share this end time. */
+    fb->_isSwitchPhase = true;
+    fb->_switchSuppressEndTime = fb->_pressureCriteria.startupSuppressTime +
+                                  fb->_pressureCriteria.switchSuppressTime;
+
+    /* Configure criteria thresholds for this segment (once per segment, not every cycle).
+     * The default suppress/debounce/hysteresis/escalation settings from
+     * CreateDefaultXxxCriteria (Init) are preserved; only the threshold and
+     * diagnostic code are overridden based on segment tolerances. */
+    {
+        HDY_REAL pTol = HDY_Segment_GetPressureTolerance(sourceSegment);
+        HDY_REAL fTol = HDY_Segment_GetFlowTolerance(sourceSegment);
+        HDY_REAL vTol = HDY_Segment_GetVelocityTolerance(sourceSegment);
+        HDY_REAL posTol = HDY_Segment_GetPositionTolerance(sourceSegment);
+
+        if (sourceSegment->mode == HDY_MODE_PRESSURE_CLOSED_LOOP && pTol > 0.0) {
+            HDY_ConfigureSegmentCriteria(&fb->_pressureCriteria, pTol,
+                                          HDY_DIAG_CODE_OVER_PRESSURE,
+                                          HDY_PROTECTION_ACTION_DERATE);
+        }
+        if (fTol > 0.0) {
+            HDY_ConfigureSegmentCriteria(&fb->_flowCriteria, fTol,
+                                          HDY_DIAG_CODE_FLOW_DEVIATION,
+                                          HDY_PROTECTION_ACTION_DERATE);
+        }
+        if (vTol > 0.0) {
+            HDY_ConfigureSegmentCriteria(&fb->_velocityCriteria, vTol,
+                                          HDY_DIAG_CODE_VELOCITY_DEVIATION,
+                                          HDY_PROTECTION_ACTION_WARNING);
+        }
+        if (posTol > 0.0) {
+            HDY_ConfigureSegmentCriteria(&fb->_positionCriteria, posTol,
+                                          HDY_DIAG_CODE_POSITION_DEVIATION,
+                                          HDY_PROTECTION_ACTION_WARNING);
+        }
+    }
 
     HDY_PrimeSegmentControllers(fb, &fb->_activeSegment, timestamp, preserveFlowCarryover);
 
@@ -864,15 +904,23 @@ static void HDY_MotionControlFB_PublishOutputs(HDY_MotionControlFB* fb,
     HDY_UpdateSegmentChangedPulse(fb);
 }
 
-static void HDY_ConfigureExecutionCriteriaLegacyEquivalent(HDY_DiagnosticCriteria* criteria,
-                                                           HDY_REAL baseThreshold,
-                                                           HDY_DiagnosticCode code,
-                                                           HDY_ProtectionAction action) {
+/*
+ * Configure a single HDY_DiagnosticCriteria from segment tolerances.
+ * Called once per segment start (HDY_BeginSegment), not every cycle.
+ * This preserves debounce/hysteresis/fault-escalation state across cycles
+ * while keeping the criteria configuration stable for the segment lifetime.
+ */
+static void HDY_ConfigureSegmentCriteria(HDY_DiagnosticCriteria* criteria,
+                                          HDY_REAL baseThreshold,
+                                          HDY_DiagnosticCode code,
+                                          HDY_ProtectionAction action) {
     if (criteria == NULL) {
         return;
     }
 
-    memset(criteria, 0, sizeof(*criteria));
+    /* Preserve existing suppress/escalation/debounce/hysteresis defaults that
+     * were set by CreateDefaultXxxCriteria during Init. Only override the
+     * fields that must adapt to the current segment's tolerances. */
     criteria->baseThreshold = baseThreshold;
     criteria->diagnosticCode = code;
     criteria->severity = HDY_DIAG_SEVERITY_WARNING;
@@ -884,14 +932,21 @@ static void HDY_UpdateMonitorPositionError(HDY_ErrorMonitor* monitor,
                                            const HDY_AxisRef* axisRef,
                                            HDY_TIME currentTime) {
     HDY_BOOL wasActive;
+    HDY_REAL positionTolerance;
 
     if (monitor == NULL || segment == NULL || axisRef == NULL) {
         return;
     }
 
+    positionTolerance = HDY_Segment_GetPositionTolerance(segment);
     wasActive = monitor->positionErrorActive;
     monitor->positionError = segment->targetPosition - axisRef->position;
-    monitor->positionErrorActive = (monitor->positionError != 0.0) ? true : false;
+
+    /* Position error is "active" only when it exceeds the configured tolerance.
+     * Comparing against zero would make positionErrorActive almost always true
+     * due to floating-point representation, causing false duration accumulation. */
+    monitor->positionErrorActive =
+        (positionTolerance > 0.0 && fabs(monitor->positionError) > positionTolerance) ? true : false;
 
     if (!monitor->positionErrorActive) {
         monitor->positionErrorDuration = 0.0;
@@ -983,8 +1038,8 @@ static void HDY_UpdateExecutionDiagnostics(HDY_MotionControlFB* fb,
     HDY_REAL actualVelocityAbs;
     HDY_DiagnosticResult pressureResult;
     HDY_DiagnosticResult flowResult;
+    HDY_DiagnosticResult velocityResult;
     HDY_DiagnosticResult positionResult;
-    HDY_DiagnosticsContext diagnosticContext;
     HDY_DiagnosticCode priorityCode = HDY_DIAG_CODE_NONE;
     HDY_DiagnosticSeverity prioritySeverity = HDY_DIAG_SEVERITY_NONE;
     HDY_BOOL overPressure = false;
@@ -997,16 +1052,13 @@ static void HDY_UpdateExecutionDiagnostics(HDY_MotionControlFB* fb,
     HDY_REAL flowError = 0.0;
     HDY_REAL velocityError = 0.0;
 
-    if (fb == NULL || segment == NULL || executionReference == NULL) {
-        return;
-    }
+    /* Derive suppress flags from segment elapsed time and criteria configuration.
+     * isStartupPhase: determined per-criteria from its own startupSuppressTime.
+     * isSwitchPhase: shared flag cleared after startup suppress window elapses. */
+    HDY_BOOL isStartupPhase = false;  /* Computed per-criteria below */
+    HDY_BOOL isSwitchPhase = false;
 
-    if (!fb->_criteriaLayerEnabled) {
-        memset(&diagnosticContext, 0, sizeof(diagnosticContext));
-        diagnosticContext.axisRef = &fb->AXIS_REF;
-        diagnosticContext.segment = segment;
-        diagnosticContext.references = executionReference;
-        HDY_Diagnostics_UpdateExecution(&fb->DIAGNOSTIC, &diagnosticContext);
+    if (fb == NULL || segment == NULL || executionReference == NULL) {
         return;
     }
 
@@ -1015,6 +1067,11 @@ static void HDY_UpdateExecutionDiagnostics(HDY_MotionControlFB* fb,
     positionTolerance = HDY_Segment_GetPositionTolerance(segment);
     velocityTolerance = HDY_Segment_GetVelocityTolerance(segment);
     timeoutLimit = HDY_Segment_GetTimeoutLimit(segment);
+
+    /* Determine suppress phases from each criteria's own configuration and elapsed time.
+     * Each diagnostic channel independently determines its startup phase based on
+     * its own startupSuppressTime. Switch phase is shared across all channels. */
+    isSwitchPhase = fb->_isSwitchPhase;
 
     HDY_ErrorMonitor_Update(&fb->_errorMonitor,
                             &fb->AXIS_REF,
@@ -1028,95 +1085,157 @@ static void HDY_UpdateExecutionDiagnostics(HDY_MotionControlFB* fb,
     flowError = fb->_errorMonitor.flowError;
     velocityError = fb->_errorMonitor.velocityError;
 
+    /* --- Pressure diagnostics --- */
+    /* Criteria was configured once in HDY_BeginSegment; only check here. */
     if (segment->mode == HDY_MODE_PRESSURE_CLOSED_LOOP && pressureTolerance > 0.0) {
-        HDY_ConfigureExecutionCriteriaLegacyEquivalent(&fb->_pressureCriteria,
-                                                       pressureTolerance,
-                                                       HDY_DIAG_CODE_OVER_PRESSURE,
-                                                       HDY_PROTECTION_ACTION_DERATE);
+        isStartupPhase = HDY_IsStartupSuppressActive(elapsed, fb->_pressureCriteria.startupSuppressTime);
         if (HDY_DiagnosticCriteria_CheckPressure(&pressureResult,
                                                  &fb->_errorMonitor,
                                                  &fb->_pressureCriteria,
                                                  &fb->_pressureCriteriaState,
                                                  fb->AXIS_REF.timestamp,
                                                  elapsed,
-                                                 false,
-                                                 false)) {
+                                                 fb->_pressureCriteria.enableStartupSuppress && isStartupPhase,
+                                                 isSwitchPhase)) {
             pressureError = fb->_errorMonitor.pressureError;
             if (pressureError < -pressureTolerance) {
                 overPressure = true;
             } else if (pressureError > pressureTolerance) {
                 underPressure = true;
             }
+            /* Check fault escalation: WARNING -> FAULT after sustained duration */
+            HDY_DiagnosticCriteria_CheckFaultEscalation(&pressureResult,
+                                                         &fb->_pressureCriteria,
+                                                         &fb->_pressureCriteriaState,
+                                                         fb->AXIS_REF.timestamp);
+            if (pressureResult.severity == HDY_DIAG_SEVERITY_FAULT) {
+                overPressure = true;  /* Ensure fault is propagated */
+            }
         }
     } else {
         HDY_DiagnosticCriteria_ResetState(&fb->_pressureCriteriaState);
     }
 
-    if (flowTolerance > 0.0 && executionReference->flowReference > 0.0 && elapsed > 0.1) {
-        HDY_ConfigureExecutionCriteriaLegacyEquivalent(&fb->_flowCriteria,
-                                                       flowTolerance,
-                                                       HDY_DIAG_CODE_FLOW_DEVIATION,
-                                                       HDY_PROTECTION_ACTION_DERATE);
+    /* --- Flow diagnostics --- */
+    /* Removed hardcoded elapsed > 0.1 gate; the criteria layer's
+     * startup/switch suppress mechanism handles transient suppression. */
+    if (flowTolerance > 0.0 && executionReference->flowReference > 0.0) {
+        isStartupPhase = HDY_IsStartupSuppressActive(elapsed, fb->_flowCriteria.startupSuppressTime);
         if (HDY_DiagnosticCriteria_CheckFlow(&flowResult,
                                              &fb->_errorMonitor,
                                              &fb->_flowCriteria,
                                              &fb->_flowCriteriaState,
                                              fb->AXIS_REF.timestamp,
                                              elapsed,
-                                             false,
-                                             false)) {
+                                             fb->_flowCriteria.enableStartupSuppress && isStartupPhase,
+                                             isSwitchPhase)) {
             flowDeviation = true;
             flowError = fb->_errorMonitor.flowError;
+            /* Check fault escalation: WARNING -> FAULT after sustained duration */
+            HDY_DiagnosticCriteria_CheckFaultEscalation(&flowResult,
+                                                         &fb->_flowCriteria,
+                                                         &fb->_flowCriteriaState,
+                                                         fb->AXIS_REF.timestamp);
+            if (flowResult.severity == HDY_DIAG_SEVERITY_FAULT) {
+                flowDeviation = true;
+            }
         }
     } else {
         HDY_DiagnosticCriteria_ResetState(&fb->_flowCriteriaState);
     }
 
+    /* --- Velocity diagnostics --- */
+    /* No longer unconditionally reset; check when velocity tolerance is configured. */
+    if (velocityTolerance > 0.0) {
+        isStartupPhase = HDY_IsStartupSuppressActive(elapsed, fb->_velocityCriteria.startupSuppressTime);
+        if (HDY_DiagnosticCriteria_CheckVelocity(&velocityResult,
+                                                   &fb->_errorMonitor,
+                                                   &fb->_velocityCriteria,
+                                                   &fb->_velocityCriteriaState,
+                                                   fb->AXIS_REF.timestamp,
+                                                   elapsed,
+                                                   fb->_velocityCriteria.enableStartupSuppress && isStartupPhase,
+                                                   isSwitchPhase)) {
+            velocityDeviation = true;
+            velocityError = fb->_errorMonitor.velocityError;
+            /* Check fault escalation */
+            HDY_DiagnosticCriteria_CheckFaultEscalation(&velocityResult,
+                                                         &fb->_velocityCriteria,
+                                                         &fb->_velocityCriteriaState,
+                                                         fb->AXIS_REF.timestamp);
+            if (velocityResult.severity == HDY_DIAG_SEVERITY_FAULT) {
+                velocityDeviation = true;
+            }
+        }
+    } else {
+        HDY_DiagnosticCriteria_ResetState(&fb->_velocityCriteriaState);
+    }
+
+    /* --- Position diagnostics --- */
     velocityReferenceAbs = fabs(executionReference->velocityReference);
     actualVelocityAbs = fabs(fb->AXIS_REF.velocity);
+    /* Position deviation is only meaningful when the actuator is near the
+     * target (both reference and actual velocity are near-zero). During
+     * motion the position error equals remaining travel, not a fault.
+     * The velocityTolerance gate ensures we only check position when
+     * the axis has settled, making the diagnostic meaningful.
+     * The velocityTolerance > 0 requirement was removed - if no velocity
+     * tolerance is configured, the check is still gated by actual velocity
+     * being below the reference velocity threshold. */
     if (segment->endCondition == HDY_END_POSITION &&
         positionTolerance > 0.0 &&
-        velocityTolerance > 0.0 &&
-        velocityReferenceAbs < velocityTolerance &&
-        actualVelocityAbs < velocityTolerance) {
-        HDY_ConfigureExecutionCriteriaLegacyEquivalent(&fb->_positionCriteria,
-                                                       positionTolerance,
-                                                       HDY_DIAG_CODE_POSITION_DEVIATION,
-                                                       HDY_PROTECTION_ACTION_WARNING);
+        velocityReferenceAbs < (velocityTolerance > 0.0 ? velocityTolerance : 1.0) &&
+        actualVelocityAbs < (velocityTolerance > 0.0 ? velocityTolerance : 1.0)) {
+        isStartupPhase = HDY_IsStartupSuppressActive(elapsed, fb->_positionCriteria.startupSuppressTime);
         if (HDY_DiagnosticCriteria_CheckPosition(&positionResult,
                                                  &fb->_errorMonitor,
                                                  &fb->_positionCriteria,
                                                  &fb->_positionCriteriaState,
                                                  fb->AXIS_REF.timestamp,
                                                  elapsed,
-                                                 false)) {
+                                                 fb->_positionCriteria.enableStartupSuppress && isStartupPhase,
+                                                 isSwitchPhase)) {
             positionDeviation = true;
+            /* Check fault escalation */
+            HDY_DiagnosticCriteria_CheckFaultEscalation(&positionResult,
+                                                         &fb->_positionCriteria,
+                                                         &fb->_positionCriteriaState,
+                                                         fb->AXIS_REF.timestamp);
+            if (positionResult.severity == HDY_DIAG_SEVERITY_FAULT) {
+                positionDeviation = true;
+            }
         }
     } else {
         HDY_DiagnosticCriteria_ResetState(&fb->_positionCriteriaState);
     }
 
-    HDY_DiagnosticCriteria_ResetState(&fb->_velocityCriteriaState);
-
     timeout = (timeoutLimit > 0.0) && (elapsed > timeoutLimit);
+
+    /* Build priority diagnostic from active conditions.
+     * Fault-escalated results upgrade the severity from WARNING to FAULT. */
     if (timeout) {
         priorityCode = HDY_DIAG_CODE_TIMEOUT;
         prioritySeverity = HDY_DIAG_SEVERITY_FAULT;
     } else if (overPressure) {
         priorityCode = HDY_DIAG_CODE_OVER_PRESSURE;
-        prioritySeverity = HDY_DIAG_SEVERITY_WARNING;
+        prioritySeverity = (pressureResult.severity == HDY_DIAG_SEVERITY_FAULT)
+            ? HDY_DIAG_SEVERITY_FAULT : HDY_DIAG_SEVERITY_WARNING;
     } else if (underPressure) {
         priorityCode = HDY_DIAG_CODE_UNDER_PRESSURE;
-        prioritySeverity = HDY_DIAG_SEVERITY_WARNING;
+        prioritySeverity = (pressureResult.severity == HDY_DIAG_SEVERITY_FAULT)
+            ? HDY_DIAG_SEVERITY_FAULT : HDY_DIAG_SEVERITY_WARNING;
     } else if (flowDeviation) {
         priorityCode = HDY_DIAG_CODE_FLOW_DEVIATION;
-        prioritySeverity = HDY_DIAG_SEVERITY_WARNING;
+        prioritySeverity = (flowResult.severity == HDY_DIAG_SEVERITY_FAULT)
+            ? HDY_DIAG_SEVERITY_FAULT : HDY_DIAG_SEVERITY_WARNING;
     } else if (positionDeviation) {
         priorityCode = HDY_DIAG_CODE_POSITION_DEVIATION;
-        prioritySeverity = HDY_DIAG_SEVERITY_WARNING;
+        prioritySeverity = (positionResult.severity == HDY_DIAG_SEVERITY_FAULT)
+            ? HDY_DIAG_SEVERITY_FAULT : HDY_DIAG_SEVERITY_WARNING;
     } else if (velocityDeviation) {
         priorityCode = HDY_DIAG_CODE_VELOCITY_DEVIATION;
-        prioritySeverity = HDY_DIAG_SEVERITY_WARNING;
+        prioritySeverity = (velocityResult.severity == HDY_DIAG_SEVERITY_FAULT)
+            ? HDY_DIAG_SEVERITY_FAULT : HDY_DIAG_SEVERITY_WARNING;
     }
 
     if (priorityCode != HDY_DIAG_CODE_NONE) {
@@ -1136,7 +1255,9 @@ static void HDY_UpdateExecutionDiagnostics(HDY_MotionControlFB* fb,
     fb->DIAGNOSTIC.velocityError = velocityError;
     fb->DIAGNOSTIC.flags = HDY_Diagnostics_GetFlagMask(&fb->DIAGNOSTIC);
 
-    if (fb->_isSwitchPhase && elapsed >= fb->_pressureCriteria.startupSuppressTime) {
+    /* Clear switch phase using the unified transition window end time,
+     * not tied to any single criteria's startup suppress time. */
+    if (fb->_isSwitchPhase && fb->_switchSuppressEndTime > 0.0 && elapsed >= fb->_switchSuppressEndTime) {
         fb->_isSwitchPhase = false;
     }
 }
@@ -1429,7 +1550,81 @@ void HDY_MotionControlFB_Init(HDY_MotionControlFB* fb) {
     HDY_DiagnosticCriteria_CreateDefaultPositionCriteria(&fb->_positionCriteria);
     HDY_DiagnosticCriteria_InitState(&fb->_positionCriteriaState);
     fb->_isSwitchPhase = false;
-    fb->_criteriaLayerEnabled = true;  /* Enable criteria-based diagnostics by default */
+    fb->_switchSuppressEndTime = 0.0;
+}
+
+void HDY_MotionControlFB_SoftReset(HDY_MotionControlFB* fb) {
+    /* Persistent fields saved across soft reset */
+    HDY_MotionSegment savedRecipe[HDY_MAX_SEGMENTS];
+    HDY_UINT savedRecipeSize;
+    HDY_MotionSegment savedDirectSegment;
+    HDY_BOOL savedDirectSegmentValid;
+    HDY_REAL savedFlowToPumpSpeedGain;
+    HDY_REAL savedPumpSpeedLimit;
+    HDY_BOOL savedUseRecipe;
+    HDY_DiagnosticCriteria savedPressureCriteria;
+    HDY_DiagnosticCriteria savedFlowCriteria;
+    HDY_DiagnosticCriteria savedVelocityCriteria;
+    HDY_DiagnosticCriteria savedPositionCriteria;
+
+    if (fb == NULL) {
+        return;
+    }
+
+    /* 1. Save persistent configuration */
+    (void)memcpy(savedRecipe, fb->RECIPE, sizeof(savedRecipe));
+    savedRecipeSize = fb->RECIPE_SIZE;
+    savedDirectSegment = fb->DIRECT_SEGMENT;
+    savedDirectSegmentValid = fb->DIRECT_SEGMENT_VALID;
+    savedFlowToPumpSpeedGain = fb->FLOW_TO_PUMP_SPEED_GAIN;
+    savedPumpSpeedLimit = fb->PUMP_SPEED_LIMIT;
+    savedUseRecipe = fb->USE_RECIPE;
+    savedPressureCriteria = fb->_pressureCriteria;
+    savedFlowCriteria = fb->_flowCriteria;
+    savedVelocityCriteria = fb->_velocityCriteria;
+    savedPositionCriteria = fb->_positionCriteria;
+
+    /* 2. Full memset to clear all runtime state cleanly */
+    (void)memset(fb, 0, sizeof(*fb));
+
+    /* 3. Restore persistent configuration */
+    (void)memcpy(fb->RECIPE, savedRecipe, sizeof(fb->RECIPE));
+    fb->RECIPE_SIZE = savedRecipeSize;
+    fb->DIRECT_SEGMENT = savedDirectSegment;
+    fb->DIRECT_SEGMENT_VALID = savedDirectSegmentValid;
+    fb->FLOW_TO_PUMP_SPEED_GAIN = savedFlowToPumpSpeedGain;
+    fb->PUMP_SPEED_LIMIT = savedPumpSpeedLimit;
+    fb->USE_RECIPE = savedUseRecipe;
+    fb->_pressureCriteria = savedPressureCriteria;
+    fb->_flowCriteria = savedFlowCriteria;
+    fb->_velocityCriteria = savedVelocityCriteria;
+    fb->_positionCriteria = savedPositionCriteria;
+
+    /* 4. Reinitialize framework-level state (same as Init) */
+    fb->ENO = true;
+    fb->_activeSegmentSource = HDY_SEGMENT_SOURCE_NONE;
+    HDY_StateReporter_SetPlannedDirection(fb, HDY_DIRECTION_HOLD);
+    HDY_StateReporter_SetSegmentSource(fb, HDY_SEGMENT_SOURCE_NONE);
+    HDY_StateReporter_SetFault(fb, false);
+    HDY_StateReporter_ClearSegmentName(fb);
+    HDY_ResetDiagnosticRetention(fb);
+    HDY_RampController_Init(&fb->_rampController, 0.0, 0.0);
+    HDY_PressureController_ClearState(&fb->_pressureController);
+    HDY_ClearPendingCommand(fb);
+
+    /* 5. Reinitialize diagnostic criteria states (but keep the criteria configs) */
+    HDY_ErrorMonitor_Init(&fb->_errorMonitor);
+    HDY_DiagnosticCriteria_InitState(&fb->_pressureCriteriaState);
+    HDY_DiagnosticCriteria_InitState(&fb->_flowCriteriaState);
+    HDY_DiagnosticCriteria_InitState(&fb->_velocityCriteriaState);
+    HDY_DiagnosticCriteria_InitState(&fb->_positionCriteriaState);
+    fb->_isSwitchPhase = false;
+    fb->_switchSuppressEndTime = 0.0;
+
+    /* 6. Set state to READY (if recipe or direct segment is loaded) or IDLE */
+    HDY_ResetReadyContextPreview(fb);
+    HDY_StateReporter_SetIdleState(fb, false, false);
+    HDY_StateReporter_RefreshStandardOutputs(fb);
 }
 
 HDY_BOOL HDY_MotionControlFB_LoadRecipe(HDY_MotionControlFB* fb,
@@ -1621,7 +1816,7 @@ void HDY_MotionControlFB_Cycle(HDY_MotionControlFB* fb) {
 
     fb->ENO = true;
     if (fb->RESET) {
-        HDY_MotionControlFB_Init(fb);
+        HDY_MotionControlFB_SoftReset(fb);
         return;
     }
 

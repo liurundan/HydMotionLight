@@ -3,6 +3,8 @@
 #include <stdio.h>
 #include <string.h>
 #include "diagnostics.h"
+#include "diagnostics_monitor.h"
+#include "diagnostics_criteria.h"
 #include "motion_control.h"
 
 static void init_controller(HDY_MotionControlFB* fb) {
@@ -10,6 +12,26 @@ static void init_controller(HDY_MotionControlFB* fb) {
     fb->EN = true;
     fb->FLOW_TO_PUMP_SPEED_GAIN = 100.0;
     fb->PUMP_SPEED_LIMIT = 3000.0;
+}
+
+/* Disable all diagnostic suppress windows on the FB so tests can verify
+ * immediate triggering without waiting for startup/switch suppress periods.
+ * This is only for unit-test convenience; production code should keep
+ * suppress enabled for transient rejection. */
+static void disable_diagnostic_suppress(HDY_MotionControlFB* fb) {
+    fb->_pressureCriteria.enableStartupSuppress = false;
+    fb->_pressureCriteria.startupSuppressTime = 0.0;
+    fb->_pressureCriteria.enableSwitchSuppress = false;
+    fb->_pressureCriteria.switchSuppressTime = 0.0;
+    fb->_flowCriteria.enableStartupSuppress = false;
+    fb->_flowCriteria.startupSuppressTime = 0.0;
+    fb->_flowCriteria.enableSwitchSuppress = false;
+    fb->_flowCriteria.switchSuppressTime = 0.0;
+    fb->_velocityCriteria.enableStartupSuppress = false;
+    fb->_velocityCriteria.startupSuppressTime = 0.0;
+    fb->_positionCriteria.enableStartupSuppress = false;
+    fb->_positionCriteria.startupSuppressTime = 0.0;
+    fb->_isSwitchPhase = false;
 }
 
 static void assert_standard_outputs(const HDY_MotionControlFB* fb,
@@ -1416,10 +1438,10 @@ static void test_execution_diagnostics_promote_degraded_status(void) {
     HDY_MotionControlFB_Execute(&fb);
 
     /* Startup cycle should not immediately raise a flow-deviation warning.
-     * Note: The new criteria layer has startup suppress enabled by default (0.5s).
-     * Disable it for this test to verify immediate triggering behavior. */
-    fb._flowCriteria.enableStartupSuppress = false;
-    fb._flowCriteria.startupSuppressTime = 0.0;
+     * Disable suppress windows so diagnostics trigger within the test's time horizon.
+     * Debounce (0.1s) is kept to verify the full criteria pipeline; the test
+     * advances past the debounce window before checking. */
+    disable_diagnostic_suppress(&fb);
 
     assert(fb.ACTIVE);
     assert(fb.STATUS == HDY_STATUS_RUNNING);
@@ -1428,7 +1450,12 @@ static void test_execution_diagnostics_promote_degraded_status(void) {
     assert(fb.DIAGNOSTIC.code == HDY_DIAG_CODE_NONE);
     assert(!fb.DIAGNOSTIC.flowDeviation);
 
-    fb.AXIS_REF.timestamp = 0.2;
+    /* Advance past the debounce window (0.1s) so the criteria layer
+     * accumulates enough sustained deviation to trigger. */
+    fb.AXIS_REF.timestamp = 0.15;
+    HDY_MotionControlFB_Execute(&fb);
+    /* After debounce period the flow deviation should be detected */
+    fb.AXIS_REF.timestamp = 0.3;
     HDY_MotionControlFB_Execute(&fb);
 
     assert(fb.ACTIVE);
@@ -1461,7 +1488,17 @@ static void test_diagnostic_flags_expose_minimal_embedded_summary(void) {
     assert(HDY_MotionControlFB_StartSegment(&fb, 0, 0.0));
     HDY_MotionControlFB_Execute(&fb);
 
-    fb.AXIS_REF.timestamp = 0.2;
+    /* Disable suppress windows so diagnostics trigger within the test's time horizon.
+     * Without this, startup suppress (0.5s) and switch suppress (0.3s) would block
+     * all diagnostics at t<0.5s. */
+    disable_diagnostic_suppress(&fb);
+
+    /* Advance past the debounce window (0.1s) so criteria can accumulate
+     * sustained deviation. First cycle at t=0.15 starts debounce, second
+     * cycle at t=0.3 satisfies the debounce duration. */
+    fb.AXIS_REF.timestamp = 0.15;
+    HDY_MotionControlFB_Execute(&fb);
+    fb.AXIS_REF.timestamp = 0.3;
     HDY_MotionControlFB_Execute(&fb);
 
     assert(fb.DIAGNOSTIC.flags == HDY_Diagnostics_GetFlagMask(&fb.DIAGNOSTIC));
@@ -1497,7 +1534,12 @@ static void test_diagnostic_latch_and_history_persist_after_live_clear(void) {
     HDY_MotionControlFB_Execute(&fb);
     assert(fb.DIAGNOSTIC.code == HDY_DIAG_CODE_NONE);
 
-    fb.AXIS_REF.timestamp = 0.2;
+    disable_diagnostic_suppress(&fb);
+
+    /* Advance past debounce window (0.1s) for criteria to trigger */
+    fb.AXIS_REF.timestamp = 0.15;
+    HDY_MotionControlFB_Execute(&fb);
+    fb.AXIS_REF.timestamp = 0.3;
     HDY_MotionControlFB_Execute(&fb);
 
     assert(fb.DIAGNOSTIC.code == HDY_DIAG_CODE_FLOW_DEVIATION);
@@ -1607,7 +1649,12 @@ static void test_acknowledge_clears_retention_and_allows_re_recording(void) {
     HDY_MotionControlFB_Execute(&fb);
     assert(fb.DIAGNOSTIC.code == HDY_DIAG_CODE_NONE);
 
-    fb.AXIS_REF.timestamp = 0.2;
+    disable_diagnostic_suppress(&fb);
+
+    /* Advance past debounce window (0.1s) for criteria to trigger */
+    fb.AXIS_REF.timestamp = 0.15;
+    HDY_MotionControlFB_Execute(&fb);
+    fb.AXIS_REF.timestamp = 0.3;
     HDY_MotionControlFB_Execute(&fb);
 
     assert(fb.DIAGNOSTIC.code == HDY_DIAG_CODE_FLOW_DEVIATION);
@@ -1980,12 +2027,14 @@ static void test_finished_command_diagnostic_auto_clears_in_hold(void) {
     printf("✓ Finished-state command diagnostic auto-clear test passed\n");
 }
 
-static void test_reset_performs_full_reinitialization(void) {
+static void test_reset_soft_reset_preserves_config(void) {
     HDY_MotionControlFB fb;
     HDY_MotionSegment recipe[1];
 
-    printf("Testing RESET full reinitialization semantics...\n");
+    printf("Testing RESET soft-reset preserves recipe and config...\n");
     init_controller(&fb);
+    fb.FLOW_TO_PUMP_SPEED_GAIN = 42.0;
+    fb.PUMP_SPEED_LIMIT = 100.0;
     recipe[0] = make_position_segment("ResetCase", 6.0, HDY_DIRECTION_EXTEND);
     assert(HDY_MotionControlFB_LoadRecipe(&fb, recipe, 1));
     assert(HDY_MotionControlFB_StartSegment(&fb, 0, 0.0));
@@ -1995,24 +2044,22 @@ static void test_reset_performs_full_reinitialization(void) {
     assert(fb.ACTIVE);
     assert(fb.DIAGNOSTIC.code == HDY_DIAG_CODE_NONE);
 
-    fb.AXIS_REF.timestamp = 0.2;
+    disable_diagnostic_suppress(&fb);
+
+    fb.AXIS_REF.timestamp = 0.15;
+    HDY_MotionControlFB_Execute(&fb);
+    fb.AXIS_REF.timestamp = 0.3;
     HDY_MotionControlFB_Execute(&fb);
     assert(fb.DIAGNOSTIC_LATCH.code != HDY_DIAG_CODE_NONE);
     assert(fb.LAST_DIAGNOSTIC_SNAPSHOT.valid);
     assert(fb.DIAGNOSTIC_HISTORY.count > 0U);
 
+    /* RESET=true triggers soft reset: preserves recipe and gains */
     fb.RESET = true;
     HDY_MotionControlFB_Execute(&fb);
-    assert(!fb.EN);
-    assert(fb.ENO);
-    assert(!fb.RESET);
-    assert(fb.RECIPE_SIZE == 0U);
-    assert(fb.FLOW_TO_PUMP_SPEED_GAIN == 0.0);
-    assert(fb.PUMP_SPEED_LIMIT == 0.0);
     assert(!fb.ACTIVE);
     assert(!fb.FINISHED);
     assert(!fb.FAULT);
-    assert(fb.STATUS == HDY_STATUS_IDLE);
     assert(!fb.SEGMENT_COMPLETED);
     assert(fb.STATE.plannedDirection == HDY_DIRECTION_HOLD);
     assert(fb.STATE.currentSegmentName[0] == '\0');
@@ -2022,50 +2069,133 @@ static void test_reset_performs_full_reinitialization(void) {
     assert(!fb.LAST_FAULT_SNAPSHOT.valid);
     assert(fb.DIAGNOSTIC_HISTORY.count == 0U);
     assert(fb.DIAGNOSTIC_HISTORY.totalRecorded == 0U);
-    printf("✓ RESET full reinitialization semantics test passed\n");
+
+    /* Soft reset preserves these */
+    assert(fb.RECIPE_SIZE == 1U);
+    assert(fb.FLOW_TO_PUMP_SPEED_GAIN == 42.0);
+    assert(fb.PUMP_SPEED_LIMIT == 100.0);
+    assert(fb.USE_RECIPE);
+
+    /* After soft reset with recipe loaded, FB should be in READY state */
+    assert(fb.FB_STATE == HDY_FB_STATE_READY);
+    assert(fb.STATUS == HDY_STATUS_READY);
+
+    printf("✓ RESET soft-reset preserves recipe and config test passed\n");
 }
 
-static void test_typed_diagnostic_thresholds_override_legacy_tolerance(void) {
-    HDY_DiagnosticInfo diagnostic;
-    HDY_MotionSegment segment;
-    HDY_AxisRef axisRef = {0};
-    HDY_ExecutionReference references = {0};
-    HDY_DiagnosticsContext context;
+static void test_init_hard_reset_clears_everything(void) {
+    HDY_MotionControlFB fb;
+    HDY_MotionSegment recipe[1];
 
-    printf("Testing typed diagnostic thresholds override legacy tolerance...\n");
-    segment = make_pressure_segment("DiagTyped", 10.0, 12.0, 12.0);
-    segment.tolerance = 0.05;
-    segment.pressureTolerance = 0.5;
-    segment.flowTolerance = 0.2;
+    printf("Testing Init() hard-reset clears everything...\n");
+    init_controller(&fb);
+    fb.FLOW_TO_PUMP_SPEED_GAIN = 42.0;
+    fb.PUMP_SPEED_LIMIT = 100.0;
+    recipe[0] = make_position_segment("HardResetCase", 6.0, HDY_DIRECTION_EXTEND);
+    assert(HDY_MotionControlFB_LoadRecipe(&fb, recipe, 1));
 
+    /* Init() performs full hard reset: clears everything */
+    HDY_MotionControlFB_Init(&fb);
+    assert(fb.RECIPE_SIZE == 0U);
+    assert(fb.FLOW_TO_PUMP_SPEED_GAIN == 0.0);
+    assert(fb.PUMP_SPEED_LIMIT == 0.0);
+    assert(!fb.ACTIVE);
+    assert(!fb.FINISHED);
+    assert(!fb.FAULT);
+    assert(fb.FB_STATE == HDY_FB_STATE_IDLE);
+    assert(fb.STATUS == HDY_STATUS_IDLE);
+    assert(!fb.SEGMENT_COMPLETED);
+    assert(fb.DIAGNOSTIC.code == HDY_DIAG_CODE_NONE);
+    assert(fb.DIAGNOSTIC_LATCH.code == HDY_DIAG_CODE_NONE);
+
+    printf("✓ Init() hard-reset clears everything test passed\n");
+}
+
+static void test_soft_reset_allows_restart(void) {
+    HDY_MotionControlFB fb;
+    HDY_MotionSegment recipe[2];
+
+    printf("Testing soft reset allows restart without reload...\n");
+    init_controller(&fb);
+    recipe[0] = make_position_segment("SegA", 6.0, HDY_DIRECTION_EXTEND);
+    recipe[1] = make_position_segment("SegB", 8.0, HDY_DIRECTION_EXTEND);
+    assert(HDY_MotionControlFB_LoadRecipe(&fb, recipe, 2));
+    assert(HDY_MotionControlFB_StartSegment(&fb, 0, 0.0));
+
+    fb.AXIS_REF.timestamp = 0.0;
+    HDY_MotionControlFB_Execute(&fb);
+    assert(fb.ACTIVE);
+
+    /* Soft reset via API */
+    HDY_MotionControlFB_SoftReset(&fb);
+    assert(!fb.ACTIVE);
+    assert(fb.RECIPE_SIZE == 2U);
+    assert(fb.FB_STATE == HDY_FB_STATE_READY);
+
+    /* Should be able to start a segment again without reloading recipe */
+    fb.EN = true;
+    assert(HDY_MotionControlFB_StartSegment(&fb, 0, 0.0));
+    fb.AXIS_REF.timestamp = 0.0;
+    HDY_MotionControlFB_Execute(&fb);
+    assert(fb.ACTIVE);
+    assert(fb.FB_STATE == HDY_FB_STATE_RUNNING);
+
+    /* Advance to next segment should also work */
+    fb.AXIS_REF.position = 6.0;
+    fb.AXIS_REF.timestamp = 1.0;
+    HDY_MotionControlFB_Execute(&fb);
+
+    printf("✓ Soft reset allows restart without reload test passed\n");
+}
+
+static void test_typed_diagnostic_thresholds_via_criteria_layer(void) {
+    HDY_ErrorMonitor monitor;
+    HDY_DiagnosticCriteria flowCriteria;
+    HDY_DiagnosticCriteriaState flowState;
+    HDY_DiagnosticResult flowResult;
+    HDY_AxisRef axisRef;
+    HDY_ExecutionReference references;
+
+    printf("Testing typed diagnostic thresholds via criteria layer...\n");
+
+    /* Setup: use flow criteria with typed threshold = 0.2 L/min, no suppress for clean test */
+    HDY_ErrorMonitor_Init(&monitor);
+    HDY_DiagnosticCriteria_CreateDefaultFlowCriteria(&flowCriteria);
+    HDY_DiagnosticCriteria_InitState(&flowState);
+    flowCriteria.enableStartupSuppress = false;
+    flowCriteria.enableSwitchSuppress = false;
+    flowCriteria.enableLoopBuildSuppress = false;
+    flowCriteria.debounceTime = 0.0;
+    flowCriteria.baseThreshold = 0.2;  /* matches segment.flowTolerance = 0.2 */
+
+    /* Case 1: flow within tolerance (error = 12.0 - 11.85 = 0.15 < 0.2) */
+    axisRef.position = 0.0;
+    axisRef.velocity = 0.0;
     axisRef.flow = 11.85;
     axisRef.pressure = 12.40;
-    axisRef.timestamp = 0.2;
-    references.elapsedTime = 0.2;
+    axisRef.timestamp = 1.0;
+
     references.pressureReference = 12.0;
     references.flowReference = 12.0;
     references.velocityReference = 0.0;
+    references.elapsedTime = 0.6;
 
-    context.axisRef = &axisRef;
-    context.segment = &segment;
-    context.references = &references;
+    HDY_ErrorMonitor_Update(&monitor, &axisRef, &references, 1.0);
+    HDY_DiagnosticCriteria_CheckFlow(&flowResult, &monitor, &flowCriteria, &flowState,
+                                      1.0, 0.6, false, false);
+    assert(!flowResult.triggered);
 
-    HDY_Diagnostics_UpdateExecution(&diagnostic, &context);
-    assert(!diagnostic.overPressure);
-    assert(!diagnostic.underPressure);
-    assert(!diagnostic.flowDeviation);
-    assert(diagnostic.code == HDY_DIAG_CODE_NONE);
-
+    /* Case 2: flow exceeds tolerance (error = 12.0 - 11.70 = 0.30 > 0.2) */
     axisRef.flow = 11.70;
-    HDY_Diagnostics_UpdateExecution(&diagnostic, &context);
-    assert(!diagnostic.overPressure);
-    assert(!diagnostic.underPressure);
-    assert(diagnostic.flowDeviation);
-    assert(diagnostic.code == HDY_DIAG_CODE_FLOW_DEVIATION);
-    assert(diagnostic.severity == HDY_DIAG_SEVERITY_WARNING);
-    assert(diagnostic.source == HDY_DIAG_SOURCE_EXECUTION);
-    assert(diagnostic.protectionAction == HDY_PROTECTION_ACTION_DERATE);
-    printf("✓ Typed diagnostic thresholds test passed\n");
+    HDY_ErrorMonitor_Update(&monitor, &axisRef, &references, 1.1);
+    HDY_DiagnosticCriteria_CheckFlow(&flowResult, &monitor, &flowCriteria, &flowState,
+                                      1.1, 0.6, false, false);
+    assert(flowResult.triggered);
+    assert(flowResult.code == HDY_DIAG_CODE_FLOW_DEVIATION);
+    assert(flowResult.severity == HDY_DIAG_SEVERITY_WARNING);
+    assert(flowResult.action == HDY_PROTECTION_ACTION_DERATE);
+
+    printf("✓ Typed diagnostic thresholds via criteria layer test passed\n");
 }
 
 static void test_timeout_limit_stops_segment_safely(void) {
@@ -2258,8 +2388,10 @@ int main(void) {
     test_abort_forces_safe_outputs();
     test_abort_diagnostic_auto_clears_in_finished_hold();
     test_finished_command_diagnostic_auto_clears_in_hold();
-    test_reset_performs_full_reinitialization();
-    test_typed_diagnostic_thresholds_override_legacy_tolerance();
+    test_reset_soft_reset_preserves_config();
+    test_init_hard_reset_clears_everything();
+    test_soft_reset_allows_restart();
+    test_typed_diagnostic_thresholds_via_criteria_layer();
     test_timeout_limit_stops_segment_safely();
     test_runtime_validation_fault_latches_safe_state();
     test_parameter_validation();

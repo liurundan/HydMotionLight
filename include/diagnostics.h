@@ -16,8 +16,7 @@ void HDY_Diagnostics_SetEvent(HDY_DiagnosticInfo* diagnostic,
                               HDY_DiagnosticCode code,
                               HDY_DiagnosticSeverity severity,
                               const char* message);
-void HDY_Diagnostics_UpdateExecution(HDY_DiagnosticInfo* diagnostic,
-                                     const HDY_DiagnosticsContext* context);
+
 void HDY_Diagnostics_ClearSnapshot(HDY_DiagnosticSnapshot* snapshot);
 void HDY_Diagnostics_CaptureSnapshot(HDY_DiagnosticSnapshot* snapshot,
                                      const HDY_DiagnosticInfo* diagnostic,

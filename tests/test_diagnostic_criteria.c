@@ -344,7 +344,7 @@ void test_diagnostic_criteria_velocity() {
 
     /* 应该触发 */
     HDY_DiagnosticCriteria_CheckVelocity(&result, &monitor, &criteria, &state,
-                                         1.0, 0.1, false);
+                                         1.0, 0.1, false, false);
     assert(result.triggered);
     assert(result.code == HDY_DIAG_CODE_VELOCITY_DEVIATION);
 
@@ -373,7 +373,7 @@ void test_diagnostic_criteria_position() {
 
     /* 应该触发 */
     HDY_DiagnosticCriteria_CheckPosition(&result, &monitor, &criteria, &state,
-                                          1.0, 0.1, false);
+                                          1.0, 0.1, false, false);
     assert(result.triggered);
     assert(result.code == HDY_DIAG_CODE_POSITION_DEVIATION);
 
@@ -506,11 +506,11 @@ void test_fault_escalation_disabled() {
 
     /* 第一次检查：触发 WARNING */
     HDY_DiagnosticCriteria_CheckVelocity(&result, &monitor, &criteria, &state,
-                                          0.1, 0.4, false);
+                                          0.1, 0.4, false, false);
     if (!result.triggered) {
         /* 去抖动时间未满足，再次检查 */
         HDY_DiagnosticCriteria_CheckVelocity(&result, &monitor, &criteria, &state,
-                                              0.2, 0.5, false);
+                                              0.2, 0.5, false, false);
     }
     assert(result.triggered);
     assert(result.severity == HDY_DIAG_SEVERITY_WARNING);

@@ -276,8 +276,14 @@ HDY_BOOL HDY_DiagnosticCriteria_CheckFlow(HDY_DiagnosticResult* result,
         return false;
     }
 
-    /* 计算有效阈值（考虑滞回） */
-    effectiveThreshold = HDY_DiagnosticCriteria_CalculateEffectiveThreshold(criteria, 0.0, state);
+    /* 计算闭环建立时间 */
+    HDY_TIME loopBuildTime_flow = 0.0;
+    if (monitor->flowErrorActive) {
+        loopBuildTime_flow = monitor->flowErrorDuration;
+    }
+
+    /* 计算有效阈值（考虑滞回和闭环建立） */
+    effectiveThreshold = HDY_DiagnosticCriteria_CalculateEffectiveThreshold(criteria, loopBuildTime_flow, state);
     result->effectiveThreshold = effectiveThreshold;
 
     /* 判断误差是否超过阈值 */
@@ -304,7 +310,8 @@ HDY_BOOL HDY_DiagnosticCriteria_CheckVelocity(HDY_DiagnosticResult* result,
                                                 HDY_DiagnosticCriteriaState* state,
                                                 HDY_TIME currentTime,
                                                 HDY_TIME segmentElapsedTime,
-                                                HDY_BOOL isStartupPhase) {
+                                                HDY_BOOL isStartupPhase,
+                                                HDY_BOOL isSwitchPhase) {
     HDY_REAL absoluteError;
     HDY_REAL effectiveThreshold;
     HDY_BOOL errorExceedsThreshold;
@@ -324,18 +331,27 @@ HDY_BOOL HDY_DiagnosticCriteria_CheckVelocity(HDY_DiagnosticResult* result,
         return false;
     }
 
-    /* 检查抑制条件（速度只检查启动阶段） */
-    if (criteria->enableStartupSuppress && isStartupPhase) {
-        if (HDY_IsStartupSuppressActive(segmentElapsedTime, criteria->startupSuppressTime)) {
-            result->suppressType = HDY_SUPPRESS_STARTUP;
-            result->suppressTime = criteria->startupSuppressTime;
-            result->triggered = false;
-            return false;
-        }
+    /* 检查抑制条件（速度检查启动和切换阶段抑制） */
+    if (HDY_DiagnosticCriteria_CheckSuppressCondition(criteria,
+                                                       segmentElapsedTime,
+                                                       isStartupPhase,
+                                                       isSwitchPhase,
+                                                       &suppressType,
+                                                       &suppressTime)) {
+        result->suppressType = suppressType;
+        result->suppressTime = suppressTime;
+        result->triggered = false;
+        return false;
     }
 
-    /* 计算有效阈值（考虑滞回） */
-    effectiveThreshold = HDY_DiagnosticCriteria_CalculateEffectiveThreshold(criteria, 0.0, state);
+    /* 计算闭环建立时间 */
+    HDY_TIME loopBuildTime_velocity = 0.0;
+    if (monitor->velocityErrorActive) {
+        loopBuildTime_velocity = monitor->velocityErrorDuration;
+    }
+
+    /* 计算有效阈值（考虑滞回和闭环建立） */
+    effectiveThreshold = HDY_DiagnosticCriteria_CalculateEffectiveThreshold(criteria, loopBuildTime_velocity, state);
     result->effectiveThreshold = effectiveThreshold;
 
     /* 判断误差是否超过阈值 */
@@ -362,7 +378,8 @@ HDY_BOOL HDY_DiagnosticCriteria_CheckPosition(HDY_DiagnosticResult* result,
                                                HDY_DiagnosticCriteriaState* state,
                                                HDY_TIME currentTime,
                                                HDY_TIME segmentElapsedTime,
-                                               HDY_BOOL isStartupPhase) {
+                                               HDY_BOOL isStartupPhase,
+                                               HDY_BOOL isSwitchPhase) {
     HDY_REAL absoluteError;
     HDY_REAL effectiveThreshold;
     HDY_BOOL errorExceedsThreshold;
@@ -382,18 +399,27 @@ HDY_BOOL HDY_DiagnosticCriteria_CheckPosition(HDY_DiagnosticResult* result,
         return false;
     }
 
-    /* 检查抑制条件（位置只检查启动阶段） */
-    if (criteria->enableStartupSuppress && isStartupPhase) {
-        if (HDY_IsStartupSuppressActive(segmentElapsedTime, criteria->startupSuppressTime)) {
-            result->suppressType = HDY_SUPPRESS_STARTUP;
-            result->suppressTime = criteria->startupSuppressTime;
-            result->triggered = false;
-            return false;
-        }
+    /* 检查抑制条件（位置检查启动和切换阶段抑制） */
+    if (HDY_DiagnosticCriteria_CheckSuppressCondition(criteria,
+                                                       segmentElapsedTime,
+                                                       isStartupPhase,
+                                                       isSwitchPhase,
+                                                       &suppressType,
+                                                       &suppressTime)) {
+        result->suppressType = suppressType;
+        result->suppressTime = suppressTime;
+        result->triggered = false;
+        return false;
     }
 
-    /* 计算有效阈值（考虑滞回） */
-    effectiveThreshold = HDY_DiagnosticCriteria_CalculateEffectiveThreshold(criteria, 0.0, state);
+    /* 计算闭环建立时间 */
+    HDY_TIME loopBuildTime_position = 0.0;
+    if (monitor->positionErrorActive) {
+        loopBuildTime_position = monitor->positionErrorDuration;
+    }
+
+    /* 计算有效阈值（考虑滞回和闭环建立） */
+    effectiveThreshold = HDY_DiagnosticCriteria_CalculateEffectiveThreshold(criteria, loopBuildTime_position, state);
     result->effectiveThreshold = effectiveThreshold;
 
     /* 判断误差是否超过阈值 */
@@ -466,6 +492,10 @@ void HDY_DiagnosticCriteria_CreateDefaultFlowCriteria(HDY_DiagnosticCriteria* cr
     criteria->enableSwitchSuppress = true;
     criteria->switchSuppressTime = 0.3;
 
+    /* 启用闭环建立抑制（默认300ms） */
+    criteria->enableLoopBuildSuppress = true;
+    criteria->loopBuildSuppressTime = 0.3;
+
     /* 启用告警到故障升级（默认3秒升级） */
     criteria->enableFaultEscalation = true;
     criteria->faultEscalationTime = 3.0;
@@ -491,6 +521,14 @@ void HDY_DiagnosticCriteria_CreateDefaultVelocityCriteria(HDY_DiagnosticCriteria
     criteria->enableStartupSuppress = true;
     criteria->startupSuppressTime = 0.3;
 
+    /* 启用切段抑制（默认300ms） */
+    criteria->enableSwitchSuppress = true;
+    criteria->switchSuppressTime = 0.3;
+
+    /* 启用闭环建立抑制（默认200ms） */
+    criteria->enableLoopBuildSuppress = true;
+    criteria->loopBuildSuppressTime = 0.2;
+
     /* 启用告警到故障升级（默认2秒升级） */
     criteria->enableFaultEscalation = true;
     criteria->faultEscalationTime = 2.0;
@@ -515,6 +553,14 @@ void HDY_DiagnosticCriteria_CreateDefaultPositionCriteria(HDY_DiagnosticCriteria
     /* 启用启动抑制（默认500ms） */
     criteria->enableStartupSuppress = true;
     criteria->startupSuppressTime = 0.5;
+
+    /* 启用切段抑制（默认300ms） */
+    criteria->enableSwitchSuppress = true;
+    criteria->switchSuppressTime = 0.3;
+
+    /* 启用闭环建立抑制（默认300ms） */
+    criteria->enableLoopBuildSuppress = true;
+    criteria->loopBuildSuppressTime = 0.3;
 
     /* 启用告警到故障升级（默认2秒升级） */
     criteria->enableFaultEscalation = true;
