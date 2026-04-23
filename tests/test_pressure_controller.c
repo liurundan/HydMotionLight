@@ -402,6 +402,181 @@ static void test_rbf_pid_strategy_switch_tracks_previous_output_bumplessly(void)
     printf("✓ RBF-PID strategy switch bumpless tracking test passed\n");
 }
 
+/* ---- P1-5: Boundary and edge-case tests ---- */
+
+static void test_pi_integral_saturates_and_back_calculates_on_recovery(void) {
+    HDY_MotionSegment segment;
+    HDY_PressureControllerState state;
+    HDY_PressureControllerInput input;
+    HDY_PressureControllerOutput output;
+    int step;
+
+    printf("Testing PI integral saturation and back-calculation on recovery...\n");
+    segment = make_pressure_segment();
+    segment.pressureController = HDY_PRESSURE_CONTROLLER_PI;
+    segment.pressureKp = 0.5;
+    segment.pressureKi = 2.0;
+    segment.pressureIntegralLimit = 3.0;
+    segment.maxFlow = 5.0;
+
+    HDY_PressureController_InitState(&state, 5.0, segment.targetFlow, 0.0);
+
+    /* Step 1: Apply sustained error to saturate integral */
+    input.targetPressure = 20.0;
+    input.measuredPressure = 5.0;
+    input.feedforwardFlow = segment.targetFlow;
+    input.outputMin = 0.0;
+    input.outputMax = segment.maxFlow;
+
+    for (step = 0; step < 10; step++) {
+        input.timestamp = (step + 1) * 0.01;
+        HDY_PressureController_Execute(&segment, &state, &input, &output);
+    }
+
+    /* Integral should be clamped at the limit */
+    assert(output.saturated);
+    assert(output.integralTerm <= segment.pressureIntegralLimit + 0.001);
+    assert(output.outputFlow <= segment.maxFlow + 0.001);
+
+    /* Step 2: Recovery — pressure catches up, error reverses */
+    input.targetPressure = 10.0;
+    input.measuredPressure = 15.0;
+    input.timestamp = 0.2;
+    HDY_PressureController_Execute(&segment, &state, &input, &output);
+
+    /* After recovery the output should decrease significantly;
+     * back-calculation prevents integral windup from holding output high */
+    assert(output.outputFlow < segment.maxFlow);
+    assert(!output.saturated || output.integralTerm < segment.pressureIntegralLimit);
+    printf("✓ PI integral saturation and back-calculation test passed\n");
+}
+
+static void test_p_to_pi_strategy_switch_preinitializes_integral(void) {
+    HDY_MotionSegment segment;
+    HDY_PressureControllerState state;
+    HDY_PressureControllerInput input;
+    HDY_PressureControllerOutput output0;
+    HDY_PressureControllerOutput output1;
+
+    printf("Testing P-to-PI strategy switch integral pre-initialization...\n");
+    segment = make_pressure_segment();
+    segment.pressureController = HDY_PRESSURE_CONTROLLER_P;
+    segment.pressureKp = 1.0;
+    segment.maxFlow = 20.0;
+
+    HDY_PressureController_InitState(&state, 10.0, segment.targetFlow, 0.0);
+
+    /* Run in P mode first */
+    input.targetPressure = 14.0;
+    input.measuredPressure = 10.0;
+    input.feedforwardFlow = segment.targetFlow;
+    input.outputMin = 0.0;
+    input.outputMax = segment.maxFlow;
+    input.timestamp = 0.0;
+    HDY_PressureController_Execute(&segment, &state, &input, &output0);
+
+    assert(output0.appliedStrategy == HDY_PRESSURE_CONTROLLER_P);
+    assert(fabs(output0.integralTerm) < 0.001);
+
+    /* Switch to PI — tracking should pre-initialize integral for bumpless transfer */
+    segment.pressureController = HDY_PRESSURE_CONTROLLER_PI;
+    segment.pressureKi = 1.0;
+    segment.pressureIntegralLimit = 10.0;
+    input.timestamp = 0.1;
+    HDY_PressureController_Execute(&segment, &state, &input, &output1);
+
+    assert(output1.appliedStrategy == HDY_PRESSURE_CONTROLLER_PI);
+    assert(output1.trackingApplied);
+    /* Integral should be non-zero after tracking initialization */
+    assert(fabs(output1.integralTerm) > 0.001);
+    /* Output should be continuous (no bump) */
+    assert(fabs(output1.outputFlow - output0.outputFlow) < 1.0);
+    printf("✓ P-to-PI strategy switch integral pre-initialization test passed\n");
+}
+
+static void test_long_run_integral_stability(void) {
+    HDY_MotionSegment segment;
+    HDY_PressureControllerState state;
+    HDY_PressureControllerInput input;
+    HDY_PressureControllerOutput output;
+    int step;
+    HDY_REAL lastOutput = 0.0;
+    HDY_REAL maxOscillation = 0.0;
+
+    printf("Testing long-run PI controller stability...\n");
+    segment = make_pressure_segment();
+    segment.pressureController = HDY_PRESSURE_CONTROLLER_PI;
+    segment.pressureKp = 0.5;
+    segment.pressureKi = 0.5;
+    segment.pressureIntegralLimit = 10.0;
+    segment.maxFlow = 20.0;
+
+    HDY_PressureController_InitState(&state, 10.0, segment.targetFlow, 0.0);
+
+    input.targetPressure = 12.0;
+    input.measuredPressure = 10.0;
+    input.feedforwardFlow = segment.targetFlow;
+    input.outputMin = 0.0;
+    input.outputMax = segment.maxFlow;
+
+    for (step = 0; step < 1000; step++) {
+        input.timestamp = (step + 1) * 0.001;
+
+        /* Simulate simple plant: pressure rises with flow */
+        HDY_PressureController_Execute(&segment, &state, &input, &output);
+        input.measuredPressure += (output.outputFlow - input.measuredPressure) * 0.005;
+
+        if (step > 100) {
+            HDY_REAL oscillation = fabs(output.outputFlow - lastOutput);
+            if (oscillation > maxOscillation) {
+                maxOscillation = oscillation;
+            }
+        }
+        lastOutput = output.outputFlow;
+    }
+
+    /* After 1000 steps, controller should have settled — no large oscillations */
+    assert(maxOscillation < 1.0);
+    /* Integral should be within bounds */
+    assert(output.integralTerm >= -0.001);
+    assert(output.integralTerm <= segment.pressureIntegralLimit + 0.001);
+    printf("✓ Long-run PI controller stability test passed (max oscillation=%.4f)\n", maxOscillation);
+}
+
+static void test_small_kp_produces_proportional_output(void) {
+    HDY_MotionSegment segment;
+    HDY_PressureControllerState state;
+    HDY_PressureControllerInput input;
+    HDY_PressureControllerOutput output;
+    HDY_REAL expectedProportional;
+    HDY_REAL expectedOutput;
+
+    printf("Testing small-Kp P controller produces proportional output...\n");
+    segment = make_pressure_segment();
+    segment.pressureController = HDY_PRESSURE_CONTROLLER_P;
+    segment.pressureKp = 0.01;  /* Very small but nonzero gain */
+    segment.maxFlow = 20.0;
+
+    HDY_PressureController_InitState(&state, 5.0, segment.targetFlow, 0.0);
+
+    input.targetPressure = 20.0;
+    input.measuredPressure = 5.0;
+    input.feedforwardFlow = segment.targetFlow;
+    input.outputMin = 0.0;
+    input.outputMax = segment.maxFlow;
+    input.timestamp = 0.01;
+    HDY_PressureController_Execute(&segment, &state, &input, &output);
+
+    /* With Kp=0.01 and error=15 MPa, proportional term = 0.01 * 15 = 0.15 */
+    expectedProportional = segment.pressureKp * (20.0 - 5.0);
+    assert(fabs(output.proportionalTerm - expectedProportional) < 0.001);
+    /* Output should be feedforward + proportional term */
+    expectedOutput = segment.targetFlow + expectedProportional;
+    assert(fabs(output.outputFlow - expectedOutput) < 0.001);
+    assert(!output.saturated);
+    printf("✓ Small-Kp P controller test passed\n");
+}
+
 int main(void) {
     printf("Running PressureController tests...\n\n");
 
@@ -414,6 +589,10 @@ int main(void) {
     test_rbf_pid_strategy_executes_within_limits_and_adapts();
     test_rbf_pid_strategy_uses_segment_level_tuning_profile();
     test_rbf_pid_strategy_switch_tracks_previous_output_bumplessly();
+    test_pi_integral_saturates_and_back_calculates_on_recovery();
+    test_p_to_pi_strategy_switch_preinitializes_integral();
+    test_long_run_integral_stability();
+    test_small_kp_produces_proportional_output();
 
     printf("\n✅ All PressureController tests passed successfully!\n");
     return 0;

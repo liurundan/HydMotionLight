@@ -215,6 +215,8 @@ typedef struct {
     HDY_DiagnosticCriteriaState _velocityCriteriaState;
     HDY_DiagnosticCriteria _positionCriteria;
     HDY_DiagnosticCriteriaState _positionCriteriaState;
+    HDY_DiagnosticCriteria _timeoutCriteria;
+    HDY_DiagnosticCriteriaState _timeoutCriteriaState;
     HDY_BOOL _isSwitchPhase;            /* True during segment transition window for switch suppress */
     HDY_TIME _switchSuppressEndTime;    /* Elapsed time at which switch suppress phase expires */
 } HDY_MotionControlFB;

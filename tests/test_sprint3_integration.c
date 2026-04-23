@@ -297,6 +297,8 @@ void test_end_to_end_injection_molding_scenario() {
 
         monitor.pressureErrorActive = (monitor.pressureError > 0.0);
         monitor.pressureErrorDuration = segmentElapsedTime;
+        monitor.flowErrorActive = (monitor.flowError > 0.0);
+        monitor.flowErrorDuration = segmentElapsedTime;
 
         /* 检查压力和流量诊断 */
         HDY_DiagnosticCriteria_CheckPressure(&pressureResult, &monitor, &pressureCriteria, &pressureState,
@@ -325,6 +327,118 @@ void test_end_to_end_injection_molding_scenario() {
     printf("✅ test_end_to_end_injection_molding_scenario passed\n");
 }
 
+/*
+ * 测试故障升级端到端流程
+ * 验证 WARNING → FAULT 的完整升级路径，包括：
+ * 1. WARNING 首次触发
+ * 2. WARNING 持续
+ * 3. 升级为 FAULT
+ * 4. FAULT 触发后保护动作
+ */
+void test_fault_escalation_end_to_end() {
+    HDY_ErrorMonitor monitor;
+    HDY_DiagnosticCriteria pressureCriteria;
+    HDY_DiagnosticCriteriaState pressureState;
+    HDY_DiagnosticResult pressureResult;
+    HDY_BOOL reachedWarning = false;
+    HDY_BOOL reachedFault = false;
+
+    printf("🧪 Testing fault escalation end-to-end flow...\n");
+
+    HDY_ErrorMonitor_Init(&monitor);
+    HDY_DiagnosticCriteria_InitState(&pressureState);
+    HDY_DiagnosticCriteria_CreateDefaultPressureCriteria(&pressureCriteria);
+    pressureCriteria.enableStartupSuppress = false;
+    pressureCriteria.debounceTime = 0.0;
+
+    /* 模拟持续压力超限，从 WARNING 升级到 FAULT */
+    monitor.pressureError = 5.0;
+    monitor.pressureErrorActive = true;
+    monitor.pressureErrorDuration = 0.5;
+
+    for (int i = 0; i < 300; i++) {
+        HDY_TIME currentTime = (HDY_TIME)i * 0.01;
+        HDY_TIME segmentElapsedTime = (HDY_TIME)i * 0.01;
+
+        HDY_DiagnosticCriteria_CheckPressure(&pressureResult, &monitor, &pressureCriteria, &pressureState,
+                                              currentTime, segmentElapsedTime,
+                                              false, false);
+
+        if (pressureResult.triggered) {
+            /* Pass pressureResult (not a separate escalationResult) so that
+             * CheckFaultEscalation can read severity=WARNING and upgrade it. */
+            HDY_DiagnosticCriteria_CheckFaultEscalation(&pressureResult, &pressureCriteria, &pressureState, currentTime);
+
+            if (!reachedWarning && pressureResult.severity == HDY_DIAG_SEVERITY_WARNING) {
+                reachedWarning = true;
+                printf("  ✅ WARNING reached at t=%.2fs\n", currentTime);
+            }
+
+            if (!reachedFault && pressureState.faultEscalated) {
+                reachedFault = true;
+                printf("  ✅ FAULT escalated at t=%.2fs\n", currentTime);
+                assert(pressureResult.severity == HDY_DIAG_SEVERITY_FAULT);
+                assert(pressureResult.action == HDY_PROTECTION_ACTION_STOP);
+                break;
+            }
+        }
+    }
+
+    assert(reachedWarning);
+    assert(reachedFault);
+    printf("✅ test_fault_escalation_end_to_end passed\n");
+}
+
+/*
+ * 测试流量诊断 WARNING → FAULT 升级路径
+ */
+void test_flow_fault_escalation() {
+    HDY_ErrorMonitor monitor;
+    HDY_DiagnosticCriteria flowCriteria;
+    HDY_DiagnosticCriteriaState flowState;
+    HDY_DiagnosticResult flowResult;
+
+    printf("🧪 Testing flow fault escalation path...\n");
+
+    HDY_ErrorMonitor_Init(&monitor);
+    HDY_DiagnosticCriteria_InitState(&flowState);
+    HDY_DiagnosticCriteria_CreateDefaultFlowCriteria(&flowCriteria);
+    flowCriteria.enableStartupSuppress = false;
+    flowCriteria.enableSwitchSuppress = false;
+    flowCriteria.debounceTime = 0.0;
+
+    /* 流量持续超限 */
+    monitor.flowError = 5.0;
+    monitor.flowErrorActive = true;
+    monitor.flowErrorDuration = 1.0;
+
+    /* 首次触发 WARNING */
+    HDY_DiagnosticCriteria_CheckFlow(&flowResult, &monitor, &flowCriteria, &flowState,
+                                     0.1, 0.1, false, false);
+    assert(flowResult.triggered);
+    assert(flowResult.severity == HDY_DIAG_SEVERITY_WARNING);
+    HDY_DiagnosticCriteria_CheckFaultEscalation(&flowResult, &flowCriteria, &flowState, 0.1);
+    printf("  ✅ Flow WARNING triggered\n");
+
+    /* 持续触发，等待升级 — pass flowResult so escalation can read severity */
+    HDY_DiagnosticCriteria_CheckFlow(&flowResult, &monitor, &flowCriteria, &flowState,
+                                     2.0, 2.0, false, false);
+    HDY_DiagnosticCriteria_CheckFaultEscalation(&flowResult, &flowCriteria, &flowState, 2.0);
+
+    /* 尚未升级（3秒升级时间） */
+    assert(!flowState.faultEscalated);
+
+    /* 超过升级时间 */
+    HDY_DiagnosticCriteria_CheckFlow(&flowResult, &monitor, &flowCriteria, &flowState,
+                                     4.0, 4.0, false, false);
+    HDY_DiagnosticCriteria_CheckFaultEscalation(&flowResult, &flowCriteria, &flowState, 4.0);
+    assert(flowState.faultEscalated);
+    assert(flowResult.severity == HDY_DIAG_SEVERITY_FAULT);
+    assert(flowResult.action == HDY_PROTECTION_ACTION_STOP);
+    printf("  ✅ Flow FAULT escalated after 4s\n");
+    printf("✅ test_flow_fault_escalation passed\n");
+}
+
 int main() {
     printf("=== Sprint 3 Integration Tests ===\n\n");
 
@@ -334,6 +448,8 @@ int main() {
     test_severity_escalation_full_flow();
     test_false_positive_reduction_comparison();
     test_end_to_end_injection_molding_scenario();
+    test_fault_escalation_end_to_end();
+    test_flow_fault_escalation();
 
     printf("\n=== All Sprint 3 Integration Tests Passed ===\n");
     return 0;

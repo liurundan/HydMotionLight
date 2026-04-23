@@ -15,8 +15,9 @@ file(GLOB_RECURSE HYDRO_CORE_SRCS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/*.c
 )
 
-# 过滤掉仿真器源文件
-list(FILTER HYDRO_CORE_SRCS EXCLUDE REGEX ".*hydro_sim\\.c$")
+# Exclude simulator subdirectory — simulator sources live in src/sim/
+# and are built separately as HydroSimLib.
+list(FILTER HYDRO_CORE_SRCS EXCLUDE REGEX ".*/sim/.*\\.c$")
 
 add_library(HydroMotionLib STATIC ${HYDRO_CORE_SRCS})
 target_include_directories(HydroMotionLib PUBLIC ${HYDRO_INCLUDE_DIRS})
@@ -24,8 +25,12 @@ target_link_libraries(HydroMotionLib PUBLIC m)
 
 # ==================================================================
 # 独立仿真器库 (HydroSimLib) - 仅用于集成测试
+# 仿真器源文件位于 src/sim/ 子目录，与核心库分离。
 # ==================================================================
-add_library(HydroSimLib STATIC ${CMAKE_CURRENT_SOURCE_DIR}/src/hydro_sim.c)
+file(GLOB HYDRO_SIM_SRCS
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/sim/*.c
+)
+add_library(HydroSimLib STATIC ${HYDRO_SIM_SRCS})
 target_include_directories(HydroSimLib PUBLIC ${HYDRO_INCLUDE_DIRS})
 target_link_libraries(HydroSimLib PUBLIC m)
 
@@ -77,6 +82,9 @@ target_link_libraries(test_direct_mode_simple PRIVATE HydroMotionLib)
 add_executable(test_motion_sim_integration tests/test_motion_sim_integration.c)
 target_link_libraries(test_motion_sim_integration PRIVATE HydroMotionLib HydroSimLib)
 
+add_executable(test_hydro_sim_fb tests/test_hydro_sim_fb.c)
+target_link_libraries(test_hydro_sim_fb PRIVATE HydroSimLib)
+
 add_executable(test_ramp_controller tests/test_ramp_controller.c)
 target_link_libraries(test_ramp_controller PRIVATE HydroMotionLib)
 
@@ -102,4 +110,5 @@ add_test(NAME test_diagnostic_criteria COMMAND test_diagnostic_criteria)
 add_test(NAME test_sprint3_integration COMMAND test_sprint3_integration)
 add_test(NAME test_direct_mode COMMAND test_direct_mode)
 add_test(NAME test_motion_sim_integration COMMAND test_motion_sim_integration)
+add_test(NAME test_hydro_sim_fb COMMAND test_hydro_sim_fb)
 add_test(NAME test_ramp_controller_detailed COMMAND test_ramp_controller)

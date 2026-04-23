@@ -153,6 +153,39 @@ HDY_BOOL HDY_DiagnosticCriteria_CheckPosition(HDY_DiagnosticResult* result,
                                                HDY_BOOL isSwitchPhase);
 
 /*
+ * 检查超时诊断判据
+ *
+ * 超时诊断不基于 ErrorMonitor，而是直接比较段运行时间与超时限制。
+ * 仍通过判据层的抑制机制（启动/切段抑制）统一处理，确保与其他
+ * 诊断通道语义一致。
+ *
+ * 参数：
+ * - result: 输出诊断结果
+ * - criteria: 诊断判据配置（baseThreshold 用作 timeoutLimit）
+ * - state: 诊断判据状态
+ * - currentTime: 当前时间戳
+ * - segmentElapsedTime: 当前段已执行时间
+ * - isStartupPhase: 是否处于启动阶段
+ * - isSwitchPhase: 是否处于切段阶段
+ *
+ * 返回：
+ * - true: 超时诊断触发
+ * - false: 超时诊断未触发
+ */
+HDY_BOOL HDY_DiagnosticCriteria_CheckTimeout(HDY_DiagnosticResult* result,
+                                               const HDY_DiagnosticCriteria* criteria,
+                                               HDY_DiagnosticCriteriaState* state,
+                                               HDY_TIME currentTime,
+                                               HDY_TIME segmentElapsedTime,
+                                               HDY_BOOL isStartupPhase,
+                                               HDY_BOOL isSwitchPhase);
+
+/*
+ * 创建默认超时诊断判据
+ */
+void HDY_DiagnosticCriteria_CreateDefaultTimeoutCriteria(HDY_DiagnosticCriteria* criteria);
+
+/*
  * 重置诊断判据状态
  */
 void HDY_DiagnosticCriteria_ResetState(HDY_DiagnosticCriteriaState* state);

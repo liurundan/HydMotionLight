@@ -2,32 +2,6 @@
 #include "segment_limits.h"
 #include <math.h>
 
-static HDY_MotionDirection HDY_ResolvePositionDirection(const HDY_MotionSegment* segment,
-                                                        const HDY_AxisRef* axisRef) {
-    HDY_REAL delta;
-    HDY_REAL positionTolerance;
-
-    if (segment == NULL || axisRef == NULL) {
-        return HDY_DIRECTION_HOLD;
-    }
-
-    if (segment->direction == HDY_DIRECTION_EXTEND ||
-        segment->direction == HDY_DIRECTION_RETRACT ||
-        segment->direction == HDY_DIRECTION_HOLD) {
-        return segment->direction;
-    }
-
-    positionTolerance = HDY_Segment_GetPositionTolerance(segment);
-    delta = segment->targetPosition - axisRef->position;
-    if (delta > positionTolerance) {
-        return HDY_DIRECTION_EXTEND;
-    }
-    if (delta < -positionTolerance) {
-        return HDY_DIRECTION_RETRACT;
-    }
-    return HDY_DIRECTION_HOLD;
-}
-
 HDY_BOOL HDY_SegmentCompletion_CheckWithContext(const HDY_SegmentCompletionContext* context) {
     const HDY_MotionSegment* segment;
     const HDY_AxisRef* axisRef;
@@ -60,7 +34,7 @@ HDY_BOOL HDY_SegmentCompletion_CheckWithContext(const HDY_SegmentCompletionConte
 
     switch (segment->endCondition) {
         case HDY_END_POSITION:
-            direction = HDY_ResolvePositionDirection(segment, axisRef);
+            direction = HDY_Segment_ResolveDirection(segment, axisRef);
             if (direction == HDY_DIRECTION_EXTEND) {
                 return axisRef->position >= segment->targetPosition - positionTolerance;
             }

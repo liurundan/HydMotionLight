@@ -17,40 +17,6 @@ static HDY_REAL HDY_GetDirectionSign(HDY_MotionDirection direction) {
     }
 }
 
-static HDY_BOOL HDY_IsMotionDirectionExplicit(HDY_MotionDirection direction) {
-    return (direction == HDY_DIRECTION_EXTEND) ||
-           (direction == HDY_DIRECTION_RETRACT) ||
-           (direction == HDY_DIRECTION_HOLD);
-}
-
-static HDY_MotionDirection HDY_ResolveMotionDirection(const HDY_MotionSegment* segment,
-                                                      const HDY_AxisRef* axisRef) {
-    HDY_REAL delta;
-    HDY_REAL positionTolerance;
-
-    if (segment == NULL || axisRef == NULL) {
-        return HDY_DIRECTION_HOLD;
-    }
-
-    if (HDY_IsMotionDirectionExplicit(segment->direction)) {
-        return segment->direction;
-    }
-
-    if (segment->mode == HDY_MODE_PRESSURE_CLOSED_LOOP) {
-        return HDY_DIRECTION_HOLD;
-    }
-
-    positionTolerance = HDY_Segment_GetPositionTolerance(segment);
-    delta = segment->targetPosition - axisRef->position;
-    if (delta > positionTolerance) {
-        return HDY_DIRECTION_EXTEND;
-    }
-    if (delta < -positionTolerance) {
-        return HDY_DIRECTION_RETRACT;
-    }
-    return HDY_DIRECTION_HOLD;
-}
-
 static HDY_REAL HDY_ComputeRemainingDistance(const HDY_MotionSegment* segment,
                                              const HDY_AxisRef* axisRef,
                                              HDY_MotionDirection direction) {
@@ -210,7 +176,7 @@ void HDY_MotionPlanner_Execute(const HDY_MotionPlannerInput* input, HDY_MotionPl
         return;
     }
 
-    direction = HDY_ResolveMotionDirection(input->segment, input->axisRef);
+    direction = HDY_Segment_ResolveDirection(input->segment, input->axisRef);
     output->direction = direction;
 
     if (input->segment->mode == HDY_MODE_PRESSURE_CLOSED_LOOP ||

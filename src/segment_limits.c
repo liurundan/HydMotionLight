@@ -1,4 +1,5 @@
 #include "segment_limits.h"
+#include <math.h>
 
 static HDY_REAL HDY_GetTypedTolerance(HDY_REAL typedTolerance, HDY_REAL legacyTolerance) {
     if (typedTolerance > 0.0) {
@@ -52,4 +53,32 @@ HDY_TIME HDY_Segment_GetTimeoutLimit(const HDY_MotionSegment* segment) {
     }
 
     return 0.0;
+}
+
+HDY_MotionDirection HDY_Segment_ResolveDirection(const HDY_MotionSegment* segment,
+                                                   const HDY_AxisRef* axisRef) {
+    HDY_REAL delta;
+    HDY_REAL positionTolerance;
+
+    if (segment == NULL || axisRef == NULL) {
+        return HDY_DIRECTION_HOLD;
+    }
+
+    /* Explicit direction declarations take precedence. */
+    if (segment->direction == HDY_DIRECTION_EXTEND ||
+        segment->direction == HDY_DIRECTION_RETRACT ||
+        segment->direction == HDY_DIRECTION_HOLD) {
+        return segment->direction;
+    }
+
+    /* Infer direction from position delta when no explicit direction is set. */
+    positionTolerance = HDY_Segment_GetPositionTolerance(segment);
+    delta = segment->targetPosition - axisRef->position;
+    if (delta > positionTolerance) {
+        return HDY_DIRECTION_EXTEND;
+    }
+    if (delta < -positionTolerance) {
+        return HDY_DIRECTION_RETRACT;
+    }
+    return HDY_DIRECTION_HOLD;
 }

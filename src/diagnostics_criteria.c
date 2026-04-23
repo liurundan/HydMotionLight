@@ -100,6 +100,7 @@ static HDY_BOOL HDY_DiagnosticCriteria_CheckSuppressCondition(const HDY_Diagnost
 
 static HDY_REAL HDY_DiagnosticCriteria_CalculateEffectiveThreshold(const HDY_DiagnosticCriteria* criteria,
                                                                     HDY_TIME loopBuildTime,
+                                                                    HDY_BOOL errorActive,
                                                                     const HDY_DiagnosticCriteriaState* state) {
     HDY_REAL effectiveThreshold = criteria->baseThreshold;
     HDY_REAL loopBuildFactor = 1.0;
@@ -108,8 +109,10 @@ static HDY_REAL HDY_DiagnosticCriteria_CalculateEffectiveThreshold(const HDY_Dia
         return 0.0;
     }
 
-    /* 应用闭环建立因子（降低敏感度） */
-    if (criteria->enableLoopBuildSuppress) {
+    /* 应用闭环建立因子（降低敏感度）
+     * 仅当误差实际存在时才降低阈值；若误差不存在（errorActive=false），
+     * 不应将阈值降为0，否则微小数值噪声就会触发诊断。 */
+    if (criteria->enableLoopBuildSuppress && errorActive) {
         loopBuildFactor = HDY_CalculateLoopBuildFactor(loopBuildTime, criteria->loopBuildSuppressTime);
         effectiveThreshold = effectiveThreshold * loopBuildFactor;
     }
@@ -214,7 +217,7 @@ HDY_BOOL HDY_DiagnosticCriteria_CheckPressure(HDY_DiagnosticResult* result,
     }
 
     /* 计算有效阈值（考虑滞回和闭环建立） */
-    effectiveThreshold = HDY_DiagnosticCriteria_CalculateEffectiveThreshold(criteria, loopBuildTime, state);
+    effectiveThreshold = HDY_DiagnosticCriteria_CalculateEffectiveThreshold(criteria, loopBuildTime, monitor->pressureErrorActive, state);
     result->effectiveThreshold = effectiveThreshold;
 
     /* 判断误差是否超过阈值 */
@@ -283,7 +286,7 @@ HDY_BOOL HDY_DiagnosticCriteria_CheckFlow(HDY_DiagnosticResult* result,
     }
 
     /* 计算有效阈值（考虑滞回和闭环建立） */
-    effectiveThreshold = HDY_DiagnosticCriteria_CalculateEffectiveThreshold(criteria, loopBuildTime_flow, state);
+    effectiveThreshold = HDY_DiagnosticCriteria_CalculateEffectiveThreshold(criteria, loopBuildTime_flow, monitor->flowErrorActive, state);
     result->effectiveThreshold = effectiveThreshold;
 
     /* 判断误差是否超过阈值 */
@@ -351,7 +354,7 @@ HDY_BOOL HDY_DiagnosticCriteria_CheckVelocity(HDY_DiagnosticResult* result,
     }
 
     /* 计算有效阈值（考虑滞回和闭环建立） */
-    effectiveThreshold = HDY_DiagnosticCriteria_CalculateEffectiveThreshold(criteria, loopBuildTime_velocity, state);
+    effectiveThreshold = HDY_DiagnosticCriteria_CalculateEffectiveThreshold(criteria, loopBuildTime_velocity, monitor->velocityErrorActive, state);
     result->effectiveThreshold = effectiveThreshold;
 
     /* 判断误差是否超过阈值 */
@@ -419,7 +422,7 @@ HDY_BOOL HDY_DiagnosticCriteria_CheckPosition(HDY_DiagnosticResult* result,
     }
 
     /* 计算有效阈值（考虑滞回和闭环建立） */
-    effectiveThreshold = HDY_DiagnosticCriteria_CalculateEffectiveThreshold(criteria, loopBuildTime_position, state);
+    effectiveThreshold = HDY_DiagnosticCriteria_CalculateEffectiveThreshold(criteria, loopBuildTime_position, monitor->positionErrorActive, state);
     result->effectiveThreshold = effectiveThreshold;
 
     /* 判断误差是否超过阈值 */
@@ -646,4 +649,91 @@ void HDY_DiagnosticCriteria_ResetFaultEscalation(HDY_DiagnosticCriteriaState* st
     state->warningActive = false;
     state->warningStartTime = 0.0;
     state->faultEscalated = false;
+}
+
+HDY_BOOL HDY_DiagnosticCriteria_CheckTimeout(HDY_DiagnosticResult* result,
+                                               const HDY_DiagnosticCriteria* criteria,
+                                               HDY_DiagnosticCriteriaState* state,
+                                               HDY_TIME currentTime,
+                                               HDY_TIME segmentElapsedTime,
+                                               HDY_BOOL isStartupPhase,
+                                               HDY_BOOL isSwitchPhase) {
+    HDY_SuppressType suppressType;
+    HDY_TIME suppressTime;
+    HDY_BOOL timeoutExceeded;
+    HDY_BOOL triggered;
+
+    if (result == NULL || criteria == NULL || state == NULL) {
+        return false;
+    }
+
+    memset(result, 0, sizeof(*result));
+
+    /* baseThreshold stores the timeout limit for this criteria */
+    if (criteria->baseThreshold <= 0.0) {
+        return false;
+    }
+
+    /* Check suppression conditions — timeout should still be suppressed
+     * during startup/switch phases to avoid false alarms during transition. */
+    if (HDY_DiagnosticCriteria_CheckSuppressCondition(criteria,
+                                                       segmentElapsedTime,
+                                                       isStartupPhase,
+                                                       isSwitchPhase,
+                                                       &suppressType,
+                                                       &suppressTime)) {
+        result->suppressType = suppressType;
+        result->suppressTime = suppressTime;
+        result->triggered = false;
+        return false;
+    }
+
+    /* Timeout is a direct time comparison; no error monitor needed */
+    timeoutExceeded = (segmentElapsedTime > criteria->baseThreshold);
+
+    /* Apply debounce (though timeout typically uses debounceTime=0) */
+    triggered = HDY_DiagnosticCriteria_CheckDebounce(criteria, state, timeoutExceeded, currentTime, &result->triggerTime);
+
+    if (triggered) {
+        state->hysteresisActive = true;
+
+        result->triggered = true;
+        result->code = criteria->diagnosticCode;
+        result->severity = criteria->severity;
+        result->action = criteria->protectionAction;
+    }
+
+    return triggered;
+}
+
+void HDY_DiagnosticCriteria_CreateDefaultTimeoutCriteria(HDY_DiagnosticCriteria* criteria) {
+    if (criteria == NULL) {
+        return;
+    }
+
+    memset(criteria, 0, sizeof(*criteria));
+
+    criteria->baseThreshold = 0.0;         /* 0 = timeout disabled; set per segment */
+    criteria->debounceTime = 0.0;          /* No debounce for timeout */
+    criteria->hysteresisRatio = 0.0;       /* No hysteresis for timeout */
+
+    /* 启用启动抑制（默认500ms） */
+    criteria->enableStartupSuppress = true;
+    criteria->startupSuppressTime = 0.5;
+
+    /* 启用切段抑制（默认300ms） */
+    criteria->enableSwitchSuppress = true;
+    criteria->switchSuppressTime = 0.3;
+
+    /* No loop build suppression for timeout */
+    criteria->enableLoopBuildSuppress = false;
+    criteria->loopBuildSuppressTime = 0.0;
+
+    /* No fault escalation — timeout is directly FAULT */
+    criteria->enableFaultEscalation = false;
+    criteria->faultEscalationTime = 0.0;
+
+    criteria->diagnosticCode = HDY_DIAG_CODE_TIMEOUT;
+    criteria->severity = HDY_DIAG_SEVERITY_FAULT;
+    criteria->protectionAction = HDY_PROTECTION_ACTION_STOP;
 }

@@ -533,12 +533,8 @@ static HDY_BOOL HDY_BeginSegment(HDY_MotionControlFB* fb,
     HDY_DiagnosticCriteria_ResetState(&fb->_flowCriteriaState);
     HDY_DiagnosticCriteria_ResetState(&fb->_velocityCriteriaState);
     HDY_DiagnosticCriteria_ResetState(&fb->_positionCriteriaState);
-    /* Enable startup suppress for first 500ms, then switch suppress for next 300ms.
-     * _switchSuppressEndTime uses the pressure criteria's startup+switch window
-     * as a unified transition period; all criteria share this end time. */
+    HDY_DiagnosticCriteria_ResetState(&fb->_timeoutCriteriaState);
     fb->_isSwitchPhase = true;
-    fb->_switchSuppressEndTime = fb->_pressureCriteria.startupSuppressTime +
-                                  fb->_pressureCriteria.switchSuppressTime;
 
     /* Configure criteria thresholds for this segment (once per segment, not every cycle).
      * The default suppress/debounce/hysteresis/escalation settings from
@@ -549,6 +545,7 @@ static HDY_BOOL HDY_BeginSegment(HDY_MotionControlFB* fb,
         HDY_REAL fTol = HDY_Segment_GetFlowTolerance(sourceSegment);
         HDY_REAL vTol = HDY_Segment_GetVelocityTolerance(sourceSegment);
         HDY_REAL posTol = HDY_Segment_GetPositionTolerance(sourceSegment);
+        HDY_TIME tLim = HDY_Segment_GetTimeoutLimit(sourceSegment);
 
         if (sourceSegment->mode == HDY_MODE_PRESSURE_CLOSED_LOOP && pTol > 0.0) {
             HDY_ConfigureSegmentCriteria(&fb->_pressureCriteria, pTol,
@@ -570,7 +567,30 @@ static HDY_BOOL HDY_BeginSegment(HDY_MotionControlFB* fb,
                                           HDY_DIAG_CODE_POSITION_DEVIATION,
                                           HDY_PROTECTION_ACTION_WARNING);
         }
+        if (tLim > 0.0) {
+            HDY_ConfigureSegmentCriteria(&fb->_timeoutCriteria, tLim,
+                                          HDY_DIAG_CODE_TIMEOUT,
+                                          HDY_PROTECTION_ACTION_STOP);
+            fb->_timeoutCriteria.severity = HDY_DIAG_SEVERITY_FAULT;
+            /* Clamp startup/switch suppress times so they never exceed the
+             * timeout limit itself — a timeout that is fully suppressed by
+             * its own startup window would be undetectable. */
+            if (fb->_timeoutCriteria.startupSuppressTime >= tLim) {
+                fb->_timeoutCriteria.startupSuppressTime = tLim * 0.5;
+            }
+            if (fb->_timeoutCriteria.switchSuppressTime >= tLim) {
+                fb->_timeoutCriteria.switchSuppressTime = 0.0;
+            }
+        }
     }
+
+    /* Enable startup suppress for first 500ms, then switch suppress for next 300ms.
+     * _switchSuppressEndTime uses the pressure criteria's startup+switch window
+     * as a unified transition period; all criteria share this end time.
+     * Must be computed AFTER HDY_ConfigureSegmentCriteria so that it reflects
+     * the current segment's criteria, not the previous segment's. */
+    fb->_switchSuppressEndTime = fb->_pressureCriteria.startupSuppressTime +
+                                  fb->_pressureCriteria.switchSuppressTime;
 
     HDY_PrimeSegmentControllers(fb, &fb->_activeSegment, timestamp, preserveFlowCarryover);
 
@@ -1033,7 +1053,6 @@ static void HDY_UpdateExecutionDiagnostics(HDY_MotionControlFB* fb,
     HDY_REAL flowTolerance;
     HDY_REAL positionTolerance;
     HDY_REAL velocityTolerance;
-    HDY_TIME timeoutLimit;
     HDY_REAL velocityReferenceAbs;
     HDY_REAL actualVelocityAbs;
     HDY_DiagnosticResult pressureResult;
@@ -1066,7 +1085,6 @@ static void HDY_UpdateExecutionDiagnostics(HDY_MotionControlFB* fb,
     flowTolerance = HDY_Segment_GetFlowTolerance(segment);
     positionTolerance = HDY_Segment_GetPositionTolerance(segment);
     velocityTolerance = HDY_Segment_GetVelocityTolerance(segment);
-    timeoutLimit = HDY_Segment_GetTimeoutLimit(segment);
 
     /* Determine suppress phases from each criteria's own configuration and elapsed time.
      * Each diagnostic channel independently determines its startup phase based on
@@ -1181,8 +1199,11 @@ static void HDY_UpdateExecutionDiagnostics(HDY_MotionControlFB* fb,
      * the axis has settled, making the diagnostic meaningful.
      * The velocityTolerance > 0 requirement was removed - if no velocity
      * tolerance is configured, the check is still gated by actual velocity
-     * being below the reference velocity threshold. */
-    if (segment->endCondition == HDY_END_POSITION &&
+     * being below the reference velocity threshold.
+     * Apply to all HDY_MODE_POSITION segments (not just HDY_END_POSITION),
+     * because position tracking deviation is relevant whenever the planner
+     * is driving toward a target position, regardless of end condition. */
+    if (segment->mode == HDY_MODE_POSITION &&
         positionTolerance > 0.0 &&
         velocityReferenceAbs < (velocityTolerance > 0.0 ? velocityTolerance : 1.0) &&
         actualVelocityAbs < (velocityTolerance > 0.0 ? velocityTolerance : 1.0)) {
@@ -1209,7 +1230,22 @@ static void HDY_UpdateExecutionDiagnostics(HDY_MotionControlFB* fb,
         HDY_DiagnosticCriteria_ResetState(&fb->_positionCriteriaState);
     }
 
-    timeout = (timeoutLimit > 0.0) && (elapsed > timeoutLimit);
+    /* --- Timeout diagnostics ---
+     * Uses criteria layer for consistency with startup/switch suppress,
+     * debounce, and unified diagnostic channel semantics. */
+    {
+        HDY_DiagnosticResult timeoutResult;
+        HDY_BOOL isStartupPhaseTimeout = HDY_IsStartupSuppressActive(elapsed, fb->_timeoutCriteria.startupSuppressTime);
+        if (HDY_DiagnosticCriteria_CheckTimeout(&timeoutResult,
+                                                  &fb->_timeoutCriteria,
+                                                  &fb->_timeoutCriteriaState,
+                                                  fb->AXIS_REF.timestamp,
+                                                  elapsed,
+                                                  fb->_timeoutCriteria.enableStartupSuppress && isStartupPhaseTimeout,
+                                                  isSwitchPhase)) {
+            timeout = true;
+        }
+    }
 
     /* Build priority diagnostic from active conditions.
      * Fault-escalated results upgrade the severity from WARNING to FAULT. */
@@ -1549,6 +1585,8 @@ void HDY_MotionControlFB_Init(HDY_MotionControlFB* fb) {
     HDY_DiagnosticCriteria_InitState(&fb->_velocityCriteriaState);
     HDY_DiagnosticCriteria_CreateDefaultPositionCriteria(&fb->_positionCriteria);
     HDY_DiagnosticCriteria_InitState(&fb->_positionCriteriaState);
+    HDY_DiagnosticCriteria_CreateDefaultTimeoutCriteria(&fb->_timeoutCriteria);
+    HDY_DiagnosticCriteria_InitState(&fb->_timeoutCriteriaState);
     fb->_isSwitchPhase = false;
     fb->_switchSuppressEndTime = 0.0;
 }
@@ -1618,6 +1656,7 @@ void HDY_MotionControlFB_SoftReset(HDY_MotionControlFB* fb) {
     HDY_DiagnosticCriteria_InitState(&fb->_flowCriteriaState);
     HDY_DiagnosticCriteria_InitState(&fb->_velocityCriteriaState);
     HDY_DiagnosticCriteria_InitState(&fb->_positionCriteriaState);
+    HDY_DiagnosticCriteria_InitState(&fb->_timeoutCriteriaState);
     fb->_isSwitchPhase = false;
     fb->_switchSuppressEndTime = 0.0;
 
