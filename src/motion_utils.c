@@ -88,7 +88,7 @@ HDY_ConfigInfo HDY_GetConfigInfo(void) {
     config.maxSegments = HDY_MAX_SEGMENTS;
     config.maxSegmentTagValue = HDY_SEGMENT_TAG_MAX;
     config.maxNameLength = HDY_SEGMENT_TAG_MAX;
-    config.maxHistoryDepth = HDY_DIAG_HISTORY_DEPTH;
+    config.maxHistoryDepth = 1;  /* Single-snapshot model; HDY_DIAG_HISTORY_DEPTH is deprecated */
     config.diagnosticHistoryEnabled = HDY_ENABLE_DIAGNOSTIC_HISTORY;
     config.pressureLoopTelemetryEnabled = HDY_ENABLE_PRESSURE_LOOP_TELEMETRY;
     config.executionReferenceEnabled = HDY_ENABLE_EXECUTION_REFERENCE;

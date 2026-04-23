@@ -60,12 +60,12 @@
  */
 #define HDY_NAME_MAX 16
 
-/* 诊断历史深度
- * 默认: 4条记录
- * 最小: 1条
- * 影响: RAM占用约 sizeof(HDY_DiagnosticSnapshot) * HDY_DIAG_HISTORY_DEPTH 字节
+/* 诊断历史深度（已弃用）
+ * 保留此宏仅为向后兼容查询接口 (HDY_ConfigInfo.maxHistoryDepth)。
+ * 诊断历史已简化为只保留最近一条快照，不再使用环形缓冲区。
+ * 新代码不应依赖此宏。
  */
-#define HDY_DIAG_HISTORY_DEPTH 2
+#define HDY_DIAG_HISTORY_DEPTH 1
 
 /* ============================================================================
  * 3. 功能开关
@@ -259,9 +259,8 @@ typedef double HDY_TIME;
     #error "HDY_MAX_SEGMENTS must be at least 4"
 #endif
 
-#if HDY_DIAG_HISTORY_DEPTH < 1
-    #error "HDY_DIAG_HISTORY_DEPTH must be at least 1"
-#endif
+/* HDY_DIAG_HISTORY_DEPTH validation removed — depth is no longer used at
+ * compile time.  The value 1 is kept for config-export compatibility only. */
 
 /* ============================================================================
  * 13. 兼容性配置
@@ -304,7 +303,7 @@ typedef struct {
     int maxSegments;
     int maxSegmentTagValue;
     int maxNameLength;       /* Legacy: kept for backward compatibility, same as maxSegmentTagValue */
-    int maxHistoryDepth;
+    int maxHistoryDepth;       /* Always 1 — history now retains only the latest snapshot */
     int diagnosticHistoryEnabled;
     int pressureLoopTelemetryEnabled;
     int executionReferenceEnabled;

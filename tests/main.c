@@ -26,11 +26,11 @@ static void print_retained_diagnostics(const HDY_MotionControlFB* controller) {
         return;
     }
 
-    printf("    Retained: last=%s severity=%s totalRecorded=%u historyCount=%u\n",
+    printf("    Retained: last=%s severity=%s totalRecorded=%u hasRecord=%u\n",
            HDY_Diagnostics_CodeToString(controller->DIAGNOSTIC_LATCH.code),
            HDY_Diagnostics_SeverityToString(controller->DIAGNOSTIC_LATCH.severity),
            (unsigned int)controller->DIAGNOSTIC_HISTORY.totalRecorded,
-           (unsigned int)controller->DIAGNOSTIC_HISTORY.count);
+           (unsigned int)controller->DIAGNOSTIC_HISTORY.hasRecord);
 
     if (HDY_DiagnosticsHistory_GetLatest(&controller->DIAGNOSTIC_HISTORY, &latestSnapshot)) {
         printf("    History latest: t=%.2f segment=%s code=%s action=%s\n",
