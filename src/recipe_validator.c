@@ -2,8 +2,6 @@
 #include "rbf_pid.h"
 #include "segment_limits.h"
 #include "pump_converter.h"
-#include <stdarg.h>
-#include <stdio.h>
 
 static HDY_BOOL HDY_IsValidPlannerType(HDY_PlannerType planner) {
     return (planner == HDY_PLANNER_POSITION_BASED) ||
@@ -53,21 +51,9 @@ static HDY_BOOL HDY_IsSupportedPressureControllerType(HDY_PressureControllerType
 }
 
 static HDY_BOOL HDY_RecipeValidator_Fail(HDY_DiagnosticCode* code,
-                                         HDY_DiagnosticCode failCode,
-                                         char* message,
-                                         size_t messageSize,
-                                         const char* format,
-                                         ...) {
-    va_list args;
-
+                                         HDY_DiagnosticCode failCode) {
     if (code != NULL) {
         *code = failCode;
-    }
-
-    if (message != NULL && messageSize > 0U) {
-        va_start(args, format);
-        vsnprintf(message, messageSize, format, args);
-        va_end(args);
     }
 
     return false;
@@ -102,251 +88,114 @@ static HDY_BOOL HDY_RecipeValidator_HasCustomRbfConfig(const HDY_MotionSegment* 
 
 HDY_BOOL HDY_RecipeValidator_ValidateSegment(const HDY_MotionSegment* segment,
                                             size_t segmentIndex,
-                                            HDY_DiagnosticCode* code,
-                                            char* message,
-                                            size_t messageSize) {
+                                            HDY_DiagnosticCode* code) {
     if (segment == NULL) {
-        return HDY_RecipeValidator_Fail(code,
-                                        HDY_DIAG_CODE_SEGMENT_INVALID,
-                                        message,
-                                        messageSize,
-                                        "Segment %zu is NULL",
-                                        segmentIndex);
+        return HDY_RecipeValidator_Fail(code, HDY_DIAG_CODE_SEGMENT_INVALID);
     }
 
     if (!HDY_IsValidPlannerType(segment->planner)) {
-        return HDY_RecipeValidator_Fail(code,
-                                        HDY_DIAG_CODE_SEGMENT_INVALID,
-                                        message,
-                                        messageSize,
-                                        "Segment %zu planner is invalid",
-                                        segmentIndex);
+        return HDY_RecipeValidator_Fail(code, HDY_DIAG_CODE_SEGMENT_INVALID);
     }
 
     if (!HDY_IsValidControlMode(segment->mode)) {
-        return HDY_RecipeValidator_Fail(code,
-                                        HDY_DIAG_CODE_SEGMENT_INVALID,
-                                        message,
-                                        messageSize,
-                                        "Segment %zu mode is invalid",
-                                        segmentIndex);
+        return HDY_RecipeValidator_Fail(code, HDY_DIAG_CODE_SEGMENT_INVALID);
     }
 
     if (!HDY_IsValidEndCondition(segment->endCondition)) {
-        return HDY_RecipeValidator_Fail(code,
-                                        HDY_DIAG_CODE_SEGMENT_INVALID,
-                                        message,
-                                        messageSize,
-                                        "Segment %zu end condition is invalid",
-                                        segmentIndex);
+        return HDY_RecipeValidator_Fail(code, HDY_DIAG_CODE_SEGMENT_INVALID);
     }
 
     if (!HDY_IsValidMotionDirection(segment->direction)) {
-        return HDY_RecipeValidator_Fail(code,
-                                        HDY_DIAG_CODE_SEGMENT_INVALID,
-                                        message,
-                                        messageSize,
-                                        "Segment %zu direction is invalid",
-                                        segmentIndex);
+        return HDY_RecipeValidator_Fail(code, HDY_DIAG_CODE_SEGMENT_INVALID);
     }
 
     if (!HDY_IsValidPressureControllerType(segment->pressureController)) {
-        return HDY_RecipeValidator_Fail(code,
-                                        HDY_DIAG_CODE_SEGMENT_INVALID,
-                                        message,
-                                        messageSize,
-                                        "Segment %zu pressureController is invalid",
-                                        segmentIndex);
+        return HDY_RecipeValidator_Fail(code, HDY_DIAG_CODE_SEGMENT_INVALID);
     }
 
     if (!HDY_IsSupportedPressureControllerType(segment->pressureController)) {
-        return HDY_RecipeValidator_Fail(code,
-                                        HDY_DIAG_CODE_SEGMENT_INVALID,
-                                        message,
-                                        messageSize,
-                                        "Segment %zu pressureController is not supported yet",
-                                        segmentIndex);
+        return HDY_RecipeValidator_Fail(code, HDY_DIAG_CODE_SEGMENT_INVALID);
     }
 
     if ((segment->mode == HDY_MODE_POSITION || segment->mode == HDY_MODE_SPEED_RAMP) &&
         !HDY_IsLinearMotionDirection(segment->direction)) {
-        return HDY_RecipeValidator_Fail(code,
-                                        HDY_DIAG_CODE_SEGMENT_INVALID,
-                                        message,
-                                        messageSize,
-                                        "Segment %zu direction must be EXTEND or RETRACT for motion mode",
-                                        segmentIndex);
+        return HDY_RecipeValidator_Fail(code, HDY_DIAG_CODE_SEGMENT_INVALID);
     }
 
     if (segment->mode == HDY_MODE_SPEED_RAMP && segment->planner != HDY_PLANNER_TIME_BASED) {
-        return HDY_RecipeValidator_Fail(code,
-                                        HDY_DIAG_CODE_SEGMENT_INVALID,
-                                        message,
-                                        messageSize,
-                                        "Segment %zu speed-ramp mode requires TIME_BASED planner",
-                                        segmentIndex);
+        return HDY_RecipeValidator_Fail(code, HDY_DIAG_CODE_SEGMENT_INVALID);
     }
 
     if (segment->tolerance < 0.0) {
-        return HDY_RecipeValidator_Fail(code,
-                                        HDY_DIAG_CODE_SEGMENT_INVALID,
-                                        message,
-                                        messageSize,
-                                        "Segment %zu legacy tolerance must be >= 0",
-                                        segmentIndex);
+        return HDY_RecipeValidator_Fail(code, HDY_DIAG_CODE_SEGMENT_INVALID);
     }
 
     if (segment->positionTolerance < 0.0) {
-        return HDY_RecipeValidator_Fail(code,
-                                        HDY_DIAG_CODE_SEGMENT_INVALID,
-                                        message,
-                                        messageSize,
-                                        "Segment %zu positionTolerance must be >= 0",
-                                        segmentIndex);
+        return HDY_RecipeValidator_Fail(code, HDY_DIAG_CODE_SEGMENT_INVALID);
     }
 
     if (segment->pressureTolerance < 0.0) {
-        return HDY_RecipeValidator_Fail(code,
-                                        HDY_DIAG_CODE_SEGMENT_INVALID,
-                                        message,
-                                        messageSize,
-                                        "Segment %zu pressureTolerance must be >= 0",
-                                        segmentIndex);
+        return HDY_RecipeValidator_Fail(code, HDY_DIAG_CODE_SEGMENT_INVALID);
     }
 
     if (segment->flowTolerance < 0.0) {
-        return HDY_RecipeValidator_Fail(code,
-                                        HDY_DIAG_CODE_SEGMENT_INVALID,
-                                        message,
-                                        messageSize,
-                                        "Segment %zu flowTolerance must be >= 0",
-                                        segmentIndex);
+        return HDY_RecipeValidator_Fail(code, HDY_DIAG_CODE_SEGMENT_INVALID);
     }
 
     if (segment->velocityTolerance < 0.0) {
-        return HDY_RecipeValidator_Fail(code,
-                                        HDY_DIAG_CODE_SEGMENT_INVALID,
-                                        message,
-                                        messageSize,
-                                        "Segment %zu velocityTolerance must be >= 0",
-                                        segmentIndex);
+        return HDY_RecipeValidator_Fail(code, HDY_DIAG_CODE_SEGMENT_INVALID);
     }
 
     if (segment->timeoutLimit < 0.0) {
-        return HDY_RecipeValidator_Fail(code,
-                                        HDY_DIAG_CODE_SEGMENT_INVALID,
-                                        message,
-                                        messageSize,
-                                        "Segment %zu timeoutLimit must be >= 0",
-                                        segmentIndex);
+        return HDY_RecipeValidator_Fail(code, HDY_DIAG_CODE_SEGMENT_INVALID);
     }
 
     if (segment->maxAcceleration < 0.0) {
-        return HDY_RecipeValidator_Fail(code,
-                                        HDY_DIAG_CODE_SEGMENT_INVALID,
-                                        message,
-                                        messageSize,
-                                        "Segment %zu maxAcceleration must be >= 0",
-                                        segmentIndex);
+        return HDY_RecipeValidator_Fail(code, HDY_DIAG_CODE_SEGMENT_INVALID);
     }
 
     if (segment->maxVelocity < 0.0) {
-        return HDY_RecipeValidator_Fail(code,
-                                        HDY_DIAG_CODE_SEGMENT_INVALID,
-                                        message,
-                                        messageSize,
-                                        "Segment %zu maxVelocity must be >= 0",
-                                        segmentIndex);
+        return HDY_RecipeValidator_Fail(code, HDY_DIAG_CODE_SEGMENT_INVALID);
     }
 
     if (segment->maxFlow <= 0.0) {
-        return HDY_RecipeValidator_Fail(code,
-                                        HDY_DIAG_CODE_SEGMENT_INVALID,
-                                        message,
-                                        messageSize,
-                                        "Segment %zu maxFlow must be > 0",
-                                        segmentIndex);
+        return HDY_RecipeValidator_Fail(code, HDY_DIAG_CODE_SEGMENT_INVALID);
     }
 
     if (segment->pressureRampRate < 0.0) {
-        return HDY_RecipeValidator_Fail(code,
-                                        HDY_DIAG_CODE_SEGMENT_INVALID,
-                                        message,
-                                        messageSize,
-                                        "Segment %zu pressureRampRate must be >= 0",
-                                        segmentIndex);
+        return HDY_RecipeValidator_Fail(code, HDY_DIAG_CODE_SEGMENT_INVALID);
     }
 
     if (segment->targetFlow < 0.0) {
-        return HDY_RecipeValidator_Fail(code,
-                                        HDY_DIAG_CODE_SEGMENT_INVALID,
-                                        message,
-                                        messageSize,
-                                        "Segment %zu targetFlow must be >= 0",
-                                        segmentIndex);
+        return HDY_RecipeValidator_Fail(code, HDY_DIAG_CODE_SEGMENT_INVALID);
     }
 
     if (segment->pressureKp < 0.0) {
-        return HDY_RecipeValidator_Fail(code,
-                                        HDY_DIAG_CODE_SEGMENT_INVALID,
-                                        message,
-                                        messageSize,
-                                        "Segment %zu pressureKp must be >= 0",
-                                        segmentIndex);
+        return HDY_RecipeValidator_Fail(code, HDY_DIAG_CODE_SEGMENT_INVALID);
     }
 
     if (segment->pressureKi < 0.0) {
-        return HDY_RecipeValidator_Fail(code,
-                                        HDY_DIAG_CODE_SEGMENT_INVALID,
-                                        message,
-                                        messageSize,
-                                        "Segment %zu pressureKi must be >= 0",
-                                        segmentIndex);
+        return HDY_RecipeValidator_Fail(code, HDY_DIAG_CODE_SEGMENT_INVALID);
     }
 
     if (segment->pressureKd < 0.0) {
-        return HDY_RecipeValidator_Fail(code,
-                                        HDY_DIAG_CODE_SEGMENT_INVALID,
-                                        message,
-                                        messageSize,
-                                        "Segment %zu pressureKd must be >= 0",
-                                        segmentIndex);
+        return HDY_RecipeValidator_Fail(code, HDY_DIAG_CODE_SEGMENT_INVALID);
     }
 
     if (segment->pressureIntegralLimit < 0.0) {
-        return HDY_RecipeValidator_Fail(code,
-                                        HDY_DIAG_CODE_SEGMENT_INVALID,
-                                        message,
-                                        messageSize,
-                                        "Segment %zu pressureIntegralLimit must be >= 0",
-                                        segmentIndex);
+        return HDY_RecipeValidator_Fail(code, HDY_DIAG_CODE_SEGMENT_INVALID);
     }
 
     if (segment->pressureDeadband < 0.0) {
-        return HDY_RecipeValidator_Fail(code,
-                                        HDY_DIAG_CODE_SEGMENT_INVALID,
-                                        message,
-                                        messageSize,
-                                        "Segment %zu pressureDeadband must be >= 0",
-                                        segmentIndex);
+        return HDY_RecipeValidator_Fail(code, HDY_DIAG_CODE_SEGMENT_INVALID);
     }
 
     if (segment->pressureFilterAlpha < 0.0 || segment->pressureFilterAlpha > 1.0) {
-        return HDY_RecipeValidator_Fail(code,
-                                        HDY_DIAG_CODE_SEGMENT_INVALID,
-                                        message,
-                                        messageSize,
-                                        "Segment %zu pressureFilterAlpha must be within [0, 1]",
-                                        segmentIndex);
+        return HDY_RecipeValidator_Fail(code, HDY_DIAG_CODE_SEGMENT_INVALID);
     }
 
     if (segment->pressureDerivativeFilterAlpha < 0.0 || segment->pressureDerivativeFilterAlpha > 1.0) {
-        return HDY_RecipeValidator_Fail(code,
-                                        HDY_DIAG_CODE_SEGMENT_INVALID,
-                                        message,
-                                        messageSize,
-                                        "Segment %zu pressureDerivativeFilterAlpha must be within [0, 1]",
-                                        segmentIndex);
+        return HDY_RecipeValidator_Fail(code, HDY_DIAG_CODE_SEGMENT_INVALID);
     }
 
     if (segment->pressureRbfConfig.minKp < 0.0 ||
@@ -361,12 +210,7 @@ HDY_BOOL HDY_RecipeValidator_ValidateSegment(const HDY_MotionSegment* segment,
         segment->pressureRbfConfig.etaP < 0.0 ||
         segment->pressureRbfConfig.etaI < 0.0 ||
         segment->pressureRbfConfig.etaD < 0.0) {
-        return HDY_RecipeValidator_Fail(code,
-                                        HDY_DIAG_CODE_SEGMENT_INVALID,
-                                        message,
-                                        messageSize,
-                                        "Segment %zu RBF-PID tuning fields must be >= 0",
-                                        segmentIndex);
+        return HDY_RecipeValidator_Fail(code, HDY_DIAG_CODE_SEGMENT_INVALID);
     }
 
     if ((segment->mode == HDY_MODE_PRESSURE_CLOSED_LOOP) &&
@@ -395,12 +239,7 @@ HDY_BOOL HDY_RecipeValidator_ValidateSegment(const HDY_MotionSegment* segment,
         if (resolvedMinKp > resolvedMaxKp ||
             resolvedMinKi > resolvedMaxKi ||
             resolvedMinKd > resolvedMaxKd) {
-            return HDY_RecipeValidator_Fail(code,
-                                            HDY_DIAG_CODE_SEGMENT_INVALID,
-                                            message,
-                                            messageSize,
-                                            "Segment %zu RBF-PID gain limits are inconsistent",
-                                            segmentIndex);
+            return HDY_RecipeValidator_Fail(code, HDY_DIAG_CODE_SEGMENT_INVALID);
         }
     }
 
@@ -408,23 +247,13 @@ HDY_BOOL HDY_RecipeValidator_ValidateSegment(const HDY_MotionSegment* segment,
         (segment->pressureController == HDY_PRESSURE_CONTROLLER_PI ||
          segment->pressureController == HDY_PRESSURE_CONTROLLER_PID) &&
         (segment->pressureKi <= 0.0)) {
-        return HDY_RecipeValidator_Fail(code,
-                                        HDY_DIAG_CODE_SEGMENT_INVALID,
-                                        message,
-                                        messageSize,
-                                        "Segment %zu PI/PID pressure controller requires pressureKi > 0",
-                                        segmentIndex);
+        return HDY_RecipeValidator_Fail(code, HDY_DIAG_CODE_SEGMENT_INVALID);
     }
 
     if ((segment->mode == HDY_MODE_PRESSURE_CLOSED_LOOP) &&
         (segment->pressureController == HDY_PRESSURE_CONTROLLER_PID) &&
         (segment->pressureKd <= 0.0)) {
-        return HDY_RecipeValidator_Fail(code,
-                                        HDY_DIAG_CODE_SEGMENT_INVALID,
-                                        message,
-                                        messageSize,
-                                        "Segment %zu PID pressure controller requires pressureKd > 0",
-                                        segmentIndex);
+        return HDY_RecipeValidator_Fail(code, HDY_DIAG_CODE_SEGMENT_INVALID);
     }
 
     if ((segment->mode == HDY_MODE_PRESSURE_CLOSED_LOOP) &&
@@ -432,86 +261,49 @@ HDY_BOOL HDY_RecipeValidator_ValidateSegment(const HDY_MotionSegment* segment,
          segment->pressureController == HDY_PRESSURE_CONTROLLER_PI ||
          segment->pressureController == HDY_PRESSURE_CONTROLLER_PID) &&
         (segment->pressureKp <= 0.0)) {
-        return HDY_RecipeValidator_Fail(code,
-                                        HDY_DIAG_CODE_SEGMENT_INVALID,
-                                        message,
-                                        messageSize,
-                                        "Segment %zu configured pressure controller requires pressureKp > 0",
-                                        segmentIndex);
+        return HDY_RecipeValidator_Fail(code, HDY_DIAG_CODE_SEGMENT_INVALID);
     }
 
     if ((segment->mode != HDY_MODE_PRESSURE_CLOSED_LOOP) &&
         (segment->velocityToFlowGain <= 0.0)) {
-        return HDY_RecipeValidator_Fail(code,
-                                        HDY_DIAG_CODE_SEGMENT_INVALID,
-                                        message,
-                                        messageSize,
-                                        "Segment %zu velocityToFlowGain must be > 0",
-                                        segmentIndex);
+        return HDY_RecipeValidator_Fail(code, HDY_DIAG_CODE_SEGMENT_INVALID);
     }
 
     if ((segment->planner == HDY_PLANNER_TIME_BASED) &&
         (segment->mode != HDY_MODE_PRESSURE_CLOSED_LOOP) &&
         (segment->maxVelocity <= 0.0)) {
-        return HDY_RecipeValidator_Fail(code,
-                                        HDY_DIAG_CODE_SEGMENT_INVALID,
-                                        message,
-                                        messageSize,
-                                        "Segment %zu maxVelocity must be > 0 for time planning",
-                                        segmentIndex);
+        return HDY_RecipeValidator_Fail(code, HDY_DIAG_CODE_SEGMENT_INVALID);
     }
 
     if ((segment->endCondition == HDY_END_TIME) && (segment->duration <= 0.0)) {
-        return HDY_RecipeValidator_Fail(code,
-                                        HDY_DIAG_CODE_SEGMENT_INVALID,
-                                        message,
-                                        messageSize,
-                                        "Segment %zu duration must be > 0 for time end",
-                                        segmentIndex);
+        return HDY_RecipeValidator_Fail(code, HDY_DIAG_CODE_SEGMENT_INVALID);
     }
 
     if (code != NULL) {
         *code = HDY_DIAG_CODE_NONE;
-    }
-    if (message != NULL && messageSize > 0U) {
-        message[0] = '\0';
     }
     return true;
 }
 
 HDY_BOOL HDY_RecipeValidator_ValidateRecipe(const HDY_MotionSegment* recipe,
                                            size_t recipeSize,
-                                           HDY_DiagnosticCode* code,
-                                           char* message,
-                                           size_t messageSize) {
+                                           HDY_DiagnosticCode* code) {
     size_t index;
 
     if (recipe == NULL) {
-        return HDY_RecipeValidator_Fail(code,
-                                        HDY_DIAG_CODE_RECIPE_EMPTY,
-                                        message,
-                                        messageSize,
-                                        "Recipe pointer is NULL");
+        return HDY_RecipeValidator_Fail(code, HDY_DIAG_CODE_RECIPE_EMPTY);
     }
 
     if (recipeSize == 0U) {
-        return HDY_RecipeValidator_Fail(code,
-                                        HDY_DIAG_CODE_RECIPE_EMPTY,
-                                        message,
-                                        messageSize,
-                                        "Recipe is empty");
+        return HDY_RecipeValidator_Fail(code, HDY_DIAG_CODE_RECIPE_EMPTY);
     }
 
     if (recipeSize > HDY_MAX_SEGMENTS) {
-        return HDY_RecipeValidator_Fail(code,
-                                        HDY_DIAG_CODE_RECIPE_TOO_LARGE,
-                                        message,
-                                        messageSize,
-                                        "Recipe size exceeds HDY_MAX_SEGMENTS");
+        return HDY_RecipeValidator_Fail(code, HDY_DIAG_CODE_RECIPE_TOO_LARGE);
     }
 
     for (index = 0U; index < recipeSize; ++index) {
-        if (!HDY_RecipeValidator_ValidateSegment(&recipe[index], index, code, message, messageSize)) {
+        if (!HDY_RecipeValidator_ValidateSegment(&recipe[index], index, code)) {
             return false;
         }
     }
@@ -519,42 +311,26 @@ HDY_BOOL HDY_RecipeValidator_ValidateRecipe(const HDY_MotionSegment* recipe,
     if (code != NULL) {
         *code = HDY_DIAG_CODE_NONE;
     }
-    if (message != NULL && messageSize > 0U) {
-        message[0] = '\0';
-    }
     return true;
 }
 
 HDY_BOOL HDY_RecipeValidator_ValidateRuntimeConfig(HDY_REAL flowToPumpSpeedGain,
                                                   HDY_REAL pumpSpeedLimit,
-                                                  HDY_DiagnosticCode* code,
-                                                  char* message,
-                                                  size_t messageSize) {
+                                                  HDY_DiagnosticCode* code) {
     /* Delegate pump-related runtime config checks to the PumpConverter to
      * centralize validation logic and avoid duplication.
      */
-    return HDY_PumpConverter_ValidateConfig(flowToPumpSpeedGain,
-                                            pumpSpeedLimit,
-                                            code,
-                                            message,
-                                            messageSize);
+    return HDY_PumpConverter_ValidateConfig(flowToPumpSpeedGain, pumpSpeedLimit, code);
 }
 
 HDY_BOOL HDY_RecipeValidator_ValidateStartContext(const HDY_MotionSegment* segment,
                                                  size_t segmentIndex,
                                                  const HDY_AxisRef* axisRef,
-                                                 HDY_DiagnosticCode* code,
-                                                 char* message,
-                                                 size_t messageSize) {
+                                                 HDY_DiagnosticCode* code) {
     HDY_REAL positionTolerance;
 
     if (segment == NULL || axisRef == NULL) {
-        return HDY_RecipeValidator_Fail(code,
-                                        HDY_DIAG_CODE_START_CONTEXT_INVALID,
-                                        message,
-                                        messageSize,
-                                        "Start context is invalid for segment %zu",
-                                        segmentIndex);
+        return HDY_RecipeValidator_Fail(code, HDY_DIAG_CODE_START_CONTEXT_INVALID);
     }
 
     positionTolerance = HDY_Segment_GetPositionTolerance(segment);
@@ -562,30 +338,17 @@ HDY_BOOL HDY_RecipeValidator_ValidateStartContext(const HDY_MotionSegment* segme
     if ((segment->mode == HDY_MODE_POSITION || segment->endCondition == HDY_END_POSITION) &&
         (segment->direction == HDY_DIRECTION_EXTEND) &&
         (segment->targetPosition + positionTolerance < axisRef->position)) {
-        return HDY_RecipeValidator_Fail(code,
-                                        HDY_DIAG_CODE_START_CONTEXT_INVALID,
-                                        message,
-                                        messageSize,
-                                        "Segment %zu direction conflicts with current position and targetPosition",
-                                        segmentIndex);
+        return HDY_RecipeValidator_Fail(code, HDY_DIAG_CODE_START_CONTEXT_INVALID);
     }
 
     if ((segment->mode == HDY_MODE_POSITION || segment->endCondition == HDY_END_POSITION) &&
         (segment->direction == HDY_DIRECTION_RETRACT) &&
         (segment->targetPosition - positionTolerance > axisRef->position)) {
-        return HDY_RecipeValidator_Fail(code,
-                                        HDY_DIAG_CODE_START_CONTEXT_INVALID,
-                                        message,
-                                        messageSize,
-                                        "Segment %zu direction conflicts with current position and targetPosition",
-                                        segmentIndex);
+        return HDY_RecipeValidator_Fail(code, HDY_DIAG_CODE_START_CONTEXT_INVALID);
     }
 
     if (code != NULL) {
         *code = HDY_DIAG_CODE_NONE;
-    }
-    if (message != NULL && messageSize > 0U) {
-        message[0] = '\0';
     }
     return true;
 }

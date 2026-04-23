@@ -16,9 +16,6 @@ static void print_live_diagnostic(const HDY_DiagnosticInfo* diagnostic) {
            HDY_Diagnostics_RecoveryToString(diagnostic->recovery),
            HDY_Diagnostics_ProtectionActionToString(diagnostic->protectionAction),
            (unsigned int)diagnostic->flags);
-    if (diagnostic->message[0] != '\0') {
-        printf(" msg=%s", diagnostic->message);
-    }
     printf("\n");
 }
 

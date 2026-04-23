@@ -391,7 +391,6 @@ void HDY_StateReporter_ReportExecution(HDY_MotionControlFB* fb,
 void HDY_StateReporter_ReportDiagnostic(HDY_MotionControlFB* fb,
                                         HDY_DiagnosticCode code,
                                         HDY_DiagnosticSeverity severity,
-                                        const char* message,
                                         HDY_TIME eventTimestamp,
                                         const HDY_MotionSegment* segment,
                                         const HDY_ExecutionReference* references) {
@@ -399,7 +398,7 @@ void HDY_StateReporter_ReportDiagnostic(HDY_MotionControlFB* fb,
         return;
     }
 
-    HDY_Diagnostics_SetEvent(&fb->DIAGNOSTIC, code, severity, message);
+    HDY_Diagnostics_SetEvent(&fb->DIAGNOSTIC, code, severity);
     HDY_StateReporter_SetProtectionAction(fb, fb->DIAGNOSTIC.protectionAction);
     HDY_StateReporter_RefreshStandardOutputs(fb);
     HDY_StateReporter_RecordDiagnosticEvent(fb, eventTimestamp, segment, references);
@@ -407,7 +406,6 @@ void HDY_StateReporter_ReportDiagnostic(HDY_MotionControlFB* fb,
 
 void HDY_StateReporter_ReportFault(HDY_MotionControlFB* fb,
                                    HDY_DiagnosticCode code,
-                                   const char* message,
                                    HDY_TIME eventTimestamp,
                                    const HDY_MotionSegment* segment,
                                    const HDY_ExecutionReference* references) {
@@ -416,7 +414,7 @@ void HDY_StateReporter_ReportFault(HDY_MotionControlFB* fb,
     }
 
     HDY_ProtectionManager_EnterFaultStop(fb);
-    HDY_StateReporter_ReportDiagnostic(fb, code, HDY_DIAG_SEVERITY_FAULT, message, eventTimestamp, segment, references);
+    HDY_StateReporter_ReportDiagnostic(fb, code, HDY_DIAG_SEVERITY_FAULT, eventTimestamp, segment, references);
 }
 
 void HDY_StateReporter_ClearCurrentDiagnostic(HDY_MotionControlFB* fb) {

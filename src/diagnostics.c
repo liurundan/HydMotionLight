@@ -147,10 +147,6 @@ static const HDY_DiagnosticSpec HDY_DIAGNOSTIC_SPECS[] = {
      "Internal controller error"},
 };
 
-static HDY_BOOL HDY_Diagnostics_IsFiniteReal(HDY_REAL value) {
-    return isfinite(value) ? true : false;
-}
-
 static HDY_DiagnosticFlags HDY_Diagnostics_BuildFlagMask(const HDY_DiagnosticInfo* diagnostic) {
     HDY_DiagnosticFlags flags = HDY_DIAG_FLAG_NONE;
 
@@ -206,6 +202,14 @@ static const HDY_DiagnosticSpec* HDY_Diagnostics_FindSpec(HDY_DiagnosticCode cod
     return &HDY_DIAGNOSTIC_SPECS[0];
 }
 
+/* Internal: returns the default human-readable description for a diagnostic code.
+ * Intended for debug-printing only; upper layers should use code/severity/source
+ * for programmatic decisions, not message strings. */
+HDY_UNUSED
+static const char* HDY_Diagnostics_GetDefaultMessage(HDY_DiagnosticCode code) {
+    return HDY_Diagnostics_FindSpec(code)->defaultMessage;
+}
+
 static void HDY_Diagnostics_ApplySpec(HDY_DiagnosticInfo* diagnostic,
                                       HDY_DiagnosticCode code,
                                       HDY_DiagnosticSeverity severityOverride) {
@@ -225,45 +229,6 @@ static void HDY_Diagnostics_ApplySpec(HDY_DiagnosticInfo* diagnostic,
     diagnostic->protectionAction = spec->protectionAction;
 }
 
-static void HDY_Diagnostics_SetExecutionPriorityCode(HDY_DiagnosticInfo* diagnostic) {
-    HDY_DiagnosticCode code = HDY_DIAG_CODE_NONE;
-    const HDY_DiagnosticSpec* spec;
-
-    if (diagnostic == NULL) {
-        return;
-    }
-
-    if (diagnostic->timeout) {
-        code = HDY_DIAG_CODE_TIMEOUT;
-    } else if (diagnostic->sensorFault) {
-        code = HDY_DIAG_CODE_SENSOR_FAULT;
-    } else if (diagnostic->timestampRollback) {
-        code = HDY_DIAG_CODE_TIMESTAMP_ROLLBACK;
-    } else if (diagnostic->overPressure) {
-        code = HDY_DIAG_CODE_OVER_PRESSURE;
-    } else if (diagnostic->underPressure) {
-        code = HDY_DIAG_CODE_UNDER_PRESSURE;
-    } else if (diagnostic->flowDeviation) {
-        code = HDY_DIAG_CODE_FLOW_DEVIATION;
-    } else if (diagnostic->positionDeviation) {
-        code = HDY_DIAG_CODE_POSITION_DEVIATION;
-    } else if (diagnostic->velocityDeviation) {
-        code = HDY_DIAG_CODE_VELOCITY_DEVIATION;
-    }
-
-    HDY_Diagnostics_ApplySpec(diagnostic, code, HDY_DIAG_SEVERITY_NONE);
-    HDY_Diagnostics_RefreshFlags(diagnostic);
-    if (code == HDY_DIAG_CODE_NONE) {
-        diagnostic->message[0] = '\0';
-        return;
-    }
-
-    if (diagnostic->message[0] == '\0') {
-        spec = HDY_Diagnostics_FindSpec(code);
-        HDY_Diagnostics_SetMessage(diagnostic, spec->defaultMessage);
-    }
-}
-
 void HDY_Diagnostics_Clear(HDY_DiagnosticInfo* diagnostic) {
     if (diagnostic == NULL) {
         return;
@@ -278,38 +243,15 @@ void HDY_Diagnostics_Clear(HDY_DiagnosticInfo* diagnostic) {
     diagnostic->flags = HDY_DIAG_FLAG_NONE;
 }
 
-void HDY_Diagnostics_SetMessage(HDY_DiagnosticInfo* diagnostic, const char* message) {
-    if (diagnostic == NULL) {
-        return;
-    }
-
-    diagnostic->message[0] = '\0';
-    if (message == NULL) {
-        return;
-    }
-
-    strncpy(diagnostic->message, message, HDY_MESSAGE_MAX - 1);
-    diagnostic->message[HDY_MESSAGE_MAX - 1] = '\0';
-}
-
 void HDY_Diagnostics_SetEvent(HDY_DiagnosticInfo* diagnostic,
                               HDY_DiagnosticCode code,
-                              HDY_DiagnosticSeverity severity,
-                              const char* message) {
-    const HDY_DiagnosticSpec* spec;
-
+                              HDY_DiagnosticSeverity severity) {
     if (diagnostic == NULL) {
         return;
     }
 
     HDY_Diagnostics_Clear(diagnostic);
     HDY_Diagnostics_ApplySpec(diagnostic, code, severity);
-    spec = HDY_Diagnostics_FindSpec(code);
-    if (message != NULL && message[0] != '\0') {
-        HDY_Diagnostics_SetMessage(diagnostic, message);
-    } else {
-        HDY_Diagnostics_SetMessage(diagnostic, spec->defaultMessage);
-    }
     HDY_Diagnostics_RefreshFlags(diagnostic);
 }
 

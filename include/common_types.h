@@ -23,7 +23,6 @@ typedef size_t HDY_UINT;
  * ============================================================================ */
 /* HDY_MAX_SEGMENTS已在hdy_config.h中定义 */
 /* HDY_NAME_MAX已在hdy_config.h中定义 */
-/* HDY_MESSAGE_MAX已在hdy_config.h中定义 */
 /* HDY_DIAG_HISTORY_DEPTH已在hdy_config.h中定义 */
 
 /* Enums shared between modules */
@@ -286,9 +285,6 @@ typedef struct {
     HDY_REAL pressureError;
     HDY_REAL flowError;
     HDY_REAL velocityError;
-#if HDY_ENABLE_DIAGNOSTIC_MESSAGE
-    char message[HDY_MESSAGE_MAX]; /* Optional debug text; upper layers should prefer code/source/action/flags. */
-#endif
 } HDY_DiagnosticInfo;
 
 typedef struct {

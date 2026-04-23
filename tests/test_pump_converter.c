@@ -121,27 +121,21 @@ int main(void) {
 
 static void test_validate_config(void) {
     HDY_DiagnosticCode code = HDY_DIAG_CODE_NONE;
-    char message[HDY_MESSAGE_MAX] = {0};
 
     printf("Testing pump converter validate config...\n");
-    assert(HDY_PumpConverter_ValidateConfig(80.0, 2000.0, &code, message, sizeof(message)));
+    assert(HDY_PumpConverter_ValidateConfig(80.0, 2000.0, &code));
     assert(code == HDY_DIAG_CODE_NONE);
-    assert(message[0] == '\0');
 
-    assert(!HDY_PumpConverter_ValidateConfig(0.0, 2000.0, &code, message, sizeof(message)));
+    assert(!HDY_PumpConverter_ValidateConfig(0.0, 2000.0, &code));
     assert(code == HDY_DIAG_CODE_RUNTIME_CONFIG_INVALID);
-    assert(strstr(message, "FLOW_TO_PUMP_SPEED_GAIN") != NULL || message[0] != '\0');
 
-    assert(!HDY_PumpConverter_ValidateConfig(NAN, 2000.0, &code, message, sizeof(message)));
+    assert(!HDY_PumpConverter_ValidateConfig(NAN, 2000.0, &code));
     assert(code == HDY_DIAG_CODE_RUNTIME_CONFIG_INVALID);
-    assert(strstr(message, "FLOW_TO_PUMP_SPEED_GAIN") != NULL || message[0] != '\0');
 
-    assert(!HDY_PumpConverter_ValidateConfig(80.0, -1.0, &code, message, sizeof(message)));
+    assert(!HDY_PumpConverter_ValidateConfig(80.0, -1.0, &code));
     assert(code == HDY_DIAG_CODE_RUNTIME_CONFIG_INVALID);
-    assert(strstr(message, "PUMP_SPEED_LIMIT") != NULL || message[0] != '\0');
 
-    assert(!HDY_PumpConverter_ValidateConfig(80.0, INFINITY, &code, message, sizeof(message)));
+    assert(!HDY_PumpConverter_ValidateConfig(80.0, INFINITY, &code));
     assert(code == HDY_DIAG_CODE_RUNTIME_CONFIG_INVALID);
-    assert(strstr(message, "PUMP_SPEED_LIMIT") != NULL || message[0] != '\0');
     printf("✓ Pump converter validate config test passed\n");
 }

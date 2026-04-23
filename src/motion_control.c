@@ -13,7 +13,6 @@
 #include "segment_limits.h"
 #include "hdy_config.h"
 #include <math.h>
-#include <stdio.h>
 #include <string.h>
 
 /* Internal function declarations */
@@ -155,21 +154,13 @@ static void HDY_ReportCommandNotAllowed(HDY_MotionControlFB* fb,
                                         HDY_TIME eventTimestamp,
                                         HDY_UINT requestedSegmentIndex,
                                         const HDY_ExecutionReference* references) {
-    char message[HDY_MESSAGE_MAX] = {0};
-
     if (fb == NULL) {
         return;
     }
 
-    (void)snprintf(message,
-                   sizeof(message),
-                   "%s not allowed in %s",
-                   HDY_MotionUtils_CommandToString(command),
-                   HDY_MotionUtils_StateToString(state));
     HDY_StateReporter_ReportDiagnostic(fb,
                                        HDY_DIAG_CODE_COMMAND_NOT_ALLOWED,
                                        HDY_DIAG_SEVERITY_WARNING,
-                                       message,
                                        eventTimestamp,
                                        HDY_ResolveCommandDiagnosticSegment(fb, command, requestedSegmentIndex),
                                        references);
@@ -180,21 +171,13 @@ static void HDY_ReportPendingCommandConflict(HDY_MotionControlFB* fb,
                                              HDY_TIME eventTimestamp,
                                              HDY_UINT requestedSegmentIndex,
                                              const HDY_ExecutionReference* references) {
-    char message[HDY_MESSAGE_MAX] = {0};
-
     if (fb == NULL) {
         return;
     }
 
-    (void)snprintf(message,
-                   sizeof(message),
-                   "%s rejected: %s pending",
-                   HDY_MotionUtils_CommandToString(command),
-                   HDY_MotionUtils_CommandToString(fb->_pendingCommand));
     HDY_StateReporter_ReportDiagnostic(fb,
                                        HDY_DIAG_CODE_COMMAND_NOT_ALLOWED,
                                        HDY_DIAG_SEVERITY_WARNING,
-                                       message,
                                        eventTimestamp,
                                        HDY_ResolveCommandDiagnosticSegment(fb, command, requestedSegmentIndex),
                                        references);
@@ -309,11 +292,10 @@ static void HDY_ClearLiveDiagnosticInNonFaultHold(HDY_MotionControlFB* fb) {
 
 static void HDY_ReportFault(HDY_MotionControlFB* fb,
                             HDY_DiagnosticCode code,
-                            const char* message,
                             HDY_TIME eventTimestamp,
                             const HDY_MotionSegment* segment,
                             const HDY_ExecutionReference* references) {
-    HDY_StateReporter_ReportFault(fb, code, message, eventTimestamp, segment, references);
+    HDY_StateReporter_ReportFault(fb, code, eventTimestamp, segment, references);
 }
 
 static void HDY_RecordDiagnosticEvent(HDY_MotionControlFB* fb,
@@ -346,16 +328,12 @@ static void HDY_PrepareRecipeLoadState(HDY_MotionControlFB* fb) {
 
 static HDY_BOOL HDY_ValidateStartRequest(const HDY_MotionControlFB* fb,
                                          size_t segmentIndex,
-                                         HDY_DiagnosticCode* code,
-                                         char* message,
-                                         size_t messageSize) {
-    return HDY_MotionValidator_ValidateStartRequest(fb, segmentIndex, code, message, messageSize);
+                                         HDY_DiagnosticCode* code) {
+    return HDY_MotionValidator_ValidateStartRequest(fb, segmentIndex, code);
 }
 
 static HDY_BOOL HDY_ValidateNextRequest(const HDY_MotionControlFB* fb,
-                                        HDY_DiagnosticCode* code,
-                                        char* message,
-                                        size_t messageSize) {
+                                        HDY_DiagnosticCode* code) {
     HDY_FbState effectiveState;
 
     if (fb == NULL) {
@@ -367,20 +345,12 @@ static HDY_BOOL HDY_ValidateNextRequest(const HDY_MotionControlFB* fb,
         if (code != NULL) {
             *code = HDY_DIAG_CODE_COMMAND_NOT_ALLOWED;
         }
-        if (message != NULL && messageSize > 0U) {
-            strncpy(message, "NEXT is not supported in direct mode", messageSize - 1U);
-            message[messageSize - 1U] = '\0';
-        }
         return false;
     }
 
     if (fb->RECIPE_SIZE == 0U) {
         if (code != NULL) {
             *code = HDY_DIAG_CODE_NO_RECIPE;
-        }
-        if (message != NULL && messageSize > 0U) {
-            strncpy(message, "No recipe loaded", messageSize - 1U);
-            message[messageSize - 1U] = '\0';
         }
         return false;
     }
@@ -389,20 +359,12 @@ static HDY_BOOL HDY_ValidateNextRequest(const HDY_MotionControlFB* fb,
         if (code != NULL) {
             *code = HDY_DIAG_CODE_RECIPE_ALREADY_FINISHED;
         }
-        if (message != NULL && messageSize > 0U) {
-            strncpy(message, "Recipe is already finished", messageSize - 1U);
-            message[messageSize - 1U] = '\0';
-        }
         return false;
     }
 
     if (effectiveState == HDY_FB_STATE_STARTING || effectiveState == HDY_FB_STATE_RUNNING) {
         if (code != NULL) {
             *code = HDY_DIAG_CODE_SEGMENT_NOT_COMPLETED;
-        }
-        if (message != NULL && messageSize > 0U) {
-            strncpy(message, "Current segment has not completed", messageSize - 1U);
-            message[messageSize - 1U] = '\0';
         }
         return false;
     }
@@ -411,23 +373,12 @@ static HDY_BOOL HDY_ValidateNextRequest(const HDY_MotionControlFB* fb,
         if (code != NULL) {
             *code = HDY_DIAG_CODE_COMMAND_NOT_ALLOWED;
         }
-        if (message != NULL && messageSize > 0U) {
-            (void)snprintf(message,
-                           messageSize,
-                           "%s not allowed in %s",
-                           HDY_MotionUtils_CommandToString(HDY_CMD_NEXT),
-                           HDY_MotionUtils_StateToString(effectiveState));
-        }
         return false;
     }
 
     if (!fb->SEGMENT_COMPLETED) {
         if (code != NULL) {
             *code = HDY_DIAG_CODE_SEGMENT_NOT_COMPLETED;
-        }
-        if (message != NULL && messageSize > 0U) {
-            strncpy(message, "Current segment has not completed", messageSize - 1U);
-            message[messageSize - 1U] = '\0';
         }
         return false;
     }
@@ -476,7 +427,6 @@ static HDY_BOOL HDY_BeginSegment(HDY_MotionControlFB* fb,
                                  size_t segmentIndex,
                                  HDY_TIME timestamp) {
     HDY_DiagnosticCode code = HDY_DIAG_CODE_NONE;
-    char message[HDY_MESSAGE_MAX] = {0};
     HDY_BOOL preserveFlowCarryover;
     const HDY_MotionSegment* sourceSegment;
     size_t resolvedSegmentIndex;
@@ -486,13 +436,12 @@ static HDY_BOOL HDY_BeginSegment(HDY_MotionControlFB* fb,
         return false;
     }
 
-    if (!HDY_ValidateStartRequest(fb, segmentIndex, &code, message, sizeof(message))) {
+    if (!HDY_ValidateStartRequest(fb, segmentIndex, &code)) {
         HDY_ProtectionManager_ApplyIdleState(fb, false, false);
         HDY_ResetReadyContextPreview(fb);
         HDY_StateReporter_ReportDiagnostic(fb,
                            code,
                            HDY_DIAG_SEVERITY_WARNING,
-                           message,
                            timestamp,
                            HDY_ResolveStartSourceSegment(fb, segmentIndex, NULL, NULL),
                            NULL);
@@ -507,7 +456,6 @@ static HDY_BOOL HDY_BeginSegment(HDY_MotionControlFB* fb,
     if (sourceSegment == NULL) {
         HDY_StateReporter_ReportFault(fb,
                           HDY_DIAG_CODE_INTERNAL_ERROR,
-                          "Start source resolution failed",
                           timestamp,
                           NULL,
                           &fb->STATE.references);
@@ -616,7 +564,6 @@ static HDY_BOOL HDY_AdvanceToNextSegment(HDY_MotionControlFB* fb,
         HDY_StateReporter_ReportDiagnostic(fb,
                                            HDY_DIAG_CODE_COMMAND_NOT_ALLOWED,
                                            HDY_DIAG_SEVERITY_WARNING,
-                                           "NEXT is not supported in direct mode",
                                            timestamp,
                                            &fb->_activeSegment,
                                            &fb->STATE.references);
@@ -644,7 +591,6 @@ static void HDY_EnterHoldNow(HDY_MotionControlFB* fb,
     if (!fb->_activeSegmentValid) {
         HDY_ReportFault(fb,
                         HDY_DIAG_CODE_INTERNAL_ERROR,
-                        "Hold requested without active segment",
                         timestamp,
                         NULL,
                         &fb->STATE.references);
@@ -669,7 +615,6 @@ static HDY_BOOL HDY_ResumeHeldSegment(HDY_MotionControlFB* fb,
     if (!fb->_activeSegmentValid) {
         HDY_ReportFault(fb,
                         HDY_DIAG_CODE_INTERNAL_ERROR,
-                        "Resume requested without held segment",
                         timestamp,
                         NULL,
                         &fb->STATE.references);
@@ -679,7 +624,6 @@ static HDY_BOOL HDY_ResumeHeldSegment(HDY_MotionControlFB* fb,
     if (!HDY_MotionUtils_AxisRefIsValid(&fb->AXIS_REF)) {
         HDY_ReportFault(fb,
                         HDY_DIAG_CODE_SENSOR_FAULT,
-                        "Axis feedback is invalid",
                         fb->AXIS_REF.timestamp,
                         &fb->_activeSegment,
                         &fb->STATE.references);
@@ -689,7 +633,6 @@ static HDY_BOOL HDY_ResumeHeldSegment(HDY_MotionControlFB* fb,
     if (fb->_feedbackTimestampValid && fb->AXIS_REF.timestamp < fb->_lastFeedbackTimestamp) {
         HDY_ReportFault(fb,
                         HDY_DIAG_CODE_TIMESTAMP_ROLLBACK,
-                        "Axis timestamp moved backwards",
                         fb->AXIS_REF.timestamp,
                         &fb->_activeSegment,
                         &fb->STATE.references);
@@ -735,7 +678,6 @@ static void HDY_AbortNow(HDY_MotionControlFB* fb,
     HDY_StateReporter_ReportDiagnostic(fb,
                                        HDY_DIAG_CODE_ABORTED,
                                        HDY_DIAG_SEVERITY_INFO,
-                                       "Aborted by caller",
                                        timestamp,
                                        NULL,
                                        &fb->STATE.references);
@@ -794,7 +736,6 @@ static void HDY_MaintainPausedHoldState(HDY_MotionControlFB* fb,
     if (!fb->_activeSegmentValid) {
         HDY_ReportFault(fb,
                         HDY_DIAG_CODE_INTERNAL_ERROR,
-                        "Hold state lost active segment context",
                         fb->AXIS_REF.timestamp,
                         NULL,
                         &fb->STATE.references);
@@ -1275,7 +1216,7 @@ static void HDY_UpdateExecutionDiagnostics(HDY_MotionControlFB* fb,
     }
 
     if (priorityCode != HDY_DIAG_CODE_NONE) {
-        HDY_Diagnostics_SetEvent(&fb->DIAGNOSTIC, priorityCode, prioritySeverity, NULL);
+        HDY_Diagnostics_SetEvent(&fb->DIAGNOSTIC, priorityCode, prioritySeverity);
     } else {
         HDY_Diagnostics_Clear(&fb->DIAGNOSTIC);
     }
@@ -1300,7 +1241,6 @@ static void HDY_UpdateExecutionDiagnostics(HDY_MotionControlFB* fb,
 
 static void HDY_MotionControlFB_RunRunningState(HDY_MotionControlFB* fb) {
     HDY_DiagnosticCode code = HDY_DIAG_CODE_NONE;
-    char message[HDY_MESSAGE_MAX] = {0};
     const HDY_MotionSegment* segment;
     HDY_REAL elapsed;
     HDY_RampControllerOutput rampOutput;
@@ -1320,7 +1260,6 @@ static void HDY_MotionControlFB_RunRunningState(HDY_MotionControlFB* fb) {
     if (!fb->_activeSegmentValid) {
         HDY_ReportFault(fb,
                         HDY_DIAG_CODE_INTERNAL_ERROR,
-                        "Active segment context is invalid",
                         fb->AXIS_REF.timestamp,
                         NULL,
                         &fb->STATE.references);
@@ -1336,7 +1275,6 @@ static void HDY_MotionControlFB_RunRunningState(HDY_MotionControlFB* fb) {
         (fb->_activeSegmentSource == HDY_SEGMENT_SOURCE_NONE)) {
         HDY_ReportFault(fb,
                         HDY_DIAG_CODE_INTERNAL_ERROR,
-                        "Current segment index is out of range",
                         fb->AXIS_REF.timestamp,
                         NULL,
                         &fb->STATE.references);
@@ -1346,7 +1284,6 @@ static void HDY_MotionControlFB_RunRunningState(HDY_MotionControlFB* fb) {
     if (!HDY_MotionUtils_AxisRefIsValid(&fb->AXIS_REF)) {
         HDY_ReportFault(fb,
                         HDY_DIAG_CODE_SENSOR_FAULT,
-                        "Axis feedback is invalid",
                         fb->AXIS_REF.timestamp,
                         segment,
                         &fb->STATE.references);
@@ -1356,7 +1293,6 @@ static void HDY_MotionControlFB_RunRunningState(HDY_MotionControlFB* fb) {
     if (fb->_feedbackTimestampValid && fb->AXIS_REF.timestamp < fb->_lastFeedbackTimestamp) {
         HDY_ReportFault(fb,
                         HDY_DIAG_CODE_TIMESTAMP_ROLLBACK,
-                        "Axis timestamp moved backwards",
                         fb->AXIS_REF.timestamp,
                         segment,
                         &fb->STATE.references);
@@ -1366,17 +1302,12 @@ static void HDY_MotionControlFB_RunRunningState(HDY_MotionControlFB* fb) {
 
     if (!HDY_PumpConverter_ValidateConfig(fb->FLOW_TO_PUMP_SPEED_GAIN,
                                           fb->PUMP_SPEED_LIMIT,
-                                          &code,
-                                          message,
-                                          sizeof(message)) ||
+                                          &code) ||
         !HDY_RecipeValidator_ValidateSegment(segment,
                                              fb->STATE.currentSegmentIndex,
-                                             &code,
-                                             message,
-                                             sizeof(message))) {
+                                             &code)) {
         HDY_ReportFault(fb,
                         code,
-                        message,
                         fb->AXIS_REF.timestamp,
                         segment,
                         &fb->STATE.references);
@@ -1436,7 +1367,6 @@ static HDY_BOOL HDY_RequestStartCommand(HDY_MotionControlFB* fb,
                                         size_t segmentIndex,
                                         HDY_TIME timestamp) {
     HDY_DiagnosticCode code = HDY_DIAG_CODE_NONE;
-    char message[HDY_MESSAGE_MAX] = {0};
     HDY_FbState effectiveState;
 
     if (fb == NULL) {
@@ -1458,11 +1388,10 @@ static HDY_BOOL HDY_RequestStartCommand(HDY_MotionControlFB* fb,
         return false;
     }
 
-    if (!HDY_ValidateStartRequest(fb, segmentIndex, &code, message, sizeof(message))) {
+    if (!HDY_ValidateStartRequest(fb, segmentIndex, &code)) {
         HDY_StateReporter_ReportDiagnostic(fb,
                            code,
                            HDY_DIAG_SEVERITY_WARNING,
-                           message,
                            timestamp,
                            HDY_ResolveStartSourceSegment(fb, segmentIndex, NULL, NULL),
                            NULL);
@@ -1670,20 +1599,18 @@ HDY_BOOL HDY_MotionControlFB_LoadRecipe(HDY_MotionControlFB* fb,
                                         const HDY_MotionSegment* recipe,
                                         size_t recipeSize) {
     HDY_DiagnosticCode code = HDY_DIAG_CODE_NONE;
-    char message[HDY_MESSAGE_MAX] = {0};
 
     if (fb == NULL) {
         return false;
     }
 
-    if (!HDY_RecipeValidator_ValidateRecipe(recipe, recipeSize, &code, message, sizeof(message))) {
+    if (!HDY_RecipeValidator_ValidateRecipe(recipe, recipeSize, &code)) {
         memset(fb->RECIPE, 0, sizeof(fb->RECIPE));
         fb->RECIPE_SIZE = 0U;
         HDY_PrepareRecipeLoadState(fb);
         HDY_StateReporter_ReportDiagnostic(fb,
                            code,
                            HDY_DIAG_SEVERITY_WARNING,
-                           message,
                            fb->AXIS_REF.timestamp,
                            NULL,
                            NULL);
@@ -1701,7 +1628,6 @@ HDY_BOOL HDY_MotionControlFB_LoadRecipe(HDY_MotionControlFB* fb,
 HDY_BOOL HDY_MotionControlFB_LoadDirectSegment(HDY_MotionControlFB* fb,
                                               const HDY_MotionSegment* segment) {
     HDY_DiagnosticCode code = HDY_DIAG_CODE_NONE;
-    char message[HDY_MESSAGE_MAX] = {0};
 
     if (fb == NULL) {
         return false;
@@ -1709,9 +1635,7 @@ HDY_BOOL HDY_MotionControlFB_LoadDirectSegment(HDY_MotionControlFB* fb,
 
     if (!HDY_RecipeValidator_ValidateSegment(segment,
                                              HDY_MAX_SEGMENTS,
-                                             &code,
-                                             message,
-                                             sizeof(message))) {
+                                             &code)) {
         memset(&fb->DIRECT_SEGMENT, 0, sizeof(fb->DIRECT_SEGMENT));
         fb->DIRECT_SEGMENT_VALID = false;
         if (!fb->ACTIVE && fb->FB_STATE != HDY_FB_STATE_HOLD && !fb->FINISHED && !fb->SEGMENT_COMPLETED) {
@@ -1723,7 +1647,6 @@ HDY_BOOL HDY_MotionControlFB_LoadDirectSegment(HDY_MotionControlFB* fb,
         HDY_StateReporter_ReportDiagnostic(fb,
                            code,
                            HDY_DIAG_SEVERITY_WARNING,
-                           message,
                            fb->AXIS_REF.timestamp,
                            NULL,
                            NULL);
@@ -1763,7 +1686,6 @@ HDY_BOOL HDY_MotionControlFB_StartSegment(HDY_MotionControlFB* fb,
 
 HDY_BOOL HDY_MotionControlFB_NextSegment(HDY_MotionControlFB* fb, HDY_TIME timestamp) {
     HDY_DiagnosticCode code = HDY_DIAG_CODE_NONE;
-    char message[HDY_MESSAGE_MAX] = {0};
 
     if (fb == NULL) {
         return false;
@@ -1773,13 +1695,12 @@ HDY_BOOL HDY_MotionControlFB_NextSegment(HDY_MotionControlFB* fb, HDY_TIME times
         return false;
     }
 
-    if (!HDY_ValidateNextRequest(fb, &code, message, sizeof(message))) {
+    if (!HDY_ValidateNextRequest(fb, &code)) {
         HDY_StateReporter_ReportDiagnostic(fb,
                                            code,
                                            (code == HDY_DIAG_CODE_RECIPE_ALREADY_FINISHED)
                                                ? HDY_DIAG_SEVERITY_INFO
                                                : HDY_DIAG_SEVERITY_WARNING,
-                                           message,
                                            timestamp,
                                            (fb->STATE.currentSegmentIndex < fb->RECIPE_SIZE)
                                                ? &fb->RECIPE[fb->STATE.currentSegmentIndex]

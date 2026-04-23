@@ -300,9 +300,7 @@ static void print_system_info(void) {
     printf("Configuration:\n");
     printf("  Max Segments:            %d\n", config.maxSegments);
     printf("  Max Name Length:         %d\n", config.maxNameLength);
-    printf("  Max Message Length:      %d\n", config.maxMessageLength);
     printf("  Max History Depth:       %d\n", config.maxHistoryDepth);
-    printf("  Diagnostic Message:      %s\n", config.diagnosticMessageEnabled ? "Enabled" : "Disabled");
     printf("  Diagnostic History:      %s\n", config.diagnosticHistoryEnabled ? "Enabled" : "Disabled");
     printf("  Pressure Loop Telemetry: %s\n", config.pressureLoopTelemetryEnabled ? "Enabled" : "Disabled");
     printf("  Execution Reference:      %s\n", config.executionReferenceEnabled ? "Enabled" : "Disabled");

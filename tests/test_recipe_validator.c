@@ -1,6 +1,5 @@
 #include <assert.h>
 #include <stdio.h>
-#include <string.h>
 #include "recipe_validator.h"
 
 static HDY_MotionSegment make_valid_segment(void) {
@@ -31,53 +30,45 @@ static HDY_MotionSegment make_valid_segment(void) {
 static void test_validate_recipe_success(void) {
     HDY_MotionSegment recipe[2];
     HDY_DiagnosticCode code = HDY_DIAG_CODE_INTERNAL_ERROR;
-    char message[HDY_MESSAGE_MAX] = {0};
 
     printf("Testing recipe validator success path...\n");
     recipe[0] = make_valid_segment();
     recipe[1] = make_valid_segment();
     recipe[1].direction = HDY_DIRECTION_RETRACT;
 
-    assert(HDY_RecipeValidator_ValidateRecipe(recipe, 2, &code, message, sizeof(message)));
+    assert(HDY_RecipeValidator_ValidateRecipe(recipe, 2, &code));
     assert(code == HDY_DIAG_CODE_NONE);
-    assert(message[0] == '\0');
     printf("✓ Recipe validator success path test passed\n");
 }
 
 static void test_validate_recipe_rejects_speed_ramp_non_time_planner(void) {
     HDY_MotionSegment recipe[1];
     HDY_DiagnosticCode code = HDY_DIAG_CODE_NONE;
-    char message[HDY_MESSAGE_MAX] = {0};
 
     printf("Testing speed-ramp/time-planner contract validation...\n");
     recipe[0] = make_valid_segment();
     recipe[0].planner = HDY_PLANNER_POSITION_BASED;
 
-    assert(!HDY_RecipeValidator_ValidateRecipe(recipe, 1, &code, message, sizeof(message)));
+    assert(!HDY_RecipeValidator_ValidateRecipe(recipe, 1, &code));
     assert(code == HDY_DIAG_CODE_SEGMENT_INVALID);
-    assert(strstr(message, "TIME_BASED") != NULL);
     printf("✓ Speed-ramp/time-planner contract test passed\n");
 }
 
 static void test_validate_runtime_config(void) {
     HDY_DiagnosticCode code = HDY_DIAG_CODE_NONE;
-    char message[HDY_MESSAGE_MAX] = {0};
 
     printf("Testing runtime config validation...\n");
-    assert(!HDY_RecipeValidator_ValidateRuntimeConfig(0.0, 3000.0, &code, message, sizeof(message)));
+    assert(!HDY_RecipeValidator_ValidateRuntimeConfig(0.0, 3000.0, &code));
     assert(code == HDY_DIAG_CODE_RUNTIME_CONFIG_INVALID);
-    assert(strstr(message, "FLOW_TO_PUMP_SPEED_GAIN") != NULL);
 
-    assert(HDY_RecipeValidator_ValidateRuntimeConfig(100.0, 3000.0, &code, message, sizeof(message)));
+    assert(HDY_RecipeValidator_ValidateRuntimeConfig(100.0, 3000.0, &code));
     assert(code == HDY_DIAG_CODE_NONE);
-    assert(message[0] == '\0');
     printf("✓ Runtime config validation test passed\n");
 }
 
 static void test_validate_pressure_derivative_filter_alpha(void) {
     HDY_MotionSegment segment;
     HDY_DiagnosticCode code = HDY_DIAG_CODE_NONE;
-    char message[HDY_MESSAGE_MAX] = {0};
 
     printf("Testing pressure derivative filter alpha validation...\n");
     segment = make_valid_segment();
@@ -90,9 +81,8 @@ static void test_validate_pressure_derivative_filter_alpha(void) {
     segment.pressureKd = 0.1;
     segment.pressureDerivativeFilterAlpha = 1.5;
 
-    assert(!HDY_RecipeValidator_ValidateSegment(&segment, 0, &code, message, sizeof(message)));
+    assert(!HDY_RecipeValidator_ValidateSegment(&segment, 0, &code));
     assert(code == HDY_DIAG_CODE_SEGMENT_INVALID);
-    assert(strstr(message, "pressureDerivativeFilterAlpha") != NULL);
     printf("✓ Pressure derivative filter alpha validation test passed\n");
 }
 
@@ -100,7 +90,6 @@ static void test_validate_start_context_direction_conflict(void) {
     HDY_MotionSegment segment;
     HDY_AxisRef axisRef = {0};
     HDY_DiagnosticCode code = HDY_DIAG_CODE_NONE;
-    char message[HDY_MESSAGE_MAX] = {0};
 
     printf("Testing start context directional conflict validation...\n");
     segment = make_valid_segment();
@@ -111,9 +100,8 @@ static void test_validate_start_context_direction_conflict(void) {
     segment.direction = HDY_DIRECTION_EXTEND;
     axisRef.position = 10.0;
 
-    assert(!HDY_RecipeValidator_ValidateStartContext(&segment, 0, &axisRef, &code, message, sizeof(message)));
+    assert(!HDY_RecipeValidator_ValidateStartContext(&segment, 0, &axisRef, &code));
     assert(code == HDY_DIAG_CODE_START_CONTEXT_INVALID);
-    assert(strstr(message, "conflicts") != NULL);
     printf("✓ Start context directional conflict test passed\n");
 }
 

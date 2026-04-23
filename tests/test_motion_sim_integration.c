@@ -117,7 +117,7 @@ static void print_diagnostic_if_error(const HDY_MotionControlFB* controller) {
     const HDY_DiagnosticInfo* diag = &controller->DIAGNOSTIC;
 
     if (diag->code != HDY_DIAG_CODE_NONE) {
-        printf("    ⚠️  ERROR: Code=%d, Severity=%d, Message=%s\n", diag->code, diag->severity, diag->message);
+        printf("    ⚠️  ERROR: Code=%d, Severity=%d\n", diag->code, diag->severity);
         printf("           VelocityRef=%.2f, ActualVel=%.2f, VelocityError=%.2f\n",
                controller->STATE.references.velocityReference, controller->AXIS_REF.velocity, diag->velocityError);
         printf("           FlowRef=%.2f, ActualFlow=%.2f, FlowError=%.2f\n",

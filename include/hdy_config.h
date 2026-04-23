@@ -60,13 +60,6 @@
  */
 #define HDY_NAME_MAX 16
 
-/* 诊断消息最大长度
- * 默认: 64字符
- * 最小: 32字符（可裁剪为0以节省ROM，但将失去诊断消息）
- * 影响: ROM占用约 HDY_MESSAGE_MAX * N 消息字符串
- */
-#define HDY_MESSAGE_MAX 32
-
 /* 诊断历史深度
  * 默认: 4条记录
  * 最小: 1条
@@ -77,12 +70,6 @@
 /* ============================================================================
  * 3. 功能开关
  * ============================================================================ */
-
-/* 启用诊断消息字符串
- * 默认: 启用
- * 裁剪后: 仅保留诊断代码，不生成可读消息，可节省大量ROM
- */
-#define HDY_ENABLE_DIAGNOSTIC_MESSAGE 1
 
 /* 启用诊断历史记录
  * 默认: 启用
@@ -276,10 +263,6 @@ typedef double HDY_TIME;
     #error "HDY_DIAG_HISTORY_DEPTH must be at least 1"
 #endif
 
-#if HDY_MESSAGE_MAX < 32 && HDY_ENABLE_DIAGNOSTIC_MESSAGE
-    #warning "HDY_MESSAGE_MAX is very small, diagnostic messages may be truncated"
-#endif
-
 /* ============================================================================
  * 13. 兼容性配置
  * ============================================================================ */
@@ -298,12 +281,6 @@ typedef double HDY_TIME;
  * ============================================================================ */
 
 /* 条件编译辅助宏 */
-#if HDY_ENABLE_DIAGNOSTIC_MESSAGE
-    #define HDY_DIAG_MSG(msg) msg
-#else
-    #define HDY_DIAG_MSG(msg) ""
-#endif
-
 #if HDY_ENABLE_DIAGNOSTIC_FLAGS
     #define HDY_DIAG_FLAGS_VAR(type) type
 #else
@@ -327,9 +304,7 @@ typedef struct {
     int maxSegments;
     int maxSegmentTagValue;
     int maxNameLength;       /* Legacy: kept for backward compatibility, same as maxSegmentTagValue */
-    int maxMessageLength;
     int maxHistoryDepth;
-    int diagnosticMessageEnabled;
     int diagnosticHistoryEnabled;
     int pressureLoopTelemetryEnabled;
     int executionReferenceEnabled;

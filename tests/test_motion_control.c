@@ -589,7 +589,6 @@ static void test_direct_mode_requires_direct_segment_configuration(void) {
     assert(fb.DIAGNOSTIC.source == HDY_DIAG_SOURCE_COMMAND);
     assert(fb.DIAGNOSTIC.recovery == HDY_DIAG_RECOVERY_CHECK_COMMAND);
     assert(fb.DIAGNOSTIC.protectionAction == HDY_PROTECTION_ACTION_WARNING);
-    assert(strstr(fb.DIAGNOSTIC.message, "direct") != NULL || strstr(fb.DIAGNOSTIC.message, "Direct") != NULL);
     printf("✓ Direct-mode missing-configuration diagnostics test passed\n");
 }
 
@@ -721,8 +720,6 @@ static void test_hold_rejected_in_ready_state(void) {
     assert(fb.DIAGNOSTIC.source == HDY_DIAG_SOURCE_COMMAND);
     assert(fb.DIAGNOSTIC.recovery == HDY_DIAG_RECOVERY_CHECK_COMMAND);
     assert(fb.DIAGNOSTIC.protectionAction == HDY_PROTECTION_ACTION_WARNING);
-    assert(strstr(fb.DIAGNOSTIC.message, "HOLD") != NULL);
-    assert(strstr(fb.DIAGNOSTIC.message, "READY") != NULL);
     printf("✓ Hold command legality in READY state test passed\n");
 }
 
@@ -777,8 +774,6 @@ static void test_resume_rejected_while_running(void) {
     assert(fb.DIAGNOSTIC.source == HDY_DIAG_SOURCE_COMMAND);
     assert(fb.DIAGNOSTIC.recovery == HDY_DIAG_RECOVERY_CHECK_COMMAND);
     assert(fb.DIAGNOSTIC.protectionAction == HDY_PROTECTION_ACTION_WARNING);
-    assert(strstr(fb.DIAGNOSTIC.message, "RESUME") != NULL);
-    assert(strstr(fb.DIAGNOSTIC.message, "RUNNING") != NULL);
     printf("✓ Resume command legality while running test passed\n");
 }
 
@@ -798,8 +793,6 @@ static void test_start_rejected_in_disabled_state(void) {
     assert(fb.DIAGNOSTIC.source == HDY_DIAG_SOURCE_COMMAND);
     assert(fb.DIAGNOSTIC.recovery == HDY_DIAG_RECOVERY_CHECK_COMMAND);
     assert(fb.DIAGNOSTIC.protectionAction == HDY_PROTECTION_ACTION_WARNING);
-    assert(strstr(fb.DIAGNOSTIC.message, "START") != NULL);
-    assert(strstr(fb.DIAGNOSTIC.message, "DISABLED") != NULL);
     printf("✓ Start command legality in DISABLED state test passed\n");
 }
 
@@ -830,8 +823,6 @@ static void test_start_command_rejected_while_running(void) {
     assert(fb.DIAGNOSTIC.source == HDY_DIAG_SOURCE_COMMAND);
     assert(fb.DIAGNOSTIC.recovery == HDY_DIAG_RECOVERY_CHECK_COMMAND);
     assert(fb.DIAGNOSTIC.protectionAction == HDY_PROTECTION_ACTION_WARNING);
-    assert(strstr(fb.DIAGNOSTIC.message, "START") != NULL);
-    assert(strstr(fb.DIAGNOSTIC.message, "RUNNING") != NULL);
 
     fb.AXIS_REF.timestamp = 0.1;
     HDY_MotionControlFB_Execute(&fb);
@@ -858,8 +849,6 @@ static void test_abort_rejected_in_ready_state(void) {
     assert(fb.DIAGNOSTIC.source == HDY_DIAG_SOURCE_COMMAND);
     assert(fb.DIAGNOSTIC.recovery == HDY_DIAG_RECOVERY_CHECK_COMMAND);
     assert(fb.DIAGNOSTIC.protectionAction == HDY_PROTECTION_ACTION_WARNING);
-    assert(strstr(fb.DIAGNOSTIC.message, "ABORT") != NULL);
-    assert(strstr(fb.DIAGNOSTIC.message, "READY") != NULL);
     printf("✓ Abort command legality in READY state test passed\n");
 }
 
@@ -919,8 +908,6 @@ static void test_next_rejected_in_aborted_state(void) {
     assert(fb.DIAGNOSTIC.source == HDY_DIAG_SOURCE_COMMAND);
     assert(fb.DIAGNOSTIC.recovery == HDY_DIAG_RECOVERY_CHECK_COMMAND);
     assert(fb.DIAGNOSTIC.protectionAction == HDY_PROTECTION_ACTION_WARNING);
-    assert(strstr(fb.DIAGNOSTIC.message, "NEXT") != NULL);
-    assert(strstr(fb.DIAGNOSTIC.message, "ABORTED") != NULL);
     printf("✓ Next command legality in ABORTED state test passed\n");
 }
 
@@ -953,8 +940,6 @@ static void test_abort_rejected_in_done_state(void) {
     assert(fb.DIAGNOSTIC.source == HDY_DIAG_SOURCE_COMMAND);
     assert(fb.DIAGNOSTIC.recovery == HDY_DIAG_RECOVERY_CHECK_COMMAND);
     assert(fb.DIAGNOSTIC.protectionAction == HDY_PROTECTION_ACTION_WARNING);
-    assert(strstr(fb.DIAGNOSTIC.message, "ABORT") != NULL);
-    assert(strstr(fb.DIAGNOSTIC.message, "DONE") != NULL);
     printf("✓ Abort command legality in DONE state test passed\n");
 }
 
@@ -1131,7 +1116,6 @@ static void test_segment_completion_and_next_segment(void) {
     assert(!fb.SEGMENT_COMPLETED);
     assert(fb.STATE.currentSegmentIndex == 0U);
     assert(fb.DIAGNOSTIC.code == HDY_DIAG_CODE_SEGMENT_NOT_COMPLETED);
-    assert(strstr(fb.DIAGNOSTIC.message, "not completed") != NULL);
 
 
     fb.AXIS_REF.position = 1.0;
@@ -1184,7 +1168,6 @@ static void test_segment_completion_and_next_segment(void) {
     assert(fb.FINISHED);
     assert(fb.SEGMENT_COMPLETED);
     assert(fb.DIAGNOSTIC.code == HDY_DIAG_CODE_RECIPE_ALREADY_FINISHED);
-    assert(strstr(fb.DIAGNOSTIC.message, "already finished") != NULL);
     printf("✓ Segment completion and NextSegment behavior test passed\n");
 }
 
@@ -1587,7 +1570,7 @@ static void test_diagnostic_history_helpers_preserve_chronological_order(void) {
     HDY_DiagnosticsHistory_Clear(&history);
 
     for (index = 0U; index < 5U; ++index) {
-        HDY_Diagnostics_SetEvent(&diagnostic, codes[index], HDY_DIAG_SEVERITY_NONE, NULL);
+        HDY_Diagnostics_SetEvent(&diagnostic, codes[index], HDY_DIAG_SEVERITY_NONE);
         HDY_Diagnostics_CaptureSnapshot(&snapshot,
                                         &diagnostic,
                                         &axisRef,
@@ -1953,7 +1936,6 @@ static void test_abort_forces_safe_outputs(void) {
     assert(fb.DIAGNOSTIC.source == HDY_DIAG_SOURCE_COMMAND);
     assert(fb.DIAGNOSTIC.recovery == HDY_DIAG_RECOVERY_NONE);
     assert(fb.DIAGNOSTIC.protectionAction == HDY_PROTECTION_ACTION_NONE);
-    assert(strstr(fb.DIAGNOSTIC.message, "Aborted by caller") != NULL);
 
     HDY_MotionControlFB_Execute(&fb);
     assert(fb.PUMP_SPEED == 0.0);
@@ -2229,7 +2211,6 @@ static void test_timeout_limit_stops_segment_safely(void) {
     assert(fb.DIAGNOSTIC.source == HDY_DIAG_SOURCE_EXECUTION);
     assert(fb.DIAGNOSTIC.recovery == HDY_DIAG_RECOVERY_RESTART_SEGMENT);
     assert(fb.DIAGNOSTIC.protectionAction == HDY_PROTECTION_ACTION_STOP);
-    assert(strstr(fb.DIAGNOSTIC.message, "timeout") != NULL);
     printf("✓ timeoutLimit safe-stop test passed\n");
 }
 
@@ -2261,7 +2242,6 @@ static void test_runtime_validation_fault_latches_safe_state(void) {
     assert(fb.DIAGNOSTIC.source == HDY_DIAG_SOURCE_RUNTIME);
     assert(fb.DIAGNOSTIC.recovery == HDY_DIAG_RECOVERY_RESET_CONTROLLER);
     assert(fb.DIAGNOSTIC.protectionAction == HDY_PROTECTION_ACTION_STOP);
-    assert(strstr(fb.DIAGNOSTIC.message, "FLOW_TO_PUMP_SPEED_GAIN") != NULL);
     printf("✓ Runtime validation fault test passed\n");
 }
 
@@ -2282,13 +2262,11 @@ static void test_parameter_validation(void) {
     assert(fb.DIAGNOSTIC.source == HDY_DIAG_SOURCE_RECIPE);
     assert(fb.DIAGNOSTIC.recovery == HDY_DIAG_RECOVERY_RELOAD_RECIPE);
     assert(fb.DIAGNOSTIC.protectionAction == HDY_PROTECTION_ACTION_WARNING);
-    assert(strstr(fb.DIAGNOSTIC.message, "direction") != NULL);
 
     badRecipe[0] = make_time_segment(115, 0.5, HDY_DIRECTION_EXTEND);
     badRecipe[0].planner = HDY_PLANNER_POSITION_BASED;
     assert(!HDY_MotionControlFB_LoadRecipe(&fb, badRecipe, 1));
     assert(fb.DIAGNOSTIC.code == HDY_DIAG_CODE_SEGMENT_INVALID);
-    assert(strstr(fb.DIAGNOSTIC.message, "TIME_BASED") != NULL);
 
     badRecipe[0] = make_pressure_segment(206, 1.0, 10.0, 2.0);
     badRecipe[0].pressureController = HDY_PRESSURE_CONTROLLER_RBF_PID;
@@ -2302,7 +2280,6 @@ static void test_parameter_validation(void) {
     badRecipe[0].pressureRbfConfig.maxKp = 0.85;
     assert(!HDY_MotionControlFB_LoadRecipe(&fb, badRecipe, 1));
     assert(fb.DIAGNOSTIC.code == HDY_DIAG_CODE_SEGMENT_INVALID);
-    assert(strstr(fb.DIAGNOSTIC.message, "RBF-PID gain limits") != NULL);
 
     badRecipe[0] = make_pressure_segment(208, 1.0, 10.0, 2.0);
     badRecipe[0].pressureController = HDY_PRESSURE_CONTROLLER_PI;
@@ -2311,7 +2288,6 @@ static void test_parameter_validation(void) {
     badRecipe[0].pressureFilterAlpha = 1.5;
     assert(!HDY_MotionControlFB_LoadRecipe(&fb, badRecipe, 1));
     assert(fb.DIAGNOSTIC.code == HDY_DIAG_CODE_SEGMENT_INVALID);
-    assert(strstr(fb.DIAGNOSTIC.message, "pressureFilterAlpha") != NULL);
 
     goodRecipe[0] = make_position_segment(40, 5.0, HDY_DIRECTION_EXTEND);
     assert(HDY_MotionControlFB_LoadRecipe(&fb, goodRecipe, 1));
@@ -2324,7 +2300,6 @@ static void test_parameter_validation(void) {
     assert(fb.DIAGNOSTIC.source == HDY_DIAG_SOURCE_RUNTIME);
     assert(fb.DIAGNOSTIC.recovery == HDY_DIAG_RECOVERY_RESET_CONTROLLER);
     assert(fb.DIAGNOSTIC.protectionAction == HDY_PROTECTION_ACTION_STOP);
-    assert(strstr(fb.DIAGNOSTIC.message, "FLOW_TO_PUMP_SPEED_GAIN") != NULL);
 
     fb.FLOW_TO_PUMP_SPEED_GAIN = 100.0;
     fb.AXIS_REF.position = 10.0;
@@ -2333,7 +2308,6 @@ static void test_parameter_validation(void) {
     assert(fb.DIAGNOSTIC.source == HDY_DIAG_SOURCE_COMMAND);
     assert(fb.DIAGNOSTIC.recovery == HDY_DIAG_RECOVERY_CHECK_COMMAND);
     assert(fb.DIAGNOSTIC.protectionAction == HDY_PROTECTION_ACTION_WARNING);
-    assert(strstr(fb.DIAGNOSTIC.message, "conflicts") != NULL);
     printf("✓ Recipe and runtime parameter validation test passed\n");
 }
 

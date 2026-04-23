@@ -20,12 +20,10 @@ void HDY_PumpConverter_Execute(const HDY_PumpConverterInput* input,
 
 /* Validate runtime configuration for pump conversion. Returns true if the
  * provided gain and limit are finite and within the accepted range.
- * On failure, `code`/`message` are populated when provided.
+ * On failure, `code` is populated when provided.
  */
 HDY_BOOL HDY_PumpConverter_ValidateConfig(HDY_REAL flowToPumpSpeedGain,
                                           HDY_REAL pumpSpeedLimit,
-                                          HDY_DiagnosticCode* code,
-                                          char* message,
-                                          size_t messageSize);
+                                          HDY_DiagnosticCode* code);
 
 #endif /* HDY_PUMP_CONVERTER_H */

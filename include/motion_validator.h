@@ -24,43 +24,31 @@ extern "C" {
  * @param fb Pointer to motion control function block
  * @param segmentIndex Segment index to validate
  * @param code Output diagnostic code if validation fails (can be NULL)
- * @param message Output error message buffer (can be NULL)
- * @param messageSize Size of message buffer
  * @return true if start request is valid
  */
 HDY_BOOL HDY_MotionValidator_ValidateStartRequest(const HDY_MotionControlFB* fb,
                                                    size_t segmentIndex,
-                                                   HDY_DiagnosticCode* code,
-                                                   char* message,
-                                                   size_t messageSize);
+                                                   HDY_DiagnosticCode* code);
 
 /**
  * @brief Validate a next segment request
  * @param fb Pointer to motion control function block
  * @param code Output diagnostic code if validation fails (can be NULL)
- * @param message Output error message buffer (can be NULL)
- * @param messageSize Size of message buffer
  * @return true if next request is valid
  */
 HDY_BOOL HDY_MotionValidator_ValidateNextRequest(const HDY_MotionControlFB* fb,
-                                                  HDY_DiagnosticCode* code,
-                                                  char* message,
-                                                  size_t messageSize);
+                                                  HDY_DiagnosticCode* code);
 
 /**
  * @brief Validate pump converter configuration
  * @param flowToPumpSpeedGain Flow to pump speed gain
  * @param pumpSpeedLimit Pump speed limit
  * @param code Output diagnostic code if validation fails (can be NULL)
- * @param message Output error message buffer (can be NULL)
- * @param messageSize Size of message buffer
  * @return true if configuration is valid
  */
 HDY_BOOL HDY_MotionValidator_ValidatePumpConfig(HDY_REAL flowToPumpSpeedGain,
                                                   HDY_REAL pumpSpeedLimit,
-                                                  HDY_DiagnosticCode* code,
-                                                  char* message,
-                                                  size_t messageSize);
+                                                  HDY_DiagnosticCode* code);
 
 /**
  * @brief Check if recipe source is being used

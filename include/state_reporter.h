@@ -39,14 +39,12 @@ void HDY_StateReporter_ReportExecution(HDY_MotionControlFB* fb,
 void HDY_StateReporter_ReportDiagnostic(HDY_MotionControlFB* fb,
                                         HDY_DiagnosticCode code,
                                         HDY_DiagnosticSeverity severity,
-                                        const char* message,
                                         HDY_TIME eventTimestamp,
                                         const HDY_MotionSegment* segment,
                                         const HDY_ExecutionReference* references);
 
 void HDY_StateReporter_ReportFault(HDY_MotionControlFB* fb,
                                    HDY_DiagnosticCode code,
-                                   const char* message,
                                    HDY_TIME eventTimestamp,
                                    const HDY_MotionSegment* segment,
                                    const HDY_ExecutionReference* references);
