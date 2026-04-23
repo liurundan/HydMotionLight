@@ -65,7 +65,7 @@
  * 最小: 32字符（可裁剪为0以节省ROM，但将失去诊断消息）
  * 影响: ROM占用约 HDY_MESSAGE_MAX * N 消息字符串
  */
-#define HDY_MESSAGE_MAX 64
+#define HDY_MESSAGE_MAX 32
 
 /* 诊断历史深度
  * 默认: 4条记录
