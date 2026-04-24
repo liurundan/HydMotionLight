@@ -194,7 +194,7 @@
 /* 时间基类型
  * 使用double表示时间（秒），提供高精度
  */
-typedef double HDY_TIME;
+typedef HDY_REAL HDY_TIME;
 
 /* 时间精度
  * 定义时间比较的容差值，用于浮点时间比较
