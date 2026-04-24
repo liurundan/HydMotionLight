@@ -5,7 +5,8 @@
 #include <stddef.h>
 #include <stdint.h>
 #include "hdy_config.h"
-
+#include "accessor.h"
+#include "iec_types_all.h"
 /* ============================================================================
  * 基本类型定义
  * 从hdy_config.h继承HDY_REAL和HDY_TIME的精度配置
@@ -15,7 +16,7 @@ typedef bool HDY_BOOL;
 /* HDY_TIME已在hdy_config.h中定义 */
 typedef uint8_t HDY_UINT8;
 typedef uint16_t HDY_UINT16;
-typedef size_t HDY_UINT;
+typedef uint16_t HDY_UINT;
 
 /* ============================================================================
  * 常量定义
