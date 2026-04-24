@@ -114,8 +114,8 @@ fb.FB_STATE            // enum: 功能块状态机状态
 fb.STATE.plannedVelocity          // real: 规划速度
 fb.STATE.plannedFlow              // real: 规划流量
 fb.STATE.commandedPumpSpeed       // real: 命令泵速
-fb.STATE.currentSegmentName       // string: 当前段名称
-fb.STATE.pressureLoop             // struct: 压力循环遥测
+fb.STATE.currentSegmentTag        // uint8: 当前段标签（替代原currentSegmentName）
+fb.STATE.pressureLoop             // struct: 压力循环遥测（需启用HDY_ENABLE_PRESSURE_LOOP_TELEMETRY）
 fb.STATE.status                   // enum: 控制器状态
 fb.STATE.plannedDirection         // enum: 规划方向
 ```
@@ -130,7 +130,7 @@ fb.STATE.plannedDirection         // enum: 规划方向
 HDY_MotionSegment segment;
 memset(&segment, 0, sizeof(segment));
 
-strcpy(segment.name, "INJECTION");
+segment.segmentTag = 1;  // 段标签（替代原name字段）
 segment.mode = HDY_MODE_SPEED_RAMP;
 segment.endCondition = HDY_END_POSITION;  // 或 HDY_END_TIME
 segment.direction = HDY_DIRECTION_EXTEND; // 或 RETRACT
@@ -153,7 +153,7 @@ segment.timeoutLimit = 5.0;        // s
 HDY_MotionSegment segment;
 memset(&segment, 0, sizeof(segment));
 
-strcpy(segment.name, "HOLDING");
+segment.segmentTag = 2;  // 段标签（替代原name字段）
 segment.mode = HDY_MODE_PRESSURE_CLOSED_LOOP;
 segment.endCondition = HDY_END_TIME;  // 或 HDY_END_PRESSURE
 segment.direction = HDY_DIRECTION_HOLD;

@@ -158,13 +158,11 @@ ctest --test-dir out/build/unixgcc -R test_motion_sim_integration --output-on-fa
 
 1. **资源限制**
    - `HDY_MAX_SEGMENTS` - 最大配方段数
-   - `HDY_NAME_MAX` - 段名称最大长度
-   - `HDY_MESSAGE_MAX` - 诊断消息最大长度
-   - `HDY_DIAG_HISTORY_DEPTH` - 诊断历史深度
+   - `HDY_DIAG_HISTORY_DEPTH` - 诊断历史深度（已弃用，固定为1）
 
 2. **功能开关**
-   - `HDY_ENABLE_DIAGNOSTIC_MESSAGE` - 启用诊断消息字符串
    - `HDY_ENABLE_DIAGNOSTIC_HISTORY` - 启用诊断历史记录
+   - `HDY_ENABLE_DIAGNOSTIC_FLAGS` - 启用诊断标志位
    - `HDY_ENABLE_PRESSURE_LOOP_TELEMETRY` - 启用压力环遥测
    - `HDY_ENABLE_EXECUTION_REFERENCE` - 启用执行参考
 
@@ -177,8 +175,7 @@ ctest --test-dir out/build/unixgcc -R test_motion_sim_integration --output-on-fa
 ```c
 // 低资源平台配置
 #define HDY_MAX_SEGMENTS 8
-#define HDY_MESSAGE_MAX 32
-#define HDY_ENABLE_DIAGNOSTIC_MESSAGE 0
+#define HDY_ENABLE_DIAGNOSTIC_FLAGS 0
 #define HDY_ENABLE_PRESSURE_LOOP_TELEMETRY 0
 
 // 获取当前配置信息
@@ -396,7 +393,7 @@ HDY_MotionControlFB_StartSegment(&fb, 0, timestamp); // index 被忽略
 - `DIAGNOSTIC_LATCH`：最近一次非 `NONE` 事件
 - `LAST_DIAGNOSTIC_SNAPSHOT`：最近一次诊断事件的上下文快照
 - `LAST_FAULT_SNAPSHOT`：最近一次故障停机快照，仅 `FAULT` 事件更新
-- `DIAGNOSTIC_HISTORY`：循环历史，当前深度为 `HDY_DIAG_HISTORY_DEPTH = 4`
+- `DIAGNOSTIC_HISTORY`：单快照历史，仅保留最近一条快照与累计事件计数（`HDY_DIAG_HISTORY_DEPTH` 已弃用，固定为1）
 
 ### 诊断保留语义
 
@@ -404,7 +401,7 @@ HDY_MotionControlFB_StartSegment(&fb, 0, timestamp); // index 被忽略
 - `DIAGNOSTIC_LATCH`：最近一次非 `NONE` 事件
 - `LAST_DIAGNOSTIC_SNAPSHOT`：最近一次诊断事件的上下文快照
 - `LAST_FAULT_SNAPSHOT`：最近一次故障停机快照，仅 `FAULT` 事件更新
-- `DIAGNOSTIC_HISTORY`：循环历史，当前深度为 `HDY_DIAG_HISTORY_DEPTH = 4`
+- `DIAGNOSTIC_HISTORY`：单快照模型，保留最近一条快照（`lastSnapshot`）与累计事件计数（`totalRecorded`）。`GetEntry(0)` 返回最新快照，`GetEntry(n>0)` 返回 false。`HDY_DIAG_HISTORY_DEPTH` 已弃用，固定为1。
 
 在实时故障已清除且控制器不处于故障态时，可调用 `HDY_MotionControlFB_AcknowledgeDiagnostics()` 清除保留诊断；故障停机保留信息仍应通过 `RESET` 清除。
 
@@ -485,7 +482,7 @@ HDY_MotionControlFB_StartSegment(&fb, 0, timestamp); // index 被忽略
 - `test_ramp_controller`：斜坡控制器测试
 - `test_scenario_matrix`：场景矩阵测试
 
-截至 **2026-04-21**，当前回归基线结果为：**9/9 测试通过**。
+截至 **2026-04-23**，当前回归基线结果为：**16/16 测试通过**。
 
 ### 场景覆盖
 
@@ -508,7 +505,7 @@ HDY_MotionControlFB_StartSegment(&fb, 0, timestamp); // index 被忽略
 
 - **纯 C99**：无语言扩展，可移植性强
 - **无动态内存分配**：所有数据结构静态分配，避免碎片化
-- **固定上限数组与有界诊断历史**：内存占用可控
+- **固定上限数组与单快照诊断历史**：内存占用可控
 - **统一 `HDY_` 前缀**的数据模型与接口：避免命名冲突
 - **适合在 PLC/嵌入式控制器的周期任务中调用**：执行时间确定
 
@@ -613,7 +610,7 @@ HDY_MotionControlFB_StartSegment(&fb, 0, timestamp); // index 被忽略
 | `pump_converter` | 泵速换算 | `HDY_PumpConverter_Execute()` |
 | `segment_completion` | 段完成判定 | `HDY_SegmentCompletion_Check()` |
 | `ramp_controller` | 压力目标斜坡平滑 | `HDY_RampController_Execute()` |
-| `diagnostics` | 诊断管理，历史记录 | `HDY_Diagnostics_Record()` |
+| `diagnostics` | 诊断管理，快照/历史记录 | `HDY_DiagnosticsHistory_Push()` |
 
 ### 数据流
 
@@ -671,13 +668,13 @@ HDY_MotionControlFB_Execute()
 
 ## 版本历史
 
-- **v1.0**（2026-04-21）：首个工程化发布基线
+- **v1.0**（2026-04-23）：首个工程化发布基线
   - PLCopen 风格函数块
   - 多段配方执行（最多16段）
   - 双模式参数来源（Recipe / Direct）
   - 三种控制模式（位置/速度斜坡/压力闭环）
   - 完整的诊断体系
-  - 9/9 测试通过
+  - 16/16 测试通过
 
 ## 联系方式
 
@@ -689,5 +686,5 @@ HDY_MotionControlFB_Execute()
 
 ---
 
-**最后更新日期**：2026-04-21
+**最后更新日期**：2026-04-23
 **文档维护者**：项目开发团队

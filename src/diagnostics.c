@@ -309,7 +309,9 @@ void HDY_DiagnosticsHistory_Clear(HDY_DiagnosticHistory* history) {
         return;
     }
 
-    memset(history, 0, sizeof(*history));
+    HDY_Diagnostics_ClearSnapshot(&history->lastSnapshot);
+    history->totalRecorded = 0U;
+    history->hasRecord = false;
 }
 
 void HDY_DiagnosticsHistory_Push(HDY_DiagnosticHistory* history,
@@ -318,13 +320,8 @@ void HDY_DiagnosticsHistory_Push(HDY_DiagnosticHistory* history,
         return;
     }
 
-    history->entries[history->nextWriteIndex] = *snapshot;
-    history->nextWriteIndex = (HDY_UINT8)((history->nextWriteIndex + 1U) % HDY_DIAG_HISTORY_DEPTH);
-    if (history->count < HDY_DIAG_HISTORY_DEPTH) {
-        history->count++;
-    } else {
-        history->wrapped = true;
-    }
+    history->lastSnapshot = *snapshot;
+    history->hasRecord = true;
 
     if (history->totalRecorded < UINT16_MAX) {
         history->totalRecorded++;
@@ -334,28 +331,27 @@ void HDY_DiagnosticsHistory_Push(HDY_DiagnosticHistory* history,
 HDY_BOOL HDY_DiagnosticsHistory_GetEntry(const HDY_DiagnosticHistory* history,
                                          HDY_UINT8 chronologicalIndex,
                                          HDY_DiagnosticSnapshot* snapshot) {
-    HDY_UINT8 oldestIndex;
-    HDY_UINT8 storageIndex;
-
-    if (history == NULL || snapshot == NULL || chronologicalIndex >= history->count) {
+    if (history == NULL || snapshot == NULL) {
         return false;
     }
 
-    oldestIndex = history->wrapped ? history->nextWriteIndex : 0U;
-    storageIndex = (HDY_UINT8)((oldestIndex + chronologicalIndex) % HDY_DIAG_HISTORY_DEPTH);
-    *snapshot = history->entries[storageIndex];
+    /* Only index 0 is valid — it maps to the single lastSnapshot. */
+    if (chronologicalIndex != 0U || !history->hasRecord) {
+        return false;
+    }
+
+    *snapshot = history->lastSnapshot;
     return snapshot->valid;
 }
 
 HDY_BOOL HDY_DiagnosticsHistory_GetLatest(const HDY_DiagnosticHistory* history,
                                           HDY_DiagnosticSnapshot* snapshot) {
-    if (history == NULL || snapshot == NULL || history->count == 0U) {
+    if (history == NULL || snapshot == NULL || !history->hasRecord) {
         return false;
     }
 
-    return HDY_DiagnosticsHistory_GetEntry(history,
-                                           (HDY_UINT8)(history->count - 1U),
-                                           snapshot);
+    *snapshot = history->lastSnapshot;
+    return snapshot->valid;
 }
 
 HDY_DiagnosticFlags HDY_Diagnostics_GetFlagMask(const HDY_DiagnosticInfo* diagnostic) {

@@ -23,7 +23,6 @@ typedef size_t HDY_UINT;
  * ============================================================================ */
 /* HDY_MAX_SEGMENTS已在hdy_config.h中定义 */
 /* HDY_NAME_MAX已在hdy_config.h中定义 */
-/* HDY_DIAG_HISTORY_DEPTH已在hdy_config.h中定义 */
 
 /* Enums shared between modules */
 typedef enum {
@@ -313,21 +312,30 @@ typedef struct {
 } HDY_DiagnosticSnapshot;
 
 #if HDY_ENABLE_DIAGNOSTIC_HISTORY
+/* Simplified diagnostic history: retains only the most recent snapshot
+ * and a running event counter.  The former ring-buffer / multi-entry
+ * design was removed to save RAM on embedded targets — production code
+ * never read historical entries beyond the latest one.
+ *
+ * Semantics:
+ *   lastSnapshot  – the most recently pushed diagnostic snapshot (or
+ *                   zeroed if no event has been recorded yet).
+ *   totalRecorded – cumulative count of all events since Init / Clear.
+ *                   Useful as an "alarm counter" for HMI display.
+ *   hasRecord     – true once at least one snapshot has been pushed.
+ *                   Equivalent to the former count > 0 check.
+ */
 typedef struct {
-    HDY_DiagnosticSnapshot entries[HDY_DIAG_HISTORY_DEPTH];
-    HDY_UINT8 count;
-    HDY_UINT8 nextWriteIndex;
+    HDY_DiagnosticSnapshot lastSnapshot;
     HDY_UINT16 totalRecorded;
-    HDY_BOOL wrapped;
+    HDY_BOOL hasRecord;
 } HDY_DiagnosticHistory;
 #else
 /* 禁用诊断历史时，使用最小化结构以节省RAM */
 typedef struct {
-    HDY_DiagnosticSnapshot entries[1];  /* 只保留一个当前快照 */
-    HDY_UINT8 count;
-    HDY_UINT8 nextWriteIndex;
+    HDY_DiagnosticSnapshot lastSnapshot;
     HDY_UINT16 totalRecorded;
-    HDY_BOOL wrapped;
+    HDY_BOOL hasRecord;
 } HDY_DiagnosticHistory;
 #endif
 

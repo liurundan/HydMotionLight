@@ -973,7 +973,7 @@ static void test_acknowledge_allowed_in_disabled_state(void) {
     assert(fb.FB_STATE == HDY_FB_STATE_DISABLED);
     assert(fb.DIAGNOSTIC.code == HDY_DIAG_CODE_NONE);
     assert(fb.DIAGNOSTIC_LATCH.code == HDY_DIAG_CODE_NONE);
-    assert(fb.DIAGNOSTIC_HISTORY.count == 0U);
+    assert(!fb.DIAGNOSTIC_HISTORY.hasRecord);
 
     /* Test that acknowledge works even when no diagnostics are present */
     assert(HDY_MotionControlFB_AcknowledgeDiagnostics(&fb));
@@ -981,7 +981,7 @@ static void test_acknowledge_allowed_in_disabled_state(void) {
     assert(fb.DIAGNOSTIC_LATCH.code == HDY_DIAG_CODE_NONE);
     assert(!fb.LAST_DIAGNOSTIC_SNAPSHOT.valid);
     assert(!fb.LAST_FAULT_SNAPSHOT.valid);
-    assert(fb.DIAGNOSTIC_HISTORY.count == 0U);
+    assert(!fb.DIAGNOSTIC_HISTORY.hasRecord);
     assert(fb.DIAGNOSTIC_HISTORY.totalRecorded == 0U);
     printf("✓ Ack command legality in DISABLED state test passed\n");
 }
@@ -1051,14 +1051,14 @@ static void test_multiple_instances_are_isolated(void) {
     assert(fbA.ACTIVE);
     assert(fbA.STATE.currentSegmentTag == 36);
     aDiagnosticCode = fbA.DIAGNOSTIC.code;
-    aHistoryCount = fbA.DIAGNOSTIC_HISTORY.count;
+    aHistoryCount = fbA.DIAGNOSTIC_HISTORY.hasRecord ? 1U : 0U;
     aPumpSpeed = fbA.PUMP_SPEED;
 
     assert(!fbB.ACTIVE);
     assert(fbB.STATUS == HDY_STATUS_READY);
     assert(fbB.FB_STATE == HDY_FB_STATE_READY);
     assert(fbB.DIAGNOSTIC.code == HDY_DIAG_CODE_NONE);
-    assert(fbB.DIAGNOSTIC_HISTORY.count == 0U);
+    assert(!fbB.DIAGNOSTIC_HISTORY.hasRecord);
 
     fbB.AXIS_REF.position = 10.0;
     fbB.AXIS_REF.flow = 0.0;
@@ -1074,7 +1074,7 @@ static void test_multiple_instances_are_isolated(void) {
     assert(fbA.ACTIVE);
     assert(fbA.STATE.currentSegmentTag == 36);
     assert(fbA.DIAGNOSTIC.code == aDiagnosticCode);
-    assert(fbA.DIAGNOSTIC_HISTORY.count == aHistoryCount);
+    assert(fbA.DIAGNOSTIC_HISTORY.hasRecord == (aHistoryCount > 0U));
     assert(fbA.PUMP_SPEED == aPumpSpeed);
 
     assert(HDY_MotionControlFB_Abort(&fbB));
@@ -1530,7 +1530,7 @@ static void test_diagnostic_latch_and_history_persist_after_live_clear(void) {
     assert(fb.LAST_DIAGNOSTIC_SNAPSHOT.status == HDY_STATUS_DEGRADED);
     assert(fb.LAST_DIAGNOSTIC_SNAPSHOT.segmentTag == 23);
     assert(fabs(fb.LAST_DIAGNOSTIC_SNAPSHOT.references.flowReference - fb.STATE.references.flowReference) < 0.001);
-    assert(fb.DIAGNOSTIC_HISTORY.count == 1U);
+    assert(fb.DIAGNOSTIC_HISTORY.hasRecord);
     assert(fb.DIAGNOSTIC_HISTORY.totalRecorded == 1U);
     assert(!fb.LAST_FAULT_SNAPSHOT.valid);
 
@@ -1544,12 +1544,12 @@ static void test_diagnostic_latch_and_history_persist_after_live_clear(void) {
     assert(fb.DIAGNOSTIC.code == HDY_DIAG_CODE_NONE);
     assert(fb.DIAGNOSTIC_LATCH.code == HDY_DIAG_CODE_FLOW_DEVIATION);
     assert(fb.LAST_DIAGNOSTIC_SNAPSHOT.valid);
-    assert(fb.DIAGNOSTIC_HISTORY.count == 1U);
+    assert(fb.DIAGNOSTIC_HISTORY.hasRecord);
     assert(fb.DIAGNOSTIC_HISTORY.totalRecorded == 1U);
     printf("✓ Diagnostic latch/history retention test passed\n");
 }
 
-static void test_diagnostic_history_helpers_preserve_chronological_order(void) {
+static void test_diagnostic_history_helpers_preserve_latest_snapshot(void) {
     HDY_DiagnosticHistory history;
     HDY_DiagnosticInfo diagnostic;
     HDY_DiagnosticSnapshot snapshot;
@@ -1566,7 +1566,7 @@ static void test_diagnostic_history_helpers_preserve_chronological_order(void) {
     HDY_UINT8 tags[5] = {0, 1, 2, 3, 4};
     size_t index;
 
-    printf("Testing diagnostic history helper ordering...\n");
+    printf("Testing diagnostic history retains latest snapshot only...\n");
     HDY_DiagnosticsHistory_Clear(&history);
 
     for (index = 0U; index < 5U; ++index) {
@@ -1585,31 +1585,27 @@ static void test_diagnostic_history_helpers_preserve_chronological_order(void) {
         HDY_DiagnosticsHistory_Push(&history, &snapshot);
     }
 
-    assert(history.count == HDY_DIAG_HISTORY_DEPTH);
-    assert(history.totalRecorded == 5U);
-    assert(history.wrapped);
-    assert(!HDY_DiagnosticsHistory_GetEntry(&history, (size_t)HDY_DIAG_HISTORY_DEPTH, &entry));
-
-    /* With HDY_DIAG_HISTORY_DEPTH == 2, only the last 2 of 5 entries survive:
-     *   index 3: HDY_DIAG_CODE_SENSOR_FAULT, segmentIndex=3, tag=3
-     *   index 4: HDY_DIAG_CODE_TIMEOUT, segmentIndex=4, tag=4
+    /* After pushing 5 entries, only the last one survives (single-snapshot model).
+     * totalRecorded tracks the cumulative count; only the latest snapshot is kept.
      */
-    assert(HDY_DiagnosticsHistory_GetEntry(&history, 0U, &entry));
-    assert(entry.diagnostic.code == HDY_DIAG_CODE_SENSOR_FAULT);
-    assert(entry.segmentIndex == 3U);
-    assert(entry.segmentTag == 3);
+    assert(history.hasRecord);
+    assert(history.totalRecorded == 5U);
 
-    assert(HDY_DiagnosticsHistory_GetEntry(&history, 1U, &entry));
+    /* GetEntry(0) returns the only stored snapshot (the latest) */
+    assert(HDY_DiagnosticsHistory_GetEntry(&history, 0U, &entry));
     assert(entry.diagnostic.code == HDY_DIAG_CODE_TIMEOUT);
     assert(entry.segmentIndex == 4U);
     assert(entry.segmentTag == 4);
+
+    /* GetEntry(n > 0) returns false — no historical entries beyond the latest */
+    assert(!HDY_DiagnosticsHistory_GetEntry(&history, 1U, &entry));
 
     assert(HDY_DiagnosticsHistory_GetLatest(&history, &entry));
     assert(entry.diagnostic.code == HDY_DIAG_CODE_TIMEOUT);
     assert(entry.segmentIndex == 4U);
     assert(fabs(entry.eventTimestamp - 4.0) < 0.001);
     assert(entry.segmentTag == 4);
-    printf("✓ Diagnostic history helper ordering test passed\n");
+    printf("✓ Diagnostic history latest-snapshot retention test passed\n");
 }
 
 static void test_acknowledge_clears_retention_and_allows_re_recording(void) {
@@ -1641,7 +1637,7 @@ static void test_acknowledge_clears_retention_and_allows_re_recording(void) {
     assert(fb.DIAGNOSTIC.code == HDY_DIAG_CODE_FLOW_DEVIATION);
     assert(!HDY_MotionControlFB_AcknowledgeDiagnostics(&fb));
     assert(fb.DIAGNOSTIC_LATCH.code == HDY_DIAG_CODE_FLOW_DEVIATION);
-    assert(fb.DIAGNOSTIC_HISTORY.count == 1U);
+    assert(fb.DIAGNOSTIC_HISTORY.hasRecord);
 
     fb.AXIS_REF.position = 20.0;
     fb.AXIS_REF.velocity = 0.0;
@@ -1656,7 +1652,7 @@ static void test_acknowledge_clears_retention_and_allows_re_recording(void) {
     assert(fb.DIAGNOSTIC_LATCH.code == HDY_DIAG_CODE_NONE);
     assert(!fb.LAST_DIAGNOSTIC_SNAPSHOT.valid);
     assert(!fb.LAST_FAULT_SNAPSHOT.valid);
-    assert(fb.DIAGNOSTIC_HISTORY.count == 0U);
+    assert(!fb.DIAGNOSTIC_HISTORY.hasRecord);
     assert(fb.DIAGNOSTIC_HISTORY.totalRecorded == 0U);
 
     fb.AXIS_REF.position = 0.0;
@@ -1673,7 +1669,7 @@ static void test_acknowledge_clears_retention_and_allows_re_recording(void) {
 
     assert(fb.DIAGNOSTIC.code == HDY_DIAG_CODE_FLOW_DEVIATION);
     assert(fb.DIAGNOSTIC_LATCH.code == HDY_DIAG_CODE_FLOW_DEVIATION);
-    assert(fb.DIAGNOSTIC_HISTORY.count == 1U);
+    assert(fb.DIAGNOSTIC_HISTORY.hasRecord);
     assert(fb.DIAGNOSTIC_HISTORY.totalRecorded == 1U);
     printf("✓ AcknowledgeDiagnostics retention-clear test passed\n");
 }
@@ -1703,7 +1699,7 @@ static void test_acknowledge_rejects_fault_retention(void) {
     assert(fb.DIAGNOSTIC.code == HDY_DIAG_CODE_SENSOR_FAULT);
     assert(fb.DIAGNOSTIC_LATCH.code == HDY_DIAG_CODE_SENSOR_FAULT);
     assert(fb.LAST_FAULT_SNAPSHOT.valid);
-    assert(fb.DIAGNOSTIC_HISTORY.count >= 1U);
+    assert(fb.DIAGNOSTIC_HISTORY.hasRecord);
     assert(HDY_DiagnosticsHistory_GetLatest(&fb.DIAGNOSTIC_HISTORY, &latestSnapshot));
     assert(latestSnapshot.diagnostic.code == HDY_DIAG_CODE_SENSOR_FAULT);
     printf("✓ AcknowledgeDiagnostics fault-retention guard test passed\n");
@@ -1726,7 +1722,7 @@ static void test_fault_snapshot_captures_protected_stop_context(void) {
     assert(HDY_MotionControlFB_StartSegment(&fb, 0, 0.0));
     HDY_MotionControlFB_Execute(&fb);
     assert(fb.DIAGNOSTIC.code == HDY_DIAG_CODE_NONE);
-    assert(fb.DIAGNOSTIC_HISTORY.count == 0U);
+    assert(!fb.DIAGNOSTIC_HISTORY.hasRecord);
 
     fb.AXIS_REF.timestamp = 0.1;
     fb.AXIS_REF.pressure = -0.5;
@@ -1741,9 +1737,9 @@ static void test_fault_snapshot_captures_protected_stop_context(void) {
     assert(fb.LAST_FAULT_SNAPSHOT.segmentTag == 112);
     assert(fabs(fb.LAST_FAULT_SNAPSHOT.eventTimestamp - 0.1) < 0.001);
     assert(fb.LAST_FAULT_SNAPSHOT.axisRef.pressure == -0.5);
-    assert(fb.DIAGNOSTIC_HISTORY.count == 1U);
+    assert(fb.DIAGNOSTIC_HISTORY.hasRecord);
     assert(fb.DIAGNOSTIC_HISTORY.totalRecorded == 1U);
-    assert(fb.DIAGNOSTIC_HISTORY.entries[0].diagnostic.code == HDY_DIAG_CODE_SENSOR_FAULT);
+    assert(fb.DIAGNOSTIC_HISTORY.lastSnapshot.diagnostic.code == HDY_DIAG_CODE_SENSOR_FAULT);
     printf("✓ Fault snapshot capture test passed\n");
 }
 
@@ -1970,7 +1966,7 @@ static void test_abort_diagnostic_auto_clears_in_finished_hold(void) {
     assert(fb.DIAGNOSTIC_LATCH.code == HDY_DIAG_CODE_ABORTED);
     assert(HDY_MotionControlFB_AcknowledgeDiagnostics(&fb));
     assert(fb.DIAGNOSTIC_LATCH.code == HDY_DIAG_CODE_NONE);
-    assert(fb.DIAGNOSTIC_HISTORY.count == 0U);
+    assert(!fb.DIAGNOSTIC_HISTORY.hasRecord);
     printf("✓ Abort diagnostic auto-clear test passed\n");
 }
 
@@ -2032,7 +2028,7 @@ static void test_reset_soft_reset_preserves_config(void) {
     HDY_MotionControlFB_Execute(&fb);
     assert(fb.DIAGNOSTIC_LATCH.code != HDY_DIAG_CODE_NONE);
     assert(fb.LAST_DIAGNOSTIC_SNAPSHOT.valid);
-    assert(fb.DIAGNOSTIC_HISTORY.count > 0U);
+    assert(fb.DIAGNOSTIC_HISTORY.hasRecord);
 
     /* RESET=true triggers soft reset: preserves recipe and gains */
     fb.RESET = true;
@@ -2047,7 +2043,7 @@ static void test_reset_soft_reset_preserves_config(void) {
     assert(fb.DIAGNOSTIC_LATCH.code == HDY_DIAG_CODE_NONE);
     assert(!fb.LAST_DIAGNOSTIC_SNAPSHOT.valid);
     assert(!fb.LAST_FAULT_SNAPSHOT.valid);
-    assert(fb.DIAGNOSTIC_HISTORY.count == 0U);
+    assert(!fb.DIAGNOSTIC_HISTORY.hasRecord);
     assert(fb.DIAGNOSTIC_HISTORY.totalRecorded == 0U);
 
     /* Soft reset preserves these */
@@ -2349,7 +2345,7 @@ int main(void) {
     test_execution_diagnostics_promote_degraded_status();
     test_diagnostic_flags_expose_minimal_embedded_summary();
     test_diagnostic_latch_and_history_persist_after_live_clear();
-    test_diagnostic_history_helpers_preserve_chronological_order();
+    test_diagnostic_history_helpers_preserve_latest_snapshot();
     test_acknowledge_clears_retention_and_allows_re_recording();
     test_acknowledge_rejects_fault_retention();
     test_fault_snapshot_captures_protected_stop_context();

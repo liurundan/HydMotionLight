@@ -32,7 +32,7 @@ void HDY_DiagnosticsHistory_Push(HDY_DiagnosticHistory* history,
                                  const HDY_DiagnosticSnapshot* snapshot);
 HDY_BOOL HDY_DiagnosticsHistory_GetEntry(const HDY_DiagnosticHistory* history,
                                          HDY_UINT8 chronologicalIndex,
-                                         HDY_DiagnosticSnapshot* snapshot);
+                                         HDY_DiagnosticSnapshot* snapshot);  /* Only index 0 is valid; returns the latest snapshot. */
 HDY_BOOL HDY_DiagnosticsHistory_GetLatest(const HDY_DiagnosticHistory* history,
                                           HDY_DiagnosticSnapshot* snapshot);
 HDY_DiagnosticFlags HDY_Diagnostics_GetFlagMask(const HDY_DiagnosticInfo* diagnostic);
