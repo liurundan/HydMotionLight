@@ -24,7 +24,7 @@ HDY_MotionControlFB* __MK_GetPublic_MotionControlFB(int index)
 	return NULL;
 }
 
-void __mcl_cmd_axismotioncontrol(AXISMOTIONCONTROL *data__)
+void __mcl_cmd_axismotioncontrol(HDY_AXISMOTIONCONTROL *data__)
 {
     IEC_BOOL bInit = __GET_VAR(data__->INIT);
     int index = -1;

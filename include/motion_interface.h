@@ -67,8 +67,8 @@ typedef struct
    __DECLARE_VAR(BOOL, EXECUTE0)
    __DECLARE_VAR(BOOL, DONE0)
    __DECLARE_VAR(BOOL, ACTIVE0)
-} AXISMOTIONCONTROL;
+} HDY_AXISMOTIONCONTROL;
 
-extern void __mcl_cmd_axismotioncontrol(AXISMOTIONCONTROL *data__);
+extern void __mcl_cmd_axismotioncontrol(HDY_AXISMOTIONCONTROL *data__);
 
 #endif
