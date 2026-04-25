@@ -1491,7 +1491,7 @@ void HDY_MotionControlFB_Init(HDY_MotionControlFB* fb) {
 
     memset(fb, 0, sizeof(*fb));
     fb->ENO = true;
-    fb->USE_RECIPE = true;
+    fb->USE_RECIPE = false;
     fb->FB_STATE = HDY_FB_STATE_IDLE;
     fb->STATE.currentSegmentIndex = HDY_MAX_SEGMENTS;
     fb->_activeSegmentSource = HDY_SEGMENT_SOURCE_NONE;

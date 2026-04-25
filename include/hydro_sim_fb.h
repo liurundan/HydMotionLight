@@ -3,6 +3,8 @@
 
 #include "common_types.h"
 #include "hydro_sim.h"
+#include "accessor.h"
+#include "iec_types_all.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -27,6 +29,8 @@ extern "C" {
  *   EN=false → ENO=false, ACTIVE=false, 输出归零复位，不再步进
  *   EN 从 false→true：仿真从当前物理状态继续（不重新初始化）
  * ================================================================== */
+
+
 
 typedef struct {
     /* ---- 输入引脚 ---- */
@@ -88,6 +92,31 @@ typedef struct {
     HDY_BOOL _initialized;          /* 是否已初始化 (Init 后为 true) */
 } HDY_HydraulicSimFB;
 
+// FUNCTION_BLOCK INJECTSIMULATOR
+// Data part
+typedef struct
+{
+    // FB Interface - IN, OUT, IN_OUT variables
+    __DECLARE_VAR(BOOL, EN)
+    __DECLARE_VAR(BOOL, ENO)
+    __DECLARE_VAR(BOOL, ENABLE)
+    __DECLARE_VAR(REAL, CYCLE_TIME)
+    __DECLARE_VAR(REAL, CMD_RPM)
+    __DECLARE_VAR(USINT, PUMP_OWNER_AXIS)
+    __DECLARE_VAR(SINT, DIRECTION)
+    __DECLARE_VAR(REAL, PRESSURE_BIAS)
+    __DECLARE_VAR(REAL, PRESSURE_SCALE)
+
+    __DECLARE_VAR(BOOL, ACTIVE)
+    __DECLARE_VAR(REAL, POS_MM)
+    __DECLARE_VAR(REAL, VEL_MM_S)
+    __DECLARE_VAR(REAL, PRESSURE_BAR)
+
+    // Internal state variables (not part of the public interface)
+    HDY_HydraulicSimFB _sim_fb;  /* 内部嵌套的 HydraulicSimFB 实例 */
+    __DECLARE_VAR(BOOL, INIT)
+} INJECTSIMULATOR;
+
 /**
  * @brief 完整初始化仿真器功能块（含物理参数默认值）
  * @param fb 功能块指针
@@ -124,6 +153,8 @@ ISensorBackend* HDY_HydraulicSimFB_GetInjectBackend(HDY_HydraulicSimFB* fb);
  *       Cycle() 内部始终基于 _env 执行, 修改后下一周期自动生效
  */
 HydraulicSimEnv* HDY_HydraulicSimFB_GetEnv(HDY_HydraulicSimFB* fb);
+
+extern void __mcl_cmd_injectsimulator(INJECTSIMULATOR *data__);
 
 #ifdef __cplusplus
 }

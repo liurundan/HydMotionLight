@@ -29,8 +29,8 @@ __DECLARE_STRUCT_TYPE(HDY_AXISMOTION,
     USINT ENDCONDITION;
     USINT DIRECTION;
     REAL SETPOSITION;
-    REAL SETVELOCITY; // 仅在速度/流量控制模式下使用，表示目标速度；在位置控制模式下忽略 SETFLOW
-    REAL SETFLOW;     // 仅在速度/流量控制模式下使用，表示目标流量；在位置控制模式下忽略 SETVELOCITY
+    REAL SETVELOCITY; // 仅在速度/流量控制模式下使用，表示目标速度； 
+    REAL SETFLOW;     // 仅在速度/流量控制模式下使用，表示目标流量；在位置控制模式下忽略 
     REAL SETPRESSURE;
     REAL ACCELERATION;
     REAL DECELERATION;
@@ -43,27 +43,32 @@ __DECLARE_STRUCT_TYPE(HDY_AXISMOTION,
     REAL TIMESTAMP;
 )
 
- 
 // FUNCTION_BLOCK AXISMOTIONCONTROL
 // Data part
-typedef struct {
-  // FB Interface - IN, OUT, IN_OUT variables
-    __DECLARE_VAR(BOOL,EN)
-    __DECLARE_VAR(BOOL,ENO)
-    __DECLARE_VAR(HDY_AXISMOTION,MOTION)
+typedef struct
+{
+   // FB Interface - IN, OUT, IN_OUT variables
+   __DECLARE_VAR(BOOL, EN)
+   __DECLARE_VAR(BOOL, ENO)
+   __DECLARE_VAR(BOOL, EXECUTE)
+   __DECLARE_VAR(HDY_AXISMOTION, MOTION)
 
-    __DECLARE_VAR(BOOL,ACTIVE)
-    __DECLARE_VAR(BOOL,BUSY)
-    __DECLARE_VAR(BOOL,DONE)
-    __DECLARE_VAR(BOOL,ERROR)
-    __DECLARE_VAR(WORD,ERRORID)
-    __DECLARE_VAR(WORD,STATE) 
-    __DECLARE_VAR(REAL,PUMP_SPEED)
+   __DECLARE_VAR(BOOL, ACTIVE)
+   __DECLARE_VAR(BOOL, BUSY)
+   __DECLARE_VAR(BOOL, DONE)
+   __DECLARE_VAR(BOOL, ERROR)
+   __DECLARE_VAR(WORD, ERRORID)
+   __DECLARE_VAR(WORD, STATE)
+   __DECLARE_VAR(REAL, PUMP_SPEED)
 
-  // FB private variables - TEMP, private and located variables
-  __DECLARE_VAR(DINT,NEWLOCALVAR0)
-
+   // FB private variables - TEMP, private and located variables
+   __DECLARE_VAR(BOOL, INIT)
+   __DECLARE_VAR(SINT, AXISINDEX)
+   __DECLARE_VAR(BOOL, EXECUTE0)
+   __DECLARE_VAR(BOOL, DONE0)
+   __DECLARE_VAR(BOOL, ACTIVE0)
 } AXISMOTIONCONTROL;
 
-extern void __mcl_cmd_hdyaxis_motion(HDY_AXISMOTION *data__)
+extern void __mcl_cmd_axismotioncontrol(AXISMOTIONCONTROL *data__);
+
 #endif
