@@ -170,6 +170,7 @@ void __mcl_cmd_injectsimulator(INJECTSIMULATOR *data__)
     else
     {
         IEC_BOOL Enable = __GET_VAR(data__->ENABLE);
+        data__->_sim_fb.EN = Enable;  // 使能仿真器
         if (Enable)
         {
             // 同步输入参数到内部仿真环境
@@ -250,7 +251,10 @@ void __mcl_cmd_injectsimulator(INJECTSIMULATOR *data__)
                     break;
             }
 
-
+        }
+        else
+        {
+            // EN=false 时, FB 内部会自动归零输出引脚, 这里可以选择是否需要额外处理
         }
     }
 }
