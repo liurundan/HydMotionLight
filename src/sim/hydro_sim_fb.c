@@ -188,7 +188,11 @@ void HDY_HydraulicSimFB_Cycle(HDY_HydraulicSimFB* fb) {
 
 int  __HdySimulator_framework_Init()
 {
-
+    for (int i = 0; i < HDY_MAX_HYDRAULIC_SIM_FB; i++)
+	{
+		HDY_HydraulicSimFB_Init(&_sim_fb[i]);
+	}
+	
 	return 1;
 }
 

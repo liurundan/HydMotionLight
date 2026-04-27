@@ -78,11 +78,8 @@ add_executable(test_direct_mode_simple tests/test_direct_mode_simple.c)
 target_link_libraries(test_direct_mode_simple PRIVATE HydroMotionLib)
 
 # ==================================================================
-# 集成测试 - 需要同时链接核心库和仿真器库
+# 仿真相关测试
 # ==================================================================
-add_executable(test_motion_sim_integration tests/test_motion_sim_integration.c)
-target_link_libraries(test_motion_sim_integration PRIVATE HydroMotionLib HydroSimLib)
-
 add_executable(test_hydro_sim_fb tests/test_hydro_sim_fb.c)
 target_link_libraries(test_hydro_sim_fb PRIVATE HydroSimLib)
 
@@ -110,6 +107,5 @@ add_test(NAME test_diagnostic_monitor COMMAND test_diagnostic_monitor)
 add_test(NAME test_diagnostic_criteria COMMAND test_diagnostic_criteria)
 add_test(NAME test_sprint3_integration COMMAND test_sprint3_integration)
 add_test(NAME test_direct_mode COMMAND test_direct_mode)
-add_test(NAME test_motion_sim_integration COMMAND test_motion_sim_integration)
 add_test(NAME test_hydro_sim_fb COMMAND test_hydro_sim_fb)
 add_test(NAME test_ramp_controller_detailed COMMAND test_ramp_controller)

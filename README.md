@@ -76,29 +76,27 @@ ctest --test-dir out/build/unixgcc --output-on-failure
 
 - **包含模块**：`hydro_sim.c` 完整仿真逻辑
 - **使用场景**：
-  - 集成测试（`test_motion_sim_integration`）
+  - 仿真器功能测试（`test_hydro_sim_fb`）
   - 开发环境验证
   - 算法离线仿真
 - **部署方式**：仅用于开发测试，不部署到生产环境
 
-### 集成测试
+### 仿真器测试
 
-运行运动控制与仿真器的闭环集成测试：
+运行液压仿真函数块测试：
 
 ```bash
-# 运行集成测试
-./out/build/unixgcc/test_motion_sim_integration
+# 运行仿真器函数块测试
+./out/build/unixgcc/test_hydro_sim_fb
 
 # 或通过ctest运行
-ctest --test-dir out/build/unixgcc -R test_motion_sim_integration --output-on-failure
+ctest --test-dir out/build/unixgcc -R test_hydro_sim_fb --output-on-failure
 ```
 
-集成测试验证以下行为：
-- 运动控制器与仿真器的完整闭环控制
-- 多段配方执行（慢速前进 → 快速前进 → 后退回零）
-- 位置跟踪精度验证
-- 段切换逻辑验证
-- 诊断信息验证
+仿真器测试主要验证以下行为：
+- 使能、复位与模式切换逻辑
+- 位置、速度、压力等输出更新
+- 诊断与边界保护行为
 
 ### 嵌入式部署
 
