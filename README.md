@@ -74,7 +74,10 @@ ctest --test-dir out/build/unixgcc --output-on-failure
 
 #### 液压仿真器库
 
-- **包含模块**：`hydro_sim.c` 完整仿真逻辑
+- **分层结构**：
+  - `hydro_sim_fb.c`：PLC 适配层，负责 `create/move/read` 命令翻译、AXISID 映射与共享 env 发布
+  - `hydro_sim.c`：物理仿真内核，负责通用轴表、单泵 owner 调度、各轴位置/速度/压力更新
+- **运行模型**：共享 `HydraulicSimEnv` + 通用轴数组 + 单泵统一调度，同一扫描周期只步进一次
 - **使用场景**：
   - 仿真器功能测试（`test_hydro_sim_fb`）
   - 开发环境验证
@@ -83,20 +86,22 @@ ctest --test-dir out/build/unixgcc --output-on-failure
 
 ### 仿真器测试
 
-运行液压仿真函数块测试：
+运行液压仿真 PLC 适配层测试：
 
 ```bash
 # 运行仿真器函数块测试
 ./out/build/unixgcc/test_hydro_sim_fb
 
-# 或通过ctest运行
-ctest --test-dir out/build/unixgcc -R test_hydro_sim_fb --output-on-failure
+# 或通过 ctest 运行
+ctest --test-dir out/build/unixgcc -R '^test_hydro_sim_fb$' --output-on-failure
 ```
 
 仿真器测试主要验证以下行为：
-- 使能、复位与模式切换逻辑
-- 位置、速度、压力等输出更新
-- 诊断与边界保护行为
+- framework init/reset 与 AXISID 分配语义
+- create/move/read 的 PLC 接口语义
+- 共享 env 在单次 publish 中只步进一次
+- 单泵 owner 切换、按 AXISID 读取反馈、非法 AXISID 安全返回
+- 每轴故障注入隔离与基础边界保护行为
 
 ### 嵌入式部署
 

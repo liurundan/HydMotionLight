@@ -1,330 +1,343 @@
 /**
  * @file test_hydro_sim_fb.c
- * @brief 液压仿真器 PLCopen 功能块 单元测试
+ * @brief 液压仿真器 PLC 适配层单元测试
  *
- * 验证:
- *   1. Init 后状态正确 (EN=false, 输出归零, 默认故障注入值)
- *   2. EN=false 时 Cycle 不步进, 输出归零
- *   3. EN=true 时正常步进, 输出跟随仿真
- *   4. EN true→false→true 行为: 冻结→归零→恢复步进
- *   5. 阀门指令同步
- *   6. 故障注入同步
- *   7. 泵指令 / 泵归属同步
- *   8. 模具障碍物同步
- *   9. GetClampBackend / GetInjectBackend / GetEnv 返回有效指针
+ * 目标：验证 create/move/read/framework_* 的 PLC 接口语义，
+ *       以及“共享 env + 单泵单次步进”的架构约束。
  */
 
 #include <stdio.h>
 #include <math.h>
 #include <string.h>
 #include <stdbool.h>
+
 #include "hydro_sim_fb.h"
 #include "hydro_sim.h"
 
+extern HDY_HydraulicSimFB* __MK_GetPublic_HydraulicSimFB(int index);
+
 #define CYCLE_PERIOD 0.001
 #define TOLERANCE    1e-6
+#define INVALID_AXIS_ID 99
 
-static int tests_run    = 0;
+static int tests_run = 0;
 static int tests_passed = 0;
 
 #define ASSERT_TRUE(cond, msg) do { \
     tests_run++; \
     if (cond) { tests_passed++; } \
     else { printf("  FAIL: %s\n", msg); } \
-} while(0)
+} while (0)
 
 #define ASSERT_NEAR(a, b, tol, msg) do { \
     tests_run++; \
-    if (fabs((a) - (b)) <= (tol)) { tests_passed++; } \
+    if (fabs((double)((a) - (b))) <= (tol)) { tests_passed++; } \
     else { printf("  FAIL: %s (got %g, expected %g)\n", msg, (double)(a), (double)(b)); } \
-} while(0)
+} while (0)
 
-/* ==================================================================
- * Test 1: Init 后状态正确
- * ================================================================== */
-static void test_init_state(void) {
-    HDY_HydraulicSimFB fb;
-    HDY_HydraulicSimFB_Init(&fb);
+static void reset_create_cmd(HDY_CREATESIMAXIS* cmd,
+                             unsigned char axis_type,
+                             double max_vel,
+                             double max_acc,
+                             double max_dec) {
+    memset(cmd, 0, sizeof(*cmd));
+    cmd->AXISTYPE.value = axis_type;
+    cmd->MAXVEL.value = max_vel;
+    cmd->MAXACC.value = max_acc;
+    cmd->MAXDEC.value = max_dec;
+}
 
-    ASSERT_TRUE(!fb.EN,               "EN should be false after Init");
-    ASSERT_TRUE(!fb.ENO,              "ENO should be false after Init");
-    ASSERT_TRUE(!fb.ACTIVE,           "ACTIVE should be false after Init");
-    ASSERT_TRUE(fb._initialized,      "_initialized should be true after Init");
+static int create_axis(unsigned char axis_type,
+                       double max_vel,
+                       double max_acc,
+                       double max_dec) {
+    HDY_CREATESIMAXIS cmd;
+    reset_create_cmd(&cmd, axis_type, max_vel, max_acc, max_dec);
+    __mcl_cmd_createSimAxis(&cmd);
+    return cmd.AXISID.value;
+}
 
-    /* 故障注入默认值 */
-    ASSERT_TRUE(fb.CLAMP_SERVO_READY,    "CLAMP_SERVO_READY default true");
-    ASSERT_TRUE(fb.CLAMP_INTERLOCK_OK,   "CLAMP_INTERLOCK_OK default true");
-    ASSERT_TRUE(!fb.CLAMP_MOTION_STALL,  "CLAMP_MOTION_STALL default false");
-    ASSERT_TRUE(fb.INJECT_SERVO_READY,   "INJECT_SERVO_READY default true");
-    ASSERT_TRUE(fb.INJECT_INTERLOCK_OK,  "INJECT_INTERLOCK_OK default true");
-    ASSERT_TRUE(!fb.INJECT_MOTION_STALL, "INJECT_MOTION_STALL default false");
+static void move_axis(int axis_id, bool enable, double cmd_rpm, int direction) {
+    HDY_MOVESIMAXIS cmd;
+    memset(&cmd, 0, sizeof(cmd));
+    cmd.ENABLE.value = enable;
+    cmd.AXISID.value = axis_id;
+    cmd.CMD_RPM.value = cmd_rpm;
+    cmd.DIRECTION.value = direction;
+    __mcl_cmd_moveSimAxis(&cmd);
+}
 
-    ASSERT_NEAR(fb.CLAMP_PRESSURE_SCALE,  1.0, TOLERANCE, "CLAMP_PRESSURE_SCALE default 1.0");
-    ASSERT_NEAR(fb.INJECT_PRESSURE_SCALE, 1.0, TOLERANCE, "INJECT_PRESSURE_SCALE default 1.0");
-
-    /* 输出归零 */
-    ASSERT_NEAR(fb.CLAMP_POS_MM, 0.0, TOLERANCE, "CLAMP_POS should be 0");
-    ASSERT_NEAR(fb.INJECT_POS_MM, 0.0, TOLERANCE, "INJECT_POS should be 0");
-    ASSERT_NEAR(fb.SIM_TIME_S, 0.0, TOLERANCE, "SIM_TIME should be 0");
+static void read_axis(HDY_READSIMAXIS* cmd, int axis_id, bool enable) {
+    memset(cmd, 0, sizeof(*cmd));
+    cmd->ENABLE.value = enable;
+    cmd->AXISID.value = axis_id;
+    __mcl_cmd_readSimAxis(cmd);
 }
 
 /* ==================================================================
- * Test 2: EN=false 时不步进
+ * Test 1: framework init/reset 归零分配器与共享 env
  * ================================================================== */
-static void test_en_false_no_step(void) {
-    HDY_HydraulicSimFB fb;
-    HDY_HydraulicSimFB_Init(&fb);
+static void test_framework_init_resets_allocator_and_env(void) {
+    HDY_HydraulicSimFB* fb;
+    int axis_id;
 
-    /* 不设 EN, 直接 Cycle */
-    fb.CYCLE_TIME = CYCLE_PERIOD;
-    HDY_HydraulicSimFB_Cycle(&fb);
+    __HdySimulator_framework_Init();
+    ASSERT_TRUE(__MK_GetPublic_HydraulicSimFB(0) == NULL,
+                "No public axis handle should exist immediately after framework init");
 
-    ASSERT_TRUE(!fb.ENO,   "ENO false when EN false");
-    ASSERT_TRUE(!fb.ACTIVE, "ACTIVE false when EN false");
-    ASSERT_NEAR(fb.SIM_TIME_S, 0.0, TOLERANCE, "SIM_TIME should remain 0 when EN false");
+    axis_id = create_axis((unsigned char)SIM_AXIS_CLAMP, 120.0, 200.0, 180.0);
+    fb = __MK_GetPublic_HydraulicSimFB(axis_id);
+
+    ASSERT_TRUE(axis_id == 0, "First allocated axis id should be 0");
+    ASSERT_TRUE(fb != NULL, "Created axis handle should be retrievable");
+    ASSERT_TRUE(fb->_env != NULL, "Created axis handle should bind to a shared env");
+    ASSERT_NEAR(fb->_env->sim_time_s, 0.0, TOLERANCE,
+                "Shared env time should start from zero after init");
+
+    move_axis(axis_id, true, 1500.0, 1);
+    __HdySimulator_framework_Publish();
+    ASSERT_NEAR(fb->_env->sim_time_s, CYCLE_PERIOD, TOLERANCE,
+                "Publish should advance shared env time by one scan period");
+
+    __HdySimulator_framework_Init();
+    axis_id = create_axis((unsigned char)SIM_AXIS_CLAMP, 80.0, 90.0, 70.0);
+    fb = __MK_GetPublic_HydraulicSimFB(axis_id);
+
+    ASSERT_TRUE(axis_id == 0, "Framework re-init should reset axis allocator to 0");
+    ASSERT_TRUE(fb != NULL, "Axis handle should still be retrievable after re-init");
+    ASSERT_NEAR(fb->_env->sim_time_s, 0.0, TOLERANCE,
+                "Framework re-init should reset shared env time to zero");
+    ASSERT_TRUE(fb->allocated, "Axis handle should be marked allocated after create");
 }
 
 /* ==================================================================
- * Test 3: EN=true 时正常步进
+ * Test 2: create 两个轴，分配唯一 ID，绑定类型并保存配置
  * ================================================================== */
-static void test_en_true_step(void) {
-    HDY_HydraulicSimFB fb;
-    HDY_HydraulicSimFB_Init(&fb);
+static void test_create_two_axes_assigns_unique_ids_and_keeps_config(void) {
+    HDY_HydraulicSimFB* clamp_fb;
+    HDY_HydraulicSimFB* inject_fb;
+    int clamp_id;
+    int inject_id;
 
-    fb.EN         = true;
-    fb.CYCLE_TIME = CYCLE_PERIOD;
+    __HdySimulator_framework_Init();
 
-    /* 设置泵和阀门让合模前进 */
-    fb.CMD_RPM         = 1500.0;
-    fb.PUMP_OWNER_AXIS = 0;  /* CLAMP */
-    fb.CLAMP_VALVE_FWD = true;
-    fb.CLAMP_VALVE_BWD = false;
+    clamp_id = create_axis((unsigned char)SIM_AXIS_CLAMP, 111.0, 222.0, 333.0);
+    inject_id = create_axis((unsigned char)SIM_AXIS_INJECT, 444.0, 555.0, 666.0);
 
-    HDY_HydraulicSimFB_Cycle(&fb);
+    clamp_fb = __MK_GetPublic_HydraulicSimFB(clamp_id);
+    inject_fb = __MK_GetPublic_HydraulicSimFB(inject_id);
 
-    ASSERT_TRUE(fb.ENO,   "ENO true when EN true");
-    ASSERT_TRUE(fb.ACTIVE, "ACTIVE true when EN true");
-    ASSERT_TRUE(fb.SIM_TIME_S > 0.0, "SIM_TIME should advance after step");
-
-    /* 合模前进, 位置应该增大 */
-    ASSERT_TRUE(fb.CLAMP_POS_MM > 0.0, "CLAMP_POS should increase when valve fwd + pump on");
-    ASSERT_TRUE(fb.CLAMP_VEL_MM_S > 0.0, "CLAMP_VEL should be positive when valve fwd");
+    ASSERT_TRUE(clamp_id != inject_id, "Clamp and inject should receive different AXISID values");
+    ASSERT_TRUE(clamp_fb != NULL && inject_fb != NULL,
+                "Both created axis handles should be retrievable");
+    ASSERT_TRUE(clamp_fb->_env == inject_fb->_env,
+                "All PLC-created axis handles should share one HydraulicSimEnv");
+    ASSERT_TRUE(clamp_fb->axis_type == (HDY_UINT8)SIM_AXIS_CLAMP,
+                "Clamp handle should keep clamp axis type");
+    ASSERT_TRUE(inject_fb->axis_type == (HDY_UINT8)SIM_AXIS_INJECT,
+                "Inject handle should keep inject axis type");
+    ASSERT_NEAR(clamp_fb->maxVel, 111.0, TOLERANCE, "Clamp MAXVEL should be stored in handle config");
+    ASSERT_NEAR(clamp_fb->maxAcc, 222.0, TOLERANCE, "Clamp MAXACC should be stored in handle config");
+    ASSERT_NEAR(clamp_fb->maxDec, 333.0, TOLERANCE, "Clamp MAXDEC should be stored in handle config");
+    ASSERT_NEAR(inject_fb->maxVel, 444.0, TOLERANCE, "Inject MAXVEL should be stored in handle config");
+    ASSERT_NEAR(inject_fb->maxAcc, 555.0, TOLERANCE, "Inject MAXACC should be stored in handle config");
+    ASSERT_NEAR(inject_fb->maxDec, 666.0, TOLERANCE, "Inject MAXDEC should be stored in handle config");
+    ASSERT_TRUE(clamp_fb->_env->axis_count == 2,
+                "Shared env axis_count should reflect the number of allocated axes");
 }
 
 /* ==================================================================
- * Test 4: EN true→false→true 行为
+ * Test 3: create 必须校验非法轴类型
  * ================================================================== */
-static void test_en_toggle(void) {
-    HDY_HydraulicSimFB fb;
-    HDY_HydraulicSimFB_Init(&fb);
+static void test_create_rejects_invalid_axis_type(void) {
+    HDY_CREATESIMAXIS cmd;
 
-    fb.EN         = true;
-    fb.CYCLE_TIME = CYCLE_PERIOD;
-    fb.CMD_RPM         = 1500.0;
-    fb.PUMP_OWNER_AXIS = 0;
-    fb.CLAMP_VALVE_FWD = true;
-    fb.CLAMP_VALVE_BWD = false;
+    __HdySimulator_framework_Init();
 
-    /* 先跑几步 */
-    for (int i = 0; i < 10; i++) {
-        HDY_HydraulicSimFB_Cycle(&fb);
-    }
-    HDY_REAL pos_after_run = fb.CLAMP_POS_MM;
-    ASSERT_TRUE(pos_after_run > 0.0, "Position should advance after running");
+    reset_create_cmd(&cmd, 7U, 10.0, 20.0, 30.0);
+    cmd.AXISID.value = -1;
+    __mcl_cmd_createSimAxis(&cmd);
 
-    /* EN=false → 输出归零, 但内部 env 物理状态保留 */
-    fb.EN = false;
-    HDY_HydraulicSimFB_Cycle(&fb);
-    ASSERT_TRUE(!fb.ACTIVE, "ACTIVE false when EN false");
-    ASSERT_NEAR(fb.CLAMP_POS_MM, 0.0, TOLERANCE, "Output zeroed when EN false");
-    ASSERT_NEAR(fb.SIM_TIME_S, 0.0, TOLERANCE, "SIM_TIME output zeroed when EN false");
-
-    /* EN=true → 恢复, 内部物理状态保留, 输出跟随 */
-    fb.EN = true;
-    fb.CMD_RPM = 0.0;  /* 泵关, 不产生新运动 */
-    HDY_HydraulicSimFB_Cycle(&fb);
-
-    /* 位置输出应该恢复到内部 env 保留的值 (之前运动过的位置) */
-    ASSERT_TRUE(fb.ACTIVE, "ACTIVE true when EN restored");
-    /* 内部 env 未被复位, 所以位置应该还保持之前的值 */
-    ASSERT_NEAR(fb.CLAMP_POS_MM, pos_after_run, 0.01,
-                "Position should restore from internal env after EN restored");
+    ASSERT_TRUE(!cmd.DONE.value, "Invalid AXISTYPE should not set DONE");
+    ASSERT_TRUE(cmd.AXISID.value == -1, "Invalid AXISTYPE should not allocate a new AXISID");
+    ASSERT_TRUE(__MK_GetPublic_HydraulicSimFB(0) == NULL,
+                "Invalid AXISTYPE should not create any public axis handle");
 }
 
 /* ==================================================================
- * Test 5: 阀门指令同步
+ * Test 4: move 指定轴后，只允许该轴在单泵下运动
  * ================================================================== */
-static void test_valve_sync(void) {
-    HDY_HydraulicSimFB fb;
-    HDY_HydraulicSimFB_Init(&fb);
+static void test_move_only_target_axis_under_single_pump_owner(void) {
+    HDY_READSIMAXIS clamp_read;
+    HDY_READSIMAXIS inject_read;
+    int clamp_id;
+    int inject_id;
+    double clamp_pos_after_first_publish;
 
-    fb.EN         = true;
-    fb.CYCLE_TIME = CYCLE_PERIOD;
-    fb.CMD_RPM         = 1500.0;
-    fb.PUMP_OWNER_AXIS = 1;  /* INJECT */
+    __HdySimulator_framework_Init();
 
-    /* 射胶前进 — 多跑几步, 确保位移足够观察反向运动 */
-    fb.INJECT_VALVE_FWD = true;
-    fb.INJECT_VALVE_BWD = false;
+    clamp_id = create_axis((unsigned char)SIM_AXIS_CLAMP, 120.0, 0.0, 0.0);
+    inject_id = create_axis((unsigned char)SIM_AXIS_INJECT, 140.0, 0.0, 0.0);
 
-    for (int i = 0; i < 20; i++) {
-        HDY_HydraulicSimFB_Cycle(&fb);
-    }
-    ASSERT_TRUE(fb.INJECT_POS_MM > 0.0, "INJECT_POS should increase when valve fwd");
+    move_axis(clamp_id, true, 1500.0, 1);
+    __HdySimulator_framework_Publish();
 
-    /* 切换到后退 */
-    fb.INJECT_VALVE_FWD = false;
-    fb.INJECT_VALVE_BWD = true;
+    read_axis(&clamp_read, clamp_id, true);
+    read_axis(&inject_read, inject_id, true);
 
-    HDY_HydraulicSimFB_Cycle(&fb);
-    /* 后退方向, 速度应为负 */
-    ASSERT_TRUE(fb.INJECT_VEL_MM_S < 0.0, "INJECT_VEL should be negative when valve bwd");
+    ASSERT_TRUE(clamp_read.ACTIVE.value, "Clamp should be ACTIVE when it owns the pump");
+    ASSERT_TRUE(clamp_read.BUSY.value, "Clamp should be BUSY when it owns the pump");
+    ASSERT_TRUE(clamp_read.POS_MM.value > 0.0, "Clamp position should advance after clamp move");
+    ASSERT_NEAR(inject_read.POS_MM.value, 0.0, TOLERANCE,
+                "Inject axis should remain still while clamp owns the pump");
+
+    clamp_pos_after_first_publish = clamp_read.POS_MM.value;
+
+    move_axis(inject_id, true, 1500.0, 1);
+    __HdySimulator_framework_Publish();
+
+    read_axis(&clamp_read, clamp_id, true);
+    read_axis(&inject_read, inject_id, true);
+
+    ASSERT_TRUE(inject_read.POS_MM.value > 0.0,
+                "Inject axis should advance after pump ownership switches to inject");
+    ASSERT_NEAR(clamp_read.POS_MM.value, clamp_pos_after_first_publish, TOLERANCE,
+                "Clamp position should stay frozen once the pump owner switches away");
 }
 
 /* ==================================================================
- * Test 6: 故障注入同步 — motion stall
+ * Test 5: read 必须严格按 AXISID 返回各自反馈
  * ================================================================== */
-static void test_fault_injection_stall(void) {
-    HDY_HydraulicSimFB fb;
-    HDY_HydraulicSimFB_Init(&fb);
+static void test_read_uses_axisid_not_current_pump_owner(void) {
+    HDY_READSIMAXIS clamp_read;
+    HDY_READSIMAXIS inject_read;
+    int clamp_id;
+    int inject_id;
+    double clamp_pos_before_switch;
 
-    fb.EN         = true;
-    fb.CYCLE_TIME = CYCLE_PERIOD;
-    fb.CMD_RPM         = 1500.0;
-    fb.PUMP_OWNER_AXIS = 0;
-    fb.CLAMP_VALVE_FWD = true;
-    fb.CLAMP_VALVE_BWD = false;
+    __HdySimulator_framework_Init();
 
-    /* 正常运行一步 */
-    HDY_HydraulicSimFB_Cycle(&fb);
-    HDY_REAL pos_normal = fb.CLAMP_POS_MM;
-    ASSERT_TRUE(pos_normal > 0.0, "Normal: position should advance");
+    clamp_id = create_axis((unsigned char)SIM_AXIS_CLAMP, 120.0, 0.0, 0.0);
+    inject_id = create_axis((unsigned char)SIM_AXIS_INJECT, 120.0, 0.0, 0.0);
 
-    /* 注入 motion stall */
-    fb.CLAMP_MOTION_STALL = true;
-    HDY_HydraulicSimFB_Cycle(&fb);
-    /* stall 时速度应为0, 位置不变 */
-    ASSERT_NEAR(fb.CLAMP_VEL_MM_S, 0.0, TOLERANCE,
-                "Velocity should be 0 when motion stalled");
+    move_axis(clamp_id, true, 1500.0, 1);
+    __HdySimulator_framework_Publish();
+    read_axis(&clamp_read, clamp_id, true);
+    clamp_pos_before_switch = clamp_read.POS_MM.value;
+
+    move_axis(inject_id, true, 1500.0, 1);
+    __HdySimulator_framework_Publish();
+    read_axis(&clamp_read, clamp_id, true);
+    read_axis(&inject_read, inject_id, true);
+
+    ASSERT_NEAR(clamp_read.POS_MM.value, clamp_pos_before_switch, TOLERANCE,
+                "Read should still return clamp feedback even after pump switches to inject");
+    ASSERT_TRUE(inject_read.POS_MM.value > 0.0,
+                "Read should return inject feedback for inject AXISID");
+    ASSERT_TRUE(fabs(clamp_read.POS_MM.value - inject_read.POS_MM.value) > TOLERANCE,
+                "Different AXISID values should expose different axis snapshots");
 }
 
 /* ==================================================================
- * Test 7: 泵指令和泵归属同步
+ * Test 6: 多轴存在时，每次 publish 只能步进共享 env 一次
  * ================================================================== */
-static void test_pump_owner_sync(void) {
-    HDY_HydraulicSimFB fb;
-    HDY_HydraulicSimFB_Init(&fb);
+static void test_publish_steps_shared_env_once_per_scan(void) {
+    HDY_HydraulicSimFB* clamp_fb;
+    HDY_HydraulicSimFB* inject_fb;
+    int clamp_id;
+    int inject_id;
 
-    fb.EN         = true;
-    fb.CYCLE_TIME = CYCLE_PERIOD;
-    fb.CMD_RPM         = 1000.0;
-    fb.PUMP_OWNER_AXIS = 0;  /* CLAMP */
-    fb.CLAMP_VALVE_FWD = true;
+    __HdySimulator_framework_Init();
 
-    HDY_HydraulicSimFB_Cycle(&fb);
-    ASSERT_TRUE(fb.CLAMP_VEL_MM_S > 0.0, "Clamp should move when pump owner=CLAMP");
+    clamp_id = create_axis((unsigned char)SIM_AXIS_CLAMP, 120.0, 0.0, 0.0);
+    inject_id = create_axis((unsigned char)SIM_AXIS_INJECT, 120.0, 0.0, 0.0);
+    clamp_fb = __MK_GetPublic_HydraulicSimFB(clamp_id);
+    inject_fb = __MK_GetPublic_HydraulicSimFB(inject_id);
 
-    /* 切换到射胶 */
-    fb.PUMP_OWNER_AXIS = 1;  /* INJECT */
-    fb.CLAMP_VALVE_FWD = false;
-    fb.INJECT_VALVE_FWD = true;
+    ASSERT_TRUE(clamp_fb->_env == inject_fb->_env,
+                "Shared env pointer should be identical across PLC-created axis handles");
 
-    HDY_HydraulicSimFB_Cycle(&fb);
-    ASSERT_TRUE(fb.INJECT_VEL_MM_S > 0.0, "Inject should move when pump owner=INJECT");
+    move_axis(clamp_id, true, 1500.0, 1);
+    __HdySimulator_framework_Publish();
+    ASSERT_NEAR(clamp_fb->_env->sim_time_s, CYCLE_PERIOD, TOLERANCE,
+                "First publish should advance shared env by exactly one cycle");
+
+    __HdySimulator_framework_Publish();
+    ASSERT_NEAR(clamp_fb->_env->sim_time_s, 2.0 * CYCLE_PERIOD, TOLERANCE,
+                "Second publish should advance shared env by exactly one more cycle");
 }
 
 /* ==================================================================
- * Test 8: 模具障碍物同步
+ * Test 7: 每轴故障注入必须独立
  * ================================================================== */
-static void test_obstacle_sync(void) {
-    HDY_HydraulicSimFB fb;
-    HDY_HydraulicSimFB_Init(&fb);
+static void test_fault_injection_is_isolated_per_axis(void) {
+    HDY_HydraulicSimFB* clamp_fb;
+    HDY_READSIMAXIS clamp_read;
+    HDY_READSIMAXIS inject_read;
+    int clamp_id;
+    int inject_id;
 
-    fb.EN         = true;
-    fb.CYCLE_TIME = CYCLE_PERIOD;
-    fb.CMD_RPM         = 1500.0;
-    fb.PUMP_OWNER_AXIS = 0;
-    fb.CLAMP_VALVE_FWD = true;
+    __HdySimulator_framework_Init();
 
-    /* 不设置障碍物 — 正常推进 */
-    HDY_HydraulicSimFB_Cycle(&fb);
+    clamp_id = create_axis((unsigned char)SIM_AXIS_CLAMP, 120.0, 0.0, 0.0);
+    inject_id = create_axis((unsigned char)SIM_AXIS_INJECT, 120.0, 0.0, 0.0);
+    clamp_fb = __MK_GetPublic_HydraulicSimFB(clamp_id);
 
-    /* 设置障碍物, 位置在障碍物处 */
-    fb.MOLD_OBSTACLE       = true;
-    fb.OBSTACLE_POS_MM     = 400.0;
-    fb.OBSTACLE_STIFFNESS  = 80000.0;
+    ASSERT_TRUE(clamp_fb != NULL, "Clamp handle should exist before applying fault injection");
 
-    /* 多跑几步, 不应崩溃 */
-    for (int i = 0; i < 5; i++) {
-        HDY_HydraulicSimFB_Cycle(&fb);
-    }
-    ASSERT_TRUE(fb.CLAMP_POS_MM >= 0.0, "Clamp position should remain valid with obstacle");
-}
+    HydraulicSim_SetAxisMotionStall(clamp_fb->_env, SIM_AXIS_CLAMP, true);
 
+    move_axis(clamp_id, true, 1500.0, 1);
+    __HdySimulator_framework_Publish();
+    read_axis(&clamp_read, clamp_id, true);
 
-/* ==================================================================
- * Test 10: NULL 指针保护
- * ================================================================== */
-static void test_null_safety(void) {
-    /* 这些调用不应崩溃 */
-    HDY_HydraulicSimFB_Init(NULL);
-    HDY_HydraulicSimFB_Cycle(NULL);
-    tests_run += 2;
-    tests_passed += 2;  /* 到达此处即表示未崩溃 */
-}
+    ASSERT_NEAR(clamp_read.VEL_MM_S.value, 0.0, TOLERANCE,
+                "Clamp motion stall should stop only the clamp axis velocity");
 
+    move_axis(inject_id, true, 1500.0, 1);
+    __HdySimulator_framework_Publish();
+    read_axis(&inject_read, inject_id, true);
 
-
-/* ==================================================================
- * Test 14: EN=false 时不修改内部 env (物理状态保留)
- * ================================================================== */
-static void test_en_false_preserves_env(void) {
-    HDY_HydraulicSimFB fb;
-    HDY_HydraulicSimFB_Init(&fb);
-
-    fb.EN         = true;
-    fb.CYCLE_TIME = CYCLE_PERIOD;
-    fb.CMD_RPM         = 1500.0;
-    fb.PUMP_OWNER_AXIS = 0;
-    fb.CLAMP_VALVE_FWD = true;
-
-    /* 跑几步 */
-    for (int i = 0; i < 10; i++) {
-        HDY_HydraulicSimFB_Cycle(&fb);
-    }
-    float env_pos = fb._env->clamp_cyl.current_pos_mm;
-    float env_time = fb._env->sim_time_s;
-    ASSERT_TRUE(env_pos > 0.0f, "env position should be positive after running");
-
-    /* EN=false */
-    fb.EN = false;
-    HDY_HydraulicSimFB_Cycle(&fb);
-
-    /* 内部 env 的物理状态应该保留, 不被清零 */
-    ASSERT_TRUE(fabsf(fb._env->clamp_cyl.current_pos_mm - env_pos) < 0.001f,
-                "Internal env position should be preserved when EN=false");
-    ASSERT_TRUE(fabsf(fb._env->sim_time_s - env_time) < 0.001f,
-                "Internal env time should be preserved when EN=false");
+    ASSERT_TRUE(inject_read.POS_MM.value > 0.0,
+                "Inject axis should still move even when clamp axis is stalled");
 }
 
 /* ==================================================================
- * Main
+ * Test 8: 非法 AXISID 调用必须安全且不污染其他轴
  * ================================================================== */
+static void test_invalid_axisid_is_safe_and_does_not_pollute_other_axes(void) {
+    HDY_READSIMAXIS clamp_read;
+    double clamp_pos_before_invalid_ops;
+    int clamp_id;
+
+    __HdySimulator_framework_Init();
+
+    clamp_id = create_axis((unsigned char)SIM_AXIS_CLAMP, 120.0, 0.0, 0.0);
+    move_axis(clamp_id, true, 1500.0, 1);
+    __HdySimulator_framework_Publish();
+    read_axis(&clamp_read, clamp_id, true);
+    clamp_pos_before_invalid_ops = clamp_read.POS_MM.value;
+
+    move_axis(INVALID_AXIS_ID, true, 2000.0, -1);
+    read_axis(&clamp_read, INVALID_AXIS_ID, true);
+    __HdySimulator_framework_Publish();
+    read_axis(&clamp_read, clamp_id, true);
+
+    ASSERT_TRUE(clamp_read.POS_MM.value > clamp_pos_before_invalid_ops,
+                "Invalid AXISID operations should not stop or corrupt a valid moving axis");
+}
+
 int main(void) {
-    printf("=== HydraulicSimFB Unit Tests ===\n\n");
+    printf("=== HydraulicSimFB PLC Adapter Tests ===\n\n");
 
-    test_init_state();
-    test_en_false_no_step();
-    test_en_true_step();
-    test_en_toggle();
-    test_valve_sync();
-    test_fault_injection_stall();
-    test_pump_owner_sync();
-    test_obstacle_sync();
-
-    test_null_safety();
-
-    test_en_false_preserves_env();
+    test_framework_init_resets_allocator_and_env();
+    test_create_two_axes_assigns_unique_ids_and_keeps_config();
+    test_create_rejects_invalid_axis_type();
+    test_move_only_target_axis_under_single_pump_owner();
+    test_read_uses_axisid_not_current_pump_owner();
+    test_publish_steps_shared_env_once_per_scan();
+    test_fault_injection_is_isolated_per_axis();
+    test_invalid_axisid_is_safe_and_does_not_pollute_other_axes();
 
     printf("\n=== Results: %d/%d passed ===\n", tests_passed, tests_run);
     return (tests_passed == tests_run) ? 0 : 1;
