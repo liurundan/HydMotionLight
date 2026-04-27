@@ -285,7 +285,7 @@ static void test_fault_injection_is_isolated_per_axis(void) {
 
     ASSERT_TRUE(clamp_fb != NULL, "Clamp handle should exist before applying fault injection");
 
-    HydraulicSim_SetAxisMotionStall(clamp_fb->_env, SIM_AXIS_CLAMP, true);
+    HydraulicSim_SetAxisMotionStall(clamp_fb->_env, clamp_id, true);
 
     move_axis(clamp_id, true, 1500.0, 1);
     __HdySimulator_framework_Publish();

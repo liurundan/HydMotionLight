@@ -13,12 +13,6 @@ static int Hdy_IsValidAxisType(int axis_type) {
     return (axis_type == (int)SIM_AXIS_CLAMP) || (axis_type == (int)SIM_AXIS_INJECT);
 }
 
-static int Hdy_NormalizeDirection(int direction) {
-    if (direction > 0) return 1;
-    if (direction < 0) return -1;
-    return 0;
-}
-
 static void Hdy_ResetAxisMapping(void) {
     int i;
     for (i = 0; i < HDY_MAX_HYDRAULIC_SIM_FB; ++i) {
@@ -51,26 +45,6 @@ static void Hdy_CopyAxisFeedbackToHandle(HDY_HydraulicSimFB* fb) {
     fb->active = fb->enable && (fb->_env->pump_owner_axis_id == fb->axis_id);
 }
 
-static void Hdy_InitStandaloneHandle(HDY_HydraulicSimFB* fb,
-                                     int axis_id,
-                                     HDY_UINT8 axis_type) {
-    if (fb == NULL) return;
-
-    Hdy_ResetHandle(fb);
-    fb->allocated = true;
-    fb->axis_id = axis_id;
-    fb->axis_type = axis_type;
-    fb->enable = false;
-    fb->direction = 0;
-    fb->cmd_rpm = 0.0;
-    fb->_env = &fb->_env_storage;
-    HydraulicSim_Init(fb->_env);
-    HydraulicSim_RegisterAxis(fb->_env, axis_id, (SimAxisKind)axis_type);
-    HydraulicSim_ConfigureAxis(fb->_env, axis_id, 0.0f, 0.0f, 0.0f);
-    Hdy_CopyAxisFeedbackToHandle(fb);
-    fb->_initialized = true;
-}
-
 static void Hdy_InitSharedHandle(HDY_HydraulicSimFB* fb,
                                  int axis_id,
                                  HDY_UINT8 axis_type,
@@ -90,21 +64,9 @@ static void Hdy_InitSharedHandle(HDY_HydraulicSimFB* fb,
     fb->direction = 0;
     fb->cmd_rpm = 0.0;
     fb->_env = &g_shared_env;
+    fb->_isSharedEnv = true;
     fb->_initialized = true;
     Hdy_CopyAxisFeedbackToHandle(fb);
-}
-
-static int Hdy_AllocateAxisId(void) {
-    int axis_id;
-
-    if (NextAllocatedHydraulicSimFB >= HDY_MAX_HYDRAULIC_SIM_FB) {
-        return -1;
-    }
-
-    axis_id = (int)NextAllocatedHydraulicSimFB;
-    g_axis_slot_by_id[axis_id] = axis_id;
-    NextAllocatedHydraulicSimFB += 1U;
-    return axis_id;
 }
 
 HDY_HydraulicSimFB* __MK_GetPublic_HydraulicSimFB(int index) {
@@ -118,24 +80,21 @@ HDY_HydraulicSimFB* __MK_GetPublic_HydraulicSimFB(int index) {
     return &_sim_fb[slot];
 }
 
-void HDY_HydraulicSimFB_Init(HDY_HydraulicSimFB* fb) {
-    if (fb == NULL) return;
-    Hdy_InitStandaloneHandle(fb, 0, (HDY_UINT8)SIM_AXIS_CLAMP);
-}
-
 void HDY_HydraulicSimFB_Cycle(HDY_HydraulicSimFB* fb) {
     if (fb == NULL || !fb->_initialized || fb->_env == NULL) return;
 
-    if (fb->_env == &g_shared_env) {
+    /* 共享模式下只读取快照，步进由 __HdySimulator_framework_Publish 统一完成 */
+    if (fb->_isSharedEnv) {
         Hdy_CopyAxisFeedbackToHandle(fb);
         return;
     }
 
+    /* 非共享模式（离线仿真）：自行写入命令并步进 */
     HydraulicSim_SetAxisCommand(fb->_env,
                                 fb->axis_id,
                                 fb->enable,
                                 (float)fb->cmd_rpm,
-                                Hdy_NormalizeDirection((int)fb->direction));
+                                HydraulicSim_NormalizeDirection((int)fb->direction));
     HydraulicSim_Step(fb->_env, HDY_SIM_DEFAULT_CYCLE_TIME_S);
     Hdy_CopyAxisFeedbackToHandle(fb);
 }
@@ -182,20 +141,22 @@ void __mcl_cmd_createSimAxis(HDY_CREATESIMAXIS *data__) {
     if (!Hdy_IsValidAxisType(axis_type)) {
         return;
     }
-    if (HydraulicSim_FindAxisByKind(&g_shared_env, (SimAxisKind)axis_type) != NULL) {
+
+    /* 预分配 axis_id，但不提交计数器；注册失败时无需回退 */
+    if (NextAllocatedHydraulicSimFB >= HDY_MAX_HYDRAULIC_SIM_FB) {
         return;
     }
+    axis_id = (int)NextAllocatedHydraulicSimFB;
+    g_axis_slot_by_id[axis_id] = axis_id;
 
-    axis_id = Hdy_AllocateAxisId();
-    if (axis_id < 0) {
-        return;
-    }
-
+    /* RegisterAxis 内部已包含 FindAxisByKind 同类型重复检查 */
     if (!HydraulicSim_RegisterAxis(&g_shared_env, axis_id, (SimAxisKind)axis_type)) {
         g_axis_slot_by_id[axis_id] = -1;
-        NextAllocatedHydraulicSimFB -= 1U;
         return;
     }
+
+    /* 注册成功，提交分配计数器 */
+    NextAllocatedHydraulicSimFB += 1U;
 
     HydraulicSim_ConfigureAxis(&g_shared_env,
                                axis_id,
@@ -229,7 +190,7 @@ void __mcl_cmd_moveSimAxis(HDY_MOVESIMAXIS *data__) {
 
     fb->enable = __GET_VAR(data__->ENABLE);
     fb->cmd_rpm = (HDY_REAL)__GET_VAR(data__->CMD_RPM);
-    fb->direction = Hdy_NormalizeDirection((int)__GET_VAR(data__->DIRECTION));
+    fb->direction = HydraulicSim_NormalizeDirection((int)__GET_VAR(data__->DIRECTION));
 
     HydraulicSim_SetAxisCommand(&g_shared_env,
                                 axis_id,

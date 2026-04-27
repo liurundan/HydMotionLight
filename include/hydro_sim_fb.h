@@ -38,8 +38,8 @@ typedef struct {
     HDY_REAL vel_mm_s;
     HDY_REAL pressure_bar;
 
-    HydraulicSimEnv _env_storage;
     HydraulicSimEnv* _env;
+    HDY_BOOL _isSharedEnv;
     HDY_BOOL _initialized;
 } HDY_HydraulicSimFB;
 
@@ -82,7 +82,6 @@ typedef struct {
     __DECLARE_VAR(BOOL,BUSY)
 } HDY_READSIMAXIS;
 
-void HDY_HydraulicSimFB_Init(HDY_HydraulicSimFB* fb);
 void HDY_HydraulicSimFB_Cycle(HDY_HydraulicSimFB* fb);
 
 extern int  __HdySimulator_framework_Init();

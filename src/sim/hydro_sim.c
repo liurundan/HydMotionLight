@@ -13,7 +13,7 @@ static int Sim_GetAxisId(void* ctx) {
     return (backend != NULL) ? backend->axis_id : -1;
 }
 
-static int Sim_NormalizeDirection(int direction) {
+int HydraulicSim_NormalizeDirection(int direction) {
     if (direction > 0) return 1;
     if (direction < 0) return -1;
     return 0;
@@ -370,7 +370,7 @@ int HydraulicSim_SetAxisCommand(HydraulicSimEnv* env,
 
     axis->enabled = enable;
     axis->last_cmd_rpm = (cmd_rpm > 0.0f) ? cmd_rpm : 0.0f;
-    axis->direction_cmd = Sim_NormalizeDirection(direction);
+    axis->direction_cmd = HydraulicSim_NormalizeDirection(direction);
     axis->valve_cmd.valve_fwd = (axis->direction_cmd > 0);
     axis->valve_cmd.valve_bwd = (axis->direction_cmd < 0);
 
@@ -397,16 +397,6 @@ int HydraulicSim_ReadAxis(HydraulicSimEnv* env, int axis_id, AxisFeedback* fb) {
     return 1;
 }
 
-ISensorBackend* HydraulicSim_GetClampBackend(HydraulicSimEnv* env) {
-    SimAxisState* axis = HydraulicSim_FindAxisByKind(env, SIM_AXIS_CLAMP);
-    return (axis != NULL) ? &axis->backend : NULL;
-}
-
-ISensorBackend* HydraulicSim_GetInjectBackend(HydraulicSimEnv* env) {
-    SimAxisState* axis = HydraulicSim_FindAxisByKind(env, SIM_AXIS_INJECT);
-    return (axis != NULL) ? &axis->backend : NULL;
-}
-
 ISensorBackend* HydraulicSim_GetAxisBackend(HydraulicSimEnv* env, int axis_id) {
     SimAxisState* axis = HydraulicSim_FindAxisById(env, axis_id);
     return (axis != NULL) ? &axis->backend : NULL;
@@ -417,39 +407,39 @@ void HydraulicSim_SetValveSwitchDelay(HydraulicSimEnv* env, float delay_s) {
     (void)delay_s;
 }
 
-void HydraulicSim_SetAxisServoReady(HydraulicSimEnv* env, SimAxisKind axis_kind, bool ready) {
-    SimAxisState* axis = HydraulicSim_FindAxisByKind(env, axis_kind);
+void HydraulicSim_SetAxisServoReady(HydraulicSimEnv* env, int axis_id, bool ready) {
+    SimAxisState* axis = HydraulicSim_FindAxisById(env, axis_id);
     if (axis == NULL) return;
 
     axis->feedback_inj.servo_ready = ready;
     Sim_UpdateAxisFeedback(axis);
 }
 
-void HydraulicSim_SetAxisInterlock(HydraulicSimEnv* env, SimAxisKind axis_kind, bool interlock_ok) {
-    SimAxisState* axis = HydraulicSim_FindAxisByKind(env, axis_kind);
+void HydraulicSim_SetAxisInterlock(HydraulicSimEnv* env, int axis_id, bool interlock_ok) {
+    SimAxisState* axis = HydraulicSim_FindAxisById(env, axis_id);
     if (axis == NULL) return;
 
     axis->feedback_inj.interlock_ok = interlock_ok;
     Sim_UpdateAxisFeedback(axis);
 }
 
-void HydraulicSim_SetAxisMotionStall(HydraulicSimEnv* env, SimAxisKind axis_kind, bool stalled) {
-    SimAxisState* axis = HydraulicSim_FindAxisByKind(env, axis_kind);
+void HydraulicSim_SetAxisMotionStall(HydraulicSimEnv* env, int axis_id, bool stalled) {
+    SimAxisState* axis = HydraulicSim_FindAxisById(env, axis_id);
     if (axis == NULL) return;
 
     axis->feedback_inj.motion_stalled = stalled;
 }
 
-void HydraulicSim_SetPressureSensorBias(HydraulicSimEnv* env, SimAxisKind axis_kind, float bias_bar) {
-    SimAxisState* axis = HydraulicSim_FindAxisByKind(env, axis_kind);
+void HydraulicSim_SetPressureSensorBias(HydraulicSimEnv* env, int axis_id, float bias_bar) {
+    SimAxisState* axis = HydraulicSim_FindAxisById(env, axis_id);
     if (axis == NULL) return;
 
     axis->feedback_inj.pressure_bias_bar = bias_bar;
     Sim_UpdateAxisFeedback(axis);
 }
 
-void HydraulicSim_SetPressureSensorScale(HydraulicSimEnv* env, SimAxisKind axis_kind, float scale) {
-    SimAxisState* axis = HydraulicSim_FindAxisByKind(env, axis_kind);
+void HydraulicSim_SetPressureSensorScale(HydraulicSimEnv* env, int axis_id, float scale) {
+    SimAxisState* axis = HydraulicSim_FindAxisById(env, axis_id);
     if (axis == NULL) return;
 
     axis->feedback_inj.pressure_scale = scale;
@@ -457,10 +447,10 @@ void HydraulicSim_SetPressureSensorScale(HydraulicSimEnv* env, SimAxisKind axis_
 }
 
 void HydraulicSim_SetPressureSensorStuck(HydraulicSimEnv* env,
-                                         SimAxisKind axis_kind,
+                                         int axis_id,
                                          bool enabled,
                                          float stuck_bar) {
-    SimAxisState* axis = HydraulicSim_FindAxisByKind(env, axis_kind);
+    SimAxisState* axis = HydraulicSim_FindAxisById(env, axis_id);
     if (axis == NULL) return;
 
     axis->feedback_inj.pressure_stuck_enabled = enabled;
@@ -468,8 +458,8 @@ void HydraulicSim_SetPressureSensorStuck(HydraulicSimEnv* env,
     Sim_UpdateAxisFeedback(axis);
 }
 
-void HydraulicSim_SetPressureSensorInvalid(HydraulicSimEnv* env, SimAxisKind axis_kind, bool invalid) {
-    SimAxisState* axis = HydraulicSim_FindAxisByKind(env, axis_kind);
+void HydraulicSim_SetPressureSensorInvalid(HydraulicSimEnv* env, int axis_id, bool invalid) {
+    SimAxisState* axis = HydraulicSim_FindAxisById(env, axis_id);
     if (axis == NULL) return;
 
     axis->feedback_inj.pressure_invalid = invalid;
@@ -502,7 +492,7 @@ void HydraulicSim_Step(HydraulicSimEnv* env, float dt_s) {
 
     owner_axis = HydraulicSim_FindAxisById(env, env->pump_owner_axis_id);
     if (owner_axis != NULL) {
-        const int direction = Sim_NormalizeDirection(owner_axis->direction_cmd);
+        const int direction = HydraulicSim_NormalizeDirection(owner_axis->direction_cmd);
         const float dir_sign = (float)direction;
         const float area_mm2 = Sim_GetAreaForDirection(owner_axis, direction);
 

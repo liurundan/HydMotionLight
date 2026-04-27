@@ -126,23 +126,23 @@ int HydraulicSim_SetAxisCommand(HydraulicSimEnv* env,
                                 int direction);
 int HydraulicSim_ReadAxis(HydraulicSimEnv* env, int axis_id, AxisFeedback* fb);
 
-ISensorBackend* HydraulicSim_GetClampBackend(HydraulicSimEnv* env);
-ISensorBackend* HydraulicSim_GetInjectBackend(HydraulicSimEnv* env);
 ISensorBackend* HydraulicSim_GetAxisBackend(HydraulicSimEnv* env, int axis_id);
 
 void HydraulicSim_SetValveSwitchDelay(HydraulicSimEnv* env, float delay_s);
-void HydraulicSim_SetAxisServoReady(HydraulicSimEnv* env, SimAxisKind axis_kind, bool ready);
-void HydraulicSim_SetAxisInterlock(HydraulicSimEnv* env, SimAxisKind axis_kind, bool interlock_ok);
-void HydraulicSim_SetAxisMotionStall(HydraulicSimEnv* env, SimAxisKind axis_kind, bool stalled);
-void HydraulicSim_SetPressureSensorBias(HydraulicSimEnv* env, SimAxisKind axis_kind, float bias_bar);
-void HydraulicSim_SetPressureSensorScale(HydraulicSimEnv* env, SimAxisKind axis_kind, float scale);
+void HydraulicSim_SetAxisServoReady(HydraulicSimEnv* env, int axis_id, bool ready);
+void HydraulicSim_SetAxisInterlock(HydraulicSimEnv* env, int axis_id, bool interlock_ok);
+void HydraulicSim_SetAxisMotionStall(HydraulicSimEnv* env, int axis_id, bool stalled);
+void HydraulicSim_SetPressureSensorBias(HydraulicSimEnv* env, int axis_id, float bias_bar);
+void HydraulicSim_SetPressureSensorScale(HydraulicSimEnv* env, int axis_id, float scale);
 void HydraulicSim_SetPressureSensorStuck(HydraulicSimEnv* env,
-                                         SimAxisKind axis_kind,
+                                         int axis_id,
                                          bool enabled,
                                          float stuck_bar);
-void HydraulicSim_SetPressureSensorInvalid(HydraulicSimEnv* env, SimAxisKind axis_kind, bool invalid);
+void HydraulicSim_SetPressureSensorInvalid(HydraulicSimEnv* env, int axis_id, bool invalid);
 
 void HydraulicSim_Step(HydraulicSimEnv* env, float dt_s);
+
+int HydraulicSim_NormalizeDirection(int direction);
 
 #ifdef __cplusplus
 }
