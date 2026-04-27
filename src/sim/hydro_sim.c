@@ -285,6 +285,8 @@ void HydraulicSim_Init(HydraulicSimEnv* env) {
     env->axes[1].cmd = &env->inject_cmd;
     env->axes[1].feedback_inj = &env->inject_feedback_injection;
     env->axis_count = 2;
+
+    env->_initialized = true;
 }
 
 ISensorBackend* HydraulicSim_GetClampBackend(HydraulicSimEnv* env) {

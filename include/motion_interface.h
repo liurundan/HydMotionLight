@@ -69,6 +69,10 @@ typedef struct
    __DECLARE_VAR(BOOL, ACTIVE0)
 } HDY_AXISMOTIONCONTROL;
 
+extern int  __HdyMotion_framework_Init();
+extern void __HdyMotion_framework_Cleanup();
+extern void __HdyMotion_framework_Retrieve();
+extern void __HdyMotion_framework_Publish();
 extern void __mcl_cmd_axismotioncontrol(HDY_AXISMOTIONCONTROL *data__);
 
 #endif

@@ -24,6 +24,28 @@ HDY_MotionControlFB* __MK_GetPublic_MotionControlFB(int index)
 	return NULL;
 }
 
+// 运动控制功能块接口实现
+
+int __HdyMotion_framework_Init()
+{
+    return 1;
+}
+
+void __HdyMotion_framework_Cleanup()
+{
+    ;
+}
+
+void __HdyMotion_framework_Retrieve()
+{
+
+}
+
+void __HdyMotion_framework_Publish()
+{
+
+}
+
 void __mcl_cmd_axismotioncontrol(HDY_AXISMOTIONCONTROL *data__)
 {
     IEC_BOOL bInit = __GET_VAR(data__->INIT);

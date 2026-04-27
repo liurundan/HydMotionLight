@@ -10,6 +10,8 @@
 extern "C" {
 #endif
 
+#define HDY_MAX_HYDRAULIC_SIM_FB     (2)
+
 /* ==================================================================
  * 液压仿真器 PLCopen 功能块 (HydraulicSimFB)
  *
@@ -88,35 +90,85 @@ typedef struct {
     HDY_REAL SIM_TIME_S;            /* 仿真累计时间 (s) */
 
     /* ---- 内部状态 ---- */
-    HydraulicSimEnv _env;           /* 内嵌仿真环境 */
+    HydraulicSimEnv* _env;           /* 内嵌仿真环境 */
     HDY_BOOL _initialized;          /* 是否已初始化 (Init 后为 true) */
+    HDY_UINT8 _instance_id;           /* 实例 ID (如果需要区分多个实例) */
+    HDY_UINT8 _axis_type;             /* 当前操作轴类型 (0=CLAMP, 1=INJECT) */
 } HDY_HydraulicSimFB;
 
-// FUNCTION_BLOCK INJECTSIMULATOR
+//// FUNCTION_BLOCK INJECTSIMULATOR
+//// Data part
+//typedef struct
+//{
+//    // FB Interface - IN, OUT, IN_OUT variables
+//    __DECLARE_VAR(BOOL, EN)
+//    __DECLARE_VAR(BOOL, ENO)
+//    __DECLARE_VAR(BOOL, ENABLE)
+//    __DECLARE_VAR(REAL, CYCLE_TIME)
+//    __DECLARE_VAR(REAL, CMD_RPM)
+//    __DECLARE_VAR(USINT, PUMP_OWNER_AXIS)
+//    __DECLARE_VAR(SINT, DIRECTION)
+//    __DECLARE_VAR(REAL, PRESSURE_BIAS)
+//    __DECLARE_VAR(REAL, PRESSURE_SCALE)
+//
+//    __DECLARE_VAR(BOOL, ACTIVE)
+//    __DECLARE_VAR(REAL, POS_MM)
+//    __DECLARE_VAR(REAL, VEL_MM_S)
+//    __DECLARE_VAR(REAL, PRESSURE_BAR)
+//
+//    // Internal state variables (not part of the public interface)
+//    __DECLARE_VAR(SINT, SIMINDEX)
+//    __DECLARE_VAR(BOOL, INIT)
+//} HDY_INJECTSIMULATOR;
+
+// FUNCTION_BLOCK HDY_CREATESIMAXIS
 // Data part
-typedef struct
-{
-    // FB Interface - IN, OUT, IN_OUT variables
-    __DECLARE_VAR(BOOL, EN)
-    __DECLARE_VAR(BOOL, ENO)
-    __DECLARE_VAR(BOOL, ENABLE)
-    __DECLARE_VAR(REAL, CYCLE_TIME)
-    __DECLARE_VAR(REAL, CMD_RPM)
-    __DECLARE_VAR(USINT, PUMP_OWNER_AXIS)
-    __DECLARE_VAR(SINT, DIRECTION)
-    __DECLARE_VAR(REAL, PRESSURE_BIAS)
-    __DECLARE_VAR(REAL, PRESSURE_SCALE)
+typedef struct {
+	// FB Interface - IN, OUT, IN_OUT variables
+	__DECLARE_VAR(BOOL,EN)
+	__DECLARE_VAR(BOOL,ENO)
+	__DECLARE_VAR(USINT,AXISTYPE)
+	__DECLARE_VAR(REAL,MAXVEL)
+	__DECLARE_VAR(REAL,MAXACC)
+	__DECLARE_VAR(REAL,MAXDEC)
+
+	__DECLARE_VAR(SINT,AXISID)
+
+	// FB private variables - TEMP, private and located variables
+	__DECLARE_VAR(BOOL,DONE)
+} HDY_CREATESIMAXIS;
+
+// FUNCTION_BLOCK HDY_MOVESIMAXIS
+// Data part
+typedef struct {
+	// FB Interface - IN, OUT, IN_OUT variables
+	__DECLARE_VAR(BOOL,EN)
+	__DECLARE_VAR(BOOL,ENO)
+	__DECLARE_VAR(BOOL,ENABLE)
+	__DECLARE_VAR(SINT,AXISID)
+	__DECLARE_VAR(REAL,CMD_RPM)
+	__DECLARE_VAR(SINT,DIRECTION)
+
+	__DECLARE_VAR(BOOL, BUSY)
+	// FB private variables - TEMP, private and located variables
+} HDY_MOVESIMAXIS;
+
+// FUNCTION_BLOCK HDY_READSIMAXIS
+// Data part
+typedef struct {
+	// FB Interface - IN, OUT, IN_OUT variables
+	__DECLARE_VAR(BOOL,EN)
+	__DECLARE_VAR(BOOL,ENO)
+	__DECLARE_VAR(BOOL,ENABLE)
+	__DECLARE_VAR(SINT,AXISID)
 
     __DECLARE_VAR(BOOL, ACTIVE)
     __DECLARE_VAR(REAL, POS_MM)
     __DECLARE_VAR(REAL, VEL_MM_S)
     __DECLARE_VAR(REAL, PRESSURE_BAR)
-
-    // Internal state variables (not part of the public interface)
-    HDY_HydraulicSimFB _sim_fb;  /* 内部嵌套的 HydraulicSimFB 实例 */
-    __DECLARE_VAR(BOOL, INIT)
-} INJECTSIMULATOR;
-
+	__DECLARE_VAR(BOOL, BUSY)
+	// FB private variables - TEMP, private and located variables
+} HDY_READSIMAXIS;
 /**
  * @brief 完整初始化仿真器功能块（含物理参数默认值）
  * @param fb 功能块指针
@@ -135,26 +187,35 @@ void HDY_HydraulicSimFB_Init(HDY_HydraulicSimFB* fb);
  */
 void HDY_HydraulicSimFB_Cycle(HDY_HydraulicSimFB* fb);
 
-/**
- * @brief 获取内部 ISensorBackend (合模轴)
- * @note 供旧代码 / 高级用途使用, 通过 backend 可与控制器轴直接对接
- */
-ISensorBackend* HDY_HydraulicSimFB_GetClampBackend(HDY_HydraulicSimFB* fb);
+///**
+// * @brief 获取内部 ISensorBackend (合模轴)
+// * @note 供旧代码 / 高级用途使用, 通过 backend 可与控制器轴直接对接
+// */
+//ISensorBackend* HDY_HydraulicSimFB_GetClampBackend(HDY_HydraulicSimFB* fb);
+//
+///**
+// * @brief 获取内部 ISensorBackend (射胶轴)
+// * @note 供旧代码 / 高级用途使用, 通过 backend 可与控制器轴直接对接
+// */
+//ISensorBackend* HDY_HydraulicSimFB_GetInjectBackend(HDY_HydraulicSimFB* fb);
+//
+///**
+// * @brief 获取内部 HydraulicSimEnv 指针
+// * @note 高级用途: 可直接修改物理参数 (泵排量, 油缸面积, 摩擦力等)
+// *       Cycle() 内部始终基于 _env 执行, 修改后下一周期自动生效
+// */
+//HydraulicSimEnv* HDY_HydraulicSimFB_GetEnv(HDY_HydraulicSimFB* fb);
 
-/**
- * @brief 获取内部 ISensorBackend (射胶轴)
- * @note 供旧代码 / 高级用途使用, 通过 backend 可与控制器轴直接对接
- */
-ISensorBackend* HDY_HydraulicSimFB_GetInjectBackend(HDY_HydraulicSimFB* fb);
+extern int  __HdySimulator_framework_Init();
+extern void __HdySimulator_framework_Cleanup();
+extern void __HdySimulator_framework_Retrieve();
+extern void __HdySimulator_framework_Publish();
 
-/**
- * @brief 获取内部 HydraulicSimEnv 指针
- * @note 高级用途: 可直接修改物理参数 (泵排量, 油缸面积, 摩擦力等)
- *       Cycle() 内部始终基于 _env 执行, 修改后下一周期自动生效
- */
-HydraulicSimEnv* HDY_HydraulicSimFB_GetEnv(HDY_HydraulicSimFB* fb);
+extern void __mcl_cmd_createSimAxis(HDY_CREATESIMAXIS *data__);
+extern void __mcl_cmd_moveSimAxis(HDY_MOVESIMAXIS *data__);
+extern void __mcl_cmd_readSimAxis(HDY_READSIMAXIS *data__);
 
-extern void __mcl_cmd_injectsimulator(INJECTSIMULATOR *data__);
+//extern void __mcl_cmd_injectsimulator(HDY_INJECTSIMULATOR *data__);
 
 #ifdef __cplusplus
 }

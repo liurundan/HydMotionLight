@@ -10,11 +10,34 @@
 #include "hydro_sim_fb.h"
 #include <string.h>
 
+static  HDY_HydraulicSimFB _sim_fb[HDY_MAX_HYDRAULIC_SIM_FB];  /* 内部嵌套的 HydraulicSimFB 实例 */
+static  HydraulicSimEnv    _sim_envs;    /* 内部 HydraulicSimEnv 实例 */
+static unsigned int NextAllocatedHydraulicSimFB = 0;
+
+static int __MK_Alloc_HydraulicSimFB(int axistype)
+{
+	if(NextAllocatedHydraulicSimFB<HDY_MAX_HYDRAULIC_SIM_FB){
+		_sim_fb[NextAllocatedHydraulicSimFB]._instance_id = NextAllocatedHydraulicSimFB;
+		_sim_fb[NextAllocatedHydraulicSimFB]._env = &_sim_envs;  /* 默认所有实例共享同一个仿真环境，也可修改为每实例独立 */
+		_sim_fb[NextAllocatedHydraulicSimFB]._axis_type = axistype;
+		return NextAllocatedHydraulicSimFB++;
+	}else{
+		return -1;
+	}
+}
+
+HDY_HydraulicSimFB* __MK_GetPublic_HydraulicSimFB(int index)
+{
+	if(index < NextAllocatedHydraulicSimFB){
+		return &_sim_fb[index];
+	}
+	return NULL;
+}
 /* ==================================================================
  * 内部辅助: 将 FB 输入引脚同步到内部 HydraulicSimEnv
  * ================================================================== */
 static void SyncInputsToEnv(HDY_HydraulicSimFB* fb) {
-    HydraulicSimEnv* env = &fb->_env;
+    HydraulicSimEnv* env = fb->_env;
 
     /* 泵指令 */
     env->cmd_rpm = (float)fb->CMD_RPM;
@@ -58,7 +81,7 @@ static void SyncInputsToEnv(HDY_HydraulicSimFB* fb) {
  * 内部辅助: 将内部 HydraulicSimEnv 状态拷贝到 FB 输出引脚
  * ================================================================== */
 static void SyncEnvToOutputs(HDY_HydraulicSimFB* fb) {
-    const HydraulicSimEnv* env = &fb->_env;
+    const HydraulicSimEnv* env = fb->_env;
 
     /* 合模轴 */
     fb->CLAMP_POS_MM       = (HDY_REAL)env->clamp_cyl.current_pos_mm;
@@ -102,7 +125,14 @@ void HDY_HydraulicSimFB_Init(HDY_HydraulicSimFB* fb) {
     memset(fb, 0, sizeof(HDY_HydraulicSimFB));
 
     /* 初始化内部仿真环境 (设置物理参数默认值) */
-    HydraulicSim_Init(&fb->_env);
+    if(fb->_env == NULL){
+		fb->_env = &_sim_envs;  /* 默认所有实例共享同一个仿真环境，也可修改为每实例独立 */
+	}
+
+    if(fb->_env->_initialized == 0){
+		 HydraulicSim_Init(fb->_env);
+    }
+
 
     /* 设置故障注入默认值 — 与 HydraulicSim_Init 一致 */
     fb->CLAMP_SERVO_READY    = true;
@@ -125,7 +155,7 @@ void HDY_HydraulicSimFB_Cycle(HDY_HydraulicSimFB* fb) {
     if (fb == NULL || !fb->_initialized) return;
 
     /* ---- EN=false: 冻结输出, 不步进 ---- */
-    if (!fb->EN) {
+    if (!fb->EN || fb->_env == NULL) {
         ZeroOutputs(fb);
         return;
     }
@@ -138,123 +168,285 @@ void HDY_HydraulicSimFB_Cycle(HDY_HydraulicSimFB* fb) {
     SyncInputsToEnv(fb);
 
     /* 2. 步进仿真 */
-    HydraulicSim_Step(&fb->_env, (float)fb->CYCLE_TIME);
+    HydraulicSim_Step(fb->_env, (float)fb->CYCLE_TIME);
 
     /* 3. 同步内部 env → 输出引脚 */
     SyncEnvToOutputs(fb);
 }
 
-ISensorBackend* HDY_HydraulicSimFB_GetClampBackend(HDY_HydraulicSimFB* fb) {
-    return (fb != NULL) ? HydraulicSim_GetClampBackend(&fb->_env) : NULL;
-}
+//ISensorBackend* HDY_HydraulicSimFB_GetClampBackend(HDY_HydraulicSimFB* fb) {
+//    return (fb != NULL) ? HydraulicSim_GetClampBackend(fb->_env) : NULL;
+//}
+//
+//ISensorBackend* HDY_HydraulicSimFB_GetInjectBackend(HDY_HydraulicSimFB* fb) {
+//    return (fb != NULL) ? HydraulicSim_GetInjectBackend(fb->_env) : NULL;
+//}
+//
+//HydraulicSimEnv* HDY_HydraulicSimFB_GetEnv(HDY_HydraulicSimFB* fb) {
+//    return (fb != NULL) ? fb->_env : NULL;
+//}
 
-ISensorBackend* HDY_HydraulicSimFB_GetInjectBackend(HDY_HydraulicSimFB* fb) {
-    return (fb != NULL) ? HydraulicSim_GetInjectBackend(&fb->_env) : NULL;
-}
-
-HydraulicSimEnv* HDY_HydraulicSimFB_GetEnv(HDY_HydraulicSimFB* fb) {
-    return (fb != NULL) ? &fb->_env : NULL;
-}
-
-void __mcl_cmd_injectsimulator(INJECTSIMULATOR *data__)
+int  __HdySimulator_framework_Init()
 {
-    // 这里可以实现对 INJECTSIMULATOR 功能块的周期性处理逻辑
-    // 例如：读取输入参数, 更新仿真状态, 输出结果等
-    IEC_BOOL bInit = __GET_VAR(data__->INIT);
-    
-    if (!bInit)
-    {
-        HDY_HydraulicSimFB_Init(&data__->_sim_fb);
-        __SET_VAR(data__->,INIT, ,true);
-    }
-    else
-    {
-        IEC_BOOL Enable = __GET_VAR(data__->ENABLE);
-        data__->_sim_fb.EN = Enable;  // 使能仿真器
-        if (Enable)
-        {
-            // 同步输入参数到内部仿真环境
-            IEC_REAL cycletime = __GET_VAR(data__->CYCLE_TIME);
-            IEC_REAL cmdrpm = __GET_VAR(data__->CMD_RPM);
-            IEC_USINT axisid = __GET_VAR(data__->PUMP_OWNER_AXIS);
-            IEC_SINT direction = __GET_VAR(data__->DIRECTION);
-            IEC_REAL pressure_bias = __GET_VAR(data__->PRESSURE_BIAS);
-            IEC_REAL pressure_scale = __GET_VAR(data__->PRESSURE_SCALE);
 
-            data__->_sim_fb.CYCLE_TIME = cycletime;
-            data__->_sim_fb.CMD_RPM = cmdrpm;
-            data__->_sim_fb.PUMP_OWNER_AXIS = axisid;
-
-            switch (axisid)
-            {
-            case 0:
-                data__->_sim_fb.CLAMP_PRESSURE_BIAS = pressure_bias;
-                data__->_sim_fb.CLAMP_PRESSURE_SCALE = pressure_scale;
-                switch (direction)
-                {
-                case 0:
-                    data__->_sim_fb.CLAMP_VALVE_FWD = false;
-                    data__->_sim_fb.CLAMP_VALVE_BWD = false;
-                    break;
-                case 1:
-                    data__->_sim_fb.CLAMP_VALVE_FWD = true;
-                    data__->_sim_fb.CLAMP_VALVE_BWD = false;
-                    break;
-                case -1:
-                    data__->_sim_fb.CLAMP_VALVE_FWD = false;
-                    data__->_sim_fb.CLAMP_VALVE_BWD = true;
-                default:
-                    break;
-                }
-                break;
-            case 1:
-                data__->_sim_fb.INJECT_PRESSURE_BIAS = pressure_bias;
-                data__->_sim_fb.INJECT_PRESSURE_SCALE = pressure_scale;
-                switch (direction)
-                {
-                case 0:
-                    data__->_sim_fb.INJECT_VALVE_FWD = false;
-                    data__->_sim_fb.INJECT_VALVE_BWD = false;
-                    break;
-                case 1:
-                    data__->_sim_fb.INJECT_VALVE_FWD = true;
-                    data__->_sim_fb.INJECT_VALVE_BWD = false;
-                    break;
-                case -1:
-                    data__->_sim_fb.INJECT_VALVE_FWD = false;
-                    data__->_sim_fb.INJECT_VALVE_BWD = true;
-                default:
-                    break;
-                }
-                break;
-            default:
-                break;
-            }
-
-            HDY_HydraulicSimFB_Cycle(&data__->_sim_fb);
-
-            // 这里可以将仿真结果写回到输出变量
-            __SET_VAR(data__->,ACTIVE, ,data__->_sim_fb.ACTIVE);
-            switch (axisid)
-            {
-                case 0:                  
-                    __SET_VAR(data__->,POS_MM, ,data__->_sim_fb.CLAMP_POS_MM);
-                    __SET_VAR(data__->,VEL_MM_S, ,data__->_sim_fb.CLAMP_VEL_MM_S);
-                    __SET_VAR(data__->,PRESSURE_BAR, ,data__->_sim_fb.CLAMP_PRESSURE_BAR);
-                    break;
-                case 1:
-                    __SET_VAR(data__->,POS_MM, ,data__->_sim_fb.INJECT_POS_MM);
-                    __SET_VAR(data__->,VEL_MM_S, ,data__->_sim_fb.INJECT_VEL_MM_S);
-                    __SET_VAR(data__->,PRESSURE_BAR, ,data__->_sim_fb.INJECT_PRESSURE_BAR);
-                    break;
-                default:
-                    break;
-            }
-
-        }
-        else
-        {
-            // EN=false 时, FB 内部会自动归零输出引脚, 这里可以选择是否需要额外处理
-        }
-    }
+	return 1;
 }
+
+void __HdySimulator_framework_Cleanup()
+{
+	;
+}
+
+void __HdySimulator_framework_Retrieve()
+{
+	;
+}
+
+void __HdySimulator_framework_Publish()
+{
+	for(int i=0; i<NextAllocatedHydraulicSimFB; ++i){
+		HDY_HydraulicSimFB_Cycle(&_sim_fb[i]);
+	}
+}
+
+void __mcl_cmd_createSimAxis(HDY_CREATESIMAXIS *data__)
+{
+	// 这里可以实现对 CREATE_SIM_AXIS 功能块的处理逻辑
+	// 例如：根据输入参数创建新的仿真轴实例, 初始化状态等
+	IEC_BOOL bDone = __GET_VAR(data__->DONE);
+    IEC_USINT axisType = __GET_VAR(data__->AXISTYPE); // 0=CLAMP, 1=INJECT
+	if ( !bDone )
+	{
+		int index = __MK_Alloc_HydraulicSimFB(axisType);
+		if (index >= 0) {
+			// 这里可以选择是否需要对新创建的仿真轴进行额外初始化...
+			__SET_VAR(data__->, AXISID,, index);
+			__SET_VAR(data__->, DONE,, 1);
+		}
+	}
+	 else
+	{
+		// 已经初始化过了，可以选择是否需要处理后续逻辑
+	}
+}
+
+void __mcl_cmd_moveSimAxis(HDY_MOVESIMAXIS *data__) {
+	IEC_BOOL Enable = __GET_VAR(data__->ENABLE);
+	int index = __GET_VAR(data__->AXISID);
+	HDY_HydraulicSimFB *fb = __MK_GetPublic_HydraulicSimFB(index);
+
+	if (fb == NULL)
+		return; // 无效索引, 直接返回
+
+	fb->EN = Enable;  // 使能仿真器
+	if (Enable) {
+		// 同步输入参数到内部仿真环境
+		IEC_REAL  cycletime = 0.001;
+		IEC_REAL  cmdrpm = __GET_VAR(data__->CMD_RPM);
+		IEC_USINT axisid = index;
+		IEC_SINT direction = __GET_VAR(data__->DIRECTION);
+		IEC_REAL pressure_bias = 0;
+		IEC_REAL pressure_scale = 1.0;
+
+		 // 根据轴 ID 获取对应的压力偏置和缩放参数
+
+		fb->CYCLE_TIME = cycletime;
+		fb->CMD_RPM = cmdrpm;
+		fb->PUMP_OWNER_AXIS = axisid;
+
+		switch (axisid) {
+		case 0:
+			fb->CLAMP_PRESSURE_BIAS = pressure_bias;
+			fb->CLAMP_PRESSURE_SCALE = pressure_scale;
+			switch (direction) {
+			case 0:
+				fb->CLAMP_VALVE_FWD = false;
+				fb->CLAMP_VALVE_BWD = false;
+				break;
+			case 1:
+				fb->CLAMP_VALVE_FWD = true;
+				fb->CLAMP_VALVE_BWD = false;
+				break;
+			case -1:
+				fb->CLAMP_VALVE_FWD = false;
+				fb->CLAMP_VALVE_BWD = true;
+				break;
+			default:
+				break;
+			}
+			break;
+		case 1:
+			fb->INJECT_PRESSURE_BIAS = pressure_bias;
+			fb->INJECT_PRESSURE_SCALE = pressure_scale;
+			switch (direction) {
+			case 0:
+				fb->INJECT_VALVE_FWD = false;
+				fb->INJECT_VALVE_BWD = false;
+				break;
+			case 1:
+				fb->INJECT_VALVE_FWD = true;
+				fb->INJECT_VALVE_BWD = false;
+				break;
+			case -1:
+				fb->INJECT_VALVE_FWD = false;
+				fb->INJECT_VALVE_BWD = true;
+				break;
+			default:
+				break;
+			}
+			break;
+		default:
+			break;
+		}
+
+	} else {
+		// EN=false 时, FB 内部会自动归零输出引脚, 这里可以选择是否需要额外处理
+	}
+
+}
+
+void __mcl_cmd_readSimAxis(HDY_READSIMAXIS *data__) {
+	IEC_BOOL Enable = __GET_VAR(data__->ENABLE);
+	int index = __GET_VAR(data__->AXISID);
+	HDY_HydraulicSimFB *fb = __MK_GetPublic_HydraulicSimFB(index);
+
+	if (fb == NULL)
+		return; // 无效索引, 直接返回
+
+	fb->EN = Enable;  // 使能仿真器
+	if (Enable) {
+		// 这里可以将仿真结果写回到输出变量
+		__SET_VAR(data__->, BUSY,, fb->ACTIVE);
+		int axisType = fb->PUMP_OWNER_AXIS;
+		switch (axisType) {
+		case 0:
+			__SET_VAR(data__->, POS_MM,, fb->CLAMP_POS_MM);
+			__SET_VAR(data__->, VEL_MM_S,, fb->CLAMP_VEL_MM_S);
+			__SET_VAR(data__->, PRESSURE_BAR,, fb->CLAMP_PRESSURE_BAR);
+			break;
+		case 1:
+			__SET_VAR(data__->, POS_MM,, fb->INJECT_POS_MM);
+			__SET_VAR(data__->, VEL_MM_S,, fb->INJECT_VEL_MM_S);
+			__SET_VAR(data__->, PRESSURE_BAR,, fb->INJECT_PRESSURE_BAR);
+			break;
+		default:
+			break;
+		}
+	}
+}
+
+//void __mcl_cmd_injectsimulator(HDY_INJECTSIMULATOR *data__)
+//{
+//    // 这里可以实现对 INJECTSIMULATOR 功能块的周期性处理逻辑
+//    // 例如：读取输入参数, 更新仿真状态, 输出结果等
+//    IEC_BOOL bInit = __GET_VAR(data__->INIT);
+//    int index = -1;
+//    if (!bInit)
+//    {
+//        int index = __MK_Alloc_HydraulicSimFB(0);
+//		if (index >= 0) {
+//			HDY_HydraulicSimFB *fb = __MK_GetPublic_HydraulicSimFB(index);
+//			if (fb != NULL) {
+//				HDY_HydraulicSimFB_Init(fb);
+//				__GET_VAR(data__->INIT) = true;
+//				__SET_VAR(data__->, SIMINDEX,, index);
+//
+//			}
+//		}
+//    }
+//    else
+//    {
+//        IEC_BOOL Enable = __GET_VAR(data__->ENABLE);
+//        index = __GET_VAR(data__->SIMINDEX);
+//        HDY_HydraulicSimFB* fb = __MK_GetPublic_HydraulicSimFB(index);
+//
+//        if( fb == NULL ) return; // 无效索引, 直接返回
+//
+//        fb->EN = Enable;  // 使能仿真器
+//        if (Enable)
+//        {
+//            // 同步输入参数到内部仿真环境
+//            IEC_REAL cycletime = __GET_VAR(data__->CYCLE_TIME);
+//            IEC_REAL cmdrpm = __GET_VAR(data__->CMD_RPM);
+//            IEC_USINT axisid = __GET_VAR(data__->PUMP_OWNER_AXIS);
+//            IEC_SINT direction = __GET_VAR(data__->DIRECTION);
+//            IEC_REAL pressure_bias = __GET_VAR(data__->PRESSURE_BIAS);
+//            IEC_REAL pressure_scale = __GET_VAR(data__->PRESSURE_SCALE);
+//
+//            fb->CYCLE_TIME = cycletime;
+//            fb->CMD_RPM = cmdrpm;
+//            fb->PUMP_OWNER_AXIS = axisid;
+//
+//            switch (axisid)
+//            {
+//            case 0:
+//                fb->CLAMP_PRESSURE_BIAS = pressure_bias;
+//                fb->CLAMP_PRESSURE_SCALE = pressure_scale;
+//                switch (direction)
+//                {
+//                case 0:
+//                    fb->CLAMP_VALVE_FWD = false;
+//                    fb->CLAMP_VALVE_BWD = false;
+//                    break;
+//                case 1:
+//                    fb->CLAMP_VALVE_FWD = true;
+//                    fb->CLAMP_VALVE_BWD = false;
+//                    break;
+//                case -1:
+//                    fb->CLAMP_VALVE_FWD = false;
+//                    fb->CLAMP_VALVE_BWD = true;
+//                default:
+//                    break;
+//                }
+//                break;
+//            case 1:
+//                fb->INJECT_PRESSURE_BIAS = pressure_bias;
+//                fb->INJECT_PRESSURE_SCALE = pressure_scale;
+//                switch (direction)
+//                {
+//                case 0:
+//                    fb->INJECT_VALVE_FWD = false;
+//                    fb->INJECT_VALVE_BWD = false;
+//                    break;
+//                case 1:
+//                    fb->INJECT_VALVE_FWD = true;
+//                    fb->INJECT_VALVE_BWD = false;
+//                    break;
+//                case -1:
+//                    fb->INJECT_VALVE_FWD = false;
+//                    fb->INJECT_VALVE_BWD = true;
+//                default:
+//                    break;
+//                }
+//                break;
+//            default:
+//                break;
+//            }
+//
+//            HDY_HydraulicSimFB_Cycle(fb);
+//
+//            // 这里可以将仿真结果写回到输出变量
+//            __SET_VAR(data__->,ACTIVE, ,fb->ACTIVE);
+//            switch (axisid)
+//            {
+//                case 0:
+//                    __SET_VAR(data__->,POS_MM, ,fb->CLAMP_POS_MM);
+//                    __SET_VAR(data__->,VEL_MM_S, ,fb->CLAMP_VEL_MM_S);
+//                    __SET_VAR(data__->,PRESSURE_BAR, ,fb->CLAMP_PRESSURE_BAR);
+//                    break;
+//                case 1:
+//                    __SET_VAR(data__->,POS_MM, ,fb->INJECT_POS_MM);
+//                    __SET_VAR(data__->,VEL_MM_S, ,fb->INJECT_VEL_MM_S);
+//                    __SET_VAR(data__->,PRESSURE_BAR, ,fb->INJECT_PRESSURE_BAR);
+//                    break;
+//                default:
+//                    break;
+//            }
+//
+//        }
+//        else
+//        {
+//            // EN=false 时, FB 内部会自动归零输出引脚, 这里可以选择是否需要额外处理
+//        }
+//    }
+//}

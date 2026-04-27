@@ -109,6 +109,7 @@ struct HydraulicSimEnv {
     // 6. 动态轴支持 (扩展性)
     SimAxisEntry axes[2];  // 当前支持2个轴，未来可扩展
     int axis_count;
+    char _initialized;
 };
 
 /**
