@@ -28,7 +28,10 @@ HDY_MotionControlFB* __MK_GetPublic_MotionControlFB(int index)
 
 int __HdyMotion_framework_Init()
 {
-    return 1;
+	for(int i=0; i<HDY_MAX_AXIS_MOTION; i++){
+		memset(&HDY_MotionControlFB_inst[i], 0, sizeof(HDY_MotionControlFB));
+	}
+    return 0;
 }
 
 void __HdyMotion_framework_Cleanup()
@@ -92,12 +95,13 @@ void __mcl_cmd_axismotioncontrol(HDY_AXISMOTIONCONTROL *data__)
                 segment.direction = HDY_DIRECTION_EXTEND;
                 segment.planner = HDY_PLANNER_TIME_BASED;
 
-                segment.targetPosition = __GET_VAR(data__->MOTION).SETPOSITION;   /* mm */
-                segment.targetFlow = __GET_VAR(data__->MOTION).SETFLOW;           /* L/min */
-                segment.targetPressure = __GET_VAR(data__->MOTION).SETPRESSURE;   /* MPa */
-                segment.maxVelocity = __GET_VAR(data__->MOTION).SETVELOCITY;      /* mm/s */
-                segment.maxAcceleration = __GET_VAR(data__->MOTION).ACCELERATION; /* mm/s² */
-                segment.maxFlow = __GET_VAR(data__->MOTION).SETFLOW;              /* L/min */
+                HDY_AXISMOTION motionData = __GET_VAR(data__->MOTION);
+                segment.targetPosition = motionData.SETPOSITION;   /* mm */
+                segment.targetFlow     = motionData.SETFLOW;           /* L/min */
+                segment.targetPressure = motionData.SETPRESSURE;   /* MPa */
+                segment.maxVelocity    = motionData.SETVELOCITY;      /* mm/s */
+                segment.maxAcceleration = motionData.ACCELERATION; /* mm/s² */
+                segment.maxFlow         = motionData.SETFLOW;              /* L/min */
 
                 segment.velocityToFlowGain = 0.2; /* L/min per mm/s */
 
