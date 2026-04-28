@@ -110,7 +110,7 @@ int __HdySimulator_framework_Init() {
         Hdy_ResetHandle(&_sim_fb[i]);
     }
 
-    return 1;
+    return 0;
 }
 
 void __HdySimulator_framework_Cleanup() {
@@ -136,44 +136,44 @@ void __mcl_cmd_createSimAxis(HDY_CREATESIMAXIS *data__) {
 
     if (data__ == NULL) return;
 
-    __SET_VAR(data__->, DONE,, 0);
-    axis_type = (int)__GET_VAR(data__->AXISTYPE);
-    if (!Hdy_IsValidAxisType(axis_type)) {
-        return;
+    if(!__GET_VAR(data__->DONE)) {
+
+		axis_type = (int) __GET_VAR(data__->AXISTYPE);
+		if (!Hdy_IsValidAxisType(axis_type)) {
+			return;
+		}
+
+		/* 预分配 axis_id，但不提交计数器；注册失败时无需回退 */
+		if (NextAllocatedHydraulicSimFB >= HDY_MAX_HYDRAULIC_SIM_FB) {
+			return;
+		}
+		axis_id = (int) NextAllocatedHydraulicSimFB;
+		g_axis_slot_by_id[axis_id] = axis_id;
+
+		/* RegisterAxis 内部已包含 FindAxisByKind 同类型重复检查 */
+		if (!HydraulicSim_RegisterAxis(&g_shared_env, axis_id,
+				(SimAxisKind) axis_type)) {
+			g_axis_slot_by_id[axis_id] = -1;
+			return;
+		}
+
+		/* 注册成功，提交分配计数器 */
+		NextAllocatedHydraulicSimFB += 1U;
+
+		HydraulicSim_ConfigureAxis(&g_shared_env, axis_id,
+				(float) __GET_VAR(data__->MAXVEL),
+				(float) __GET_VAR(data__->MAXACC),
+				(float) __GET_VAR(data__->MAXDEC));
+
+		Hdy_InitSharedHandle(&_sim_fb[axis_id], axis_id, (HDY_UINT8) axis_type,
+				(HDY_REAL) __GET_VAR(data__->MAXVEL),
+				(HDY_REAL) __GET_VAR(data__->MAXACC),
+				(HDY_REAL) __GET_VAR(data__->MAXDEC));
+
+		__SET_VAR(data__->, AXISID,, axis_id);
+		__SET_VAR(data__->, DONE,, 1);
+		__SET_VAR(data__->, ENO,, 1);
     }
-
-    /* 预分配 axis_id，但不提交计数器；注册失败时无需回退 */
-    if (NextAllocatedHydraulicSimFB >= HDY_MAX_HYDRAULIC_SIM_FB) {
-        return;
-    }
-    axis_id = (int)NextAllocatedHydraulicSimFB;
-    g_axis_slot_by_id[axis_id] = axis_id;
-
-    /* RegisterAxis 内部已包含 FindAxisByKind 同类型重复检查 */
-    if (!HydraulicSim_RegisterAxis(&g_shared_env, axis_id, (SimAxisKind)axis_type)) {
-        g_axis_slot_by_id[axis_id] = -1;
-        return;
-    }
-
-    /* 注册成功，提交分配计数器 */
-    NextAllocatedHydraulicSimFB += 1U;
-
-    HydraulicSim_ConfigureAxis(&g_shared_env,
-                               axis_id,
-                               (float)__GET_VAR(data__->MAXVEL),
-                               (float)__GET_VAR(data__->MAXACC),
-                               (float)__GET_VAR(data__->MAXDEC));
-
-    Hdy_InitSharedHandle(&_sim_fb[axis_id],
-                         axis_id,
-                         (HDY_UINT8)axis_type,
-                         (HDY_REAL)__GET_VAR(data__->MAXVEL),
-                         (HDY_REAL)__GET_VAR(data__->MAXACC),
-                         (HDY_REAL)__GET_VAR(data__->MAXDEC));
-
-    __SET_VAR(data__->, AXISID,, axis_id);
-    __SET_VAR(data__->, DONE,, 1);
-    __SET_VAR(data__->, ENO,, 1);
 }
 
 void __mcl_cmd_moveSimAxis(HDY_MOVESIMAXIS *data__) {
