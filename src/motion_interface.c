@@ -326,6 +326,17 @@ void __HdyMotion_framework_Publish()
  * 注: 多段配方需通过外部HDY_MotionControlFB_LoadRecipe()预加载
  * ====================================================================== */
 
+void __mcl_cmd_LoadProfile(HDY_LOADPROFILE *data__)
+{
+    // TODO: 实现预加载配方, 目前仅支持单段MoveProfile的自动构建和执行,待后面补充完善
+    IEC_SINT axisIndex = __GET_VAR(data__->AXISINDEX);
+    HDY_MotionControlFB* fb = __MK_GetPublic_MotionControlFB(axisIndex);
+    
+    if (fb != NULL) {
+        // 预加载配方逻辑
+    }
+}
+
 void __mcl_cmd_MoveProfile(HDY_MOVEPROFILE *data__)
 {
     IEC_BOOL bInit = __GET_VAR(data__->INIT);

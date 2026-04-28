@@ -63,7 +63,63 @@ The most useful executable for understanding the intended call flow is `tests/ma
 
 The test layout mirrors the module split and is now wired into CTest end to end. Module-focused tests cover planner, motion-control orchestration, recipe validation, pressure control, pump conversion, segment completion, ramp control, and standalone `RBF_PID` behavior. `tests/test_scenario_matrix.c` adds a higher-level regression baseline for typical injection-machine action chains plus long-run and max-segment boundary checks. `tests/test_sprint3_integration.c` validates the diagnostic pipeline end-to-end, including fault escalation from WARNING to FAULT.
 
-The simulator source files live in `src/sim/` (separate from the core library sources in `src/`). They are built as `HydroSimLib` and only linked into integration test targets that need simulated plant feedback. The core `HydroMotionLib` is automatically excluded from the simulator subdirectory.
+## IEC / PLCopen Interface Adapter Layer
+
+`src/motion_interface.c` and `include/motion_interface.h` form the bridge between IEC61131-3 PLC programs and the core `HDY_MotionControlFB`. This layer provides standard PLCopen function blocks that PLC code calls directly.
+
+**FB instance pool**: `HDY_MotionControlFB_inst[HDY_MAX_AXIS_MOTION]` (max 20 axes, configured in `hdy_config.h`). Instances are allocated on first use via `allocMotionControlFB()` and accessed by AXISINDEX.
+
+**PLCopen function blocks defined in `motion_interface.h`**:
+
+| FB | Purpose | Mode |
+|---|---|---|
+| `HDY_MOVEPROFILE` | Multi-segment recipe-driven motion | Recipe mode (`USE_RECIPE=true`) |
+| `HDY_MOVEABSOLUTE` | Single-segment position control | Direct mode |
+| `HDY_MOVEVELOCITY` | Continuous velocity control (manual stop) | Direct mode |
+| `HDY_PRESSUREHANDLE` | Closed-loop pressure control | Direct mode |
+| `HDY_STOP` | Immediate abort of active motion | N/A |
+| `HDY_RESET` | Soft-reset FB (clear faults, keep config) | N/A |
+
+Each FB uses matiec IEC types (`__DECLARE_VAR` macros), and the `__mcl_cmd_*` functions implement the PLC command interface. FB input/output signals follow IEC61131-3 conventions: `EN`/`ENO`, `EXECUTE` (rising-edge triggered), `BUSY`, `DONE`, `ACTIVE`, `ERROR`/`ERRORID`, `COMMANDABORTED`.
+
+**Command arbitration**: `motion_interface.c` implements axis ownership with generation counters:
+- `takeAxisOwnership()` increments the generation counter and records the active command type
+- Each FB instance remembers the generation at which it started
+- When a new command takes over, previous commands detect the mismatch and raise `COMMANDABORTED`
+- Compatible with multi-FB-per-axis scenarios where one FB can preempt another
+
+**Framework lifecycle**: `__HdyMotion_framework_Init/Cleanup/Retrieve/Publish` manage the shared FB pool. `Publish()` calls `HDY_MotionControlFB_Scan()` on all allocated instances each cycle.
+
+**`HDY_AXISMOTION` struct**: Maps IEC-level motion parameters (`SETPOSITION`, `SETVELOCITY`, `SETFLOW`, `SETPRESSURE`, `ACTPOSITION`, etc.) bidirectionally — input side feeds `AXIS_REF`, output side reflects the active segment's current parameters. Used by `HDY_MOVEPROFILE` as a parameter-passing channel.
+
+**matiec IEC type system**: The library uses the matiec IEC61131-3 type infrastructure from `include/matiec/lib/C/`:
+- `accessor.h`: `__DECLARE_VAR(type,name)` declares IEC-typed variables with force-flag support. `__GET_VAR`/`__SET_VAR` access them with force-flag protection.
+- `iec_types_all.h`: Defines all IEC61131-3 base types (`IEC_BOOL`, `IEC_SINT`, `IEC_REAL`, `IEC_WORD`, etc.) and their tagged wrappers.
+- Custom struct types like `HDY_AXISMOTION` are declared via `__DECLARE_STRUCT_TYPE`.
+- This type system is what makes the library callable from IEC61131-3 PLC programs (e.g., compiled via matiec/Beremiz).
+
+## Simulator Two-Layer Architecture
+
+The simulator lives in `src/sim/` and `include/` (headers: `hydro_sim.h`, `hydro_sim_fb.h`, `hydro_interfaces.h`, `hydro_hardware.h`). It is built as `HydroSimLib` (separate from `HydroMotionLib`) and only linked into integration test targets.
+
+**L1 — PLC Adapter Layer** (`src/sim/hydro_sim_fb.c`, `include/hydro_sim_fb.h`):
+
+Provides IEC-callable function blocks that mirror the real hardware interface:
+- `HDY_CREATESIMAXIS` / `__mcl_cmd_createSimAxis`: Allocates an axis in the shared sim environment, maps AXISID → axis slot, configures cylinder type (CLAMP or INJECT)
+- `HDY_MOVESIMAXIS` / `__mcl_cmd_moveSimAxis`: Writes enable/cmd_rpm/direction to an axis, sets the single-pump owner
+- `HDY_READSIMAXIS` / `__mcl_cmd_readSimAxis`: Reads per-axis feedback snapshot (position, velocity, pressure) by AXISID
+- `__HdySimulator_framework_Publish()`: Steps the shared simulation once per scan cycle, then copies feedback to all allocated handles
+
+Key constraint: the shared `HydraulicSimEnv` is stepped exactly once per `Publish()` call — if multiple FBs publish in the same scan, the physics only advances one tick.
+
+**L2 — Physics Simulation Kernel** (`src/sim/hydro_sim.c`, `include/hydro_sim.h`):
+
+Pure C99 physics engine with:
+- `HydraulicSimEnv`: Shared system state (pump displacement, volumetric efficiency, melt stiffness, obstacle model)
+- `SimAxisState[HDY_MAX_HYDRAULIC_SIM_FB]`: Each axis has a cylinder model (areas, stroke, friction), valve commands, feedback injection (for fault simulation), and an `ISensorBackend` dependency-injection interface
+- Single-pump flow scheduling: only the `pump_owner_axis_id` axis receives flow. `HydraulicSim_Step()` computes `flow = displacement * rpm * efficiency`, converts to velocity via `flow / cylinder_area`, integrates position, and computes pressure from load forces (tie-bar stiffness for clamp, melt resistance for injection)
+- Fault injection API: `HydraulicSim_SetPressureSensorStuck/Invalid/Bias/Scale`, `HydraulicSim_SetAxisServoReady/Interlock/MotionStall`
+- `ISensorBackend` (`hydro_interfaces.h`): Dependency-injection abstraction with `read_feedback`/`write_valves`/`write_pump` function pointers — allows the same axis model to work with both simulated and real hardware backends
 
 A few repository-specific constraints matter during edits. First, the planner still clamps flow magnitude and pump speed to nonnegative pump-side values even though it now supports signed velocity and explicit retract-direction planning. Second, `RESET` is strong: `HDY_MotionControlFB_Init()` does a full `memset`, so reset clears gains, recipe contents, runtime state, and flags. Reload configuration after reset. Third, `LoadRecipe()` keeps `ACTIVE=false`; meaningful execution still depends on explicitly starting a segment. Fourth, keep the README and CMake instructions aligned because the repository now uses the README as a lightweight integration handoff in addition to build guidance. Fifth, gain fields (`pressureKp`, `pressureKi`, `pressureKd`) in `HDY_MotionSegment` use zero as "not configured" — `HDY_ResolvePositiveOrDefault` replaces zero/negative values with legacy defaults (e.g., Kp=0 falls back to 1.5). If you need "no proportional control," set `pressureController = HDY_PRESSURE_CONTROLLER_NONE` rather than setting `pressureKp = 0.0`. Sixth, `HDY_DiagnosticCriteria_CheckFaultEscalation()` requires the `result` parameter to carry `severity == HDY_DIAG_SEVERITY_WARNING` and `triggered == true` from a prior `CheckPressure`/`CheckFlow`/etc. call — do not pass an uninitialized result struct.
 
