@@ -50,16 +50,16 @@ typedef enum {
 
 ### `_commandGeneration` → `_executionId`
 
-递增时机从 `HDY_AbortNow()` 移至 `HDY_BeginSegment()`：
+递增时机调整为 **双点递增**——在 `HDY_AbortNow()` 和 `HDY_BeginSegment()` 两处均递增：
 
 ```
-旧：Abort() 时递增 → 被抢占 FB 在 Abort 瞬间检测不匹配
-新：BeginSegment() 时递增 → 被抢占 FB 在新段启动后下一周期检测不匹配
+旧：仅在 Abort() 时递增
+新：Abort() 时递增一次 + BeginSegment() 成功时再递增一次
 ```
 
-差异：抢占检测延迟 ≤1 个 PLC 扫描周期，不可感知。
+**为何需要双点递增：** 仅在 BeginSegment 递增存在竞态窗口——pending FB 在同一扫描周期内检测 `FB_STATE == ABORTED` 时，若新段恰好在同周期通过 BeginSegment 启动，pending FB 会错误地捕获新段的 `_executionId`，导致两个 FB 同时认为拥有同一个段。AbortNow 中的递增闭合了这个窗口：abort 瞬间改变计数值，pending FB 的下一次检查必然看到不匹配。
 
-对于 Stop（只 Abort 不启动新段）：`_executionId` 不递增。被 Stop 的 FB 通过 `FB_STATE == ABORTED` 判断终止，不依赖 `_executionId`。
+对于 Stop（只 Abort 不启动新段）：`_executionId` 在 AbortNow 中递增一次（无后续 BeginSegment）。被 Stop 的 FB 通过 `_executionId` 不匹配检测抢占。
 
 ### 不改动的部分
 
@@ -167,7 +167,7 @@ Reset 直接调用 `SoftReset()`，不涉及段或抢占。
 |------|------|------|
 | `include/common_types.h` | 新增 `HDY_BufferMode` 枚举 | +8 |
 | `include/motion_control.h` | `_commandGeneration` → `_executionId`；注释调整 | ±2 |
-| `src/motion_control.c` | `AbortNow` 删除递增；`BeginSegment` 末尾递增 | ±2 |
+| `src/motion_control.c` | `AbortNow` 保留递增；`BeginSegment` 末尾新增递增 | ±2 |
 | `include/motion_interface.h` | 5 个 FB 删除 GEN、增加 BUFFERMODE（INT） | -6 +5 |
 | `src/motion_interface.c` | 5 个 IEC FB 实现按统一模板重写 | -200 +250 |
 | **总计** | | **~+52 净行** |
@@ -204,24 +204,25 @@ COMMANDABORTED 在检测到不匹配时输出 true，持续到 EXECUTE 下降沿
 ```
 周期    FB A (MoveAbsolute, ABORT)            FB B (MoveVelocity, ABORT)       核心 _executionId
 ────    ──────────────────────────            ─────────────────────────         ───────────────
-  0     execRising: Abort+Scan                 空闲                                5
+  0     execRising: Abort(+1)+Scan              空闲                                6 (5→6)
         LoadDirect + StartSegment 入队
         _pending = true
 
   1     Framework Publish: Scan
-        BeginSegment → _executionId = 6                                              6
+        BeginSegment(+1) → _executionId = 7                                        7 (6→7)
 
   2     检测 active && 段源匹配
-        → _myExecId = 6, _pending = false
+        → _myExecId = 7, _pending = false
         BUSY, ACTIVE 正常输出
 
  ...    运动执行中...                          execRising (ABORT):
-                                              Abort+Scan+StartSeg 入队
+                                              Abort(+1)→ _executionId = 8          8 (7→8)
+                                              Scan+StartSeg 入队
                                               _pending = true
 
- N+1    _myExecId(6) != _executionId(7)       BeginSegment → _executionId = 7        7
+ N+1    _myExecId(7) != _executionId(8)       BeginSegment(+1)→ _executionId = 9   9 (8→9)
         → COMMANDABORTED
 
- N+2                                           检测 active → _myExecId = 7
+ N+2                                           检测 active → _myExecId = 9
                                               BUSY, ACTIVE 正常输出
 ```
