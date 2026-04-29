@@ -221,6 +221,7 @@ typedef struct {
     HDY_TIME _switchSuppressEndTime;    /* Elapsed time at which switch suppress phase expires */
     HDY_UINT8 _index;
     uint16_t _commandGeneration;   /* incremented on Abort, used by IEC layer for COMMANDABORTED detection */
+    HDY_BOOL _useSimulation;           /* If true, the FB simulates motion without real hardware interaction for testing purposes. */
 } HDY_MotionControlFB;
 
 /* Full reset of configuration, recipe, runtime state, and internal helpers. */

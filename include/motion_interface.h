@@ -224,7 +224,7 @@ typedef struct
    __DECLARE_VAR(BOOL, USE_RECIPE)
    __DECLARE_VAR(REAL, FLOW_TO_PUMPSPEED)
    __DECLARE_VAR(REAL, PUMPSPEED_LIMIT)
-
+   __DECLARE_VAR(BOOL, USE_SIMULATION)
    __DECLARE_VAR(SINT, AXISID)
    __DECLARE_VAR(BOOL, BUSY)
    __DECLARE_VAR(BOOL, DONE)
@@ -235,6 +235,33 @@ typedef struct
    __DECLARE_VAR(BOOL, DONE0)
 
 } HDY_CREATEMOTION;
+
+// FUNCTION_BLOCK HDY_SETAXISFEEDBACK
+// Data part
+typedef struct
+{
+   // FB Interface - IN, OUT, IN_OUT variables
+   __DECLARE_VAR(BOOL, EN)
+   __DECLARE_VAR(BOOL, ENO)
+
+   __DECLARE_VAR(BOOL, ENABLE)
+   __DECLARE_VAR(SINT, AXISID)
+   __DECLARE_VAR(REAL, ACT_POSITION)
+   __DECLARE_VAR(REAL, ACT_VELOCITY)
+   __DECLARE_VAR(REAL, ACT_FLOW)
+   __DECLARE_VAR(REAL, ACT_PRESSURE)
+   __DECLARE_VAR(REAL, TIMESTAMP)
+
+
+   __DECLARE_VAR(BOOL, BUSY)
+   __DECLARE_VAR(BOOL, DONE)
+   __DECLARE_VAR(BOOL, ERROR)
+   __DECLARE_VAR(WORD, ERRORID)
+
+   // FB private variables - TEMP, private and located variables
+   __DECLARE_VAR(BOOL, DONE0)
+
+} HDY_SETAXISFEEDBACK;
 
 extern int  __HdyMotion_framework_Init();
 extern void __HdyMotion_framework_Cleanup();
@@ -249,5 +276,8 @@ extern void __mcl_cmd_MoveAbsolute(HDY_MOVEABSOLUTE *data__);
 extern void __mcl_cmd_Reset(HDY_RESET *data__);
 extern void __mcl_cmd_MoveVelocity(HDY_MOVEVELOCITY *data__);
 extern void __mcl_cmd_PressureHandle(HDY_PRESSUREHANDLE *data__);
+extern void __mcl_cmd_SetAxisFeedback(HDY_SETAXISFEEDBACK *data__);
+
+
 
 #endif

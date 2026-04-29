@@ -260,6 +260,7 @@ void __mcl_cmd_CreateMotion(HDY_CREATEMOTION *data__)
 			fb->USE_RECIPE = __GET_VAR(data__->USE_RECIPE);
 			fb->FLOW_TO_PUMP_SPEED_GAIN = __GET_VAR(data__->FLOW_TO_PUMPSPEED);
 			fb->PUMP_SPEED_LIMIT = __GET_VAR(data__->PUMPSPEED_LIMIT);
+            fb->_useSimulation = __GET_VAR(data__->USE_SIMULATION);
 			fb->EN = true;
 
 			__SET_VAR(data__->, DONE, , true);
@@ -934,4 +935,38 @@ void __mcl_cmd_PressureHandle(HDY_PRESSUREHANDLE *data__)
     __SET_VAR(data__->, ACTIVE0, , __GET_VAR(data__->ACTIVE));
     __SET_VAR(data__->, INPRESSURE0, , __GET_VAR(data__->INPRESSURE));
     __SET_VAR(data__->, EXECUTE0, , execute);
+}
+
+void __mcl_cmd_SetAxisFeedback(HDY_SETAXISFEEDBACK *data__)
+{
+    IEC_SINT benable = __GET_VAR(data__->ENABLE);
+    IEC_SINT axisIndex = __GET_VAR(data__->AXISID);
+     /* 参数校验 */
+    if (axisIndex < 0 || axisIndex >= HDY_MAX_AXIS_MOTION)
+    {
+        __SET_VAR(data__->, ERROR, , true);
+        __SET_VAR(data__->, ERRORID, , (IEC_WORD)HDY_DIAG_CODE_START_CONTEXT_INVALID);
+        return;
+    }
+
+    HDY_MotionControlFB* fb = &HDY_MotionControlFB_inst[axisIndex];
+	if (fb == NULL) {
+		__SET_VAR(data__->, ERROR,, true);
+		__SET_VAR(data__->, ERRORID,, (IEC_WORD )HDY_DIAG_CODE_INTERNAL_ERROR);
+		__SET_VAR(data__->, ENO,, false);
+		__SET_VAR(data__->, DONE, , false);
+		return;
+	}   
+
+    if( benable && !fb->_useSimulation ) {
+        fb->AXIS_REF.position = __GET_VAR(data__->ACT_POSITION);
+        fb->AXIS_REF.flow     = __GET_VAR(data__->ACT_FLOW);
+        fb->AXIS_REF.pressure = __GET_VAR(data__->ACT_PRESSURE);
+        fb->AXIS_REF.velocity = __GET_VAR(data__->ACT_VELOCITY);
+        fb->AXIS_REF.timestamp = __GET_VAR(data__->TIMESTAMP);
+    }
+    
+    __SET_VAR(data__->, ENO,, true);
+    __SET_VAR(data__->, DONE, , true);
+
 }
