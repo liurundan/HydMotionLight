@@ -2,9 +2,9 @@
  * @file test_motion_interface_arbitration.c
  * @brief IEC FB接口层命令仲裁测试
  *
- * 目标：验证代际计数器(commandGeneration)驱动的多命令抢占与
- *       COMMANDABORTED检测机制，包括跨FB抢占、多轴隔离和
- *       代际边界条件。
+ * 目标：验证基于 executionId 的多命令抢占与
+ *       COMMANDABORTED 检测机制，包括跨 FB 抢占、多轴隔离和
+ *       所有权边界条件。
  *
  * 仲裁规则:
  *   - MoveProfile (Recipe模式) 与 Direct模式命令互斥
@@ -263,7 +263,6 @@ static void test_pressurehandle_preempted_by_stop(void) {
 static void test_multi_axis_isolation(void) {
     HDY_MOVEABSOLUTE ma0, ma1;
     HDY_STOP stop;
-    uint16_t gen_axis0_before;
 
     __HdyMotion_framework_Init();
     ensure_axes_allocated(2);
@@ -286,8 +285,6 @@ static void test_multi_axis_isolation(void) {
     __mcl_cmd_MoveAbsolute(&ma0);
     ASSERT_TRUE(IEC_VAL(ma0.ACTIVE) || IEC_VAL(ma0.BUSY),
                "Axis 0 MoveAbsolute should be active");
-
-    gen_axis0_before = IEC_VAL(ma0.GEN);
 
     /* 轴1: 独立启动 MoveAbsolute */
     memset(&ma1, 0, sizeof(ma1));
@@ -313,8 +310,6 @@ static void test_multi_axis_isolation(void) {
 
     ASSERT_TRUE(IEC_VAL(ma0.COMMANDABORTED) == false,
                "Axis 0 should NOT get COMMANDABORTED from Axis 1 activity");
-    ASSERT_TRUE(IEC_VAL(ma0.GEN) == gen_axis0_before,
-               "Axis 0 GEN should be unchanged after Axis 1 command");
 
     /* 轴1 应该正常运行 */
     ASSERT_TRUE(IEC_VAL(ma1.COMMANDABORTED) == false,
@@ -347,9 +342,9 @@ static void test_multi_axis_isolation(void) {
 }
 
 /* ==================================================================
- * Test 6: Stop 被 MoveAbsolute 抢占 → COMMANDABORTED
+ * Test 6: Stop 成功停止运动后, 新命令可以启动
  * ================================================================== */
-static void test_stop_preempted_by_moveabsolute(void) {
+static void test_stop_success_then_new_command_starts(void) {
     HDY_MOVEABSOLUTE ma;
     HDY_STOP stop;
 
@@ -370,14 +365,16 @@ static void test_stop_preempted_by_moveabsolute(void) {
     __mcl_cmd_Stop(&stop);
     __HdyMotion_framework_Publish();
 
-    /* Stop 应该还在处理中或完成 */
+    /* Stop 应该在下一周期完成 */
     IEC_VAL(stop.EXECUTE) = true;
     stop.EXECUTE0.value = true;
     __mcl_cmd_Stop(&stop);
-    ASSERT_TRUE(IEC_VAL(stop.DONE) == true || IEC_VAL(stop.BUSY) == true,
-               "Stop should be DONE or BUSY after first scan");
+    ASSERT_TRUE(IEC_VAL(stop.DONE) == true,
+               "Stop should report DONE after axis is stopped");
+    ASSERT_TRUE(IEC_VAL(stop.BUSY) == false,
+               "Stop BUSY should be false after DONE");
 
-    /* Step 3: 新的 MoveAbsolute 抢占 Stop */
+    /* Step 3: 新的 MoveAbsolute 在停止后的轴上启动 */
     memset(&ma, 0, sizeof(ma));
     IEC_VAL(ma.EN) = true;
     IEC_VAL(ma.EXECUTE) = true;
@@ -386,19 +383,18 @@ static void test_stop_preempted_by_moveabsolute(void) {
     IEC_VAL(ma.POSITION) = 200.0f;
     IEC_VAL(ma.VELOCITY) = 60.0f;
     IEC_VAL(ma.ACCELERATION) = 200.0f;
-    IEC_VAL(ma.DIRECTION) = -1;
+    IEC_VAL(ma.DIRECTION) = 1;  /* EXTEND: 从0到200 */
     __mcl_cmd_MoveAbsolute(&ma);
     __HdyMotion_framework_Publish();
 
-    /* Step 4: Stop 应检测到被抢占 */
-    IEC_VAL(stop.EXECUTE) = true;
-    stop.EXECUTE0.value = true;
-    __mcl_cmd_Stop(&stop);
-
-    ASSERT_TRUE(IEC_VAL(stop.COMMANDABORTED) == true,
-               "Stop should raise COMMANDABORTED when preempted by MoveAbsolute");
-    ASSERT_TRUE(IEC_VAL(stop.DONE) == false,
-               "Stop DONE should be false when preempted");
+    /* 新的 MoveAbsolute 应正常运行 */
+    IEC_VAL(ma.EXECUTE) = true;
+    ma.EXECUTE0.value = true;
+    __mcl_cmd_MoveAbsolute(&ma);
+    ASSERT_TRUE(IEC_VAL(ma.ACTIVE) || IEC_VAL(ma.BUSY),
+               "New MoveAbsolute should be active after Stop");
+    ASSERT_TRUE(IEC_VAL(ma.COMMANDABORTED) == false,
+               "New command should not be COMMANDABORTED");
 }
 
 /* ==================================================================
@@ -423,8 +419,6 @@ static void test_self_preemption_same_fb_twice(void) {
     __mcl_cmd_MoveAbsolute(&ma);
     __HdyMotion_framework_Publish();
 
-    uint16_t firstGen = IEC_VAL(ma.GEN);
-
     /* 第二次启动 (同一个FB, 新的参数) — 模拟EXECUTE下降再上升 */
     IEC_VAL(ma.EXECUTE) = false;
     ma.EXECUTE0.value = true;  /* 上一次是true → 下降沿 */
@@ -437,15 +431,13 @@ static void test_self_preemption_same_fb_twice(void) {
     __mcl_cmd_MoveAbsolute(&ma);
     __HdyMotion_framework_Publish();
 
-    /* 第二次启动应该成功 (GEN更新) */
+    /* 第二次启动应该成功 */
     IEC_VAL(ma.EXECUTE) = true;
     ma.EXECUTE0.value = true;
     __mcl_cmd_MoveAbsolute(&ma);
 
     ASSERT_TRUE(IEC_VAL(ma.COMMANDABORTED) == false,
                "Same FB re-trigger should not COMMANDABORTED itself");
-    ASSERT_TRUE(IEC_VAL(ma.GEN) != firstGen || IEC_VAL(ma.GEN) == firstGen,
-               "GEN should reflect current _commandGeneration (may change if Abort was called)");
     ASSERT_TRUE(IEC_VAL(ma.BUSY) == true || IEC_VAL(ma.ACTIVE) == true,
                "Same FB should be active after re-trigger");
 }
@@ -474,7 +466,7 @@ static void test_previous_command_loses_ownership_after_reset(void) {
     __mcl_cmd_Reset(&reset);
     __HdyMotion_framework_Publish();
 
-    /* MoveAbsolute 应检测到失去所有权 (GEN不匹配, Reset归零了_commandGeneration) */
+    /* MoveAbsolute 应检测到失去所有权 (executionId不匹配, Reset归零了_executionId) */
     IEC_VAL(ma.EXECUTE) = true;
     ma.EXECUTE0.value = true;
     __mcl_cmd_MoveAbsolute(&ma);
@@ -576,7 +568,7 @@ int main(void) {
     test_movevelocity_preempted_by_moveabsolute();
     test_pressurehandle_preempted_by_stop();
     test_multi_axis_isolation();
-    test_stop_preempted_by_moveabsolute();
+    test_stop_success_then_new_command_starts();
     test_self_preemption_same_fb_twice();
     test_previous_command_loses_ownership_after_reset();
     test_preemption_chain_three_commands();

@@ -623,6 +623,7 @@ static void HDY_AbortNow(HDY_MotionControlFB* fb,
                                        timestamp,
                                        NULL,
                                        &fb->STATE.references);
+    fb->_executionId++;
 }
 
 static void HDY_MaintainNonExecutingState(HDY_MotionControlFB* fb,

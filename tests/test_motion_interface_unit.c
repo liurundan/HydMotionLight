@@ -38,13 +38,27 @@ static int tests_passed = 0;
     else { printf("  FAIL: %s (got %d, expected %d)\n", msg, (int)(a), (int)(b)); } \
 } while (0)
 
-/* 辅助: 通过CreateMotion分配指定数量的轴 */
+/* 辅助: 通过CreateMotion分配指定数量的轴 (Direct模式) */
 static void ensure_axes_allocated(int count) {
     for (int i = 0; i < count; i++) {
         HDY_CREATEMOTION cm;
         memset(&cm, 0, sizeof(cm));
         IEC_VAL(cm.EN) = true;
         IEC_VAL(cm.USE_RECIPE) = false;
+        IEC_VAL(cm.FLOW_TO_PUMPSPEED) = 1.2f;
+        IEC_VAL(cm.PUMPSPEED_LIMIT) = 3000.0f;
+        IEC_VAL(cm.USE_SIMULATION) = false;
+        __mcl_cmd_CreateMotion(&cm);
+    }
+}
+
+/* 辅助: 通过CreateMotion分配指定数量的轴 (Recipe模式) */
+static void ensure_recipe_axes_allocated(int count) {
+    for (int i = 0; i < count; i++) {
+        HDY_CREATEMOTION cm;
+        memset(&cm, 0, sizeof(cm));
+        IEC_VAL(cm.EN) = true;
+        IEC_VAL(cm.USE_RECIPE) = true;
         IEC_VAL(cm.FLOW_TO_PUMPSPEED) = 1.2f;
         IEC_VAL(cm.PUMPSPEED_LIMIT) = 3000.0f;
         IEC_VAL(cm.USE_SIMULATION) = false;
@@ -96,8 +110,6 @@ static void test_moveprofile_init_allocates_fb_with_recipe_mode(void) {
     fb = __MK_GetPublic_MotionControlFB(0);
     ASSERT_TRUE(fb != NULL, "FB instance should be retrievable via AXISID after CreateMotion");
     ASSERT_TRUE(fb->USE_RECIPE == true, "CreateMotion should set USE_RECIPE=true for recipe-mode axis");
-    ASSERT_TRUE(IEC_VAL(mp.GEN) == fb->_commandGeneration,
-               "GEN should be stored from _commandGeneration");
 
     /* 二次调用不应重新分配 */
     __mcl_cmd_MoveProfile(&mp);
@@ -111,7 +123,7 @@ static void test_moveprofile_no_execute_does_not_start(void) {
     HDY_MOVEPROFILE mp;
 
     __HdyMotion_framework_Init();
-    ensure_axes_allocated(2);
+    ensure_recipe_axes_allocated(2);
     memset(&mp, 0, sizeof(mp));
 
     /* INIT */
@@ -136,7 +148,7 @@ static void test_moveprofile_execute_rising_triggers_motion(void) {
     HDY_AXISMOTION motion;
 
     __HdyMotion_framework_Init();
-    ensure_axes_allocated(2);
+    ensure_recipe_axes_allocated(2);
     memset(&mp, 0, sizeof(mp));
     memset(&motion, 0, sizeof(motion));
 
@@ -149,6 +161,7 @@ static void test_moveprofile_execute_rising_triggers_motion(void) {
     motion.DIRECTION = HDY_DIRECTION_EXTEND;
     motion.SETPOSITION = 50.0f;
     motion.SETVELOCITY = 20.0f;
+    motion.SETFLOW = 10.0f;
     motion.ACCELERATION = 100.0f;
     motion.TIMESTAMP = 0.0f;
 
@@ -163,9 +176,19 @@ static void test_moveprofile_execute_rising_triggers_motion(void) {
     HDY_MotionControlFB* fb = __MK_GetPublic_MotionControlFB(0);
     ASSERT_TRUE(fb != NULL, "FB should still exist after execute");
 
-    /* 启动成功后 GEN 应已更新 */
-    ASSERT_TRUE(IEC_VAL(mp.GEN) == fb->_commandGeneration,
-               "GEN should match _commandGeneration after EXECUTE starts");
+    /* 启动成功后 _PENDING 应为 true, _EXEC_ID 应已清零准备写入 */
+    ASSERT_TRUE(IEC_VAL(mp._PENDING) == true,
+               "_PENDING should be set after EXECUTE starts");
+    ASSERT_TRUE(IEC_VAL(mp._EXEC_ID) == 0,
+               "_EXEC_ID should be 0 until ownership is confirmed");
+
+    /* 处理后第二周期确认所有权 */
+    __HdyMotion_framework_Publish();
+    IEC_VAL(mp.EXECUTE) = true;
+    mp.EXECUTE0.value = true;
+    __mcl_cmd_MoveProfile(&mp);
+    ASSERT_TRUE(IEC_VAL(mp._PENDING) == false,
+               "_PENDING should be cleared after ownership is resolved");
 }
 
 /* ==================================================================
@@ -228,7 +251,7 @@ static void test_moveabsolute_sustains_busy_active_across_calls(void) {
 
     __mcl_cmd_MoveAbsolute(&ma);
 
-    /* GEN 应该匹配, 仍是owner */
+    /* 所有权应已确认, 仍是owner */
     ASSERT_TRUE(IEC_VAL(ma.BUSY) == true || IEC_VAL(ma.ACTIVE) == true,
                "BUSY or ACTIVE should be sustained for current owner");
 
@@ -391,6 +414,12 @@ static void test_stop_on_idle_axis_immediate_done(void) {
     IEC_VAL(stop.AXISID) = 0;
 
     __mcl_cmd_Stop(&stop);
+    __HdyMotion_framework_Publish();
+
+    /* 下一周期确认 */
+    IEC_VAL(stop.EXECUTE) = true;
+    stop.EXECUTE0.value = true;
+    __mcl_cmd_Stop(&stop);
 
     /* Stop应该已经完成 (轴从未激活) */
     ASSERT_TRUE(IEC_VAL(stop.DONE) == true, "Stop on idle axis should set DONE immediately");
@@ -475,7 +504,6 @@ static void test_reset_immediate_done_on_initialized_axis(void) {
 
     ASSERT_TRUE(IEC_VAL(reset.DONE) == true, "Reset should set DONE immediately");
     ASSERT_TRUE(IEC_VAL(reset.BUSY) == false, "Reset BUSY should be false after DONE");
-    ASSERT_TRUE(IEC_VAL(reset.GEN) == 0, "Reset should clear GEN to 0");
 }
 
 /* ==================================================================
@@ -589,7 +617,7 @@ static void test_multiple_axes_operate_independently(void) {
     memset(&ma0, 0, sizeof(ma0));
     memset(&mv1, 0, sizeof(mv1));
 
-    /* 轴0: MoveAbsolute */
+    /* 轴0: MoveAbsolute execRising */
     IEC_VAL(ma0.EN) = true;
     IEC_VAL(ma0.EXECUTE) = true;
     ma0.EXECUTE0.value = false;
@@ -599,10 +627,9 @@ static void test_multiple_axes_operate_independently(void) {
     IEC_VAL(ma0.ACCELERATION) = 200.0f;
     IEC_VAL(ma0.DIRECTION) = 1;
     __mcl_cmd_MoveAbsolute(&ma0);
-
     ASSERT_TRUE(IEC_VAL(ma0.BUSY) == true, "Axis 0 MoveAbsolute: BUSY should be true after execRising");
 
-    /* 轴1: MoveVelocity */
+    /* 轴1: MoveVelocity execRising */
     IEC_VAL(mv1.EN) = true;
     IEC_VAL(mv1.EXECUTE) = true;
     mv1.EXECUTE0.value = false;
@@ -611,24 +638,26 @@ static void test_multiple_axes_operate_independently(void) {
     IEC_VAL(mv1.ACCELERATION) = 150.0f;
     IEC_VAL(mv1.DIRECTION) = 1;
     __mcl_cmd_MoveVelocity(&mv1);
-
     ASSERT_TRUE(IEC_VAL(mv1.BUSY) == true, "Axis 1 MoveVelocity: BUSY should be true after execRising");
 
-    /* 两轴的GEN应该不同 (各自独立的_commandGeneration) */
-    uint16_t gen0 = IEC_VAL(ma0.GEN);
-    uint16_t gen1 = IEC_VAL(mv1.GEN);
+    /* 处理两个轴的待处理命令 */
+    __HdyMotion_framework_Publish();
 
-    /* 两个轴应该操作不同的FB实例, 所以gen值可能相同(都从Init开始=0)
-       但不同轴的GEN之间没有相互关系 */
-    ASSERT_TRUE(gen0 == gen1 || gen0 != gen1,
-               "Axes 0 and 1 can have same or different GEN (independent instances)");
-
-    /* 轴0 仍应是owner */
+    /* 轴0 确认所有权 */
     IEC_VAL(ma0.EXECUTE) = true;
     ma0.EXECUTE0.value = true;
     __mcl_cmd_MoveAbsolute(&ma0);
+
+    /* 轴1 确认所有权 */
+    IEC_VAL(mv1.EXECUTE) = true;
+    mv1.EXECUTE0.value = true;
+    __mcl_cmd_MoveVelocity(&mv1);
+
+    /* 两轴应各自独立，都不应为 COMMANDABORTED */
     ASSERT_TRUE(IEC_VAL(ma0.COMMANDABORTED) == false,
-               "Axis 0 should not get COMMANDABORTED from axis 1 activity");
+               "Axis 0 should not get COMMANDABORTED from independent operation");
+    ASSERT_TRUE(IEC_VAL(mv1.COMMANDABORTED) == false,
+               "Axis 1 should not get COMMANDABORTED from independent operation");
 }
 
 int main(void) {
