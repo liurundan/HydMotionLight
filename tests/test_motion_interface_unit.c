@@ -69,7 +69,7 @@ static void test_moveprofile_init_allocates_fb_with_recipe_mode(void) {
     __mcl_cmd_MoveProfile(&mp);
 
     ASSERT_TRUE(IEC_VAL(mp.INIT) == true, "INIT should be set after first call");
-    ASSERT_EQ(IEC_VAL(mp.AXISINDEX), 0, "First allocated axis index should be 0");
+    ASSERT_EQ(IEC_VAL(mp.AXISID), 0, "First allocated axis index should be 0");
 
     fb = __MK_GetPublic_MotionControlFB(0);
     ASSERT_TRUE(fb != NULL, "FB instance should be retrievable after MoveProfile INIT");
@@ -79,7 +79,7 @@ static void test_moveprofile_init_allocates_fb_with_recipe_mode(void) {
 
     /* 二次调用不应重新分配 */
     __mcl_cmd_MoveProfile(&mp);
-    ASSERT_EQ(IEC_VAL(mp.AXISINDEX), 0, "Axis index should remain stable across calls");
+    ASSERT_EQ(IEC_VAL(mp.AXISID), 0, "Axis index should remain stable across calls");
 }
 
 /* ==================================================================
@@ -157,7 +157,7 @@ static void test_moveabsolute_execute_rising_sets_busy_active(void) {
     IEC_VAL(ma.EN) = true;
     IEC_VAL(ma.EXECUTE) = true;
     ma.EXECUTE0.value = false;  /* 上升沿 */
-    IEC_VAL(ma.AXISINDEX) = 0;
+    IEC_VAL(ma.AXISID) = 0;
     IEC_VAL(ma.POSITION) = 100.0f;
     IEC_VAL(ma.VELOCITY) = 50.0f;
     IEC_VAL(ma.ACCELERATION) = 200.0f;
@@ -186,7 +186,7 @@ static void test_moveabsolute_sustains_busy_active_across_calls(void) {
     IEC_VAL(ma.EN) = true;
     IEC_VAL(ma.EXECUTE) = true;
     ma.EXECUTE0.value = false;
-    IEC_VAL(ma.AXISINDEX) = 0;
+    IEC_VAL(ma.AXISID) = 0;
     IEC_VAL(ma.POSITION) = 100.0f;
     IEC_VAL(ma.VELOCITY) = 50.0f;
     IEC_VAL(ma.ACCELERATION) = 200.0f;
@@ -224,7 +224,7 @@ static void test_moveabsolute_en_false_clears_outputs(void) {
     IEC_VAL(ma.EN) = true;
     IEC_VAL(ma.EXECUTE) = true;
     ma.EXECUTE0.value = false;
-    IEC_VAL(ma.AXISINDEX) = 0;
+    IEC_VAL(ma.AXISID) = 0;
     IEC_VAL(ma.POSITION) = 100.0f;
     IEC_VAL(ma.VELOCITY) = 50.0f;
     IEC_VAL(ma.ACCELERATION) = 200.0f;
@@ -246,7 +246,7 @@ static void test_moveabsolute_en_false_clears_outputs(void) {
 }
 
 /* ==================================================================
- * Test 8: MoveAbsolute 非法 AXISINDEX 返回错误
+ * Test 8: MoveAbsolute 非法 AXISID 返回错误
  * ================================================================== */
 static void test_moveabsolute_rejects_invalid_axis_index(void) {
     HDY_MOVEABSOLUTE ma;
@@ -257,16 +257,16 @@ static void test_moveabsolute_rejects_invalid_axis_index(void) {
     IEC_VAL(ma.EN) = true;
     IEC_VAL(ma.EXECUTE) = true;
     ma.EXECUTE0.value = false;
-    IEC_VAL(ma.AXISINDEX) = -1;  /* 非法 */
+    IEC_VAL(ma.AXISID) = -1;  /* 非法 */
     IEC_VAL(ma.POSITION) = 100.0f;
     IEC_VAL(ma.VELOCITY) = 50.0f;
     IEC_VAL(ma.ACCELERATION) = 200.0f;
 
     __mcl_cmd_MoveAbsolute(&ma);
 
-    ASSERT_TRUE(IEC_VAL(ma.ERROR) == true, "ERROR should be true for invalid AXISINDEX");
-    ASSERT_TRUE(IEC_VAL(ma.ERRORID) != 0, "ERRORID should be non-zero for invalid AXISINDEX");
-    ASSERT_TRUE(IEC_VAL(ma.BUSY) == false, "BUSY should not be set for invalid AXISINDEX");
+    ASSERT_TRUE(IEC_VAL(ma.ERROR) == true, "ERROR should be true for invalid AXISID");
+    ASSERT_TRUE(IEC_VAL(ma.ERRORID) != 0, "ERRORID should be non-zero for invalid AXISID");
+    ASSERT_TRUE(IEC_VAL(ma.BUSY) == false, "BUSY should not be set for invalid AXISID");
 }
 
 /* ==================================================================
@@ -281,7 +281,7 @@ static void test_movevelocity_execute_rising_starts_velocity_control(void) {
     IEC_VAL(mv.EN) = true;
     IEC_VAL(mv.EXECUTE) = true;
     mv.EXECUTE0.value = false;
-    IEC_VAL(mv.AXISINDEX) = 0;
+    IEC_VAL(mv.AXISID) = 0;
     IEC_VAL(mv.VELOCITY) = 30.0f;
     IEC_VAL(mv.ACCELERATION) = 150.0f;
     IEC_VAL(mv.DIRECTION) = 1;
@@ -307,7 +307,7 @@ static void test_movevelocity_en_false_clears_ivelocity(void) {
     IEC_VAL(mv.EN) = true;
     IEC_VAL(mv.EXECUTE) = true;
     mv.EXECUTE0.value = false;
-    IEC_VAL(mv.AXISINDEX) = 0;
+    IEC_VAL(mv.AXISID) = 0;
     IEC_VAL(mv.VELOCITY) = 30.0f;
     IEC_VAL(mv.ACCELERATION) = 150.0f;
 
@@ -323,7 +323,7 @@ static void test_movevelocity_en_false_clears_ivelocity(void) {
 }
 
 /* ==================================================================
- * Test 11: MoveVelocity 非法 AXISINDEX
+ * Test 11: MoveVelocity 非法 AXISID
  * ================================================================== */
 static void test_movevelocity_rejects_invalid_axis_index(void) {
     HDY_MOVEVELOCITY mv;
@@ -334,12 +334,12 @@ static void test_movevelocity_rejects_invalid_axis_index(void) {
     IEC_VAL(mv.EN) = true;
     IEC_VAL(mv.EXECUTE) = true;
     mv.EXECUTE0.value = false;
-    IEC_VAL(mv.AXISINDEX) = HDY_MAX_AXIS_MOTION + 1;  /* 超出范围 */
+    IEC_VAL(mv.AXISID) = HDY_MAX_AXIS_MOTION + 1;  /* 超出范围 */
     IEC_VAL(mv.VELOCITY) = 30.0f;
 
     __mcl_cmd_MoveVelocity(&mv);
 
-    ASSERT_TRUE(IEC_VAL(mv.ERROR) == true, "ERROR should be true for invalid AXISINDEX");
+    ASSERT_TRUE(IEC_VAL(mv.ERROR) == true, "ERROR should be true for invalid AXISID");
     ASSERT_TRUE(IEC_VAL(mv.ERRORID) == HDY_DIAG_CODE_START_CONTEXT_INVALID,
                "ERRORID should be START_CONTEXT_INVALID");
 }
@@ -356,7 +356,7 @@ static void test_stop_on_idle_axis_immediate_done(void) {
     IEC_VAL(stop.EN) = true;
     IEC_VAL(stop.EXECUTE) = true;
     stop.EXECUTE0.value = false;
-    IEC_VAL(stop.AXISINDEX) = 0;
+    IEC_VAL(stop.AXISID) = 0;
 
     __mcl_cmd_Stop(&stop);
 
@@ -379,7 +379,7 @@ static void test_stop_en_false_clears_outputs(void) {
     IEC_VAL(stop.EN) = false;
     IEC_VAL(stop.EXECUTE) = true;
     stop.EXECUTE0.value = false;
-    IEC_VAL(stop.AXISINDEX) = 0;
+    IEC_VAL(stop.AXISID) = 0;
 
     __mcl_cmd_Stop(&stop);
 
@@ -390,7 +390,7 @@ static void test_stop_en_false_clears_outputs(void) {
 }
 
 /* ==================================================================
- * Test 14: Stop 非法 AXISINDEX
+ * Test 14: Stop 非法 AXISID
  * ================================================================== */
 static void test_stop_rejects_invalid_axis_index(void) {
     HDY_STOP stop;
@@ -401,11 +401,11 @@ static void test_stop_rejects_invalid_axis_index(void) {
     IEC_VAL(stop.EN) = true;
     IEC_VAL(stop.EXECUTE) = true;
     stop.EXECUTE0.value = false;
-    IEC_VAL(stop.AXISINDEX) = -1;
+    IEC_VAL(stop.AXISID) = -1;
 
     __mcl_cmd_Stop(&stop);
 
-    ASSERT_TRUE(IEC_VAL(stop.ERROR) == true, "Stop should set ERROR for invalid AXISINDEX");
+    ASSERT_TRUE(IEC_VAL(stop.ERROR) == true, "Stop should set ERROR for invalid AXISID");
     ASSERT_TRUE(IEC_VAL(stop.ERRORID) != 0, "Stop should set non-zero ERRORID for invalid input");
 }
 
@@ -423,7 +423,7 @@ static void test_reset_immediate_done_on_initialized_axis(void) {
     IEC_VAL(ma.EN) = true;
     IEC_VAL(ma.EXECUTE) = true;
     ma.EXECUTE0.value = false;
-    IEC_VAL(ma.AXISINDEX) = 0;
+    IEC_VAL(ma.AXISID) = 0;
     IEC_VAL(ma.POSITION) = 100.0f;
     IEC_VAL(ma.VELOCITY) = 50.0f;
     IEC_VAL(ma.ACCELERATION) = 200.0f;
@@ -434,7 +434,7 @@ static void test_reset_immediate_done_on_initialized_axis(void) {
     IEC_VAL(reset.EN) = true;
     IEC_VAL(reset.EXECUTE) = true;
     reset.EXECUTE0.value = false;
-    IEC_VAL(reset.AXISINDEX) = 0;
+    IEC_VAL(reset.AXISID) = 0;
 
     __mcl_cmd_Reset(&reset);
 
@@ -455,7 +455,7 @@ static void test_reset_immediate_done_on_uninitialized_axis(void) {
     IEC_VAL(reset.EN) = true;
     IEC_VAL(reset.EXECUTE) = true;
     reset.EXECUTE0.value = false;
-    IEC_VAL(reset.AXISINDEX) = 5;  /* 未初始化的轴 */
+    IEC_VAL(reset.AXISID) = 5;  /* 未初始化的轴 */
 
     __mcl_cmd_Reset(&reset);
 
@@ -477,7 +477,7 @@ static void test_pressurehandle_execute_rising_starts_pressure_control(void) {
     IEC_VAL(ph.EN) = true;
     IEC_VAL(ph.EXECUTE) = true;
     ph.EXECUTE0.value = false;
-    IEC_VAL(ph.AXISINDEX) = 0;
+    IEC_VAL(ph.AXISID) = 0;
     IEC_VAL(ph.PRESSURE) = 10.0f;
     IEC_VAL(ph.PRESSURERAMPRATE) = 2.0f;
     IEC_VAL(ph.DURATION) = 5.0f;
@@ -505,7 +505,7 @@ static void test_pressurehandle_en_false_clears_outputs(void) {
     IEC_VAL(ph.EN) = true;
     IEC_VAL(ph.EXECUTE) = true;
     ph.EXECUTE0.value = false;
-    IEC_VAL(ph.AXISINDEX) = 0;
+    IEC_VAL(ph.AXISID) = 0;
     IEC_VAL(ph.PRESSURE) = 10.0f;
 
     __mcl_cmd_PressureHandle(&ph);
@@ -520,7 +520,7 @@ static void test_pressurehandle_en_false_clears_outputs(void) {
 }
 
 /* ==================================================================
- * Test 19: PressureHandle 非法 AXISINDEX
+ * Test 19: PressureHandle 非法 AXISID
  * ================================================================== */
 static void test_pressurehandle_rejects_invalid_axis_index(void) {
     HDY_PRESSUREHANDLE ph;
@@ -531,11 +531,11 @@ static void test_pressurehandle_rejects_invalid_axis_index(void) {
     IEC_VAL(ph.EN) = true;
     IEC_VAL(ph.EXECUTE) = true;
     ph.EXECUTE0.value = false;
-    IEC_VAL(ph.AXISINDEX) = -5;
+    IEC_VAL(ph.AXISID) = -5;
 
     __mcl_cmd_PressureHandle(&ph);
 
-    ASSERT_TRUE(IEC_VAL(ph.ERROR) == true, "PressureHandle should set ERROR for invalid AXISINDEX");
+    ASSERT_TRUE(IEC_VAL(ph.ERROR) == true, "PressureHandle should set ERROR for invalid AXISID");
 }
 
 /* ==================================================================
@@ -553,7 +553,7 @@ static void test_multiple_axes_operate_independently(void) {
     IEC_VAL(ma0.EN) = true;
     IEC_VAL(ma0.EXECUTE) = true;
     ma0.EXECUTE0.value = false;
-    IEC_VAL(ma0.AXISINDEX) = 0;
+    IEC_VAL(ma0.AXISID) = 0;
     IEC_VAL(ma0.POSITION) = 100.0f;
     IEC_VAL(ma0.VELOCITY) = 50.0f;
     IEC_VAL(ma0.ACCELERATION) = 200.0f;
@@ -566,7 +566,7 @@ static void test_multiple_axes_operate_independently(void) {
     IEC_VAL(mv1.EN) = true;
     IEC_VAL(mv1.EXECUTE) = true;
     mv1.EXECUTE0.value = false;
-    IEC_VAL(mv1.AXISINDEX) = 1;
+    IEC_VAL(mv1.AXISID) = 1;
     IEC_VAL(mv1.VELOCITY) = 30.0f;
     IEC_VAL(mv1.ACCELERATION) = 150.0f;
     IEC_VAL(mv1.DIRECTION) = 1;

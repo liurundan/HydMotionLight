@@ -40,7 +40,7 @@ static void start_moveabsolute_on_axis(int axisIndex, HDY_MOVEABSOLUTE* ma) {
     IEC_VAL(ma->EN) = true;
     IEC_VAL(ma->EXECUTE) = true;
     ma->EXECUTE0.value = false;  /* 上升沿 */
-    IEC_VAL(ma->AXISINDEX) = axisIndex;
+    IEC_VAL(ma->AXISID) = axisIndex;
     IEC_VAL(ma->POSITION) = 100.0f;
     IEC_VAL(ma->VELOCITY) = 50.0f;
     IEC_VAL(ma->ACCELERATION) = 200.0f;
@@ -61,7 +61,7 @@ static void start_movevelocity_on_axis(int axisIndex, HDY_MOVEVELOCITY* mv) {
     IEC_VAL(mv->EN) = true;
     IEC_VAL(mv->EXECUTE) = true;
     mv->EXECUTE0.value = false;  /* 上升沿 */
-    IEC_VAL(mv->AXISINDEX) = axisIndex;
+    IEC_VAL(mv->AXISID) = axisIndex;
     IEC_VAL(mv->VELOCITY) = 30.0f;
     IEC_VAL(mv->ACCELERATION) = 150.0f;
     IEC_VAL(mv->DIRECTION) = 1;
@@ -94,7 +94,7 @@ static void test_moveabsolute_preempted_by_stop(void) {
     IEC_VAL(stop.EN) = true;
     IEC_VAL(stop.EXECUTE) = true;
     stop.EXECUTE0.value = false;
-    IEC_VAL(stop.AXISINDEX) = 0;
+    IEC_VAL(stop.AXISID) = 0;
     __mcl_cmd_Stop(&stop);
     __HdyMotion_framework_Publish();
 
@@ -133,7 +133,7 @@ static void test_moveabsolute_preempted_by_movevelocity(void) {
     IEC_VAL(mv.EN) = true;
     IEC_VAL(mv.EXECUTE) = true;
     mv.EXECUTE0.value = false;
-    IEC_VAL(mv.AXISINDEX) = 0;
+    IEC_VAL(mv.AXISID) = 0;
     IEC_VAL(mv.VELOCITY) = 30.0f;
     IEC_VAL(mv.ACCELERATION) = 150.0f;
     IEC_VAL(mv.DIRECTION) = 1;
@@ -172,7 +172,7 @@ static void test_movevelocity_preempted_by_moveabsolute(void) {
     IEC_VAL(ma.EN) = true;
     IEC_VAL(ma.EXECUTE) = true;
     ma.EXECUTE0.value = false;
-    IEC_VAL(ma.AXISINDEX) = 0;
+    IEC_VAL(ma.AXISID) = 0;
     IEC_VAL(ma.POSITION) = 150.0f;
     IEC_VAL(ma.VELOCITY) = 60.0f;
     IEC_VAL(ma.ACCELERATION) = 200.0f;
@@ -207,7 +207,7 @@ static void test_pressurehandle_preempted_by_stop(void) {
     IEC_VAL(ph.EN) = true;
     IEC_VAL(ph.EXECUTE) = true;
     ph.EXECUTE0.value = false;
-    IEC_VAL(ph.AXISINDEX) = 0;
+    IEC_VAL(ph.AXISID) = 0;
     IEC_VAL(ph.PRESSURE) = 10.0f;
     IEC_VAL(ph.PRESSURERAMPRATE) = 2.0f;
     __mcl_cmd_PressureHandle(&ph);
@@ -224,7 +224,7 @@ static void test_pressurehandle_preempted_by_stop(void) {
     IEC_VAL(stop.EN) = true;
     IEC_VAL(stop.EXECUTE) = true;
     stop.EXECUTE0.value = false;
-    IEC_VAL(stop.AXISINDEX) = 0;
+    IEC_VAL(stop.AXISID) = 0;
     __mcl_cmd_Stop(&stop);
     __HdyMotion_framework_Publish();
 
@@ -254,7 +254,7 @@ static void test_multi_axis_isolation(void) {
     IEC_VAL(ma0.EN) = true;
     IEC_VAL(ma0.EXECUTE) = true;
     ma0.EXECUTE0.value = false;
-    IEC_VAL(ma0.AXISINDEX) = 0;
+    IEC_VAL(ma0.AXISID) = 0;
     IEC_VAL(ma0.POSITION) = 100.0f;
     IEC_VAL(ma0.VELOCITY) = 50.0f;
     IEC_VAL(ma0.ACCELERATION) = 200.0f;
@@ -275,7 +275,7 @@ static void test_multi_axis_isolation(void) {
     IEC_VAL(ma1.EN) = true;
     IEC_VAL(ma1.EXECUTE) = true;
     ma1.EXECUTE0.value = false;
-    IEC_VAL(ma1.AXISINDEX) = 1;
+    IEC_VAL(ma1.AXISID) = 1;
     IEC_VAL(ma1.POSITION) = 200.0f;
     IEC_VAL(ma1.VELOCITY) = 30.0f;
     IEC_VAL(ma1.ACCELERATION) = 150.0f;
@@ -306,7 +306,7 @@ static void test_multi_axis_isolation(void) {
     IEC_VAL(stop.EN) = true;
     IEC_VAL(stop.EXECUTE) = true;
     stop.EXECUTE0.value = false;
-    IEC_VAL(stop.AXISINDEX) = 0;
+    IEC_VAL(stop.AXISID) = 0;
     __mcl_cmd_Stop(&stop);
     __HdyMotion_framework_Publish();
 
@@ -346,7 +346,7 @@ static void test_stop_preempted_by_moveabsolute(void) {
     IEC_VAL(stop.EN) = true;
     IEC_VAL(stop.EXECUTE) = true;
     stop.EXECUTE0.value = false;
-    IEC_VAL(stop.AXISINDEX) = 0;
+    IEC_VAL(stop.AXISID) = 0;
     __mcl_cmd_Stop(&stop);
     __HdyMotion_framework_Publish();
 
@@ -362,7 +362,7 @@ static void test_stop_preempted_by_moveabsolute(void) {
     IEC_VAL(ma.EN) = true;
     IEC_VAL(ma.EXECUTE) = true;
     ma.EXECUTE0.value = false;
-    IEC_VAL(ma.AXISINDEX) = 0;
+    IEC_VAL(ma.AXISID) = 0;
     IEC_VAL(ma.POSITION) = 200.0f;
     IEC_VAL(ma.VELOCITY) = 60.0f;
     IEC_VAL(ma.ACCELERATION) = 200.0f;
@@ -394,7 +394,7 @@ static void test_self_preemption_same_fb_twice(void) {
     IEC_VAL(ma.EN) = true;
     IEC_VAL(ma.EXECUTE) = true;
     ma.EXECUTE0.value = false;
-    IEC_VAL(ma.AXISINDEX) = 0;
+    IEC_VAL(ma.AXISID) = 0;
     IEC_VAL(ma.POSITION) = 100.0f;
     IEC_VAL(ma.VELOCITY) = 50.0f;
     IEC_VAL(ma.ACCELERATION) = 200.0f;
@@ -448,7 +448,7 @@ static void test_previous_command_loses_ownership_after_reset(void) {
     IEC_VAL(reset.EN) = true;
     IEC_VAL(reset.EXECUTE) = true;
     reset.EXECUTE0.value = false;
-    IEC_VAL(reset.AXISINDEX) = 0;
+    IEC_VAL(reset.AXISID) = 0;
     __mcl_cmd_Reset(&reset);
     __HdyMotion_framework_Publish();
 
@@ -480,7 +480,7 @@ static void test_preemption_chain_three_commands(void) {
     IEC_VAL(mv.EN) = true;
     IEC_VAL(mv.EXECUTE) = true;
     mv.EXECUTE0.value = false;
-    IEC_VAL(mv.AXISINDEX) = 0;
+    IEC_VAL(mv.AXISID) = 0;
     IEC_VAL(mv.VELOCITY) = 30.0f;
     IEC_VAL(mv.ACCELERATION) = 150.0f;
     IEC_VAL(mv.DIRECTION) = 1;
@@ -505,7 +505,7 @@ static void test_preemption_chain_three_commands(void) {
     IEC_VAL(stop.EN) = true;
     IEC_VAL(stop.EXECUTE) = true;
     stop.EXECUTE0.value = false;
-    IEC_VAL(stop.AXISINDEX) = 0;
+    IEC_VAL(stop.AXISID) = 0;
     __mcl_cmd_Stop(&stop);
     __HdyMotion_framework_Publish();
 
@@ -530,7 +530,7 @@ static void test_never_activated_fb_no_false_commandaborted(void) {
     IEC_VAL(ma.EN) = true;
     IEC_VAL(ma.EXECUTE) = false;
     ma.EXECUTE0.value = false;
-    IEC_VAL(ma.AXISINDEX) = 0;
+    IEC_VAL(ma.AXISID) = 0;
     IEC_VAL(ma.POSITION) = 100.0f;
     IEC_VAL(ma.VELOCITY) = 50.0f;
     IEC_VAL(ma.ACCELERATION) = 200.0f;

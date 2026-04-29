@@ -18,7 +18,7 @@
 5. 备注：本接口函数的具体实现位于 motion_control.c 文件；
    设计用于可访问 HDY_MotionControlFB 实例的外部代码调用（如通过API分层接口、嵌入式场景直接调用）。 */
 
-extern HDY_MotionControlFB HDY_MotionControlFB_inst[HDY_MAX_AXIS_MOTION];
+
 
 
 
@@ -59,7 +59,7 @@ typedef struct
    __DECLARE_VAR(BOOL, ENO)
    __DECLARE_VAR(BOOL, EXECUTE)
    __DECLARE_VAR(HDY_AXISMOTION, MOTION)
-
+   __DECLARE_VAR(SINT, AXISID)
    __DECLARE_VAR(BOOL, ACTIVE)
    __DECLARE_VAR(BOOL, BUSY)
    __DECLARE_VAR(BOOL, DONE)
@@ -70,7 +70,7 @@ typedef struct
 
    // FB private variables - TEMP, private and located variables
    __DECLARE_VAR(BOOL, INIT)
-   __DECLARE_VAR(SINT, AXISINDEX)
+
    __DECLARE_VAR(BOOL, EXECUTE0)
    __DECLARE_VAR(BOOL, DONE0)
    __DECLARE_VAR(BOOL, ACTIVE0)
@@ -86,7 +86,7 @@ typedef struct
    __DECLARE_VAR(BOOL, ENO)
    __DECLARE_VAR(BOOL, EXECUTE)
    __DECLARE_VAR(HDY_AXISMOTION, MOTION)
-
+   __DECLARE_VAR(SINT, AXISID)
    __DECLARE_VAR(BOOL, BUSY)
    __DECLARE_VAR(BOOL, DONE)
    __DECLARE_VAR(BOOL, ERROR)
@@ -98,7 +98,7 @@ typedef struct
 
    // FB private variables - TEMP, private and located variables
    __DECLARE_VAR(BOOL, INIT)
-   __DECLARE_VAR(SINT, AXISINDEX)
+
    __DECLARE_VAR(BOOL, EXECUTE0)
    __DECLARE_VAR(BOOL, DONE0)
    __DECLARE_VAR(WORD, GEN)
@@ -110,7 +110,7 @@ typedef struct {
     __DECLARE_VAR(BOOL,EN)
     __DECLARE_VAR(BOOL,ENO)
     __DECLARE_VAR(BOOL,EXECUTE)
-    __DECLARE_VAR(SINT,AXISINDEX)
+    __DECLARE_VAR(SINT,AXISID)
 
     __DECLARE_VAR(BOOL,DONE)
     __DECLARE_VAR(BOOL,BUSY)
@@ -129,7 +129,7 @@ typedef struct {
     __DECLARE_VAR(BOOL,EN)
     __DECLARE_VAR(BOOL,ENO)
     __DECLARE_VAR(BOOL,EXECUTE)   
-    __DECLARE_VAR(SINT,AXISINDEX)
+    __DECLARE_VAR(SINT,AXISID)
     __DECLARE_VAR(BOOL,CONTINUOUSUPDATE)
     __DECLARE_VAR(REAL,POSITION)
     __DECLARE_VAR(REAL,VELOCITY)
@@ -154,7 +154,7 @@ typedef struct {
 typedef struct {
     __DECLARE_VAR(BOOL,EN)
     __DECLARE_VAR(BOOL,ENO)
-    __DECLARE_VAR(SINT,AXISINDEX)
+    __DECLARE_VAR(SINT,AXISID)
     __DECLARE_VAR(BOOL,EXECUTE)
     __DECLARE_VAR(BOOL,CONTINUOUSUPDATE)
     __DECLARE_VAR(REAL,VELOCITY)
@@ -179,7 +179,7 @@ typedef struct {
 typedef struct {
     __DECLARE_VAR(BOOL,EN)
     __DECLARE_VAR(BOOL,ENO)
-    __DECLARE_VAR(SINT,AXISINDEX)
+    __DECLARE_VAR(SINT,AXISID)
     __DECLARE_VAR(BOOL,EXECUTE)
     __DECLARE_VAR(BOOL,DONE)
     __DECLARE_VAR(BOOL,BUSY)
@@ -195,7 +195,7 @@ typedef struct {
 typedef struct {
     __DECLARE_VAR(BOOL,EN)
     __DECLARE_VAR(BOOL,ENO)
-    __DECLARE_VAR(SINT,AXISINDEX)
+    __DECLARE_VAR(SINT,AXISID)
     __DECLARE_VAR(BOOL,EXECUTE)
 
     __DECLARE_VAR(REAL,PRESSURE)
@@ -213,10 +213,35 @@ typedef struct {
     __DECLARE_VAR(WORD,GEN)
 } HDY_PRESSUREHANDLE;
 
+// FUNCTION_BLOCK HDY_CREATEMOTION
+// Data part
+typedef struct
+{
+   // FB Interface - IN, OUT, IN_OUT variables
+   __DECLARE_VAR(BOOL, EN)
+   __DECLARE_VAR(BOOL, ENO)
+
+   __DECLARE_VAR(BOOL, USE_RECIPE)
+   __DECLARE_VAR(REAL, FLOW_TO_PUMPSPEED)
+   __DECLARE_VAR(REAL, PUMPSPEED_LIMIT)
+
+   __DECLARE_VAR(SINT, AXISID)
+   __DECLARE_VAR(BOOL, BUSY)
+   __DECLARE_VAR(BOOL, DONE)
+   __DECLARE_VAR(BOOL, ERROR)
+   __DECLARE_VAR(WORD, ERRORID)
+
+   // FB private variables - TEMP, private and located variables
+   __DECLARE_VAR(BOOL, DONE0)
+
+} HDY_CREATEMOTION;
+
 extern int  __HdyMotion_framework_Init();
 extern void __HdyMotion_framework_Cleanup();
 extern void __HdyMotion_framework_Retrieve();
 extern void __HdyMotion_framework_Publish();
+
+extern void __mcl_cmd_CreateMotion(HDY_CREATEMOTION *data__);
 extern void __mcl_cmd_LoadProfile(HDY_LOADPROFILE *data__);
 extern void __mcl_cmd_MoveProfile(HDY_MOVEPROFILE *data__);
 extern void __mcl_cmd_Stop(HDY_STOP *data__);
