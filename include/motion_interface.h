@@ -74,7 +74,35 @@ typedef struct
    __DECLARE_VAR(BOOL, EXECUTE0)
    __DECLARE_VAR(BOOL, DONE0)
    __DECLARE_VAR(BOOL, ACTIVE0)
+   __DECLARE_VAR(WORD, GEN)
 } HDY_MOVEPROFILE;
+
+// FUNCTION_BLOCK HDY_LOADPROFILE
+// Data part
+typedef struct
+{
+   // FB Interface - IN, OUT, IN_OUT variables
+   __DECLARE_VAR(BOOL, EN)
+   __DECLARE_VAR(BOOL, ENO)
+   __DECLARE_VAR(BOOL, EXECUTE)
+   __DECLARE_VAR(HDY_AXISMOTION, MOTION)
+
+   __DECLARE_VAR(BOOL, BUSY)
+   __DECLARE_VAR(BOOL, DONE)
+   __DECLARE_VAR(BOOL, ERROR)
+   __DECLARE_VAR(WORD, ERRORID)
+
+    // Note: LOADPROFILE does not have ACTIVE/DONE outputs, as it only loads the recipe without starting execution.
+    // The presence of the loaded recipe can be inferred from the BUSY/DONE/ERROR outputs and diagnostic info.
+
+
+   // FB private variables - TEMP, private and located variables
+   __DECLARE_VAR(BOOL, INIT)
+   __DECLARE_VAR(SINT, AXISINDEX)
+   __DECLARE_VAR(BOOL, EXECUTE0)
+   __DECLARE_VAR(BOOL, DONE0)
+   __DECLARE_VAR(WORD, GEN)
+} HDY_LOADPROFILE;
 
 // FUNCTION_BLOCK HDY_STOP
 // Data part
@@ -92,6 +120,7 @@ typedef struct {
     __DECLARE_VAR(BOOL,EXECUTE0)
     __DECLARE_VAR(BOOL,DONE0)
     __DECLARE_VAR(BOOL,ACTIVE0)
+    __DECLARE_VAR(WORD,GEN)
 } HDY_STOP;
 
 // FUNCTION_BLOCK HDY_MoveAbsolute
@@ -117,6 +146,7 @@ typedef struct {
     __DECLARE_VAR(BOOL,EXECUTE0)
     __DECLARE_VAR(BOOL,DONE0)
     __DECLARE_VAR(BOOL,ACTIVE0)
+    __DECLARE_VAR(WORD,GEN)
 } HDY_MOVEABSOLUTE;
 
 // FUNCTION_BLOCK HDY_MoveVelocity
@@ -141,6 +171,7 @@ typedef struct {
     __DECLARE_VAR(BOOL,EXECUTE0)
     __DECLARE_VAR(BOOL,INVELOCITY0)
     __DECLARE_VAR(BOOL,ACTIVE0)
+    __DECLARE_VAR(WORD,GEN)
 } HDY_MOVEVELOCITY;
 
 // FUNCTION_BLOCK HDY_Reset
@@ -156,6 +187,7 @@ typedef struct {
     __DECLARE_VAR(WORD,ERRORID)
     __DECLARE_VAR(BOOL,EXECUTE0)
     __DECLARE_VAR(BOOL,DONE0)
+    __DECLARE_VAR(WORD,GEN)
 } HDY_RESET;
 
 // FUNCTION_BLOCK HDY_PressureHandle
@@ -178,12 +210,14 @@ typedef struct {
     __DECLARE_VAR(BOOL,EXECUTE0)
     __DECLARE_VAR(BOOL,INPRESSURE0)
     __DECLARE_VAR(BOOL,ACTIVE0)
+    __DECLARE_VAR(WORD,GEN)
 } HDY_PRESSUREHANDLE;
 
 extern int  __HdyMotion_framework_Init();
 extern void __HdyMotion_framework_Cleanup();
 extern void __HdyMotion_framework_Retrieve();
 extern void __HdyMotion_framework_Publish();
+extern void __mcl_cmd_LoadProfile(HDY_LOADPROFILE *data__);
 extern void __mcl_cmd_MoveProfile(HDY_MOVEPROFILE *data__);
 extern void __mcl_cmd_Stop(HDY_STOP *data__);
 extern void __mcl_cmd_MoveAbsolute(HDY_MOVEABSOLUTE *data__);

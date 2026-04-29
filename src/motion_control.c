@@ -65,9 +65,13 @@ static const HDY_FbStateMask HDY_COMMAND_ALLOWED_STATE_MASKS[HDY_CMD_ACK + 1U] =
     [HDY_CMD_HOLD] = HDY_FB_STATE_MASK_BIT(HDY_FB_STATE_STARTING) |
         HDY_FB_STATE_MASK_BIT(HDY_FB_STATE_RUNNING),
     [HDY_CMD_RESUME] = HDY_FB_STATE_MASK_BIT(HDY_FB_STATE_HOLD),
-    [HDY_CMD_ABORT] = HDY_FB_STATE_MASK_BIT(HDY_FB_STATE_STARTING) |
+    [HDY_CMD_ABORT] = HDY_FB_STATE_MASK_BIT(HDY_FB_STATE_IDLE) |
+        HDY_FB_STATE_MASK_BIT(HDY_FB_STATE_READY) |
+        HDY_FB_STATE_MASK_BIT(HDY_FB_STATE_STARTING) |
         HDY_FB_STATE_MASK_BIT(HDY_FB_STATE_RUNNING) |
         HDY_FB_STATE_MASK_BIT(HDY_FB_STATE_SEGMENT_COMPLETE) |
+        HDY_FB_STATE_MASK_BIT(HDY_FB_STATE_DONE) |
+        HDY_FB_STATE_MASK_BIT(HDY_FB_STATE_ABORTED) |
         HDY_FB_STATE_MASK_BIT(HDY_FB_STATE_HOLD),
     [HDY_CMD_RESET] = (HDY_FbStateMask)0U,
     [HDY_CMD_ACK] = HDY_FB_STATE_MASK_BIT(HDY_FB_STATE_DISABLED) |
@@ -667,6 +671,7 @@ static void HDY_AbortNow(HDY_MotionControlFB* fb,
         return;
     }
 
+    fb->_commandGeneration++;
     HDY_ClearStartCommandInput(fb);
     HDY_ProtectionManager_ApplyIdleState(fb, true, false);
     /* Ensure outputs are forced to a safe state immediately on abort */

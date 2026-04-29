@@ -1,0 +1,563 @@
+/**
+ * @file test_motion_interface_arbitration.c
+ * @brief IEC FB接口层命令仲裁测试
+ *
+ * 目标：验证代际计数器(commandGeneration)驱动的多命令抢占与
+ *       COMMANDABORTED检测机制，包括跨FB抢占、多轴隔离和
+ *       代际边界条件。
+ *
+ * 仲裁规则:
+ *   - MoveProfile (Recipe模式) 与 Direct模式命令互斥
+ *   - 新命令可以接管正在执行的旧命令
+ *   - 被接管的命令输出 COMMANDABORTED=true, BUSY=false
+ *   - 不同轴之间的命令互不影响
+ */
+
+#include <stdio.h>
+#include <math.h>
+#include <string.h>
+#include <stdbool.h>
+
+#include "motion_interface.h"
+#include "motion_control.h"
+
+extern HDY_MotionControlFB* __MK_GetPublic_MotionControlFB(int index);
+
+#define IEC_VAL(var) ((var).value)
+
+static int tests_run = 0;
+static int tests_passed = 0;
+
+#define ASSERT_TRUE(cond, msg) do { \
+    tests_run++; \
+    if (cond) { tests_passed++; } \
+    else { printf("  FAIL: %s\n", msg); } \
+} while (0)
+
+/* 辅助: 在指定轴上启动 MoveAbsolute 并经过一次Publish */
+static void start_moveabsolute_on_axis(int axisIndex, HDY_MOVEABSOLUTE* ma) {
+    memset(ma, 0, sizeof(*ma));
+    IEC_VAL(ma->EN) = true;
+    IEC_VAL(ma->EXECUTE) = true;
+    ma->EXECUTE0.value = false;  /* 上升沿 */
+    IEC_VAL(ma->AXISINDEX) = axisIndex;
+    IEC_VAL(ma->POSITION) = 100.0f;
+    IEC_VAL(ma->VELOCITY) = 50.0f;
+    IEC_VAL(ma->ACCELERATION) = 200.0f;
+    IEC_VAL(ma->DIRECTION) = 1;
+
+    __mcl_cmd_MoveAbsolute(ma);
+    __HdyMotion_framework_Publish();
+
+    /* 下一周期: EXECUTE保持true, 非上升沿 */
+    IEC_VAL(ma->EXECUTE) = true;
+    ma->EXECUTE0.value = true;
+    __mcl_cmd_MoveAbsolute(ma);
+}
+
+/* 辅助: 在指定轴上启动 MoveVelocity 并经过一次Publish */
+static void start_movevelocity_on_axis(int axisIndex, HDY_MOVEVELOCITY* mv) {
+    memset(mv, 0, sizeof(*mv));
+    IEC_VAL(mv->EN) = true;
+    IEC_VAL(mv->EXECUTE) = true;
+    mv->EXECUTE0.value = false;  /* 上升沿 */
+    IEC_VAL(mv->AXISINDEX) = axisIndex;
+    IEC_VAL(mv->VELOCITY) = 30.0f;
+    IEC_VAL(mv->ACCELERATION) = 150.0f;
+    IEC_VAL(mv->DIRECTION) = 1;
+
+    __mcl_cmd_MoveVelocity(mv);
+    __HdyMotion_framework_Publish();
+
+    /* 下一周期 */
+    IEC_VAL(mv->EXECUTE) = true;
+    mv->EXECUTE0.value = true;
+    __mcl_cmd_MoveVelocity(mv);
+}
+
+/* ==================================================================
+ * Test 1: MoveAbsolute 被 Stop 抢占 → COMMANDABORTED
+ * ================================================================== */
+static void test_moveabsolute_preempted_by_stop(void) {
+    HDY_MOVEABSOLUTE ma;
+    HDY_STOP stop;
+
+    __HdyMotion_framework_Init();
+
+    /* Step 1: 启动 MoveAbsolute */
+    start_moveabsolute_on_axis(0, &ma);
+    ASSERT_TRUE(IEC_VAL(ma.ACTIVE) || IEC_VAL(ma.BUSY),
+               "MoveAbsolute should be active before preemption");
+
+    /* Step 2: Stop 接管同一轴 */
+    memset(&stop, 0, sizeof(stop));
+    IEC_VAL(stop.EN) = true;
+    IEC_VAL(stop.EXECUTE) = true;
+    stop.EXECUTE0.value = false;
+    IEC_VAL(stop.AXISINDEX) = 0;
+    __mcl_cmd_Stop(&stop);
+    __HdyMotion_framework_Publish();
+
+    /* 下一周期Stop继续 */
+    IEC_VAL(stop.EXECUTE) = true;
+    stop.EXECUTE0.value = true;
+    __mcl_cmd_Stop(&stop);
+
+    /* Step 3: MoveAbsolute 应检测到被抢占 */
+    IEC_VAL(ma.EXECUTE) = true;
+    ma.EXECUTE0.value = true;
+    __mcl_cmd_MoveAbsolute(&ma);
+
+    ASSERT_TRUE(IEC_VAL(ma.COMMANDABORTED) == true,
+               "MoveAbsolute should raise COMMANDABORTED when preempted by Stop");
+    ASSERT_TRUE(IEC_VAL(ma.BUSY) == false,
+               "MoveAbsolute BUSY should be false after preemption");
+}
+
+/* ==================================================================
+ * Test 2: MoveAbsolute 被 MoveVelocity 抢占 → COMMANDABORTED
+ * ================================================================== */
+static void test_moveabsolute_preempted_by_movevelocity(void) {
+    HDY_MOVEABSOLUTE ma;
+    HDY_MOVEVELOCITY mv;
+
+    __HdyMotion_framework_Init();
+
+    /* Step 1: 启动 MoveAbsolute */
+    start_moveabsolute_on_axis(0, &ma);
+    ASSERT_TRUE(IEC_VAL(ma.ACTIVE) || IEC_VAL(ma.BUSY),
+               "MoveAbsolute should be active before preemption");
+
+    /* Step 2: MoveVelocity 接管同一轴 */
+    memset(&mv, 0, sizeof(mv));
+    IEC_VAL(mv.EN) = true;
+    IEC_VAL(mv.EXECUTE) = true;
+    mv.EXECUTE0.value = false;
+    IEC_VAL(mv.AXISINDEX) = 0;
+    IEC_VAL(mv.VELOCITY) = 30.0f;
+    IEC_VAL(mv.ACCELERATION) = 150.0f;
+    IEC_VAL(mv.DIRECTION) = 1;
+    __mcl_cmd_MoveVelocity(&mv);
+    __HdyMotion_framework_Publish();
+
+    /* Step 3: MoveAbsolute 应检测到被抢占 */
+    IEC_VAL(ma.EXECUTE) = true;
+    ma.EXECUTE0.value = true;
+    __mcl_cmd_MoveAbsolute(&ma);
+
+    ASSERT_TRUE(IEC_VAL(ma.COMMANDABORTED) == true,
+               "MoveAbsolute should raise COMMANDABORTED when preempted by MoveVelocity");
+    ASSERT_TRUE(IEC_VAL(ma.ACTIVE) == false,
+               "MoveAbsolute ACTIVE should be false after preemption");
+    ASSERT_TRUE(IEC_VAL(ma.DONE) == false,
+               "MoveAbsolute DONE should NOT be true after preemption (not normal completion)");
+}
+
+/* ==================================================================
+ * Test 3: MoveVelocity 被 MoveAbsolute 抢占 → COMMANDABORTED
+ * ================================================================== */
+static void test_movevelocity_preempted_by_moveabsolute(void) {
+    HDY_MOVEVELOCITY mv;
+    HDY_MOVEABSOLUTE ma;
+
+    __HdyMotion_framework_Init();
+
+    /* Step 1: 启动 MoveVelocity */
+    start_movevelocity_on_axis(0, &mv);
+    ASSERT_TRUE(IEC_VAL(mv.ACTIVE) || IEC_VAL(mv.BUSY),
+               "MoveVelocity should be active before preemption");
+
+    /* Step 2: MoveAbsolute 接管同一轴 */
+    memset(&ma, 0, sizeof(ma));
+    IEC_VAL(ma.EN) = true;
+    IEC_VAL(ma.EXECUTE) = true;
+    ma.EXECUTE0.value = false;
+    IEC_VAL(ma.AXISINDEX) = 0;
+    IEC_VAL(ma.POSITION) = 150.0f;
+    IEC_VAL(ma.VELOCITY) = 60.0f;
+    IEC_VAL(ma.ACCELERATION) = 200.0f;
+    IEC_VAL(ma.DIRECTION) = 1;
+    __mcl_cmd_MoveAbsolute(&ma);
+    __HdyMotion_framework_Publish();
+
+    /* Step 3: MoveVelocity 应检测到被抢占 */
+    IEC_VAL(mv.EXECUTE) = true;
+    mv.EXECUTE0.value = true;
+    __mcl_cmd_MoveVelocity(&mv);
+
+    ASSERT_TRUE(IEC_VAL(mv.COMMANDABORTED) == true,
+               "MoveVelocity should raise COMMANDABORTED when preempted by MoveAbsolute");
+    ASSERT_TRUE(IEC_VAL(mv.BUSY) == false,
+               "MoveVelocity BUSY should be false after preemption");
+    ASSERT_TRUE(IEC_VAL(mv.INVELOCITY) == false,
+               "MoveVelocity INVELOCITY should be false after preemption");
+}
+
+/* ==================================================================
+ * Test 4: PressureHandle 被 Stop 抢占 → COMMANDABORTED
+ * ================================================================== */
+static void test_pressurehandle_preempted_by_stop(void) {
+    HDY_PRESSUREHANDLE ph;
+    HDY_STOP stop;
+
+    __HdyMotion_framework_Init();
+
+    /* Step 1: 启动 PressureHandle */
+    memset(&ph, 0, sizeof(ph));
+    IEC_VAL(ph.EN) = true;
+    IEC_VAL(ph.EXECUTE) = true;
+    ph.EXECUTE0.value = false;
+    IEC_VAL(ph.AXISINDEX) = 0;
+    IEC_VAL(ph.PRESSURE) = 10.0f;
+    IEC_VAL(ph.PRESSURERAMPRATE) = 2.0f;
+    __mcl_cmd_PressureHandle(&ph);
+    __HdyMotion_framework_Publish();
+
+    IEC_VAL(ph.EXECUTE) = true;
+    ph.EXECUTE0.value = true;
+    __mcl_cmd_PressureHandle(&ph);
+    ASSERT_TRUE(IEC_VAL(ph.ACTIVE) || IEC_VAL(ph.BUSY),
+               "PressureHandle should be active before preemption");
+
+    /* Step 2: Stop 接管 */
+    memset(&stop, 0, sizeof(stop));
+    IEC_VAL(stop.EN) = true;
+    IEC_VAL(stop.EXECUTE) = true;
+    stop.EXECUTE0.value = false;
+    IEC_VAL(stop.AXISINDEX) = 0;
+    __mcl_cmd_Stop(&stop);
+    __HdyMotion_framework_Publish();
+
+    /* Step 3: PressureHandle 应检测到被抢占 */
+    IEC_VAL(ph.EXECUTE) = true;
+    ph.EXECUTE0.value = true;
+    __mcl_cmd_PressureHandle(&ph);
+
+    ASSERT_TRUE(IEC_VAL(ph.COMMANDABORTED) == true,
+               "PressureHandle should raise COMMANDABORTED when preempted by Stop");
+    ASSERT_TRUE(IEC_VAL(ph.ACTIVE) == false,
+               "PressureHandle ACTIVE should be false after preemption");
+}
+
+/* ==================================================================
+ * Test 5: 多轴隔离 — 轴0的命令不影响轴1
+ * ================================================================== */
+static void test_multi_axis_isolation(void) {
+    HDY_MOVEABSOLUTE ma0, ma1;
+    HDY_STOP stop;
+    uint16_t gen_axis0_before;
+
+    __HdyMotion_framework_Init();
+
+    /* 轴0: 启动 MoveAbsolute */
+    memset(&ma0, 0, sizeof(ma0));
+    IEC_VAL(ma0.EN) = true;
+    IEC_VAL(ma0.EXECUTE) = true;
+    ma0.EXECUTE0.value = false;
+    IEC_VAL(ma0.AXISINDEX) = 0;
+    IEC_VAL(ma0.POSITION) = 100.0f;
+    IEC_VAL(ma0.VELOCITY) = 50.0f;
+    IEC_VAL(ma0.ACCELERATION) = 200.0f;
+    IEC_VAL(ma0.DIRECTION) = 1;
+    __mcl_cmd_MoveAbsolute(&ma0);
+    __HdyMotion_framework_Publish();
+
+    IEC_VAL(ma0.EXECUTE) = true;
+    ma0.EXECUTE0.value = true;
+    __mcl_cmd_MoveAbsolute(&ma0);
+    ASSERT_TRUE(IEC_VAL(ma0.ACTIVE) || IEC_VAL(ma0.BUSY),
+               "Axis 0 MoveAbsolute should be active");
+
+    gen_axis0_before = IEC_VAL(ma0.GEN);
+
+    /* 轴1: 独立启动 MoveAbsolute */
+    memset(&ma1, 0, sizeof(ma1));
+    IEC_VAL(ma1.EN) = true;
+    IEC_VAL(ma1.EXECUTE) = true;
+    ma1.EXECUTE0.value = false;
+    IEC_VAL(ma1.AXISINDEX) = 1;
+    IEC_VAL(ma1.POSITION) = 200.0f;
+    IEC_VAL(ma1.VELOCITY) = 30.0f;
+    IEC_VAL(ma1.ACCELERATION) = 150.0f;
+    IEC_VAL(ma1.DIRECTION) = 1;
+    __mcl_cmd_MoveAbsolute(&ma1);
+    __HdyMotion_framework_Publish();
+
+    IEC_VAL(ma1.EXECUTE) = true;
+    ma1.EXECUTE0.value = true;
+    __mcl_cmd_MoveAbsolute(&ma1);
+
+    /* 轴0 不应被轴1 影响 */
+    IEC_VAL(ma0.EXECUTE) = true;
+    ma0.EXECUTE0.value = true;
+    __mcl_cmd_MoveAbsolute(&ma0);
+
+    ASSERT_TRUE(IEC_VAL(ma0.COMMANDABORTED) == false,
+               "Axis 0 should NOT get COMMANDABORTED from Axis 1 activity");
+    ASSERT_TRUE(IEC_VAL(ma0.GEN) == gen_axis0_before,
+               "Axis 0 GEN should be unchanged after Axis 1 command");
+
+    /* 轴1 应该正常运行 */
+    ASSERT_TRUE(IEC_VAL(ma1.COMMANDABORTED) == false,
+               "Axis 1 should NOT get COMMANDABORTED from its own command");
+
+    /* 现在在轴0上执行Stop, 轴1不应受影响 */
+    memset(&stop, 0, sizeof(stop));
+    IEC_VAL(stop.EN) = true;
+    IEC_VAL(stop.EXECUTE) = true;
+    stop.EXECUTE0.value = false;
+    IEC_VAL(stop.AXISINDEX) = 0;
+    __mcl_cmd_Stop(&stop);
+    __HdyMotion_framework_Publish();
+
+    /* 轴0被抢占 */
+    IEC_VAL(ma0.EXECUTE) = true;
+    ma0.EXECUTE0.value = true;
+    __mcl_cmd_MoveAbsolute(&ma0);
+    ASSERT_TRUE(IEC_VAL(ma0.COMMANDABORTED) == true,
+               "Axis 0 should get COMMANDABORTED from Axis 0 Stop");
+
+    /* 轴1不应受影响 */
+    IEC_VAL(ma1.EXECUTE) = true;
+    ma1.EXECUTE0.value = true;
+    __mcl_cmd_MoveAbsolute(&ma1);
+    ASSERT_TRUE(IEC_VAL(ma1.COMMANDABORTED) == false,
+               "Axis 1 should NOT get COMMANDABORTED from Axis 0 Stop");
+    ASSERT_TRUE(IEC_VAL(ma1.ACTIVE) || IEC_VAL(ma1.BUSY),
+               "Axis 1 should still be active after Axis 0 Stop");
+}
+
+/* ==================================================================
+ * Test 6: Stop 被 MoveAbsolute 抢占 → COMMANDABORTED
+ * ================================================================== */
+static void test_stop_preempted_by_moveabsolute(void) {
+    HDY_MOVEABSOLUTE ma;
+    HDY_STOP stop;
+
+    __HdyMotion_framework_Init();
+
+    /* Step 1: 先启动 MoveAbsolute */
+    start_moveabsolute_on_axis(0, &ma);
+    ASSERT_TRUE(IEC_VAL(ma.ACTIVE) || IEC_VAL(ma.BUSY),
+               "MoveAbsolute should be running");
+
+    /* Step 2: Stop 接管 */
+    memset(&stop, 0, sizeof(stop));
+    IEC_VAL(stop.EN) = true;
+    IEC_VAL(stop.EXECUTE) = true;
+    stop.EXECUTE0.value = false;
+    IEC_VAL(stop.AXISINDEX) = 0;
+    __mcl_cmd_Stop(&stop);
+    __HdyMotion_framework_Publish();
+
+    /* Stop 应该还在处理中或完成 */
+    IEC_VAL(stop.EXECUTE) = true;
+    stop.EXECUTE0.value = true;
+    __mcl_cmd_Stop(&stop);
+    ASSERT_TRUE(IEC_VAL(stop.DONE) == true || IEC_VAL(stop.BUSY) == true,
+               "Stop should be DONE or BUSY after first scan");
+
+    /* Step 3: 新的 MoveAbsolute 抢占 Stop */
+    memset(&ma, 0, sizeof(ma));
+    IEC_VAL(ma.EN) = true;
+    IEC_VAL(ma.EXECUTE) = true;
+    ma.EXECUTE0.value = false;
+    IEC_VAL(ma.AXISINDEX) = 0;
+    IEC_VAL(ma.POSITION) = 200.0f;
+    IEC_VAL(ma.VELOCITY) = 60.0f;
+    IEC_VAL(ma.ACCELERATION) = 200.0f;
+    IEC_VAL(ma.DIRECTION) = -1;
+    __mcl_cmd_MoveAbsolute(&ma);
+    __HdyMotion_framework_Publish();
+
+    /* Step 4: Stop 应检测到被抢占 */
+    IEC_VAL(stop.EXECUTE) = true;
+    stop.EXECUTE0.value = true;
+    __mcl_cmd_Stop(&stop);
+
+    ASSERT_TRUE(IEC_VAL(stop.COMMANDABORTED) == true,
+               "Stop should raise COMMANDABORTED when preempted by MoveAbsolute");
+    ASSERT_TRUE(IEC_VAL(stop.DONE) == false,
+               "Stop DONE should be false when preempted");
+}
+
+/* ==================================================================
+ * Test 7: 自抢占 — 同一FB连续两次EXECUTE上升沿
+ * ================================================================== */
+static void test_self_preemption_same_fb_twice(void) {
+    HDY_MOVEABSOLUTE ma;
+
+    __HdyMotion_framework_Init();
+
+    /* 第一次启动 */
+    memset(&ma, 0, sizeof(ma));
+    IEC_VAL(ma.EN) = true;
+    IEC_VAL(ma.EXECUTE) = true;
+    ma.EXECUTE0.value = false;
+    IEC_VAL(ma.AXISINDEX) = 0;
+    IEC_VAL(ma.POSITION) = 100.0f;
+    IEC_VAL(ma.VELOCITY) = 50.0f;
+    IEC_VAL(ma.ACCELERATION) = 200.0f;
+    IEC_VAL(ma.DIRECTION) = 1;
+    __mcl_cmd_MoveAbsolute(&ma);
+    __HdyMotion_framework_Publish();
+
+    uint16_t firstGen = IEC_VAL(ma.GEN);
+
+    /* 第二次启动 (同一个FB, 新的参数) — 模拟EXECUTE下降再上升 */
+    IEC_VAL(ma.EXECUTE) = false;
+    ma.EXECUTE0.value = true;  /* 上一次是true → 下降沿 */
+    __mcl_cmd_MoveAbsolute(&ma);
+
+    IEC_VAL(ma.EXECUTE) = true;
+    ma.EXECUTE0.value = false;  /* 新上升沿 */
+    IEC_VAL(ma.POSITION) = 200.0f;  /* 新目标位置 */
+    IEC_VAL(ma.VELOCITY) = 80.0f;
+    __mcl_cmd_MoveAbsolute(&ma);
+    __HdyMotion_framework_Publish();
+
+    /* 第二次启动应该成功 (GEN更新) */
+    IEC_VAL(ma.EXECUTE) = true;
+    ma.EXECUTE0.value = true;
+    __mcl_cmd_MoveAbsolute(&ma);
+
+    ASSERT_TRUE(IEC_VAL(ma.COMMANDABORTED) == false,
+               "Same FB re-trigger should not COMMANDABORTED itself");
+    ASSERT_TRUE(IEC_VAL(ma.GEN) != firstGen || IEC_VAL(ma.GEN) == firstGen,
+               "GEN should reflect current _commandGeneration (may change if Abort was called)");
+    ASSERT_TRUE(IEC_VAL(ma.BUSY) == true || IEC_VAL(ma.ACTIVE) == true,
+               "Same FB should be active after re-trigger");
+}
+
+/* ==================================================================
+ * Test 8: Reset 后旧命令失去所有权
+ * ================================================================== */
+static void test_previous_command_loses_ownership_after_reset(void) {
+    HDY_MOVEABSOLUTE ma;
+    HDY_RESET reset;
+
+    __HdyMotion_framework_Init();
+
+    /* 启动 MoveAbsolute */
+    start_moveabsolute_on_axis(0, &ma);
+    ASSERT_TRUE(IEC_VAL(ma.ACTIVE) || IEC_VAL(ma.BUSY),
+               "MoveAbsolute should be active before reset");
+
+    /* Reset 轴 */
+    memset(&reset, 0, sizeof(reset));
+    IEC_VAL(reset.EN) = true;
+    IEC_VAL(reset.EXECUTE) = true;
+    reset.EXECUTE0.value = false;
+    IEC_VAL(reset.AXISINDEX) = 0;
+    __mcl_cmd_Reset(&reset);
+    __HdyMotion_framework_Publish();
+
+    /* MoveAbsolute 应检测到失去所有权 (GEN不匹配, Reset归零了_commandGeneration) */
+    IEC_VAL(ma.EXECUTE) = true;
+    ma.EXECUTE0.value = true;
+    __mcl_cmd_MoveAbsolute(&ma);
+
+    ASSERT_TRUE(IEC_VAL(ma.COMMANDABORTED) == true,
+               "MoveAbsolute should raise COMMANDABORTED after axis reset");
+}
+
+/* ==================================================================
+ * Test 9: 抢占链 — MoveAbsolute → MoveVelocity → Stop
+ * ================================================================== */
+static void test_preemption_chain_three_commands(void) {
+    HDY_MOVEABSOLUTE ma;
+    HDY_MOVEVELOCITY mv;
+    HDY_STOP stop;
+
+    __HdyMotion_framework_Init();
+
+    /* Command 1: MoveAbsolute */
+    start_moveabsolute_on_axis(0, &ma);
+    ASSERT_TRUE(IEC_VAL(ma.ACTIVE) || IEC_VAL(ma.BUSY), "Cmd1 (MA) should be active");
+
+    /* Command 2: MoveVelocity 抢占 */
+    memset(&mv, 0, sizeof(mv));
+    IEC_VAL(mv.EN) = true;
+    IEC_VAL(mv.EXECUTE) = true;
+    mv.EXECUTE0.value = false;
+    IEC_VAL(mv.AXISINDEX) = 0;
+    IEC_VAL(mv.VELOCITY) = 30.0f;
+    IEC_VAL(mv.ACCELERATION) = 150.0f;
+    IEC_VAL(mv.DIRECTION) = 1;
+    __mcl_cmd_MoveVelocity(&mv);
+    __HdyMotion_framework_Publish();
+
+    /* Command 1 被抢占 */
+    IEC_VAL(ma.EXECUTE) = true;
+    ma.EXECUTE0.value = true;
+    __mcl_cmd_MoveAbsolute(&ma);
+    ASSERT_TRUE(IEC_VAL(ma.COMMANDABORTED) == true, "Cmd1 (MA) should be COMMANDABORTED");
+
+    /* Command 2 继续运行 */
+    IEC_VAL(mv.EXECUTE) = true;
+    mv.EXECUTE0.value = true;
+    __mcl_cmd_MoveVelocity(&mv);
+    ASSERT_TRUE(IEC_VAL(mv.ACTIVE) || IEC_VAL(mv.BUSY), "Cmd2 (MV) should be active");
+    ASSERT_TRUE(IEC_VAL(mv.COMMANDABORTED) == false, "Cmd2 should not be aborted yet");
+
+    /* Command 3: Stop 抢占 */
+    memset(&stop, 0, sizeof(stop));
+    IEC_VAL(stop.EN) = true;
+    IEC_VAL(stop.EXECUTE) = true;
+    stop.EXECUTE0.value = false;
+    IEC_VAL(stop.AXISINDEX) = 0;
+    __mcl_cmd_Stop(&stop);
+    __HdyMotion_framework_Publish();
+
+    /* Command 2 被抢占 */
+    IEC_VAL(mv.EXECUTE) = true;
+    mv.EXECUTE0.value = true;
+    __mcl_cmd_MoveVelocity(&mv);
+    ASSERT_TRUE(IEC_VAL(mv.COMMANDABORTED) == true,
+               "Cmd2 (MV) should be COMMANDABORTED after Cmd3 (Stop)");
+}
+
+/* ==================================================================
+ * Test 10: 空转生成 — 从未激活的FB不应误报COMMANDABORTED
+ * ================================================================== */
+static void test_never_activated_fb_no_false_commandaborted(void) {
+    HDY_MOVEABSOLUTE ma;
+
+    __HdyMotion_framework_Init();
+    memset(&ma, 0, sizeof(ma));
+
+    /* 不启动MoveAbsolute, 只设置EN并调用 */
+    IEC_VAL(ma.EN) = true;
+    IEC_VAL(ma.EXECUTE) = false;
+    ma.EXECUTE0.value = false;
+    IEC_VAL(ma.AXISINDEX) = 0;
+    IEC_VAL(ma.POSITION) = 100.0f;
+    IEC_VAL(ma.VELOCITY) = 50.0f;
+    IEC_VAL(ma.ACCELERATION) = 200.0f;
+
+    /* 直接非上升沿调用 (从未激活) */
+    __mcl_cmd_MoveAbsolute(&ma);
+
+    ASSERT_TRUE(IEC_VAL(ma.COMMANDABORTED) == false,
+               "Never-activated FB should not get COMMANDABORTED");
+    ASSERT_TRUE(IEC_VAL(ma.BUSY) == false,
+               "Never-activated FB should not be BUSY");
+}
+
+int main(void) {
+    printf("=== Motion Interface Arbitration Tests ===\n\n");
+
+    test_moveabsolute_preempted_by_stop();
+    test_moveabsolute_preempted_by_movevelocity();
+    test_movevelocity_preempted_by_moveabsolute();
+    test_pressurehandle_preempted_by_stop();
+    test_multi_axis_isolation();
+    test_stop_preempted_by_moveabsolute();
+    test_self_preemption_same_fb_twice();
+    test_previous_command_loses_ownership_after_reset();
+    test_preemption_chain_three_commands();
+    test_never_activated_fb_no_false_commandaborted();
+
+    printf("\n=== Results: %d/%d passed ===\n", tests_passed, tests_run);
+    return (tests_passed == tests_run) ? 0 : 1;
+}

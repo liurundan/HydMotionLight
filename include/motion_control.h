@@ -220,6 +220,7 @@ typedef struct {
     HDY_BOOL _isSwitchPhase;            /* True during segment transition window for switch suppress */
     HDY_TIME _switchSuppressEndTime;    /* Elapsed time at which switch suppress phase expires */
     HDY_UINT8 _index;
+    uint16_t _commandGeneration;   /* incremented on Abort, used by IEC layer for COMMANDABORTED detection */
 } HDY_MotionControlFB;
 
 /* Full reset of configuration, recipe, runtime state, and internal helpers. */

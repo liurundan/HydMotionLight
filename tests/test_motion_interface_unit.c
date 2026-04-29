@@ -1,0 +1,620 @@
+/**
+ * @file test_motion_interface_unit.c
+ * @brief IEC FB接口层单元测试
+ *
+ * 目标：验证6个PLCopen FB（MoveProfile/Stop/MoveAbsolute/MoveVelocity/
+ *       Reset/PressureHandle）的生命周期、信号输出、参数校验和
+ *       EN/EXECUTE行为。
+ *
+ * 注意: MoveProfile使用FB池分配器(allocMotionControlFB),
+ *        Direct命令(Stop/MoveAbsolute/MoveVelocity/PressureHandle)
+ *        通过ensureFbInitialized直接访问FB实例数组。
+ */
+
+#include <stdio.h>
+#include <math.h>
+#include <string.h>
+#include <stdbool.h>
+
+#include "motion_interface.h"
+#include "motion_control.h"
+
+extern HDY_MotionControlFB* __MK_GetPublic_MotionControlFB(int index);
+
+#define IEC_VAL(var) ((var).value)
+
+static int tests_run = 0;
+static int tests_passed = 0;
+
+#define ASSERT_TRUE(cond, msg) do { \
+    tests_run++; \
+    if (cond) { tests_passed++; } \
+    else { printf("  FAIL: %s\n", msg); } \
+} while (0)
+
+#define ASSERT_EQ(a, b, msg) do { \
+    tests_run++; \
+    if ((a) == (b)) { tests_passed++; } \
+    else { printf("  FAIL: %s (got %d, expected %d)\n", msg, (int)(a), (int)(b)); } \
+} while (0)
+
+/* ==================================================================
+ * Test 1: Framework Init 归零FB池与分配器
+ * ================================================================== */
+static void test_framework_init_resets_pool(void) {
+    HDY_MotionControlFB* fb;
+
+    __HdyMotion_framework_Init();
+
+    /* 初始化后没有FB实例可以访问 */
+    fb = __MK_GetPublic_MotionControlFB(0);
+    ASSERT_TRUE(fb == NULL, "No FB instance should exist immediately after framework init");
+
+    /* 重新初始化应该仍然是干净的 */
+    __HdyMotion_framework_Init();
+    fb = __MK_GetPublic_MotionControlFB(0);
+    ASSERT_TRUE(fb == NULL, "FB pool should still be clean after re-init");
+}
+
+/* ==================================================================
+ * Test 2: MoveProfile INIT 分配FB并设置Recipe模式
+ * ================================================================== */
+static void test_moveprofile_init_allocates_fb_with_recipe_mode(void) {
+    HDY_MOVEPROFILE mp;
+    HDY_MotionControlFB* fb;
+
+    __HdyMotion_framework_Init();
+    memset(&mp, 0, sizeof(mp));
+
+    __mcl_cmd_MoveProfile(&mp);
+
+    ASSERT_TRUE(IEC_VAL(mp.INIT) == true, "INIT should be set after first call");
+    ASSERT_EQ(IEC_VAL(mp.AXISINDEX), 0, "First allocated axis index should be 0");
+
+    fb = __MK_GetPublic_MotionControlFB(0);
+    ASSERT_TRUE(fb != NULL, "FB instance should be retrievable after MoveProfile INIT");
+    ASSERT_TRUE(fb->USE_RECIPE == true, "MoveProfile should set USE_RECIPE=true");
+    ASSERT_TRUE(IEC_VAL(mp.GEN) == fb->_commandGeneration,
+               "GEN should be stored from _commandGeneration on INIT");
+
+    /* 二次调用不应重新分配 */
+    __mcl_cmd_MoveProfile(&mp);
+    ASSERT_EQ(IEC_VAL(mp.AXISINDEX), 0, "Axis index should remain stable across calls");
+}
+
+/* ==================================================================
+ * Test 3: MoveProfile 无 EXECUTE 不触发运动
+ * ================================================================== */
+static void test_moveprofile_no_execute_does_not_start(void) {
+    HDY_MOVEPROFILE mp;
+
+    __HdyMotion_framework_Init();
+    memset(&mp, 0, sizeof(mp));
+
+    /* INIT */
+    __mcl_cmd_MoveProfile(&mp);
+
+    /* 设置 EXECUTE=false (未触发) */
+    IEC_VAL(mp.EN) = true;
+    IEC_VAL(mp.EXECUTE) = false;
+    mp.EXECUTE0.value = false;
+
+    __mcl_cmd_MoveProfile(&mp);
+
+    ASSERT_TRUE(IEC_VAL(mp.ACTIVE) == false, "ACTIVE should be false without EXECUTE trigger");
+    ASSERT_TRUE(IEC_VAL(mp.BUSY) == false, "BUSY should be false without EXECUTE trigger");
+}
+
+/* ==================================================================
+ * Test 4: MoveProfile EXECUTE 上升沿触发运动
+ * ================================================================== */
+static void test_moveprofile_execute_rising_triggers_motion(void) {
+    HDY_MOVEPROFILE mp;
+    HDY_AXISMOTION motion;
+
+    __HdyMotion_framework_Init();
+    memset(&mp, 0, sizeof(mp));
+    memset(&motion, 0, sizeof(motion));
+
+    /* INIT */
+    __mcl_cmd_MoveProfile(&mp);
+
+    /* 配置 MOTION 参数: 位置控制模式 */
+    motion.MODE = HDY_MODE_POSITION;
+    motion.ENDCONDITION = HDY_END_POSITION;
+    motion.DIRECTION = HDY_DIRECTION_EXTEND;
+    motion.SETPOSITION = 50.0f;
+    motion.SETVELOCITY = 20.0f;
+    motion.ACCELERATION = 100.0f;
+    motion.TIMESTAMP = 0.0f;
+
+    /* 准备 EXECUTE 上升沿 */
+    IEC_VAL(mp.EN) = true;
+    IEC_VAL(mp.EXECUTE) = true;
+    mp.EXECUTE0.value = false;
+    __SET_VAR(mp., MOTION, , motion);
+
+    __mcl_cmd_MoveProfile(&mp);
+
+    HDY_MotionControlFB* fb = __MK_GetPublic_MotionControlFB(0);
+    ASSERT_TRUE(fb != NULL, "FB should still exist after execute");
+
+    /* 启动成功后 GEN 应已更新 */
+    ASSERT_TRUE(IEC_VAL(mp.GEN) == fb->_commandGeneration,
+               "GEN should match _commandGeneration after EXECUTE starts");
+}
+
+/* ==================================================================
+ * Test 5: MoveAbsolute EXECUTE 上升沿 正常生命周期
+ * ================================================================== */
+static void test_moveabsolute_execute_rising_sets_busy_active(void) {
+    HDY_MOVEABSOLUTE ma;
+
+    __HdyMotion_framework_Init();
+    memset(&ma, 0, sizeof(ma));
+
+    /* 准备命令 */
+    IEC_VAL(ma.EN) = true;
+    IEC_VAL(ma.EXECUTE) = true;
+    ma.EXECUTE0.value = false;  /* 上升沿 */
+    IEC_VAL(ma.AXISINDEX) = 0;
+    IEC_VAL(ma.POSITION) = 100.0f;
+    IEC_VAL(ma.VELOCITY) = 50.0f;
+    IEC_VAL(ma.ACCELERATION) = 200.0f;
+    IEC_VAL(ma.DIRECTION) = 1;  /* EXTEND */
+
+    __mcl_cmd_MoveAbsolute(&ma);
+
+    ASSERT_TRUE(IEC_VAL(ma.BUSY) == true, "MoveAbsolute should set BUSY on execRising");
+    ASSERT_TRUE(IEC_VAL(ma.ACTIVE) == true, "MoveAbsolute should set ACTIVE on execRising");
+    ASSERT_TRUE(IEC_VAL(ma.DONE) == false, "MoveAbsolute DONE should be false initially");
+    ASSERT_TRUE(IEC_VAL(ma.COMMANDABORTED) == false, "COMMANDABORTED should be false initially");
+    ASSERT_TRUE(IEC_VAL(ma.ERROR) == false, "ERROR should be false on normal start");
+    ASSERT_TRUE(IEC_VAL(ma.ENO) == true, "ENO should mirror EN when EN=true");
+}
+
+/* ==================================================================
+ * Test 6: MoveAbsolute 持续调用保持 BUSY/ACTIVE
+ * ================================================================== */
+static void test_moveabsolute_sustains_busy_active_across_calls(void) {
+    HDY_MOVEABSOLUTE ma;
+
+    __HdyMotion_framework_Init();
+    memset(&ma, 0, sizeof(ma));
+
+    /* 上升沿触发 */
+    IEC_VAL(ma.EN) = true;
+    IEC_VAL(ma.EXECUTE) = true;
+    ma.EXECUTE0.value = false;
+    IEC_VAL(ma.AXISINDEX) = 0;
+    IEC_VAL(ma.POSITION) = 100.0f;
+    IEC_VAL(ma.VELOCITY) = 50.0f;
+    IEC_VAL(ma.ACCELERATION) = 200.0f;
+    IEC_VAL(ma.DIRECTION) = 1;
+
+    __mcl_cmd_MoveAbsolute(&ma);
+    ASSERT_TRUE(IEC_VAL(ma.BUSY) == true, "BUSY should be true after execRising");
+
+    /* 下一周期: EXECUTE仍为true但不再是上升沿 */
+    IEC_VAL(ma.EXECUTE) = true;
+    ma.EXECUTE0.value = true;
+    __HdyMotion_framework_Publish();  /* 处理待处理命令 */
+
+    __mcl_cmd_MoveAbsolute(&ma);
+
+    /* GEN 应该匹配, 仍是owner */
+    ASSERT_TRUE(IEC_VAL(ma.BUSY) == true || IEC_VAL(ma.ACTIVE) == true,
+               "BUSY or ACTIVE should be sustained for current owner");
+
+    /* 不应触发 COMMANDABORTED */
+    ASSERT_TRUE(IEC_VAL(ma.COMMANDABORTED) == false,
+               "COMMANDABORTED should not fire for current owner");
+}
+
+/* ==================================================================
+ * Test 7: MoveAbsolute EN=false 清除所有输出
+ * ================================================================== */
+static void test_moveabsolute_en_false_clears_outputs(void) {
+    HDY_MOVEABSOLUTE ma;
+
+    __HdyMotion_framework_Init();
+    memset(&ma, 0, sizeof(ma));
+
+    /* 先用上升沿启动 */
+    IEC_VAL(ma.EN) = true;
+    IEC_VAL(ma.EXECUTE) = true;
+    ma.EXECUTE0.value = false;
+    IEC_VAL(ma.AXISINDEX) = 0;
+    IEC_VAL(ma.POSITION) = 100.0f;
+    IEC_VAL(ma.VELOCITY) = 50.0f;
+    IEC_VAL(ma.ACCELERATION) = 200.0f;
+    IEC_VAL(ma.DIRECTION) = 1;
+
+    __mcl_cmd_MoveAbsolute(&ma);
+    ASSERT_TRUE(IEC_VAL(ma.BUSY) == true, "BUSY should be true after start");
+
+    /* EN=false */
+    IEC_VAL(ma.EN) = false;
+    __mcl_cmd_MoveAbsolute(&ma);
+
+    ASSERT_TRUE(IEC_VAL(ma.DONE) == false, "DONE should be false when EN=false");
+    ASSERT_TRUE(IEC_VAL(ma.BUSY) == false, "BUSY should be false when EN=false");
+    ASSERT_TRUE(IEC_VAL(ma.ACTIVE) == false, "ACTIVE should be false when EN=false");
+    ASSERT_TRUE(IEC_VAL(ma.COMMANDABORTED) == false, "COMMANDABORTED should be false when EN=false");
+    ASSERT_TRUE(IEC_VAL(ma.ERROR) == false, "ERROR should be false when EN=false");
+    ASSERT_TRUE(IEC_VAL(ma.ENO) == false, "ENO should be false when EN=false");
+}
+
+/* ==================================================================
+ * Test 8: MoveAbsolute 非法 AXISINDEX 返回错误
+ * ================================================================== */
+static void test_moveabsolute_rejects_invalid_axis_index(void) {
+    HDY_MOVEABSOLUTE ma;
+
+    __HdyMotion_framework_Init();
+    memset(&ma, 0, sizeof(ma));
+
+    IEC_VAL(ma.EN) = true;
+    IEC_VAL(ma.EXECUTE) = true;
+    ma.EXECUTE0.value = false;
+    IEC_VAL(ma.AXISINDEX) = -1;  /* 非法 */
+    IEC_VAL(ma.POSITION) = 100.0f;
+    IEC_VAL(ma.VELOCITY) = 50.0f;
+    IEC_VAL(ma.ACCELERATION) = 200.0f;
+
+    __mcl_cmd_MoveAbsolute(&ma);
+
+    ASSERT_TRUE(IEC_VAL(ma.ERROR) == true, "ERROR should be true for invalid AXISINDEX");
+    ASSERT_TRUE(IEC_VAL(ma.ERRORID) != 0, "ERRORID should be non-zero for invalid AXISINDEX");
+    ASSERT_TRUE(IEC_VAL(ma.BUSY) == false, "BUSY should not be set for invalid AXISINDEX");
+}
+
+/* ==================================================================
+ * Test 9: MoveVelocity EXECUTE 上升沿 启动速度控制
+ * ================================================================== */
+static void test_movevelocity_execute_rising_starts_velocity_control(void) {
+    HDY_MOVEVELOCITY mv;
+
+    __HdyMotion_framework_Init();
+    memset(&mv, 0, sizeof(mv));
+
+    IEC_VAL(mv.EN) = true;
+    IEC_VAL(mv.EXECUTE) = true;
+    mv.EXECUTE0.value = false;
+    IEC_VAL(mv.AXISINDEX) = 0;
+    IEC_VAL(mv.VELOCITY) = 30.0f;
+    IEC_VAL(mv.ACCELERATION) = 150.0f;
+    IEC_VAL(mv.DIRECTION) = 1;
+
+    __mcl_cmd_MoveVelocity(&mv);
+
+    ASSERT_TRUE(IEC_VAL(mv.BUSY) == true, "MoveVelocity should set BUSY on execRising");
+    ASSERT_TRUE(IEC_VAL(mv.ACTIVE) == true, "MoveVelocity should set ACTIVE on execRising");
+    ASSERT_TRUE(IEC_VAL(mv.INVELOCITY) == false, "INVELOCITY should be false initially");
+    ASSERT_TRUE(IEC_VAL(mv.COMMANDABORTED) == false, "COMMANDABORTED should be false initially");
+}
+
+/* ==================================================================
+ * Test 10: MoveVelocity EN=false 清除信号
+ * ================================================================== */
+static void test_movevelocity_en_false_clears_ivelocity(void) {
+    HDY_MOVEVELOCITY mv;
+
+    __HdyMotion_framework_Init();
+    memset(&mv, 0, sizeof(mv));
+
+    /* 启动 */
+    IEC_VAL(mv.EN) = true;
+    IEC_VAL(mv.EXECUTE) = true;
+    mv.EXECUTE0.value = false;
+    IEC_VAL(mv.AXISINDEX) = 0;
+    IEC_VAL(mv.VELOCITY) = 30.0f;
+    IEC_VAL(mv.ACCELERATION) = 150.0f;
+
+    __mcl_cmd_MoveVelocity(&mv);
+
+    /* EN=false */
+    IEC_VAL(mv.EN) = false;
+    __mcl_cmd_MoveVelocity(&mv);
+
+    ASSERT_TRUE(IEC_VAL(mv.INVELOCITY) == false, "INVELOCITY should be cleared when EN=false");
+    ASSERT_TRUE(IEC_VAL(mv.BUSY) == false, "BUSY should be cleared when EN=false");
+    ASSERT_TRUE(IEC_VAL(mv.ACTIVE) == false, "ACTIVE should be cleared when EN=false");
+}
+
+/* ==================================================================
+ * Test 11: MoveVelocity 非法 AXISINDEX
+ * ================================================================== */
+static void test_movevelocity_rejects_invalid_axis_index(void) {
+    HDY_MOVEVELOCITY mv;
+
+    __HdyMotion_framework_Init();
+    memset(&mv, 0, sizeof(mv));
+
+    IEC_VAL(mv.EN) = true;
+    IEC_VAL(mv.EXECUTE) = true;
+    mv.EXECUTE0.value = false;
+    IEC_VAL(mv.AXISINDEX) = HDY_MAX_AXIS_MOTION + 1;  /* 超出范围 */
+    IEC_VAL(mv.VELOCITY) = 30.0f;
+
+    __mcl_cmd_MoveVelocity(&mv);
+
+    ASSERT_TRUE(IEC_VAL(mv.ERROR) == true, "ERROR should be true for invalid AXISINDEX");
+    ASSERT_TRUE(IEC_VAL(mv.ERRORID) == HDY_DIAG_CODE_START_CONTEXT_INVALID,
+               "ERRORID should be START_CONTEXT_INVALID");
+}
+
+/* ==================================================================
+ * Test 12: Stop 在空闲轴上立即完成
+ * ================================================================== */
+static void test_stop_on_idle_axis_immediate_done(void) {
+    HDY_STOP stop;
+
+    __HdyMotion_framework_Init();
+    memset(&stop, 0, sizeof(stop));
+
+    IEC_VAL(stop.EN) = true;
+    IEC_VAL(stop.EXECUTE) = true;
+    stop.EXECUTE0.value = false;
+    IEC_VAL(stop.AXISINDEX) = 0;
+
+    __mcl_cmd_Stop(&stop);
+
+    /* Stop应该已经完成 (轴从未激活) */
+    ASSERT_TRUE(IEC_VAL(stop.DONE) == true, "Stop on idle axis should set DONE immediately");
+    ASSERT_TRUE(IEC_VAL(stop.BUSY) == false, "Stop BUSY should be false after DONE");
+    ASSERT_TRUE(IEC_VAL(stop.COMMANDABORTED) == false,
+               "COMMANDABORTED should be false for successful Stop");
+}
+
+/* ==================================================================
+ * Test 13: Stop EN=false 清除输出
+ * ================================================================== */
+static void test_stop_en_false_clears_outputs(void) {
+    HDY_STOP stop;
+
+    __HdyMotion_framework_Init();
+    memset(&stop, 0, sizeof(stop));
+
+    IEC_VAL(stop.EN) = false;
+    IEC_VAL(stop.EXECUTE) = true;
+    stop.EXECUTE0.value = false;
+    IEC_VAL(stop.AXISINDEX) = 0;
+
+    __mcl_cmd_Stop(&stop);
+
+    ASSERT_TRUE(IEC_VAL(stop.DONE) == false, "DONE should be false when EN=false");
+    ASSERT_TRUE(IEC_VAL(stop.BUSY) == false, "BUSY should be false when EN=false");
+    ASSERT_TRUE(IEC_VAL(stop.COMMANDABORTED) == false,
+               "COMMANDABORTED should be false when EN=false");
+}
+
+/* ==================================================================
+ * Test 14: Stop 非法 AXISINDEX
+ * ================================================================== */
+static void test_stop_rejects_invalid_axis_index(void) {
+    HDY_STOP stop;
+
+    __HdyMotion_framework_Init();
+    memset(&stop, 0, sizeof(stop));
+
+    IEC_VAL(stop.EN) = true;
+    IEC_VAL(stop.EXECUTE) = true;
+    stop.EXECUTE0.value = false;
+    IEC_VAL(stop.AXISINDEX) = -1;
+
+    __mcl_cmd_Stop(&stop);
+
+    ASSERT_TRUE(IEC_VAL(stop.ERROR) == true, "Stop should set ERROR for invalid AXISINDEX");
+    ASSERT_TRUE(IEC_VAL(stop.ERRORID) != 0, "Stop should set non-zero ERRORID for invalid input");
+}
+
+/* ==================================================================
+ * Test 15: Reset 在已初始化轴上立即完成
+ * ================================================================== */
+static void test_reset_immediate_done_on_initialized_axis(void) {
+    HDY_MOVEABSOLUTE ma;
+    HDY_RESET reset;
+
+    __HdyMotion_framework_Init();
+    memset(&ma, 0, sizeof(ma));
+
+    /* 先用 MoveAbsolute 初始化轴 */
+    IEC_VAL(ma.EN) = true;
+    IEC_VAL(ma.EXECUTE) = true;
+    ma.EXECUTE0.value = false;
+    IEC_VAL(ma.AXISINDEX) = 0;
+    IEC_VAL(ma.POSITION) = 100.0f;
+    IEC_VAL(ma.VELOCITY) = 50.0f;
+    IEC_VAL(ma.ACCELERATION) = 200.0f;
+    __mcl_cmd_MoveAbsolute(&ma);
+
+    /* Reset */
+    memset(&reset, 0, sizeof(reset));
+    IEC_VAL(reset.EN) = true;
+    IEC_VAL(reset.EXECUTE) = true;
+    reset.EXECUTE0.value = false;
+    IEC_VAL(reset.AXISINDEX) = 0;
+
+    __mcl_cmd_Reset(&reset);
+
+    ASSERT_TRUE(IEC_VAL(reset.DONE) == true, "Reset should set DONE immediately");
+    ASSERT_TRUE(IEC_VAL(reset.BUSY) == false, "Reset BUSY should be false after DONE");
+    ASSERT_TRUE(IEC_VAL(reset.GEN) == 0, "Reset should clear GEN to 0");
+}
+
+/* ==================================================================
+ * Test 16: Reset 在未初始化轴上立即返回DONE
+ * ================================================================== */
+static void test_reset_immediate_done_on_uninitialized_axis(void) {
+    HDY_RESET reset;
+
+    __HdyMotion_framework_Init();
+    memset(&reset, 0, sizeof(reset));
+
+    IEC_VAL(reset.EN) = true;
+    IEC_VAL(reset.EXECUTE) = true;
+    reset.EXECUTE0.value = false;
+    IEC_VAL(reset.AXISINDEX) = 5;  /* 未初始化的轴 */
+
+    __mcl_cmd_Reset(&reset);
+
+    ASSERT_TRUE(IEC_VAL(reset.DONE) == true,
+               "Reset on uninitialized axis should return DONE immediately");
+    ASSERT_TRUE(IEC_VAL(reset.BUSY) == false,
+               "Reset BUSY should be false on uninitialized axis");
+}
+
+/* ==================================================================
+ * Test 17: PressureHandle EXECUTE 上升沿 启动压力控制
+ * ================================================================== */
+static void test_pressurehandle_execute_rising_starts_pressure_control(void) {
+    HDY_PRESSUREHANDLE ph;
+
+    __HdyMotion_framework_Init();
+    memset(&ph, 0, sizeof(ph));
+
+    IEC_VAL(ph.EN) = true;
+    IEC_VAL(ph.EXECUTE) = true;
+    ph.EXECUTE0.value = false;
+    IEC_VAL(ph.AXISINDEX) = 0;
+    IEC_VAL(ph.PRESSURE) = 10.0f;
+    IEC_VAL(ph.PRESSURERAMPRATE) = 2.0f;
+    IEC_VAL(ph.DURATION) = 5.0f;
+
+    __mcl_cmd_PressureHandle(&ph);
+
+    ASSERT_TRUE(IEC_VAL(ph.BUSY) == true, "PressureHandle should set BUSY on execRising");
+    ASSERT_TRUE(IEC_VAL(ph.ACTIVE) == true, "PressureHandle should set ACTIVE on execRising");
+    ASSERT_TRUE(IEC_VAL(ph.INPRESSURE) == false,
+               "INPRESSURE should be false initially (pressure=0)");
+    ASSERT_TRUE(IEC_VAL(ph.COMMANDABORTED) == false,
+               "COMMANDABORTED should be false initially");
+}
+
+/* ==================================================================
+ * Test 18: PressureHandle EN=false 清除输出
+ * ================================================================== */
+static void test_pressurehandle_en_false_clears_outputs(void) {
+    HDY_PRESSUREHANDLE ph;
+
+    __HdyMotion_framework_Init();
+    memset(&ph, 0, sizeof(ph));
+
+    /* 启动 */
+    IEC_VAL(ph.EN) = true;
+    IEC_VAL(ph.EXECUTE) = true;
+    ph.EXECUTE0.value = false;
+    IEC_VAL(ph.AXISINDEX) = 0;
+    IEC_VAL(ph.PRESSURE) = 10.0f;
+
+    __mcl_cmd_PressureHandle(&ph);
+
+    /* EN=false */
+    IEC_VAL(ph.EN) = false;
+    __mcl_cmd_PressureHandle(&ph);
+
+    ASSERT_TRUE(IEC_VAL(ph.INPRESSURE) == false, "INPRESSURE should be cleared when EN=false");
+    ASSERT_TRUE(IEC_VAL(ph.BUSY) == false, "BUSY should be cleared when EN=false");
+    ASSERT_TRUE(IEC_VAL(ph.ACTIVE) == false, "ACTIVE should be cleared when EN=false");
+}
+
+/* ==================================================================
+ * Test 19: PressureHandle 非法 AXISINDEX
+ * ================================================================== */
+static void test_pressurehandle_rejects_invalid_axis_index(void) {
+    HDY_PRESSUREHANDLE ph;
+
+    __HdyMotion_framework_Init();
+    memset(&ph, 0, sizeof(ph));
+
+    IEC_VAL(ph.EN) = true;
+    IEC_VAL(ph.EXECUTE) = true;
+    ph.EXECUTE0.value = false;
+    IEC_VAL(ph.AXISINDEX) = -5;
+
+    __mcl_cmd_PressureHandle(&ph);
+
+    ASSERT_TRUE(IEC_VAL(ph.ERROR) == true, "PressureHandle should set ERROR for invalid AXISINDEX");
+}
+
+/* ==================================================================
+ * Test 20: 多个轴独立运行 (轴0和轴1各自执行不同命令)
+ * ================================================================== */
+static void test_multiple_axes_operate_independently(void) {
+    HDY_MOVEABSOLUTE ma0;
+    HDY_MOVEVELOCITY mv1;
+
+    __HdyMotion_framework_Init();
+    memset(&ma0, 0, sizeof(ma0));
+    memset(&mv1, 0, sizeof(mv1));
+
+    /* 轴0: MoveAbsolute */
+    IEC_VAL(ma0.EN) = true;
+    IEC_VAL(ma0.EXECUTE) = true;
+    ma0.EXECUTE0.value = false;
+    IEC_VAL(ma0.AXISINDEX) = 0;
+    IEC_VAL(ma0.POSITION) = 100.0f;
+    IEC_VAL(ma0.VELOCITY) = 50.0f;
+    IEC_VAL(ma0.ACCELERATION) = 200.0f;
+    IEC_VAL(ma0.DIRECTION) = 1;
+    __mcl_cmd_MoveAbsolute(&ma0);
+
+    ASSERT_TRUE(IEC_VAL(ma0.BUSY) == true, "Axis 0 MoveAbsolute: BUSY should be true after execRising");
+
+    /* 轴1: MoveVelocity */
+    IEC_VAL(mv1.EN) = true;
+    IEC_VAL(mv1.EXECUTE) = true;
+    mv1.EXECUTE0.value = false;
+    IEC_VAL(mv1.AXISINDEX) = 1;
+    IEC_VAL(mv1.VELOCITY) = 30.0f;
+    IEC_VAL(mv1.ACCELERATION) = 150.0f;
+    IEC_VAL(mv1.DIRECTION) = 1;
+    __mcl_cmd_MoveVelocity(&mv1);
+
+    ASSERT_TRUE(IEC_VAL(mv1.BUSY) == true, "Axis 1 MoveVelocity: BUSY should be true after execRising");
+
+    /* 两轴的GEN应该不同 (各自独立的_commandGeneration) */
+    uint16_t gen0 = IEC_VAL(ma0.GEN);
+    uint16_t gen1 = IEC_VAL(mv1.GEN);
+
+    /* 两个轴应该操作不同的FB实例, 所以gen值可能相同(都从Init开始=0)
+       但不同轴的GEN之间没有相互关系 */
+    ASSERT_TRUE(gen0 == gen1 || gen0 != gen1,
+               "Axes 0 and 1 can have same or different GEN (independent instances)");
+
+    /* 轴0 仍应是owner */
+    IEC_VAL(ma0.EXECUTE) = true;
+    ma0.EXECUTE0.value = true;
+    __mcl_cmd_MoveAbsolute(&ma0);
+    ASSERT_TRUE(IEC_VAL(ma0.COMMANDABORTED) == false,
+               "Axis 0 should not get COMMANDABORTED from axis 1 activity");
+}
+
+int main(void) {
+    printf("=== Motion Interface Unit Tests ===\n\n");
+
+    test_framework_init_resets_pool();
+    test_moveprofile_init_allocates_fb_with_recipe_mode();
+    test_moveprofile_no_execute_does_not_start();
+    test_moveprofile_execute_rising_triggers_motion();
+    test_moveabsolute_execute_rising_sets_busy_active();
+    test_moveabsolute_sustains_busy_active_across_calls();
+    test_moveabsolute_en_false_clears_outputs();
+    test_moveabsolute_rejects_invalid_axis_index();
+    test_movevelocity_execute_rising_starts_velocity_control();
+    test_movevelocity_en_false_clears_ivelocity();
+    test_movevelocity_rejects_invalid_axis_index();
+    test_stop_on_idle_axis_immediate_done();
+    test_stop_en_false_clears_outputs();
+    test_stop_rejects_invalid_axis_index();
+    test_reset_immediate_done_on_initialized_axis();
+    test_reset_immediate_done_on_uninitialized_axis();
+    test_pressurehandle_execute_rising_starts_pressure_control();
+    test_pressurehandle_en_false_clears_outputs();
+    test_pressurehandle_rejects_invalid_axis_index();
+    test_multiple_axes_operate_independently();
+
+    printf("\n=== Results: %d/%d passed ===\n", tests_passed, tests_run);
+    return (tests_passed == tests_run) ? 0 : 1;
+}

@@ -28,37 +28,20 @@ HDY_MotionControlFB* __MK_GetPublic_MotionControlFB(int index)
 }
 
 /* ======================================================================
- * 命令仲裁状态
+ * 命令仲裁
  *
- * 每个轴跟踪当前活跃的命令类型和代际计数器(generation)。
- * 当一个新命令接管轴时，代际计数器递增，前一个命令在下次扫描时
- * 检测到代际不匹配，自动设置COMMANDABORTED输出。
+ * 采用轻量化代际计数器模型: HDY_MotionControlFB._commandGeneration
+ * 在每次 AbortNow() 时递增。
+ *
+ * 每个 IEC FB 在发起命令时记录当时的代际值(GEN)，后续扫描中比较:
+ *   - 匹配 → 仍是活跃命令，正常读取核心 FB 输出
+ *   - 不匹配 → 被其他命令取代，输出 COMMANDABORTED
  *
  * 仲裁规则:
  *   - MoveProfile (Recipe模式) 与 Direct模式命令互斥
  *   - 新命令可以接管正在执行的旧命令
- *   - 被接管的命令输出COMMANDABORTED=true, BUSY=false
+ *   - 被接管的命令输出 COMMANDABORTED=true, BUSY=false
  * ====================================================================== */
-
-typedef enum {
-    IFACE_CMD_NONE = 0,
-    IFACE_CMD_MOVE_PROFILE,      /* MoveProfile - Recipe模式 */
-    IFACE_CMD_MOVE_ABSOLUTE,     /* MoveAbsolute - Direct模式 */
-    IFACE_CMD_MOVE_VELOCITY,     /* MoveVelocity - Direct模式 */
-    IFACE_CMD_STOP,              /* Stop - Direct模式 */
-    IFACE_CMD_PRESSURE_HANDLE    /* PressureHandle - Direct模式 */
-} IfaceCommandType;
-
-#define IFACE_CMD_TYPE_COUNT 6
-
-static struct {
-    IfaceCommandType activeCommand;
-    uint16_t generation;
-    bool initialized;
-} axisState[HDY_MAX_AXIS_MOTION];
-
-/* 每个IEC FB实例记录自己启动时的代际，用于检测命令是否被取代 */
-static uint16_t fbGenerations[HDY_MAX_AXIS_MOTION][IFACE_CMD_TYPE_COUNT];
 
 /* ======================================================================
  * 内部辅助函数
@@ -73,57 +56,33 @@ static bool ensureFbInitialized(int axisIndex)
         return false;
     }
 
-    if (axisState[axisIndex].initialized) {
-        return true;
+    fb = &HDY_MotionControlFB_inst[axisIndex];
+    if (fb->FB_STATE != HDY_FB_STATE_DISABLED) {
+        return true;  /* 已经初始化过 */
     }
 
-    fb = &HDY_MotionControlFB_inst[axisIndex];
     HDY_MotionControlFB_Init(fb);
+    fb->FB_STATE = HDY_FB_STATE_IDLE;  /* Init清零后需显式离开DISABLED, 否则Publish不会扫描 */
     fb->USE_RECIPE = false;
     fb->FLOW_TO_PUMP_SPEED_GAIN = 1.2f;  /* rpm per L/min */
     fb->PUMP_SPEED_LIMIT = 3000.0f;       /* rpm */
     fb->EN = true;
 
-    axisState[axisIndex].initialized = true;
+    /* 让FB从IDLE过渡到READY, 使后续StartSegment命令合法 */
+    HDY_MotionControlFB_Scan(fb);
+
     return true;
 }
 
 /* 从PLCopen方向值映射到HDY_MotionDirection */
 static HDY_MotionDirection mapPlcOpenDirection(IEC_SINT direction)
 {
-    /* PLCopen方向约定 (注塑机液压场景):
-     *  正数 → EXTEND (伸出/正方向, 如合模/射胶)
-     *  负数 → RETRACT (缩回/负方向, 如开模/射退)
-     *  0   → AUTO (由目标位置自动推断)
-     */
     if (direction > 0) {
         return HDY_DIRECTION_EXTEND;
     } else if (direction < 0) {
         return HDY_DIRECTION_RETRACT;
     }
     return HDY_DIRECTION_AUTO;
-}
-
-/* 命令仲裁：接管轴的所有权，返回新的代际值 */
-static uint16_t takeAxisOwnership(int axisIndex, IfaceCommandType cmdType)
-{
-    axisState[axisIndex].generation++;
-    axisState[axisIndex].activeCommand = cmdType;
-    fbGenerations[axisIndex][cmdType] = axisState[axisIndex].generation;
-    return axisState[axisIndex].generation;
-}
-
-/* 检查指定命令是否仍是该轴的活跃命令 */
-static bool isAxisOwner(int axisIndex, IfaceCommandType cmdType, uint16_t gen)
-{
-    return (axisState[axisIndex].activeCommand == cmdType &&
-            fbGenerations[axisIndex][cmdType] == gen);
-}
-
-/* 释放轴的所有权 */
-static void releaseAxisOwnership(int axisIndex)
-{
-    axisState[axisIndex].activeCommand = IFACE_CMD_NONE;
 }
 
 /* 构建位置控制运动段 (MoveAbsolute用) */
@@ -288,8 +247,6 @@ int __HdyMotion_framework_Init()
         memset(&HDY_MotionControlFB_inst[i], 0, sizeof(HDY_MotionControlFB));
     }
     nextAllocatedFB = 0;
-    memset(axisState, 0, sizeof(axisState));
-    memset(fbGenerations, 0, sizeof(fbGenerations));
     return 0;
 }
 
@@ -305,9 +262,10 @@ void __HdyMotion_framework_Retrieve()
 
 void __HdyMotion_framework_Publish()
 {
-    for (int i = 0; i < (int)nextAllocatedFB; i++) {
+    /* 扫描所有已初始化的FB (包括Direct模式和MoveProfile模式) */
+    for (int i = 0; i < HDY_MAX_AXIS_MOTION; i++) {
         HDY_MotionControlFB* fb = &HDY_MotionControlFB_inst[i];
-        if (fb != NULL) {
+        if (fb->FB_STATE != HDY_FB_STATE_DISABLED) {
             HDY_MotionControlFB_Scan(fb);
         }
     }
@@ -315,15 +273,6 @@ void __HdyMotion_framework_Publish()
 
 /* ======================================================================
  * MoveProfile (Recipe模式) 命令实现
- *
- * Recipe模式工作流程:
- * 1. INIT阶段: 分配FB实例, 设置USE_RECIPE=true
- * 2. 配方加载: 若无预加载配方, 从MOTION构建1段配方自动加载
- * 3. EXECUTE上升沿: 启动配方执行
- * 4. 周期执行: 通过MOTION.ACT*更新AXIS_REF反馈, 读取输出状态
- * 5. DONE: 配方最后一段完成
- *
- * 注: 多段配方需通过外部HDY_MotionControlFB_LoadRecipe()预加载
  * ====================================================================== */
 
 void __mcl_cmd_LoadProfile(HDY_LOADPROFILE *data__)
@@ -331,7 +280,7 @@ void __mcl_cmd_LoadProfile(HDY_LOADPROFILE *data__)
     // TODO: 实现预加载配方, 目前仅支持单段MoveProfile的自动构建和执行,待后面补充完善
     IEC_SINT axisIndex = __GET_VAR(data__->AXISINDEX);
     HDY_MotionControlFB* fb = __MK_GetPublic_MotionControlFB(axisIndex);
-    
+
     if (fb != NULL) {
         // 预加载配方逻辑
     }
@@ -349,6 +298,7 @@ void __mcl_cmd_MoveProfile(HDY_MOVEPROFILE *data__)
         {
             HDY_MotionControlFB* fb = &HDY_MotionControlFB_inst[index];
             HDY_MotionControlFB_Init(fb);
+            fb->FB_STATE = HDY_FB_STATE_IDLE;
             fb->USE_RECIPE = true;  /* Recipe模式 */
             fb->FLOW_TO_PUMP_SPEED_GAIN = 1.2f;
             fb->PUMP_SPEED_LIMIT = 3000.0f;
@@ -356,9 +306,7 @@ void __mcl_cmd_MoveProfile(HDY_MOVEPROFILE *data__)
 
             __SET_VAR(data__->, INIT, , true);
             __SET_VAR(data__->, AXISINDEX, , (IEC_SINT)index);
-
-            axisState[index].initialized = true;
-            takeAxisOwnership(index, IFACE_CMD_MOVE_PROFILE);
+            __SET_VAR(data__->, GEN, , (IEC_WORD)fb->_commandGeneration);
         }
     }
     else
@@ -414,7 +362,7 @@ void __mcl_cmd_MoveProfile(HDY_MOVEPROFILE *data__)
                     __SET_VAR(data__->, EXECUTE0, , execute);
                     return;
                 }
-                takeAxisOwnership((int)axisIndex, IFACE_CMD_MOVE_PROFILE);
+                __SET_VAR(data__->, GEN, , (IEC_WORD)fb->_commandGeneration);
             }
             else if (fb->DIRECT_SEGMENT_VALID)
             {
@@ -426,13 +374,13 @@ void __mcl_cmd_MoveProfile(HDY_MOVEPROFILE *data__)
                     __SET_VAR(data__->, EXECUTE0, , execute);
                     return;
                 }
-                takeAxisOwnership((int)axisIndex, IFACE_CMD_MOVE_PROFILE);
+                __SET_VAR(data__->, GEN, , (IEC_WORD)fb->_commandGeneration);
             }
         }
 
         /* 更新输出 */
-        uint16_t myGen = fbGenerations[(int)axisIndex][IFACE_CMD_MOVE_PROFILE];
-        bool isOwner = isAxisOwner((int)axisIndex, IFACE_CMD_MOVE_PROFILE, myGen);
+        uint16_t myGen = (uint16_t)__GET_VAR(data__->GEN);
+        bool isOwner = (myGen == fb->_commandGeneration);
 
         if (isOwner)
         {
@@ -444,12 +392,6 @@ void __mcl_cmd_MoveProfile(HDY_MOVEPROFILE *data__)
             __SET_VAR(data__->, STATE, , (IEC_WORD)fb->STATE.status);
             __SET_VAR(data__->, PUMP_SPEED, , (IEC_REAL)fb->PUMP_SPEED);
             __SET_VAR(data__->, ENO, , true);
-
-            /* 配方完成后释放所有权 */
-            if (fb->DONE && fb->FINISHED)
-            {
-                releaseAxisOwnership((int)axisIndex);
-            }
 
             /* 将活动段参数写回MOTION输出字段 (保留ACT*输入字段不变) */
             if (fb->_activeSegmentValid)
@@ -473,9 +415,6 @@ void __mcl_cmd_MoveProfile(HDY_MOVEPROFILE *data__)
 
 /* ======================================================================
  * Stop (Direct模式) 命令实现
- *
- * PLCopen Stop语义: 中止当前轴上所有运动命令, 输出安全零值。
- * 当前实现为立即中止(Abort), 未来可扩展为受控减速停止。
  * ====================================================================== */
 
 void __mcl_cmd_Stop(HDY_STOP *data__)
@@ -519,17 +458,17 @@ void __mcl_cmd_Stop(HDY_STOP *data__)
 
     if (execRising)
     {
-        /* 接管轴所有权并中止当前运动 */
-        takeAxisOwnership((int)axisIndex, IFACE_CMD_STOP);
         HDY_MotionControlFB_Abort(fb);
+        HDY_MotionControlFB_Scan(fb);
+        __SET_VAR(data__->, GEN, , (IEC_WORD)fb->_commandGeneration);
         __SET_VAR(data__->, BUSY, , true);
         __SET_VAR(data__->, DONE, , false);
         __SET_VAR(data__->, COMMANDABORTED, , false);
     }
 
     /* 检查所有权和状态 */
-    uint16_t myGen = fbGenerations[(int)axisIndex][IFACE_CMD_STOP];
-    bool isOwner = isAxisOwner((int)axisIndex, IFACE_CMD_STOP, myGen);
+    uint16_t myGen = (uint16_t)__GET_VAR(data__->GEN);
+    bool isOwner = (myGen == fb->_commandGeneration);
 
     if (isOwner)
     {
@@ -538,7 +477,6 @@ void __mcl_cmd_Stop(HDY_STOP *data__)
         {
             __SET_VAR(data__->, DONE, , true);
             __SET_VAR(data__->, BUSY, , false);
-            releaseAxisOwnership((int)axisIndex);
         }
         else
         {
@@ -550,7 +488,6 @@ void __mcl_cmd_Stop(HDY_STOP *data__)
             __SET_VAR(data__->, ERROR, , true);
             __SET_VAR(data__->, ERRORID, , (IEC_WORD)fb->ERROR_ID);
             __SET_VAR(data__->, BUSY, , false);
-            releaseAxisOwnership((int)axisIndex);
         }
     }
     else
@@ -566,12 +503,6 @@ void __mcl_cmd_Stop(HDY_STOP *data__)
 
 /* ======================================================================
  * MoveAbsolute (Direct模式) 命令实现
- *
- * Direct模式: 直接指定目标位置/速度/加速度, 构建单段Direct段执行。
- * DONE: 到达目标位置
- * COMMANDABORTED: 被其他命令取代
- *
- * 注意: CONTINUOUSUPDATE和JERK参数当前未实现, 参数在EXECUTE时锁存。
  * ====================================================================== */
 
 void __mcl_cmd_MoveAbsolute(HDY_MOVEABSOLUTE *data__)
@@ -623,16 +554,10 @@ void __mcl_cmd_MoveAbsolute(HDY_MOVEABSOLUTE *data__)
             __GET_VAR(data__->ACCELERATION),
             dir);
 
-        /* 接管轴所有权 */
-        takeAxisOwnership((int)axisIndex, IFACE_CMD_MOVE_ABSOLUTE);
-
-        /* 中止当前运动并加载新段 */
+        /* 中止当前运动(递增_commandGeneration用于抢占检测)并加载新段 */
         fb->EN = true;
-        if (fb->ACTIVE || fb->BUSY)
-        {
-            HDY_MotionControlFB_Abort(fb);
-            HDY_MotionControlFB_Scan(fb);
-        }
+        HDY_MotionControlFB_Abort(fb);
+        HDY_MotionControlFB_Scan(fb);
 
         if (!HDY_MotionControlFB_LoadDirectSegment(fb, &segment))
         {
@@ -650,15 +575,20 @@ void __mcl_cmd_MoveAbsolute(HDY_MOVEABSOLUTE *data__)
             return;
         }
 
+        /* 记录代际作为所有权凭证 */
+        __SET_VAR(data__->, GEN, , (IEC_WORD)fb->_commandGeneration);
         __SET_VAR(data__->, BUSY, , true);
         __SET_VAR(data__->, ACTIVE, , true);
         __SET_VAR(data__->, DONE, , false);
         __SET_VAR(data__->, COMMANDABORTED, , false);
+        __SET_VAR(data__->, ACTIVE0, , true);
+        __SET_VAR(data__->, EXECUTE0, , execute);
+        return;
     }
 
     /* 检查所有权和执行状态 */
-    uint16_t myGen = fbGenerations[(int)axisIndex][IFACE_CMD_MOVE_ABSOLUTE];
-    bool isOwner = isAxisOwner((int)axisIndex, IFACE_CMD_MOVE_ABSOLUTE, myGen);
+    uint16_t myGen = (uint16_t)__GET_VAR(data__->GEN);
+    bool isOwner = (myGen == fb->_commandGeneration);
     bool wasActive = __GET_VAR(data__->ACTIVE0);
 
     if (isOwner)
@@ -669,7 +599,6 @@ void __mcl_cmd_MoveAbsolute(HDY_MOVEABSOLUTE *data__)
             __SET_VAR(data__->, DONE, , true);
             __SET_VAR(data__->, BUSY, , false);
             __SET_VAR(data__->, ACTIVE, , false);
-            releaseAxisOwnership((int)axisIndex);
         }
         else if (fb->ACTIVE)
         {
@@ -682,7 +611,6 @@ void __mcl_cmd_MoveAbsolute(HDY_MOVEABSOLUTE *data__)
             __SET_VAR(data__->, ERRORID, , (IEC_WORD)fb->ERROR_ID);
             __SET_VAR(data__->, BUSY, , false);
             __SET_VAR(data__->, ACTIVE, , false);
-            releaseAxisOwnership((int)axisIndex);
         }
         else
         {
@@ -705,12 +633,6 @@ void __mcl_cmd_MoveAbsolute(HDY_MOVEABSOLUTE *data__)
 
 /* ======================================================================
  * MoveVelocity (Direct模式) 命令实现
- *
- * Direct模式: 直接指定目标速度/加速度, 构建速度斜坡Direct段执行。
- * INVELOCITY: 实际速度到达目标速度 (检测AXIS_REF.velocity ≈ targetVelocity)
- * COMMANDABORTED: 被其他命令取代
- *
- * 注意: 速度控制为持续模式(END_MANUAL), 需通过Stop命令停止。
  * ====================================================================== */
 
 void __mcl_cmd_MoveVelocity(HDY_MOVEVELOCITY *data__)
@@ -762,16 +684,10 @@ void __mcl_cmd_MoveVelocity(HDY_MOVEVELOCITY *data__)
             __GET_VAR(data__->ACCELERATION),
             dir);
 
-        /* 接管轴所有权 */
-        takeAxisOwnership((int)axisIndex, IFACE_CMD_MOVE_VELOCITY);
-
-        /* 中止当前运动并加载新段 */
+        /* 中止当前运动(递增_commandGeneration用于抢占检测)并加载新段 */
         fb->EN = true;
-        if (fb->ACTIVE || fb->BUSY)
-        {
-            HDY_MotionControlFB_Abort(fb);
-            HDY_MotionControlFB_Scan(fb);
-        }
+        HDY_MotionControlFB_Abort(fb);
+        HDY_MotionControlFB_Scan(fb);
 
         if (!HDY_MotionControlFB_LoadDirectSegment(fb, &segment))
         {
@@ -789,15 +705,20 @@ void __mcl_cmd_MoveVelocity(HDY_MOVEVELOCITY *data__)
             return;
         }
 
+        /* 记录代际作为所有权凭证 */
+        __SET_VAR(data__->, GEN, , (IEC_WORD)fb->_commandGeneration);
         __SET_VAR(data__->, BUSY, , true);
         __SET_VAR(data__->, ACTIVE, , true);
         __SET_VAR(data__->, INVELOCITY, , false);
         __SET_VAR(data__->, COMMANDABORTED, , false);
+        __SET_VAR(data__->, ACTIVE0, , true);
+        __SET_VAR(data__->, EXECUTE0, , execute);
+        return;
     }
 
     /* 检查所有权和执行状态 */
-    uint16_t myGen = fbGenerations[(int)axisIndex][IFACE_CMD_MOVE_VELOCITY];
-    bool isOwner = isAxisOwner((int)axisIndex, IFACE_CMD_MOVE_VELOCITY, myGen);
+    uint16_t myGen = (uint16_t)__GET_VAR(data__->GEN);
+    bool isOwner = (myGen == fb->_commandGeneration);
     bool wasActive = __GET_VAR(data__->ACTIVE0);
 
     if (isOwner)
@@ -809,7 +730,7 @@ void __mcl_cmd_MoveVelocity(HDY_MOVEVELOCITY *data__)
 
             /* INVELOCITY检测: 实际速度接近目标速度 */
             HDY_REAL velError = fb->AXIS_REF.velocity - targetVelocity;
-            if (velError < 0.0f) velError = -velError;  /* fabs */
+            if (velError < 0.0f) velError = -velError;
             if (targetVelocity > 0.0f && velError < targetVelocity * 0.05f)
             {
                 __SET_VAR(data__->, INVELOCITY, , true);
@@ -826,7 +747,6 @@ void __mcl_cmd_MoveVelocity(HDY_MOVEVELOCITY *data__)
             __SET_VAR(data__->, BUSY, , false);
             __SET_VAR(data__->, ACTIVE, , false);
             __SET_VAR(data__->, INVELOCITY, , false);
-            releaseAxisOwnership((int)axisIndex);
         }
         else
         {
@@ -850,10 +770,6 @@ void __mcl_cmd_MoveVelocity(HDY_MOVEVELOCITY *data__)
 
 /* ======================================================================
  * Reset (Direct模式) 命令实现
- *
- * 复位FB实例: 清除故障状态, 恢复到READY/IDLE态。
- * 保留配方、配置增益和诊断判据设置。
- * DONE: 复位完成 (SoftReset是同步操作, 立即完成)
  * ====================================================================== */
 
 void __mcl_cmd_Reset(HDY_RESET *data__)
@@ -883,7 +799,9 @@ void __mcl_cmd_Reset(HDY_RESET *data__)
         return;
     }
 
-    if (!axisState[(int)axisIndex].initialized)
+    /* 直接访问FB实例 (Direct和MoveProfile共用同一个实例池) */
+    HDY_MotionControlFB* fb = &HDY_MotionControlFB_inst[axisIndex];
+    if (fb->FB_STATE == HDY_FB_STATE_DISABLED)
     {
         /* FB未初始化, Reset无意义, 直接返回DONE */
         __SET_VAR(data__->, DONE, , true);
@@ -892,16 +810,14 @@ void __mcl_cmd_Reset(HDY_RESET *data__)
         return;
     }
 
-    HDY_MotionControlFB* fb = &HDY_MotionControlFB_inst[axisIndex];
-
     if (execRising)
     {
         /* 执行SoftReset: 保留配方/配置, 清除运行时状态和故障 */
         HDY_MotionControlFB_SoftReset(fb);
         fb->EN = true;
 
-        /* 释放轴所有权 */
-        releaseAxisOwnership((int)axisIndex);
+        /* 清除代际, SoftReset中的memset已将_commandGeneration归零 */
+        __SET_VAR(data__->, GEN, , (IEC_WORD)0);
 
         __SET_VAR(data__->, DONE, , true);
         __SET_VAR(data__->, BUSY, , false);
@@ -912,10 +828,6 @@ void __mcl_cmd_Reset(HDY_RESET *data__)
 
 /* ======================================================================
  * PressureHandle (Direct模式) 命令实现
- *
- * Direct模式: 直接指定目标压力/斜坡速率/持续时间, 构建压力闭环Direct段执行。
- * INPRESSURE: 实际压力到达目标压力 (在容差范围内)
- * COMMANDABORTED: 被其他命令取代
  * ====================================================================== */
 
 void __mcl_cmd_PressureHandle(HDY_PRESSUREHANDLE *data__)
@@ -966,16 +878,10 @@ void __mcl_cmd_PressureHandle(HDY_PRESSUREHANDLE *data__)
             __GET_VAR(data__->PRESSURERAMPRATE),
             __GET_VAR(data__->DURATION));
 
-        /* 接管轴所有权 */
-        takeAxisOwnership((int)axisIndex, IFACE_CMD_PRESSURE_HANDLE);
-
-        /* 中止当前运动并加载新段 */
+        /* 中止当前运动(递增_commandGeneration用于抢占检测)并加载新段 */
         fb->EN = true;
-        if (fb->ACTIVE || fb->BUSY)
-        {
-            HDY_MotionControlFB_Abort(fb);
-            HDY_MotionControlFB_Scan(fb);
-        }
+        HDY_MotionControlFB_Abort(fb);
+        HDY_MotionControlFB_Scan(fb);
 
         if (!HDY_MotionControlFB_LoadDirectSegment(fb, &segment))
         {
@@ -993,15 +899,20 @@ void __mcl_cmd_PressureHandle(HDY_PRESSUREHANDLE *data__)
             return;
         }
 
+        /* 记录代际作为所有权凭证 */
+        __SET_VAR(data__->, GEN, , (IEC_WORD)fb->_commandGeneration);
         __SET_VAR(data__->, BUSY, , true);
         __SET_VAR(data__->, ACTIVE, , true);
         __SET_VAR(data__->, INPRESSURE, , false);
         __SET_VAR(data__->, COMMANDABORTED, , false);
+        __SET_VAR(data__->, ACTIVE0, , true);
+        __SET_VAR(data__->, EXECUTE0, , execute);
+        return;
     }
 
     /* 检查所有权和执行状态 */
-    uint16_t myGen = fbGenerations[(int)axisIndex][IFACE_CMD_PRESSURE_HANDLE];
-    bool isOwner = isAxisOwner((int)axisIndex, IFACE_CMD_PRESSURE_HANDLE, myGen);
+    uint16_t myGen = (uint16_t)__GET_VAR(data__->GEN);
+    bool isOwner = (myGen == fb->_commandGeneration);
     bool wasActive = __GET_VAR(data__->ACTIVE0);
 
     if (isOwner)
@@ -1012,7 +923,6 @@ void __mcl_cmd_PressureHandle(HDY_PRESSUREHANDLE *data__)
             __SET_VAR(data__->, BUSY, , false);
             __SET_VAR(data__->, ACTIVE, , false);
             __SET_VAR(data__->, INPRESSURE, , false);
-            releaseAxisOwnership((int)axisIndex);
         }
         else if (fb->ACTIVE)
         {
@@ -1021,7 +931,7 @@ void __mcl_cmd_PressureHandle(HDY_PRESSUREHANDLE *data__)
 
             /* INPRESSURE检测: 实际压力接近目标压力 */
             HDY_REAL pressError = fb->AXIS_REF.pressure - targetPressure;
-            if (pressError < 0.0f) pressError = -pressError;  /* fabs */
+            if (pressError < 0.0f) pressError = -pressError;
             if (targetPressure > 0.0f && pressError < 0.5f)  /* 0.5 MPa容差 */
             {
                 __SET_VAR(data__->, INPRESSURE, , true);
@@ -1038,7 +948,6 @@ void __mcl_cmd_PressureHandle(HDY_PRESSUREHANDLE *data__)
             __SET_VAR(data__->, BUSY, , false);
             __SET_VAR(data__->, ACTIVE, , false);
             __SET_VAR(data__->, INPRESSURE, , false);
-            releaseAxisOwnership((int)axisIndex);
         }
         else
         {
