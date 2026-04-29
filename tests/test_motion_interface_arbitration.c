@@ -34,6 +34,20 @@ static int tests_passed = 0;
     else { printf("  FAIL: %s\n", msg); } \
 } while (0)
 
+/* 辅助: 通过CreateMotion分配指定数量的轴 */
+static void ensure_axes_allocated(int count) {
+    for (int i = 0; i < count; i++) {
+        HDY_CREATEMOTION cm;
+        memset(&cm, 0, sizeof(cm));
+        IEC_VAL(cm.EN) = true;
+        IEC_VAL(cm.USE_RECIPE) = false;
+        IEC_VAL(cm.FLOW_TO_PUMPSPEED) = 1.2f;
+        IEC_VAL(cm.PUMPSPEED_LIMIT) = 3000.0f;
+        IEC_VAL(cm.USE_SIMULATION) = false;
+        __mcl_cmd_CreateMotion(&cm);
+    }
+}
+
 /* 辅助: 在指定轴上启动 MoveAbsolute 并经过一次Publish */
 static void start_moveabsolute_on_axis(int axisIndex, HDY_MOVEABSOLUTE* ma) {
     memset(ma, 0, sizeof(*ma));
@@ -83,6 +97,7 @@ static void test_moveabsolute_preempted_by_stop(void) {
     HDY_STOP stop;
 
     __HdyMotion_framework_Init();
+    ensure_axes_allocated(2);
 
     /* Step 1: 启动 MoveAbsolute */
     start_moveabsolute_on_axis(0, &ma);
@@ -122,6 +137,7 @@ static void test_moveabsolute_preempted_by_movevelocity(void) {
     HDY_MOVEVELOCITY mv;
 
     __HdyMotion_framework_Init();
+    ensure_axes_allocated(2);
 
     /* Step 1: 启动 MoveAbsolute */
     start_moveabsolute_on_axis(0, &ma);
@@ -161,6 +177,7 @@ static void test_movevelocity_preempted_by_moveabsolute(void) {
     HDY_MOVEABSOLUTE ma;
 
     __HdyMotion_framework_Init();
+    ensure_axes_allocated(2);
 
     /* Step 1: 启动 MoveVelocity */
     start_movevelocity_on_axis(0, &mv);
@@ -201,6 +218,7 @@ static void test_pressurehandle_preempted_by_stop(void) {
     HDY_STOP stop;
 
     __HdyMotion_framework_Init();
+    ensure_axes_allocated(2);
 
     /* Step 1: 启动 PressureHandle */
     memset(&ph, 0, sizeof(ph));
@@ -248,6 +266,7 @@ static void test_multi_axis_isolation(void) {
     uint16_t gen_axis0_before;
 
     __HdyMotion_framework_Init();
+    ensure_axes_allocated(2);
 
     /* 轴0: 启动 MoveAbsolute */
     memset(&ma0, 0, sizeof(ma0));
@@ -335,6 +354,7 @@ static void test_stop_preempted_by_moveabsolute(void) {
     HDY_STOP stop;
 
     __HdyMotion_framework_Init();
+    ensure_axes_allocated(2);
 
     /* Step 1: 先启动 MoveAbsolute */
     start_moveabsolute_on_axis(0, &ma);
@@ -388,6 +408,7 @@ static void test_self_preemption_same_fb_twice(void) {
     HDY_MOVEABSOLUTE ma;
 
     __HdyMotion_framework_Init();
+    ensure_axes_allocated(2);
 
     /* 第一次启动 */
     memset(&ma, 0, sizeof(ma));
@@ -437,6 +458,7 @@ static void test_previous_command_loses_ownership_after_reset(void) {
     HDY_RESET reset;
 
     __HdyMotion_framework_Init();
+    ensure_axes_allocated(2);
 
     /* 启动 MoveAbsolute */
     start_moveabsolute_on_axis(0, &ma);
@@ -470,6 +492,7 @@ static void test_preemption_chain_three_commands(void) {
     HDY_STOP stop;
 
     __HdyMotion_framework_Init();
+    ensure_axes_allocated(2);
 
     /* Command 1: MoveAbsolute */
     start_moveabsolute_on_axis(0, &ma);
@@ -524,6 +547,7 @@ static void test_never_activated_fb_no_false_commandaborted(void) {
     HDY_MOVEABSOLUTE ma;
 
     __HdyMotion_framework_Init();
+    ensure_axes_allocated(2);
     memset(&ma, 0, sizeof(ma));
 
     /* 不启动MoveAbsolute, 只设置EN并调用 */

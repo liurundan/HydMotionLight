@@ -222,6 +222,13 @@ typedef struct {
     HDY_UINT8 _index;
     uint16_t _commandGeneration;   /* incremented on Abort, used by IEC layer for COMMANDABORTED detection */
     HDY_BOOL _useSimulation;           /* If true, the FB simulates motion without real hardware interaction for testing purposes. */
+    struct {
+        HDY_REAL targetPosition;
+        HDY_REAL targetVelocity;
+        HDY_REAL targetFlow;
+        HDY_REAL targetPressure;
+        HDY_BOOL valid;
+    } _simFeedback;
 } HDY_MotionControlFB;
 
 /* Full reset of configuration, recipe, runtime state, and internal helpers. */

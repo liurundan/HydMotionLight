@@ -1367,6 +1367,13 @@ static void HDY_MotionControlFB_RunRunningState(HDY_MotionControlFB* fb) {
                                       &fb->DIAGNOSTIC);
     HDY_StateReporter_SetSegmentSource(fb, fb->_activeSegmentSource);
     HDY_RecordDiagnosticEvent(fb, fb->AXIS_REF.timestamp, segment, &executionReference);
+
+    fb->_simFeedback.targetPosition = segment->targetPosition;
+    fb->_simFeedback.targetVelocity = plannerOutput.targetVelocity;
+    fb->_simFeedback.targetFlow     = pumpOutput.commandFlow;
+    fb->_simFeedback.targetPressure = executionReference.pressureReference;
+    fb->_simFeedback.valid          = true;
+
     fb->SEGMENT_COMPLETED = false;
 }
 

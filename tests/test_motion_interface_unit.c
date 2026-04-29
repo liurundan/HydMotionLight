@@ -38,6 +38,20 @@ static int tests_passed = 0;
     else { printf("  FAIL: %s (got %d, expected %d)\n", msg, (int)(a), (int)(b)); } \
 } while (0)
 
+/* 辅助: 通过CreateMotion分配指定数量的轴 */
+static void ensure_axes_allocated(int count) {
+    for (int i = 0; i < count; i++) {
+        HDY_CREATEMOTION cm;
+        memset(&cm, 0, sizeof(cm));
+        IEC_VAL(cm.EN) = true;
+        IEC_VAL(cm.USE_RECIPE) = false;
+        IEC_VAL(cm.FLOW_TO_PUMPSPEED) = 1.2f;
+        IEC_VAL(cm.PUMPSPEED_LIMIT) = 3000.0f;
+        IEC_VAL(cm.USE_SIMULATION) = false;
+        __mcl_cmd_CreateMotion(&cm);
+    }
+}
+
 /* ==================================================================
  * Test 1: Framework Init 归零FB池与分配器
  * ================================================================== */
@@ -62,24 +76,32 @@ static void test_framework_init_resets_pool(void) {
 static void test_moveprofile_init_allocates_fb_with_recipe_mode(void) {
     HDY_MOVEPROFILE mp;
     HDY_MotionControlFB* fb;
+    HDY_CREATEMOTION cm;
 
     __HdyMotion_framework_Init();
-    memset(&mp, 0, sizeof(mp));
 
+    /* CreateMotion with USE_RECIPE=true — recipe-mode axis */
+    memset(&cm, 0, sizeof(cm));
+    IEC_VAL(cm.EN) = true;
+    IEC_VAL(cm.USE_RECIPE) = true;
+    IEC_VAL(cm.FLOW_TO_PUMPSPEED) = 1.2f;
+    IEC_VAL(cm.PUMPSPEED_LIMIT) = 3000.0f;
+    IEC_VAL(cm.USE_SIMULATION) = false;
+    __mcl_cmd_CreateMotion(&cm);
+
+    memset(&mp, 0, sizeof(mp));
+    IEC_VAL(mp.AXISID) = IEC_VAL(cm.AXISID);
     __mcl_cmd_MoveProfile(&mp);
 
-    ASSERT_TRUE(IEC_VAL(mp.INIT) == true, "INIT should be set after first call");
-    ASSERT_EQ(IEC_VAL(mp.AXISID), 0, "First allocated axis index should be 0");
-
     fb = __MK_GetPublic_MotionControlFB(0);
-    ASSERT_TRUE(fb != NULL, "FB instance should be retrievable after MoveProfile INIT");
-    ASSERT_TRUE(fb->USE_RECIPE == true, "MoveProfile should set USE_RECIPE=true");
+    ASSERT_TRUE(fb != NULL, "FB instance should be retrievable via AXISID after CreateMotion");
+    ASSERT_TRUE(fb->USE_RECIPE == true, "CreateMotion should set USE_RECIPE=true for recipe-mode axis");
     ASSERT_TRUE(IEC_VAL(mp.GEN) == fb->_commandGeneration,
-               "GEN should be stored from _commandGeneration on INIT");
+               "GEN should be stored from _commandGeneration");
 
     /* 二次调用不应重新分配 */
     __mcl_cmd_MoveProfile(&mp);
-    ASSERT_EQ(IEC_VAL(mp.AXISID), 0, "Axis index should remain stable across calls");
+    ASSERT_EQ(IEC_VAL(mp.AXISID), IEC_VAL(cm.AXISID), "Axis index should remain stable across calls");
 }
 
 /* ==================================================================
@@ -89,6 +111,7 @@ static void test_moveprofile_no_execute_does_not_start(void) {
     HDY_MOVEPROFILE mp;
 
     __HdyMotion_framework_Init();
+    ensure_axes_allocated(2);
     memset(&mp, 0, sizeof(mp));
 
     /* INIT */
@@ -113,6 +136,7 @@ static void test_moveprofile_execute_rising_triggers_motion(void) {
     HDY_AXISMOTION motion;
 
     __HdyMotion_framework_Init();
+    ensure_axes_allocated(2);
     memset(&mp, 0, sizeof(mp));
     memset(&motion, 0, sizeof(motion));
 
@@ -151,6 +175,7 @@ static void test_moveabsolute_execute_rising_sets_busy_active(void) {
     HDY_MOVEABSOLUTE ma;
 
     __HdyMotion_framework_Init();
+    ensure_axes_allocated(2);
     memset(&ma, 0, sizeof(ma));
 
     /* 准备命令 */
@@ -180,6 +205,7 @@ static void test_moveabsolute_sustains_busy_active_across_calls(void) {
     HDY_MOVEABSOLUTE ma;
 
     __HdyMotion_framework_Init();
+    ensure_axes_allocated(2);
     memset(&ma, 0, sizeof(ma));
 
     /* 上升沿触发 */
@@ -218,6 +244,7 @@ static void test_moveabsolute_en_false_clears_outputs(void) {
     HDY_MOVEABSOLUTE ma;
 
     __HdyMotion_framework_Init();
+    ensure_axes_allocated(2);
     memset(&ma, 0, sizeof(ma));
 
     /* 先用上升沿启动 */
@@ -252,6 +279,7 @@ static void test_moveabsolute_rejects_invalid_axis_index(void) {
     HDY_MOVEABSOLUTE ma;
 
     __HdyMotion_framework_Init();
+    ensure_axes_allocated(2);
     memset(&ma, 0, sizeof(ma));
 
     IEC_VAL(ma.EN) = true;
@@ -276,6 +304,7 @@ static void test_movevelocity_execute_rising_starts_velocity_control(void) {
     HDY_MOVEVELOCITY mv;
 
     __HdyMotion_framework_Init();
+    ensure_axes_allocated(2);
     memset(&mv, 0, sizeof(mv));
 
     IEC_VAL(mv.EN) = true;
@@ -301,6 +330,7 @@ static void test_movevelocity_en_false_clears_ivelocity(void) {
     HDY_MOVEVELOCITY mv;
 
     __HdyMotion_framework_Init();
+    ensure_axes_allocated(2);
     memset(&mv, 0, sizeof(mv));
 
     /* 启动 */
@@ -329,6 +359,7 @@ static void test_movevelocity_rejects_invalid_axis_index(void) {
     HDY_MOVEVELOCITY mv;
 
     __HdyMotion_framework_Init();
+    ensure_axes_allocated(2);
     memset(&mv, 0, sizeof(mv));
 
     IEC_VAL(mv.EN) = true;
@@ -351,6 +382,7 @@ static void test_stop_on_idle_axis_immediate_done(void) {
     HDY_STOP stop;
 
     __HdyMotion_framework_Init();
+    ensure_axes_allocated(2);
     memset(&stop, 0, sizeof(stop));
 
     IEC_VAL(stop.EN) = true;
@@ -374,6 +406,7 @@ static void test_stop_en_false_clears_outputs(void) {
     HDY_STOP stop;
 
     __HdyMotion_framework_Init();
+    ensure_axes_allocated(2);
     memset(&stop, 0, sizeof(stop));
 
     IEC_VAL(stop.EN) = false;
@@ -396,6 +429,7 @@ static void test_stop_rejects_invalid_axis_index(void) {
     HDY_STOP stop;
 
     __HdyMotion_framework_Init();
+    ensure_axes_allocated(2);
     memset(&stop, 0, sizeof(stop));
 
     IEC_VAL(stop.EN) = true;
@@ -417,6 +451,7 @@ static void test_reset_immediate_done_on_initialized_axis(void) {
     HDY_RESET reset;
 
     __HdyMotion_framework_Init();
+    ensure_axes_allocated(2);
     memset(&ma, 0, sizeof(ma));
 
     /* 先用 MoveAbsolute 初始化轴 */
@@ -450,19 +485,20 @@ static void test_reset_immediate_done_on_uninitialized_axis(void) {
     HDY_RESET reset;
 
     __HdyMotion_framework_Init();
+    ensure_axes_allocated(2);
     memset(&reset, 0, sizeof(reset));
 
     IEC_VAL(reset.EN) = true;
     IEC_VAL(reset.EXECUTE) = true;
     reset.EXECUTE0.value = false;
-    IEC_VAL(reset.AXISID) = 5;  /* 未初始化的轴 */
+    IEC_VAL(reset.AXISID) = 5;  /* 未通过CreateMotion分配的轴 */
 
     __mcl_cmd_Reset(&reset);
 
-    ASSERT_TRUE(IEC_VAL(reset.DONE) == true,
-               "Reset on uninitialized axis should return DONE immediately");
+    ASSERT_TRUE(IEC_VAL(reset.ERROR) == true,
+               "Reset on unallocated axis should return ERROR");
     ASSERT_TRUE(IEC_VAL(reset.BUSY) == false,
-               "Reset BUSY should be false on uninitialized axis");
+               "Reset BUSY should be false on unallocated axis");
 }
 
 /* ==================================================================
@@ -472,6 +508,7 @@ static void test_pressurehandle_execute_rising_starts_pressure_control(void) {
     HDY_PRESSUREHANDLE ph;
 
     __HdyMotion_framework_Init();
+    ensure_axes_allocated(2);
     memset(&ph, 0, sizeof(ph));
 
     IEC_VAL(ph.EN) = true;
@@ -499,6 +536,7 @@ static void test_pressurehandle_en_false_clears_outputs(void) {
     HDY_PRESSUREHANDLE ph;
 
     __HdyMotion_framework_Init();
+    ensure_axes_allocated(2);
     memset(&ph, 0, sizeof(ph));
 
     /* 启动 */
@@ -526,6 +564,7 @@ static void test_pressurehandle_rejects_invalid_axis_index(void) {
     HDY_PRESSUREHANDLE ph;
 
     __HdyMotion_framework_Init();
+    ensure_axes_allocated(2);
     memset(&ph, 0, sizeof(ph));
 
     IEC_VAL(ph.EN) = true;
@@ -546,6 +585,7 @@ static void test_multiple_axes_operate_independently(void) {
     HDY_MOVEVELOCITY mv1;
 
     __HdyMotion_framework_Init();
+    ensure_axes_allocated(2);
     memset(&ma0, 0, sizeof(ma0));
     memset(&mv1, 0, sizeof(mv1));
 
