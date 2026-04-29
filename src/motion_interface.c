@@ -976,3 +976,83 @@ void __mcl_cmd_GetPumpRequest(HDY_GETPUMPREQUEST *data__)
     __SET_VAR(data__->, ENO, , true);
     __SET_VAR(data__->, DONE, , true);
 }
+
+void __mcl_cmd_ReadStatus(HDY_READSTATUS* data__)
+{
+    IEC_BOOL enable = __GET_VAR(data__->ENABLE);
+    IEC_SINT axisIndex = __GET_VAR(data__->AXISID);
+
+    __SET_VAR(data__->, ENO,, __GET_VAR(data__->EN));
+
+    if (!__GET_VAR(data__->EN))
+    {
+        __SET_VAR(data__->, STATE,, 0);
+        __SET_VAR(data__->, BUSY,, false);
+        return;
+    }
+
+    if (axisIndex < 0 || axisIndex >= (IEC_SINT)nextAllocatedFB)
+    {
+        __SET_VAR(data__->, STATE,, 0);
+        __SET_VAR(data__->, BUSY,, false);
+        __SET_VAR(data__->, ENO,, false);
+        return;
+    }
+
+    HDY_MotionControlFB* fb = &HDY_MotionControlFB_inst[axisIndex];
+
+    if (enable)
+    {
+        __SET_VAR(data__->, STATE,, (IEC_UINT)fb->STATE.status);
+        __SET_VAR(data__->, BUSY,, HDY_MotionControlFB_IsBusy(fb) ? true : false);
+    }
+    else
+    {
+        __SET_VAR(data__->, STATE,, 0);
+        __SET_VAR(data__->, BUSY,, false);
+    }
+
+    __SET_VAR(data__->, ENO,, true);
+}
+
+void __mcl_cmd_ReadError(HDY_READERROR* data__)
+{
+    IEC_BOOL enable = __GET_VAR(data__->ENABLE);
+    IEC_SINT axisIndex = __GET_VAR(data__->AXISID);
+
+    __SET_VAR(data__->, ENO,, __GET_VAR(data__->EN));
+
+    if (!__GET_VAR(data__->EN))
+    {
+        __SET_VAR(data__->, ERROR,, false);
+        __SET_VAR(data__->, ERRORID,, (IEC_WORD)0);
+        __SET_VAR(data__->, BUSY,, false);
+        return;
+    }
+
+    if (axisIndex < 0 || axisIndex >= (IEC_SINT)nextAllocatedFB)
+    {
+        __SET_VAR(data__->, ERROR,, false);
+        __SET_VAR(data__->, ERRORID,, (IEC_WORD)0);
+        __SET_VAR(data__->, BUSY,, false);
+        __SET_VAR(data__->, ENO,, false);
+        return;
+    }
+
+    HDY_MotionControlFB* fb = &HDY_MotionControlFB_inst[axisIndex];
+
+    if (enable)
+    {
+        __SET_VAR(data__->, ERROR,, HDY_MotionControlFB_IsError(fb) ? true : false);
+        __SET_VAR(data__->, ERRORID,, (IEC_WORD)fb->ERROR_ID);
+        __SET_VAR(data__->, BUSY,, HDY_MotionControlFB_IsBusy(fb) ? true : false);
+    }
+    else
+    {
+        __SET_VAR(data__->, ERROR,, false);
+        __SET_VAR(data__->, ERRORID,, (IEC_WORD)0);
+        __SET_VAR(data__->, BUSY,, false);
+    }
+
+    __SET_VAR(data__->, ENO,, true);
+}

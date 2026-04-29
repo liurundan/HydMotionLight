@@ -284,6 +284,42 @@ typedef struct
 
 } HDY_GETPUMPREQUEST;
 
+// FUNCTION_BLOCK HDY_READSTATUS
+// Data part
+typedef struct
+{
+   // FB Interface - IN, OUT, IN_OUT variables
+   __DECLARE_VAR(BOOL, EN)
+   __DECLARE_VAR(BOOL, ENO)
+   __DECLARE_VAR(BOOL, ENABLE)
+   __DECLARE_VAR(SINT, AXISID)
+
+   __DECLARE_VAR(UINT, STATE)
+   __DECLARE_VAR(BOOL, BUSY)
+
+   // FB private variables - TEMP, private and located variables
+
+
+} HDY_READSTATUS;
+
+// FUNCTION_BLOCK HDY_READERROR
+// Data part
+typedef struct
+{
+   // FB Interface - IN, OUT, IN_OUT variables
+   __DECLARE_VAR(BOOL, EN)
+   __DECLARE_VAR(BOOL, ENO)
+   __DECLARE_VAR(BOOL, ENABLE)
+   __DECLARE_VAR(SINT, AXISID)
+
+   __DECLARE_VAR(BOOL, ERROR)
+   __DECLARE_VAR(WORD, ERRORID)
+   __DECLARE_VAR(BOOL, BUSY)
+
+   // FB private variables - TEMP, private and located variables
+
+} HDY_READERROR;
+
 extern int  __HdyMotion_framework_Init();
 extern void __HdyMotion_framework_Cleanup();
 extern void __HdyMotion_framework_Retrieve();
@@ -300,5 +336,7 @@ extern void __mcl_cmd_PressureHandle(HDY_PRESSUREHANDLE *data__);
 extern void __mcl_cmd_SetAxisFeedback(HDY_SETAXISFEEDBACK *data__);
 extern void __mcl_cmd_GetPumpRequest(HDY_GETPUMPREQUEST *data__);
 
+extern void __mcl_cmd_ReadStatus(HDY_READSTATUS* data__);
+extern void __mcl_cmd_ReadError(HDY_READERROR* data__);
 
 #endif
