@@ -160,6 +160,15 @@ typedef enum {
     HDY_PRESSURE_CONTROLLER_RBF_PID
 } HDY_PressureControllerType;
 
+/* BufferMode: PLCopen-standard buffering mode for motion commands.
+ * ABORT  (0): preempt current motion, execute immediately.
+ * BUFFER (1): execute only when axis is idle; reject if axis is busy.
+ * Values 2-5 are reserved for future blending modes. */
+typedef enum {
+    HDY_BUFFER_MODE_ABORT  = 0,
+    HDY_BUFFER_MODE_BUFFER = 1
+} HDY_BufferMode;
+
 typedef struct {
     HDY_REAL minKp;
     HDY_REAL maxKp;
