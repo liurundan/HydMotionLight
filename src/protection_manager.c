@@ -20,8 +20,7 @@ void HDY_ProtectionManager_ResetRuntimeActuation(HDY_MotionControlFB* fb) {
     }
 
     HDY_PressureController_ClearState(&fb->_pressureController);
-    fb->_lastFeedbackTimestamp = 0.0;
-    fb->_feedbackTimestampValid = false;
+    fb->_lastFeedbackTimestamp = -1.0;  /* negative sentinel: not yet valid */
     fb->_segmentStartTime = 0.0;
     fb->_holdStateTime = 0.0;
     fb->_activeSegmentValid = false;
@@ -51,13 +50,13 @@ void HDY_ProtectionManager_ApplyDisabledState(HDY_MotionControlFB* fb) {
     fb->SEGMENT_COMPLETED = false;
     HDY_StateReporter_SetFbState(fb, HDY_FB_STATE_DISABLED);
 
-    if (fb->FAULT) {
+    if (fb->STATE.faultActive) {
         HDY_StateReporter_SetProtectionAction(fb, HDY_PROTECTION_ACTION_STOP);
         HDY_StateReporter_SetStatus(fb, HDY_STATUS_FAULT);
         return;
     }
 
-    if (fb->FINISHED) {
+    if (fb->STATE.finished) {
         HDY_StateReporter_SetStatus(fb, HDY_STATUS_FINISHED);
     } else if (HDY_ProtectionManager_HasSelectedStartSource(fb)) {
         HDY_StateReporter_SetStatus(fb, HDY_STATUS_READY);

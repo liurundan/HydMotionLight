@@ -22,13 +22,13 @@ static void print_live_diagnostic(const HDY_DiagnosticInfo* diagnostic) {
 static void print_retained_diagnostics(const HDY_MotionControlFB* controller) {
     HDY_DiagnosticSnapshot latestSnapshot;
 
-    if (controller == NULL || controller->DIAGNOSTIC_LATCH.code == HDY_DIAG_CODE_NONE) {
+    if (controller == NULL || controller->DIAGNOSTIC_HISTORY.lastSnapshot.diagnostic.code == HDY_DIAG_CODE_NONE) {
         return;
     }
 
     printf("    Retained: last=%s severity=%s totalRecorded=%u hasRecord=%u\n",
-           HDY_Diagnostics_CodeToString(controller->DIAGNOSTIC_LATCH.code),
-           HDY_Diagnostics_SeverityToString(controller->DIAGNOSTIC_LATCH.severity),
+           HDY_Diagnostics_CodeToString(controller->DIAGNOSTIC_HISTORY.lastSnapshot.diagnostic.code),
+           HDY_Diagnostics_SeverityToString(controller->DIAGNOSTIC_HISTORY.lastSnapshot.diagnostic.severity),
            (unsigned int)controller->DIAGNOSTIC_HISTORY.totalRecorded,
            (unsigned int)controller->DIAGNOSTIC_HISTORY.hasRecord);
 
@@ -51,7 +51,6 @@ static void print_retained_diagnostics(const HDY_MotionControlFB* controller) {
 int main(void) {
     HDY_MotionControlFB controller;
     HDY_MotionControlFB_Init(&controller);
-    controller.EN = true;
     controller.FLOW_TO_PUMP_SPEED_GAIN = 80.0;
     controller.PUMP_SPEED_LIMIT = 5000.0;
 
@@ -200,20 +199,20 @@ int main(void) {
 
         if (controller.DIAGNOSTIC.code != HDY_DIAG_CODE_NONE) {
             print_live_diagnostic(&controller.DIAGNOSTIC);
-        } else if (!controller.ACTIVE && controller.DIAGNOSTIC_LATCH.code != HDY_DIAG_CODE_NONE) {
+        } else if (!controller.STATE.active && controller.DIAGNOSTIC_HISTORY.lastSnapshot.diagnostic.code != HDY_DIAG_CODE_NONE) {
             print_retained_diagnostics(&controller);
         }
 
         if (controller.SEGMENT_COMPLETED) {
             HDY_MotionControlFB_NextSegment(&controller, ref.timestamp);
-            if (controller.FINISHED) {
+            if (controller.STATE.finished) {
                 printf("Recipe finished.\n");
                 break;
             }
             printf("Switching to next segment: %s\n", (controller.STATE.currentSegmentTag == 0 ? "(none)" : "active"));
         }
 
-        if (controller.ACTIVE) {
+        if (controller.STATE.active) {
             ref.velocity = controller.STATE.plannedVelocity;
             ref.position += ref.velocity * timeStep;
             ref.flow = controller.STATE.plannedFlow;
@@ -239,8 +238,8 @@ int main(void) {
         }
     }
 
-    if (!controller.FAULT && controller.DIAGNOSTIC.code == HDY_DIAG_CODE_NONE &&
-        controller.DIAGNOSTIC_LATCH.code != HDY_DIAG_CODE_NONE) {
+    if (!controller.STATE.faultActive && controller.DIAGNOSTIC.code == HDY_DIAG_CODE_NONE &&
+        controller.DIAGNOSTIC_HISTORY.lastSnapshot.diagnostic.code != HDY_DIAG_CODE_NONE) {
         print_retained_diagnostics(&controller);
         if (HDY_MotionControlFB_AcknowledgeDiagnostics(&controller)) {
             printf("Service acknowledgment cleared retained diagnostics before exit.\n");

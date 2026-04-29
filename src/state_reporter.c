@@ -98,7 +98,7 @@ static HDY_BOOL HDY_StateReporter_ResolveError(const HDY_MotionControlFB* fb) {
         return false;
     }
 
-    return fb->FAULT || fb->FB_STATE == HDY_FB_STATE_FAULT ||
+    return fb->STATE.faultActive || fb->FB_STATE == HDY_FB_STATE_FAULT ||
         fb->DIAGNOSTIC.severity == HDY_DIAG_SEVERITY_FAULT;
 }
 
@@ -116,9 +116,10 @@ static HDY_DiagnosticCode HDY_StateReporter_ResolveErrorId(const HDY_MotionContr
         return fb->LAST_FAULT_SNAPSHOT.diagnostic.code;
     }
 
-    if (fb->DIAGNOSTIC_LATCH.severity == HDY_DIAG_SEVERITY_FAULT &&
-        fb->DIAGNOSTIC_LATCH.code != HDY_DIAG_CODE_NONE) {
-        return fb->DIAGNOSTIC_LATCH.code;
+    if (fb->DIAGNOSTIC_HISTORY.hasRecord &&
+        fb->DIAGNOSTIC_HISTORY.lastSnapshot.diagnostic.severity == HDY_DIAG_SEVERITY_FAULT &&
+        fb->DIAGNOSTIC_HISTORY.lastSnapshot.diagnostic.code != HDY_DIAG_CODE_NONE) {
+        return fb->DIAGNOSTIC_HISTORY.lastSnapshot.diagnostic.code;
     }
 
     return HDY_DIAG_CODE_NONE;
@@ -192,7 +193,6 @@ void HDY_StateReporter_SetActive(HDY_MotionControlFB* fb, HDY_BOOL active) {
         return;
     }
 
-    fb->ACTIVE = active;
     fb->STATE.active = active;
 }
 
@@ -201,7 +201,6 @@ void HDY_StateReporter_SetFinished(HDY_MotionControlFB* fb, HDY_BOOL finished) {
         return;
     }
 
-    fb->FINISHED = finished;
     fb->STATE.finished = finished;
 }
 
@@ -210,7 +209,6 @@ void HDY_StateReporter_SetFault(HDY_MotionControlFB* fb, HDY_BOOL fault) {
         return;
     }
 
-    fb->FAULT = fault;
     fb->STATE.faultActive = fault;
     HDY_StateReporter_RefreshStandardOutputs(fb);
 }
@@ -220,7 +218,6 @@ void HDY_StateReporter_SetStatus(HDY_MotionControlFB* fb, HDY_ControllerStatus s
         return;
     }
 
-    fb->STATUS = status;
     fb->STATE.status = status;
 }
 
@@ -262,9 +259,6 @@ void HDY_StateReporter_RefreshStandardOutputs(HDY_MotionControlFB* fb) {
         return;
     }
 
-    fb->BUSY = HDY_StateReporter_ResolveBusy(fb);
-    fb->DONE = HDY_StateReporter_ResolveDone(fb);
-    fb->ERROR = HDY_StateReporter_ResolveError(fb);
     fb->ERROR_ID = HDY_StateReporter_ResolveErrorId(fb);
 }
 
@@ -423,10 +417,6 @@ void HDY_StateReporter_ClearCurrentDiagnostic(HDY_MotionControlFB* fb) {
     }
 
     HDY_Diagnostics_Clear(&fb->DIAGNOSTIC);
-    fb->_lastRecordedDiagnosticCode = HDY_DIAG_CODE_NONE;
-    fb->_lastRecordedDiagnosticSeverity = HDY_DIAG_SEVERITY_NONE;
-    fb->_lastRecordedDiagnosticFlags = HDY_DIAG_FLAG_NONE;
-    fb->_lastRecordedProtectionAction = HDY_PROTECTION_ACTION_NONE;
     HDY_StateReporter_SetProtectionAction(fb, HDY_PROTECTION_ACTION_NONE);
     HDY_StateReporter_RefreshStandardOutputs(fb);
 }
@@ -436,8 +426,6 @@ void HDY_StateReporter_ClearDiagnosticRetentionOnly(HDY_MotionControlFB* fb) {
         return;
     }
 
-    HDY_Diagnostics_Clear(&fb->DIAGNOSTIC_LATCH);
-    HDY_Diagnostics_ClearSnapshot(&fb->LAST_DIAGNOSTIC_SNAPSHOT);
     HDY_Diagnostics_ClearSnapshot(&fb->LAST_FAULT_SNAPSHOT);
     HDY_DiagnosticsHistory_Clear(&fb->DIAGNOSTIC_HISTORY);
 }
@@ -452,22 +440,11 @@ void HDY_StateReporter_ResetDiagnosticRetention(HDY_MotionControlFB* fb) {
 }
 
 void HDY_StateReporter_ClearLiveDiagnosticInNonFaultHold(HDY_MotionControlFB* fb) {
-    if (fb == NULL || fb->FAULT || fb->DIAGNOSTIC.code == HDY_DIAG_CODE_NONE) {
+    if (fb == NULL || fb->STATE.faultActive || fb->DIAGNOSTIC.code == HDY_DIAG_CODE_NONE) {
         return;
     }
 
     HDY_StateReporter_ClearCurrentDiagnostic(fb);
-}
-
-static void HDY_StateReporter_UpdateRecordedDiagnosticSignature(HDY_MotionControlFB* fb) {
-    if (fb == NULL) {
-        return;
-    }
-
-    fb->_lastRecordedDiagnosticCode = fb->DIAGNOSTIC.code;
-    fb->_lastRecordedDiagnosticSeverity = fb->DIAGNOSTIC.severity;
-    fb->_lastRecordedDiagnosticFlags = fb->DIAGNOSTIC.flags;
-    fb->_lastRecordedProtectionAction = fb->DIAGNOSTIC.protectionAction;
 }
 
 static HDY_BOOL HDY_StateReporter_ShouldRecordDiagnosticEvent(const HDY_MotionControlFB* fb) {
@@ -475,10 +452,18 @@ static HDY_BOOL HDY_StateReporter_ShouldRecordDiagnosticEvent(const HDY_MotionCo
         return false;
     }
 
-    return (fb->DIAGNOSTIC.code != fb->_lastRecordedDiagnosticCode) ||
-        (fb->DIAGNOSTIC.severity != fb->_lastRecordedDiagnosticSeverity) ||
-        (fb->DIAGNOSTIC.flags != fb->_lastRecordedDiagnosticFlags) ||
-        (fb->DIAGNOSTIC.protectionAction != fb->_lastRecordedProtectionAction);
+    /* Deduplicate against the last recorded snapshot in history */
+    if (fb->DIAGNOSTIC_HISTORY.hasRecord) {
+        const HDY_DiagnosticInfo* last = &fb->DIAGNOSTIC_HISTORY.lastSnapshot.diagnostic;
+        if (fb->DIAGNOSTIC.code == last->code &&
+            fb->DIAGNOSTIC.severity == last->severity &&
+            fb->DIAGNOSTIC.flags == last->flags &&
+            fb->DIAGNOSTIC.protectionAction == last->protectionAction) {
+            return false;
+        }
+    }
+
+    return true;
 }
 
 static HDY_UINT8 HDY_StateReporter_ResolveDiagnosticSegmentIndex(const HDY_MotionControlFB* fb,
@@ -514,12 +499,10 @@ void HDY_StateReporter_RecordDiagnosticEvent(HDY_MotionControlFB* fb,
     }
 
     if (fb->DIAGNOSTIC.code == HDY_DIAG_CODE_NONE) {
-        HDY_StateReporter_UpdateRecordedDiagnosticSignature(fb);
         return;
     }
 
     if (!HDY_StateReporter_ShouldRecordDiagnosticEvent(fb)) {
-        HDY_StateReporter_UpdateRecordedDiagnosticSignature(fb);
         return;
     }
 
@@ -530,15 +513,12 @@ void HDY_StateReporter_RecordDiagnosticEvent(HDY_MotionControlFB* fb,
                                     eventTimestamp,
                                     HDY_StateReporter_ResolveDiagnosticSegmentIndex(fb, segment),
                                     HDY_StateReporter_ResolveDiagnosticSegmentTag(fb, segment),
-                                    fb->STATUS,
-                                    fb->ACTIVE,
-                                    fb->FINISHED,
-                                    fb->FAULT);
-    fb->DIAGNOSTIC_LATCH = fb->DIAGNOSTIC;
-    fb->LAST_DIAGNOSTIC_SNAPSHOT = snapshot;
-    if (fb->FAULT) {
+                                    fb->STATE.status,
+                                    fb->STATE.active,
+                                    fb->STATE.finished,
+                                    fb->STATE.faultActive);
+    if (fb->STATE.faultActive) {
         fb->LAST_FAULT_SNAPSHOT = snapshot;
     }
     HDY_DiagnosticsHistory_Push(&fb->DIAGNOSTIC_HISTORY, &snapshot);
-    HDY_StateReporter_UpdateRecordedDiagnosticSignature(fb);
 }

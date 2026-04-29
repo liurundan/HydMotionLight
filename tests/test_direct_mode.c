@@ -269,7 +269,7 @@ int main(void) {
     HDY_MotionControlFB_Init(&fb);
     
     /* Configure function block for direct mode */
-    fb.EN = true;
+    /* EN gate handled by IEC layer */
     fb.USE_RECIPE = false;  /* Direct mode: use DIRECT_SEGMENT */
     fb.FLOW_TO_PUMP_SPEED_GAIN = 1.2;  /* rpm per L/min */
     fb.PUMP_SPEED_LIMIT = 3000.0;       /* rpm */
@@ -333,7 +333,7 @@ int main(void) {
         }
         
         /* Check for errors */
-        if (fb.FAULT) {
+        if (fb.STATE.faultActive) {
             printf("ERROR: Fault detected\n");
             PrintDiagnosticInfo(&fb);
             testPassed = false;
@@ -421,7 +421,7 @@ int main(void) {
         }
         
         /* Check for errors */
-        if (fb.FAULT) {
+        if (fb.STATE.faultActive) {
             printf("ERROR: Fault detected\n");
             PrintDiagnosticInfo(&fb);
             testPassed = false;
@@ -499,7 +499,7 @@ int main(void) {
         }
         
         /* Check for errors */
-        if (fb.FAULT) {
+        if (fb.STATE.faultActive) {
             printf("ERROR: Fault detected\n");
             PrintDiagnosticInfo(&fb);
             testPassed = false;
@@ -525,9 +525,9 @@ int main(void) {
     printf("\n=== Final Status ===\n");
     printf("Test result: %s\n", testPassed ? "PASSED" : "FAILED");
     printf("Function block state: %d\n", fb.FB_STATE);
-    printf("Finished: %d\n", fb.FINISHED);
-    printf("FAULT: %d\n", fb.FAULT);
-    printf("ERROR: %d\n", fb.ERROR);
+    printf("Finished: %d\n", fb.STATE.finished);
+    printf("FAULT: %d\n", fb.STATE.faultActive);
+    printf("ERROR: %d\n", HDY_MotionControlFB_IsError(&fb));
     
     if (fb.DIAGNOSTIC.code != HDY_DIAG_CODE_NONE) {
         printf("\n=== Final Diagnostic ===\n");

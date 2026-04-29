@@ -250,9 +250,7 @@ void __HdyMotion_framework_Publish()
 
     for (int i = 0; i < (int)nextAllocatedFB; i++) {
         HDY_MotionControlFB* fb = &HDY_MotionControlFB_inst[i];
-        if (fb->FB_STATE != HDY_FB_STATE_DISABLED) {
-            HDY_MotionControlFB_Scan(fb);
-        }
+        HDY_MotionControlFB_Scan(fb);
 
         /* Simulation: close the feedback loop with planner outputs */
         if (fb->_useSimulation && fb->_simFeedback.valid) {
@@ -284,7 +282,7 @@ void __mcl_cmd_CreateMotion(HDY_CREATEMOTION *data__)
 			fb->FLOW_TO_PUMP_SPEED_GAIN = __GET_VAR(data__->FLOW_TO_PUMPSPEED);
 			fb->PUMP_SPEED_LIMIT = __GET_VAR(data__->PUMPSPEED_LIMIT);
             fb->_useSimulation = __GET_VAR(data__->USE_SIMULATION);
-			fb->EN = true;
+			/* EN gate handled by IEC layer */
 
 			__SET_VAR(data__->, DONE, , true);
             __SET_VAR(data__->, AXISID,, index);
@@ -323,7 +321,7 @@ void __mcl_cmd_MoveProfile(HDY_MOVEPROFILE *data__)
 
 	IEC_BOOL execute = __GET_VAR(data__->EXECUTE);
 	IEC_BOOL execRising = execute && !__GET_VAR(data__->EXECUTE0);
-	fb->EN = execute;
+	/* EN gate handled by IEC layer */
 
 	/* 从MOTION读取反馈数据更新AXIS_REF */
 	HDY_AXISMOTION motionData = __GET_VAR(data__->MOTION);
@@ -376,10 +374,10 @@ void __mcl_cmd_MoveProfile(HDY_MOVEPROFILE *data__)
 	bool isOwner = (myGen == fb->_commandGeneration);
 
 	if (isOwner) {
-		__SET_VAR(data__->, ACTIVE,, fb->ACTIVE ? true : false);
-		__SET_VAR(data__->, BUSY,, fb->BUSY ? true : false);
-		__SET_VAR(data__->, DONE,, (fb->DONE && fb->FINISHED) ? true : false);
-		__SET_VAR(data__->, ERROR,, fb->ERROR ? true : false);
+		__SET_VAR(data__->, ACTIVE,, fb->STATE.active ? true : false);
+		__SET_VAR(data__->, BUSY,, HDY_MotionControlFB_IsBusy(fb));
+		__SET_VAR(data__->, DONE,, (HDY_MotionControlFB_IsDone(fb) && fb->STATE.finished) ? true : false);
+		__SET_VAR(data__->, ERROR,, HDY_MotionControlFB_IsError(fb) ? true : false);
 		__SET_VAR(data__->, ERRORID,, (IEC_WORD )fb->ERROR_ID);
 		__SET_VAR(data__->, STATE,, (IEC_WORD )fb->STATE.status);
 		__SET_VAR(data__->, PUMP_SPEED,, (IEC_REAL )fb->PUMP_SPEED);
@@ -453,7 +451,7 @@ void __mcl_cmd_Stop(HDY_STOP *data__)
     if (isOwner)
     {
         /* Stop完成: 轴已停止 (ABORTED或非ACTIVE) */
-        if (!fb->ACTIVE && fb->FB_STATE != HDY_FB_STATE_RUNNING)
+        if (!fb->STATE.active && fb->FB_STATE != HDY_FB_STATE_RUNNING)
         {
             __SET_VAR(data__->, DONE, , true);
             __SET_VAR(data__->, BUSY, , false);
@@ -463,7 +461,7 @@ void __mcl_cmd_Stop(HDY_STOP *data__)
             __SET_VAR(data__->, BUSY, , true);
         }
 
-        if (fb->ERROR)
+        if (HDY_MotionControlFB_IsError(fb))
         {
             __SET_VAR(data__->, ERROR, , true);
             __SET_VAR(data__->, ERRORID, , (IEC_WORD)fb->ERROR_ID);
@@ -527,7 +525,7 @@ void __mcl_cmd_MoveAbsolute(HDY_MOVEABSOLUTE *data__)
             dir);
 
         /* 中止当前运动(递增_commandGeneration用于抢占检测)并加载新段 */
-        fb->EN = true;
+        /* EN gate handled by IEC layer */
         HDY_MotionControlFB_Abort(fb);
         HDY_MotionControlFB_Scan(fb);
 
@@ -565,19 +563,19 @@ void __mcl_cmd_MoveAbsolute(HDY_MOVEABSOLUTE *data__)
 
     if (isOwner)
     {
-        if (fb->SEGMENT_COMPLETED || (fb->DONE && fb->FINISHED))
+        if (fb->SEGMENT_COMPLETED || (HDY_MotionControlFB_IsDone(fb) && fb->STATE.finished))
         {
             /* 位置到达 → DONE */
             __SET_VAR(data__->, DONE, , true);
             __SET_VAR(data__->, BUSY, , false);
             __SET_VAR(data__->, ACTIVE, , false);
         }
-        else if (fb->ACTIVE)
+        else if (fb->STATE.active)
         {
             __SET_VAR(data__->, BUSY, , true);
             __SET_VAR(data__->, ACTIVE, , true);
         }
-        else if (fb->ERROR || fb->FAULT)
+        else if (HDY_MotionControlFB_IsError(fb))
         {
             __SET_VAR(data__->, ERROR, , true);
             __SET_VAR(data__->, ERRORID, , (IEC_WORD)fb->ERROR_ID);
@@ -586,8 +584,8 @@ void __mcl_cmd_MoveAbsolute(HDY_MOVEABSOLUTE *data__)
         }
         else
         {
-            __SET_VAR(data__->, BUSY, , fb->BUSY ? true : false);
-            __SET_VAR(data__->, ACTIVE, , fb->ACTIVE ? true : false);
+            __SET_VAR(data__->, BUSY, , HDY_MotionControlFB_IsBusy(fb));
+            __SET_VAR(data__->, ACTIVE, , fb->STATE.active ? true : false);
         }
     }
     else if (wasActive)
@@ -649,7 +647,7 @@ void __mcl_cmd_MoveVelocity(HDY_MOVEVELOCITY *data__)
             dir);
 
         /* 中止当前运动(递增_commandGeneration用于抢占检测)并加载新段 */
-        fb->EN = true;
+        /* EN gate handled by IEC layer */
         HDY_MotionControlFB_Abort(fb);
         HDY_MotionControlFB_Scan(fb);
 
@@ -687,7 +685,7 @@ void __mcl_cmd_MoveVelocity(HDY_MOVEVELOCITY *data__)
 
     if (isOwner)
     {
-        if (fb->ACTIVE)
+        if (fb->STATE.active)
         {
             __SET_VAR(data__->, BUSY, , true);
             __SET_VAR(data__->, ACTIVE, , true);
@@ -704,7 +702,7 @@ void __mcl_cmd_MoveVelocity(HDY_MOVEVELOCITY *data__)
                 __SET_VAR(data__->, INVELOCITY, , false);
             }
         }
-        else if (fb->ERROR || fb->FAULT)
+        else if (HDY_MotionControlFB_IsError(fb))
         {
             __SET_VAR(data__->, ERROR, , true);
             __SET_VAR(data__->, ERRORID, , (IEC_WORD)fb->ERROR_ID);
@@ -714,8 +712,8 @@ void __mcl_cmd_MoveVelocity(HDY_MOVEVELOCITY *data__)
         }
         else
         {
-            __SET_VAR(data__->, BUSY, , fb->BUSY ? true : false);
-            __SET_VAR(data__->, ACTIVE, , fb->ACTIVE ? true : false);
+            __SET_VAR(data__->, BUSY, , HDY_MotionControlFB_IsBusy(fb));
+            __SET_VAR(data__->, ACTIVE, , fb->STATE.active ? true : false);
         }
     }
     else if (wasActive)
@@ -778,7 +776,7 @@ void __mcl_cmd_Reset(HDY_RESET *data__)
     {
         /* 执行SoftReset: 保留配方/配置, 清除运行时状态和故障 */
         HDY_MotionControlFB_SoftReset(fb);
-        fb->EN = true;
+        /* EN gate handled by IEC layer */
 
         /* 清除代际, SoftReset中的memset已将_commandGeneration归零 */
         __SET_VAR(data__->, GEN, , (IEC_WORD)0);
@@ -835,7 +833,7 @@ void __mcl_cmd_PressureHandle(HDY_PRESSUREHANDLE *data__)
             __GET_VAR(data__->DURATION));
 
         /* 中止当前运动(递增_commandGeneration用于抢占检测)并加载新段 */
-        fb->EN = true;
+        /* EN gate handled by IEC layer */
         HDY_MotionControlFB_Abort(fb);
         HDY_MotionControlFB_Scan(fb);
 
@@ -873,14 +871,14 @@ void __mcl_cmd_PressureHandle(HDY_PRESSUREHANDLE *data__)
 
     if (isOwner)
     {
-        if (fb->SEGMENT_COMPLETED || (fb->DONE && fb->FINISHED))
+        if (fb->SEGMENT_COMPLETED || (HDY_MotionControlFB_IsDone(fb) && fb->STATE.finished))
         {
             /* 段完成 → DONE (对于END_TIME模式, 持续时间到达) */
             __SET_VAR(data__->, BUSY, , false);
             __SET_VAR(data__->, ACTIVE, , false);
             __SET_VAR(data__->, INPRESSURE, , false);
         }
-        else if (fb->ACTIVE)
+        else if (fb->STATE.active)
         {
             __SET_VAR(data__->, BUSY, , true);
             __SET_VAR(data__->, ACTIVE, , true);
@@ -897,7 +895,7 @@ void __mcl_cmd_PressureHandle(HDY_PRESSUREHANDLE *data__)
                 __SET_VAR(data__->, INPRESSURE, , false);
             }
         }
-        else if (fb->ERROR || fb->FAULT)
+        else if (HDY_MotionControlFB_IsError(fb))
         {
             __SET_VAR(data__->, ERROR, , true);
             __SET_VAR(data__->, ERRORID, , (IEC_WORD)fb->ERROR_ID);
@@ -907,8 +905,8 @@ void __mcl_cmd_PressureHandle(HDY_PRESSUREHANDLE *data__)
         }
         else
         {
-            __SET_VAR(data__->, BUSY, , fb->BUSY ? true : false);
-            __SET_VAR(data__->, ACTIVE, , fb->ACTIVE ? true : false);
+            __SET_VAR(data__->, BUSY, , HDY_MotionControlFB_IsBusy(fb));
+            __SET_VAR(data__->, ACTIVE, , fb->STATE.active ? true : false);
         }
     }
     else if (wasActive)
@@ -969,7 +967,7 @@ void __mcl_cmd_GetPumpRequest(HDY_GETPUMPREQUEST *data__)
 
     for (int i = 0; i < (int)nextAllocatedFB; i++) {
         HDY_MotionControlFB* fb = &HDY_MotionControlFB_inst[i];
-        if (fb->ACTIVE && fb->PUMP_SPEED > maxSpeed) {
+        if (fb->STATE.active && fb->PUMP_SPEED > maxSpeed) {
             maxSpeed = fb->PUMP_SPEED;
         }
     }

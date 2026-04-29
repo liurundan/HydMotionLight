@@ -64,7 +64,7 @@ int main(void) {
     
     /* 初始化 */
     HDY_MotionControlFB_Init(&fb);
-    fb.EN = true;
+    /* EN gate handled by IEC layer */
     fb.USE_RECIPE = false;
     fb.FLOW_TO_PUMP_SPEED_GAIN = 1.2;
     fb.PUMP_SPEED_LIMIT = 3000.0;
@@ -121,7 +121,7 @@ int main(void) {
                    (unsigned long)phase1Step, currentTime, position, velocity, pressure);
         }
         
-        if (fb.FAULT) {
+        if (fb.STATE.faultActive) {
             printf("ERROR: Fault detected\n");
             results.testPassed = false;
             break;
@@ -180,7 +180,7 @@ int main(void) {
                    (unsigned long)phase2Step, currentTime, position, velocity, pressure);
         }
         
-        if (fb.FAULT) {
+        if (fb.STATE.faultActive) {
             printf("ERROR: Fault detected\n");
             results.testPassed = false;
             break;
@@ -243,7 +243,7 @@ int main(void) {
                    (unsigned long)phase3Step, currentTime, velocity, pressure, holding.targetPressure);
         }
         
-        if (fb.FAULT) {
+        if (fb.STATE.faultActive) {
             printf("ERROR: Fault detected\n");
             results.testPassed = false;
             break;

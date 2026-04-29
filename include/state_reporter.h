@@ -51,7 +51,7 @@ void HDY_StateReporter_ReportFault(HDY_MotionControlFB* fb,
 
 /* Diagnostic helper APIs moved from motion_control to centralize recording
  * and retention logic in the StateReporter module. These API calls operate on
- * the FB instance and manage DIAGNOSTIC, DIAGNOSTIC_LATCH and history.
+ * the FB instance and manage DIAGNOSTIC and history.
  */
 void HDY_StateReporter_ClearCurrentDiagnostic(HDY_MotionControlFB* fb);
 void HDY_StateReporter_ClearDiagnosticRetentionOnly(HDY_MotionControlFB* fb);

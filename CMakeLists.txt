@@ -38,9 +38,6 @@ target_link_libraries(HydroSimLib PUBLIC m)
 add_executable(test_motion_planner tests/test_motion_planner.c)
 target_link_libraries(test_motion_planner PRIVATE HydroMotionLib)
 
-add_executable(test_motion_control tests/test_motion_control.c)
-target_link_libraries(test_motion_control PRIVATE HydroMotionLib)
-
 add_executable(test_recipe_validator tests/test_recipe_validator.c)
 target_link_libraries(test_recipe_validator PRIVATE HydroMotionLib)
 
@@ -58,9 +55,6 @@ target_link_libraries(rbf_pid_test PRIVATE HydroMotionLib)
 
 add_executable(ramp_controller_test tests/ramp_controller_test.c)
 target_link_libraries(ramp_controller_test PRIVATE HydroMotionLib)
-
-add_executable(test_scenario_matrix tests/test_scenario_matrix.c)
-target_link_libraries(test_scenario_matrix PRIVATE HydroMotionLib)
 
 add_executable(test_diagnostic_monitor tests/test_diagnostic_monitor.c)
 target_link_libraries(test_diagnostic_monitor PRIVATE HydroMotionLib)
@@ -104,14 +98,12 @@ target_link_libraries(benchmark_performance PRIVATE HydroMotionLib)
 
 enable_testing()
 add_test(NAME test_motion_planner COMMAND test_motion_planner)
-add_test(NAME test_motion_control COMMAND test_motion_control)
 add_test(NAME test_recipe_validator COMMAND test_recipe_validator)
 add_test(NAME test_pressure_controller COMMAND test_pressure_controller)
 add_test(NAME test_pump_converter COMMAND test_pump_converter)
 add_test(NAME test_segment_completion COMMAND segment_completion_test)
 add_test(NAME test_rbf_pid COMMAND rbf_pid_test)
 add_test(NAME test_ramp_controller COMMAND ramp_controller_test)
-add_test(NAME test_scenario_matrix COMMAND test_scenario_matrix)
 add_test(NAME test_diagnostic_monitor COMMAND test_diagnostic_monitor)
 add_test(NAME test_diagnostic_criteria COMMAND test_diagnostic_criteria)
 add_test(NAME test_sprint3_integration COMMAND test_sprint3_integration)

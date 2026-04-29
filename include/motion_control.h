@@ -11,11 +11,10 @@
  * PLCopen-style motion control function block lifecycle:
  *   Init -> LoadRecipe -> StartSegment / START_SEGMENT -> Cycle / Scan -> Complete / Abort
  *
+ * The EN/ENO gate is handled by the IEC layer (motion_interface.c). This core FB
+ * assumes the caller has already performed the enable check; it does not store EN/ENO.
+ *
  * Signal semantics:
- * - EN=false:
- *   Immediately applies safe zero outputs, forces ACTIVE=false, sets ENO=false,
- *   and clears any pending start request. Re-enabling does not resume motion
- *   automatically; the caller must issue StartSegment() or START_SEGMENT again.
  * - RESET=true:
  *   The next Cycle()/Scan()/Execute() performs a soft reset: it clears
  *   runtime state, active segment, fault/diagnostic status, and returns
@@ -23,29 +22,26 @@
  *   configuration gains, DIRECT_SEGMENT, and diagnostic criteria settings
  *   are preserved. For a full reinitialization that clears everything,
  *   call Init() explicitly.
- * - ACTIVE:
+ * - STATE.active:
  *   True only while an already started segment is executing in the current cycle.
- *   LoadRecipe() alone never sets ACTIVE=true.
- * - BUSY:
- *   Standard PLCopen-style progress output. It is true while a started motion
- *   context is still owned by the FB, including RUNNING, HOLD, and middle-stage
- *   SEGMENT_COMPLETE waiting states. It is false in READY / IDLE / DISABLED and
- *   after terminal DONE / ABORTED / FAULT outcomes.
- * - DONE:
- *   Standard normal-completion output. It is true only for FB_STATE=DONE and is
- *   intentionally separate from SEGMENT_COMPLETED / FINISHED so Abort() and fault
- *   paths never raise DONE.
- * - ERROR / ERROR_ID:
- *   Standard fault-summary outputs. ERROR is asserted only for fault-level
- *   diagnostics / protected-stop states; warnings and info events stay available
- *   through DIAGNOSTIC but do not raise ERROR. ERROR_ID mirrors the active fault
- *   diagnostic code when ERROR=true, otherwise HDY_DIAG_CODE_NONE.
- * - FINISHED:
+ *   LoadRecipe() alone never sets STATE.active=true.
+ * - IsBusy():
+ *   Derived from FB_STATE. True while a started motion context is still owned by
+ *   the FB (STARTING / RUNNING / HOLD / SEGMENT_COMPLETE). False in READY / IDLE /
+ *   DISABLED and after terminal DONE / ABORTED / FAULT outcomes.
+ * - IsDone():
+ *   Derived from FB_STATE == DONE. Intentionally separate from SEGMENT_COMPLETED /
+ *   STATE.finished so Abort() and fault paths never raise DONE.
+ * - IsError() / ERROR_ID:
+ *   IsError() is derived from STATE.faultActive, FB_STATE, and DIAGNOSTIC.severity.
+ *   ERROR_ID mirrors the active fault diagnostic code when IsError() is true,
+ *   otherwise HDY_DIAG_CODE_NONE.
+ * - STATE.finished:
  *   True after the last segment reaches its end condition or after Abort().
- * - FAULT:
- *   Reserved embedded-facing fault output. It is asserted when execution enters
- *   a protected stop state such as timeout or runtime configuration corruption.
- * - STATUS:
+ * - STATE.faultActive:
+ *   Asserted when execution enters a protected stop state such as timeout or
+ *   runtime configuration corruption.
+ * - STATE.status:
  *   Aggregated controller status output for HMI / upper-layer integration.
  * - FB_STATE:
  *   Explicit framework-layer state machine output used to distinguish READY /
@@ -54,18 +50,17 @@
  *   Latched true when the active segment reaches its end condition. For middle
  *   segments it stays true until the caller advances with NextSegment() or starts
  *   another segment explicitly. For the last segment it is raised together with
- *   FINISHED=true.
+ *   STATE.finished=true.
  * - SEGMENT_CHANGED:
  *   One-cycle pulse asserted on the first Cycle()/Scan()/Execute() after a
  *   successful StartSegment() / START_SEGMENT or NextSegment() transition.
  * - DIAGNOSTIC:
  *   Live diagnostic result for the current command/cycle. In non-fault idle/
  *   finished/disabled hold states it auto-clears on the next Cycle()/Scan()/
- *   Execute(), while retention remains available through DIAGNOSTIC_LATCH /
- *   snapshots / history.
- * - DIAGNOSTIC_LATCH / LAST_DIAGNOSTIC_SNAPSHOT / DIAGNOSTIC_HISTORY:
- *   Bounded diagnostic-retention outputs for commissioning and service. They
- *   keep the last non-NONE event and a small history until Init()/RESET or
+ *   Execute(), while retention remains available through DIAGNOSTIC_HISTORY.
+ * - DIAGNOSTIC_HISTORY:
+ *   Bounded diagnostic-retention output for commissioning and service. Keeps
+ *   the last snapshot and a running event counter until Init()/RESET or
  *   an explicit AcknowledgeDiagnostics() after the live event has cleared.
  * - LAST_FAULT_SNAPSHOT:
  *   Captures the most recent fault-state transition with axis feedback,
@@ -149,7 +144,6 @@ typedef enum {
 } HDY_FbState;
 
 typedef struct {
-    HDY_BOOL EN;
     HDY_BOOL RESET;
     HDY_BOOL START_SEGMENT;
     HDY_UINT START_SEGMENT_INDEX;
@@ -161,23 +155,13 @@ typedef struct {
     HDY_MotionSegment RECIPE[HDY_MAX_SEGMENTS];
     HDY_MotionSegment DIRECT_SEGMENT;
 
-    HDY_BOOL ENO;
-    HDY_BOOL ACTIVE;
-    HDY_BOOL BUSY;
-    HDY_BOOL DONE;
-    HDY_BOOL ERROR;
     HDY_DiagnosticCode ERROR_ID;
-    HDY_BOOL FINISHED;
-    HDY_BOOL FAULT;
-    HDY_ControllerStatus STATUS;
     HDY_FbState FB_STATE;
     HDY_REAL PUMP_SPEED;
     HDY_BOOL SEGMENT_COMPLETED;
     HDY_BOOL SEGMENT_CHANGED;
-    HDY_MotionState STATE;      /* Includes currentSegmentTag and pressure-loop telemetry as embedded-facing runtime state. */
+    HDY_MotionState STATE;      /* Unified runtime state: active, finished, faultActive, status, segmentTag, pressure-loop telemetry. */
     HDY_DiagnosticInfo DIAGNOSTIC;         /* Live current-cycle / current-command diagnostic. */
-    HDY_DiagnosticInfo DIAGNOSTIC_LATCH;   /* Last non-NONE diagnostic event retained until Init()/RESET. */
-    HDY_DiagnosticSnapshot LAST_DIAGNOSTIC_SNAPSHOT;
     HDY_DiagnosticSnapshot LAST_FAULT_SNAPSHOT;
     HDY_DiagnosticHistory DIAGNOSTIC_HISTORY;
     HDY_BOOL DIRECT_SEGMENT_VALID;
@@ -186,8 +170,7 @@ typedef struct {
     HDY_REAL _segmentStartTime;
     HDY_BOOL _segmentChangedFlag;
     HDY_REAL _lastCommandedFlow;
-    HDY_TIME _lastFeedbackTimestamp;
-    HDY_BOOL _feedbackTimestampValid;
+    HDY_TIME _lastFeedbackTimestamp;       /* < 0.0 means invalid / never set */
     HDY_BOOL _startSegmentSignalPrev;
     HDY_FbCommand _pendingCommand;
     HDY_UINT _pendingCommandSegmentIndex;
@@ -198,14 +181,9 @@ typedef struct {
     HDY_TIME _holdStateTime;
     HDY_RampController _rampController;
     HDY_PressureControllerState _pressureController;
-    HDY_DiagnosticCode _lastRecordedDiagnosticCode;
-    HDY_DiagnosticSeverity _lastRecordedDiagnosticSeverity;
-    HDY_DiagnosticFlags _lastRecordedDiagnosticFlags;
-    HDY_ProtectionAction _lastRecordedProtectionAction;
 
     /* Diagnostic criteria layer - unified through diagnostics_monitor + diagnostics_criteria
-     * This replaces the legacy direct diagnostics update path.
-     * Supports: startup suppress, switch suppress, loop-build suppress, debounce, hysteresis, fault escalation. */
+     * Supports: startup suppress, switch suppress, debounce, hysteresis, fault escalation. */
     HDY_ErrorMonitor _errorMonitor;
     HDY_DiagnosticCriteria _pressureCriteria;
     HDY_DiagnosticCriteriaState _pressureCriteriaState;
@@ -230,6 +208,33 @@ typedef struct {
         HDY_BOOL valid;
     } _simFeedback;
 } HDY_MotionControlFB;
+
+/* Derived PLCopen-standard outputs — computed from FB_STATE / STATE / DIAGNOSTIC.
+ * These replace the former stored BOOL fields (ACTIVE, BUSY, DONE, ERROR).
+ * ACTIVE is read directly from STATE.active. */
+static inline HDY_BOOL HDY_MotionControlFB_IsBusy(const HDY_MotionControlFB* fb) {
+    if (fb == NULL) { return false; }
+    switch (fb->FB_STATE) {
+        case HDY_FB_STATE_STARTING:
+        case HDY_FB_STATE_RUNNING:
+        case HDY_FB_STATE_SEGMENT_COMPLETE:
+        case HDY_FB_STATE_HOLD:
+            return true;
+        default:
+            return false;
+    }
+}
+
+static inline HDY_BOOL HDY_MotionControlFB_IsDone(const HDY_MotionControlFB* fb) {
+    return (fb != NULL) && (fb->FB_STATE == HDY_FB_STATE_DONE);
+}
+
+static inline HDY_BOOL HDY_MotionControlFB_IsError(const HDY_MotionControlFB* fb) {
+    if (fb == NULL) { return false; }
+    return fb->STATE.faultActive ||
+           fb->FB_STATE == HDY_FB_STATE_FAULT ||
+           fb->DIAGNOSTIC.severity == HDY_DIAG_SEVERITY_FAULT;
+}
 
 /* Full reset of configuration, recipe, runtime state, and internal helpers. */
 void HDY_MotionControlFB_Init(HDY_MotionControlFB* fb);

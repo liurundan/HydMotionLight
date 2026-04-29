@@ -61,10 +61,6 @@ HDY_FbState HDY_MotionValidator_ResolveEffectiveFbState(const HDY_MotionControlF
         return HDY_FB_STATE_IDLE;
     }
 
-    if (!fb->EN) {
-        return HDY_FB_STATE_DISABLED;
-    }
-
     return fb->FB_STATE;
 }
 

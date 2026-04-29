@@ -247,7 +247,7 @@ static void benchmark_motion_control_cycle(void) {
     
     fb.FLOW_TO_PUMP_SPEED_GAIN = 1500.0;
     fb.PUMP_SPEED_LIMIT = 3000.0;
-    fb.EN = true;
+    /* EN gate handled by IEC layer */
     fb.USE_RECIPE = true;
     
     HDY_MotionControlFB_LoadRecipe(&fb, &segment, 1);
