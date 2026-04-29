@@ -198,7 +198,7 @@ typedef struct {
     HDY_BOOL _isSwitchPhase;            /* True during segment transition window for switch suppress */
     HDY_TIME _switchSuppressEndTime;    /* Elapsed time at which switch suppress phase expires */
     HDY_UINT8 _index;
-    uint16_t _commandGeneration;   /* incremented on Abort, used by IEC layer for COMMANDABORTED detection */
+    uint16_t _executionId;   /* incremented on BeginSegment success; IEC layer uses for ownership tracking */
     HDY_BOOL _useSimulation;           /* If true, the FB simulates motion without real hardware interaction for testing purposes. */
     struct {
         HDY_REAL targetPosition;
