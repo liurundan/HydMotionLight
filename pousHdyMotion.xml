@@ -1,571 +1,577 @@
 <?xml version="1.0"?>
-<project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xhtml="http://www.w3.org/1999/xhtml" xmlns="http://www.plcopen.org/xml/tc6.xsd" xsi:schemaLocation="http://www.plcopen.org/xml/tc6.xsd">
-	<fileHeader companyName="Porcheson" creationDateTime="2023-02-10T00:00:00" productVersion="0.0" productName="AuxBAse Framework"/>
-	<contentHeader name="HydMotion Functions library" modificationDateTime="2026-02-10T00:00:00">
+<project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns:xhtml="http://www.w3.org/1999/xhtml"
+	xmlns="http://www.plcopen.org/xml/tc6.xsd"
+	xsi:schemaLocation="http://www.plcopen.org/xml/tc6.xsd">
+	<fileHeader companyName="Porcheson"
+		creationDateTime="2023-02-10T00:00:00" productVersion="0.0"
+		productName="AuxBAse Framework" />
+	<contentHeader name="HydMotion Functions library"
+		modificationDateTime="2026-02-10T00:00:00">
 		<coordinateInfo>
 			<fbd>
-				<scaling y="0" x="0"/>
+				<scaling y="0" x="0" />
 			</fbd>
 			<ld>
-				<scaling y="0" x="0"/>
+				<scaling y="0" x="0" />
 			</ld>
 			<sfc>
-				<scaling y="0" x="0"/>
+				<scaling y="0" x="0" />
 			</sfc>
 		</coordinateInfo>
 	</contentHeader>
 	<types>
-	    <dataTypes>
-	       <dataType name="HDY_AxisMotion">
-	        <baseType>
-	          <struct>
-	            <variable name="SEGMENTTAG">
-	              <type>
-	                <USINT/>
-	              </type>
-	            </variable>
-	            <variable name="PLANNER">
-	              <type>
-	                <USINT/>
-	              </type>
-	            </variable>
-	            <variable name="MODE">
-	              <type>
-	                <USINT/>
-	              </type>
-	            </variable>
-	            <variable name="ENDCONDITION">
-	              <type>
-	                <USINT/>
-	              </type>
-	            </variable>
-	            <variable name="DIRECTION">
-	              <type>
-	                <USINT/>
-	              </type>
-	            </variable>
-	            <variable name="SETPOSITION">
-	              <type>
-	                <REAL/>
-	              </type>
-	            </variable>
-	            <variable name="SETVELOCITY">
-	              <type>
-	                <REAL/>
-	              </type>
-	              <documentation>
-	                <xhtml:p><![CDATA[仅在速度/流量控制模式下使用，表示目标速度；]]></xhtml:p>
-	              </documentation>
-	            </variable>
-	            <variable name="SETFLOW">
-	              <type>
-	                <REAL/>
-	              </type>
-	              <documentation>
-	                <xhtml:p><![CDATA[仅在速度/流量控制模式下使用，表示目标流量；在位置控制模式下忽略]]></xhtml:p>
-	              </documentation>
-	            </variable>
-	            <variable name="SETPRESSURE">
-	              <type>
-	                <REAL/>
-	              </type>
-	            </variable>
-	            <variable name="ACCELERATION">
-	              <type>
-	                <REAL/>
-	              </type>
-	            </variable>
-	            <variable name="DECELERATION">
-	              <type>
-	                <REAL/>
-	              </type>
-	            </variable>
-	            <variable name="DURATION">
-	              <type>
-	                <REAL/>
-	              </type>
-	            </variable>
-	            <variable name="PRESSURERAMPRATE">
-	              <type>
-	                <REAL/>
-	              </type>
-	            </variable>
-	            <variable name="ACTPOSITION">
-	              <type>
-	                <REAL/>
-	              </type>
-	            </variable>
-	            <variable name="ACTVELOCITY">
-	              <type>
-	                <REAL/>
-	              </type>
-	            </variable>
-	            <variable name="ACTFLOW">
-	              <type>
-	                <REAL/>
-	              </type>
-	            </variable>
-	            <variable name="ACTPRESSURE">
-	              <type>
-	                <REAL/>
-	              </type>
-	            </variable>
-	            <variable name="TIMESTAMP">
-	              <type>
-	                <REAL/>
-	              </type>
-	            </variable>
-	          </struct>
-	        </baseType>
-	      </dataType>
-	  </dataTypes>	
-        <pous>	 
-		     <pou name="HDY_MoveProfile" pouType="functionBlock">
-		        <interface>
-		          <inputVars>
-		            <variable name="EXECUTE">
-		              <type>
-		                <BOOL/>
-		              </type>
-		            </variable>
-		            <variable name="MOTION">
-		              <type>
-		                <derived name="HDY_AxisMotion"/>
-		              </type>
-		            </variable>
-		            <variable name="AXISID">
-		              <type>
-		                <SINT/>
-		              </type>
-		            </variable>
-		            <variable name="BUFFERMODE">
-		              <type>
-		                <INT/>
-		              </type>
-		            </variable>
-		          </inputVars>
-		          <outputVars>
-		            <variable name="ACTIVE">
-		              <type>
-		                <BOOL/>
-		              </type>
-		            </variable>
-		            <variable name="BUSY">
-		              <type>
-		                <BOOL/>
-		              </type>
-		            </variable>
-		            <variable name="DONE">
-		              <type>
-		                <BOOL/>
-		              </type>
-		            </variable>
-		            <variable name="ERROR">
-		              <type>
-		                <BOOL/>
-		              </type>
-		            </variable>
-		            <variable name="ERRORID">
-		              <type>
-		                <WORD/>
-		              </type>
-		            </variable>
-		          </outputVars>
-		          <localVars>
-		            <variable name="Execute0">
-		              <type>
-		                <BOOL/>
-		              </type>
-		            </variable>
-		            <variable name="Done0">
-		              <type>
-		                <BOOL/>
-		              </type>
-		            </variable>
-		            <variable name="Active0">
-		              <type>
-		                <BOOL/>
-		              </type>
-		            </variable>
-		             <variable name="_PENDING">
-		              <type>
-		                <BOOL/>
-		              </type>
-		            </variable>
-		            <variable name="_EXEC_ID">
-		              <type>
-		                <WORD/>
-		              </type>
-		            </variable>
-		          </localVars>
-		        </interface>
-		        <body>
-		            <ST><![CDATA[ {{ extern void __mcl_cmd_MoveProfile(HDY_MOVEPROFILE *data__);	__mcl_cmd_MoveProfile(data__);	 }}			]]></ST>
-		        </body>
-		      </pou>
-		      <pou name="HDY_LoadProfile" pouType="functionBlock">
-		        <interface>
-		          <inputVars>
-		            <variable name="EXECUTE">
-		              <type>
-		                <BOOL/>
-		              </type>
-		            </variable>
-		            <variable name="AXISID">
-		              <type>
-		                <SINT/>
-		              </type>
-		            </variable>
-		            <variable name="MOTION">
-		              <type>
-		                <derived name="HDY_AxisMotion"/>
-		              </type>
-		            </variable>
-		          </inputVars>
-		          <outputVars>
-		            <variable name="BUSY">
-		              <type>
-		                <BOOL/>
-		              </type>
-		            </variable>
-		            <variable name="DONE">
-		              <type>
-		                <BOOL/>
-		              </type>
-		            </variable>
-		            <variable name="ERROR">
-		              <type>
-		                <BOOL/>
-		              </type>
-		            </variable>
-		            <variable name="ERRORID">
-		              <type>
-		                <WORD/>
-		              </type>
-		            </variable>
-		          </outputVars>
-		          <localVars>
-		            <variable name="Execute0">
-		              <type>
-		                <BOOL/>
-		              </type>
-		            </variable>
-		            <variable name="Done0">
-		              <type>
-		                <BOOL/>
-		              </type>
-		            </variable>
-		          </localVars>		          
-		        </interface>
-		        <body>
-		          <ST>
-		            <xhtml:p><![CDATA[{{ extern void __mcl_cmd_LoadProfile(HDY_LOADPROFILE *data__);	__mcl_cmd_LoadProfile(data__);	 }}	]]></xhtml:p>
-		          </ST>
-		        </body>
-		      </pou>
-		      <pou name="HDY_Stop" pouType="functionBlock">
-		        <interface>
-		          <inputVars>
-		            <variable name="EXECUTE">
-		              <type>
-		                <BOOL/>
-		              </type>
-		            </variable>
-		            <variable name="AXISID">
-		              <type>
-		                <SINT/>
-		              </type>
-		            </variable>
-		            <variable name="DECELERATION">
-		              <type>
-		                <REAL/>
-		              </type>
-		            </variable>
-		          </inputVars>
-		          <outputVars>
-		            <variable name="BUSY">
-		              <type>
-		                <BOOL/>
-		              </type>
-		            </variable>
-		            <variable name="DONE">
-		              <type>
-		                <BOOL/>
-		              </type>
-		            </variable>
-		            <variable name="COMMANDABORTED">
-		              <type>
-		                <BOOL/>
-		              </type>
-		            </variable>
-		            <variable name="ERROR">
-		              <type>
-		                <BOOL/>
-		              </type>
-		            </variable>
-		            <variable name="ERRORID">
-		              <type>
-		                <WORD/>
-		              </type>
-		            </variable>
-		          </outputVars>
-		          <localVars>
-		            <variable name="Execute0">
-		              <type>
-		                <BOOL/>
-		              </type>
-		            </variable>
-		            <variable name="Done0">
-		              <type>
-		                <BOOL/>
-		              </type>
-		            </variable>
-		            <variable name="Active0">
-		              <type>
-		                <BOOL/>
-		              </type>
-		            </variable>
-		             <variable name="_PENDING">
-		              <type>
-		                <BOOL/>
-		              </type>
-		            </variable>
-		          </localVars>		          
-		        </interface>
-		        <body>
-		          <ST>
-		            <xhtml:p><![CDATA[{{ extern void __mcl_cmd_Stop(HDY_STOP *data__);	HDY_STOP(data__);	 }}	]]></xhtml:p>
-		          </ST>
-		        </body>
-		      </pou>
-				<pou name="HDY_MoveAbsolute" pouType="functionBlock">
-					<interface>
-						<inputVars>
-							<variable name="EXECUTE">
-								<type>
-									<BOOL/>
-								</type>
-							</variable>
-							<variable name="AXISID">
-                                <type>
-                                    <SINT/>
-                                </type>
-							</variable>                                
-							<variable name="ContinuousUpdate">
-								<type>
-									<BOOL/>
-								</type>
-							</variable>
-							<variable name="POSITION">
-								<type>
-									<REAL/>
-								</type>
-							</variable>
-							<variable name="VELOCITY">
-								<type>
-									<REAL/>
-								</type>
-							</variable>
-							<variable name="ACCELERATION">
-								<type>
-									<REAL/>
-								</type>
-							</variable>
-							<variable name="DECELERATION">
-								<type>
-									<REAL/>
-								</type>
-							</variable>
-							<variable name="JERK">
-								<type>
-									<REAL/>
-								</type>
-							</variable>
-							<variable name="DIRECTION">
-								<type>
-									<SINT/>
-								</type>
-							</variable>
-							<variable name="BUFFERMODE">
-								<type>
-									<INT/>
-								</type>
-							</variable>
-						</inputVars>
-						<outputVars>
-							<variable name="DONE">
-								<type>
-									<BOOL/>
-								</type>
-							</variable>
-							<variable name="BUSY">
-								<type>
-									<BOOL/>
-								</type>
-							</variable>
-							<variable name="ACTIVE">
-								<type>
-									<BOOL/>
-								</type>
-							</variable>
-							<variable name="COMMANDABORTED">
-								<type>
-									<BOOL/>
-								</type>
-							</variable>
-							<variable name="ERROR">
-								<type>
-									<BOOL/>
-								</type>
-							</variable>
-							<variable name="ERRORID">
-								<type>
-									<WORD/>
-								</type>
-							</variable>
-						</outputVars>
-						<localVars>
-							<variable name="EXECUTE0">
-								<type>
-									<BOOL/>
-								</type>
-							</variable>
-							<variable name="DONE0">
-								<type>
-									<BOOL/>
-								</type>
-							</variable>
-							<variable name="ACTIVE0">
-								<type>
-									<BOOL/>
-								</type>
-							</variable>
-				             <variable name="_PENDING">
-				              <type>
-				                <BOOL/>
-				              </type>
-				            </variable>
-				            <variable name="_EXEC_ID">
-				              <type>
-				                <WORD/>
-				              </type>
-				            </variable>							
-						</localVars>
-					</interface>
-					<body>
-				      <ST>
-		                 <xhtml:p><![CDATA[{{ extern void __mcl_cmd_MoveAbsolute(HDY_MOVEABSOLUTE*); __mcl_cmd_MoveAbsolute(data__); }}	]]></xhtml:p>
-		              </ST>
-					</body>
-					<documentation><![CDATA[This Function Block commands a controlled motion to a specified absolute position. ]]></documentation>
-				</pou>
-			<pou name="HDY_MoveVelocity" pouType="functionBlock">
-				<interface>
-					<inputVars>
-						<variable name="EXECUTE">
+		<dataTypes>
+			<dataType name="HDY_AxisMotion">
+				<baseType>
+					<struct>
+						<variable name="SEGMENTTAG">
 							<type>
-								<BOOL/>
+								<USINT />
 							</type>
 						</variable>
-						<variable name="AXISID">
-                             <type>
-                                 <SINT/>
-                             </type>
-						</variable>   						
-						<variable name="CONTINUOUSUPDATE">
+						<variable name="PLANNER">
 							<type>
-								<BOOL/>
+								<USINT />
 							</type>
 						</variable>
-						<variable name="VELOCITY">
+						<variable name="MODE">
 							<type>
-								<REAL/>
+								<USINT />
 							</type>
 						</variable>
-						<variable name="ACCELERATION">
+						<variable name="ENDCONDITION">
 							<type>
-								<REAL/>
-							</type>
-						</variable>
-						<variable name="DECELERATION">
-							<type>
-								<REAL/>
-							</type>
-						</variable>
-						<variable name="JERK">
-							<type>
-								<REAL/>
+								<USINT />
 							</type>
 						</variable>
 						<variable name="DIRECTION">
 							<type>
-								 <SINT/>
+								<USINT />
+							</type>
+						</variable>
+						<variable name="SETPOSITION">
+							<type>
+								<REAL />
+							</type>
+						</variable>
+						<variable name="SETVELOCITY">
+							<type>
+								<REAL />
+							</type>
+							<documentation>
+								<xhtml:p><![CDATA[仅在速度/流量控制模式下使用，表示目标速度；]]></xhtml:p>
+							</documentation>
+						</variable>
+						<variable name="SETFLOW">
+							<type>
+								<REAL />
+							</type>
+							<documentation>
+								<xhtml:p><![CDATA[仅在速度/流量控制模式下使用，表示目标流量；在位置控制模式下忽略]]></xhtml:p>
+							</documentation>
+						</variable>
+						<variable name="SETPRESSURE">
+							<type>
+								<REAL />
+							</type>
+						</variable>
+						<variable name="ACCELERATION">
+							<type>
+								<REAL />
+							</type>
+						</variable>
+						<variable name="DECELERATION">
+							<type>
+								<REAL />
+							</type>
+						</variable>
+						<variable name="DURATION">
+							<type>
+								<REAL />
+							</type>
+						</variable>
+						<variable name="PRESSURERAMPRATE">
+							<type>
+								<REAL />
+							</type>
+						</variable>
+						<variable name="ACTPOSITION">
+							<type>
+								<REAL />
+							</type>
+						</variable>
+						<variable name="ACTVELOCITY">
+							<type>
+								<REAL />
+							</type>
+						</variable>
+						<variable name="ACTFLOW">
+							<type>
+								<REAL />
+							</type>
+						</variable>
+						<variable name="ACTPRESSURE">
+							<type>
+								<REAL />
+							</type>
+						</variable>
+						<variable name="TIMESTAMP">
+							<type>
+								<REAL />
+							</type>
+						</variable>
+					</struct>
+				</baseType>
+			</dataType>
+		</dataTypes>
+		<pous>
+			<pou name="HDY_MoveProfile" pouType="functionBlock">
+				<interface>
+					<inputVars>
+						<variable name="EXECUTE">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="MOTION">
+							<type>
+								<derived name="HDY_AxisMotion" />
+							</type>
+						</variable>
+						<variable name="AXISID">
+							<type>
+								<SINT />
 							</type>
 						</variable>
 						<variable name="BUFFERMODE">
 							<type>
-								<INT/>
+								<INT />
 							</type>
 						</variable>
 					</inputVars>
 					<outputVars>
-						<variable name="INVELOCITY">
+						<variable name="ACTIVE">
 							<type>
-								<BOOL/>
+								<BOOL />
 							</type>
 						</variable>
 						<variable name="BUSY">
 							<type>
-								<BOOL/>
+								<BOOL />
 							</type>
 						</variable>
-						<variable name="ACTIVE">
+						<variable name="DONE">
 							<type>
-								<BOOL/>
-							</type>
-						</variable>
-						<variable name="COMMANDABORTED">
-							<type>
-								<BOOL/>
+								<BOOL />
 							</type>
 						</variable>
 						<variable name="ERROR">
 							<type>
-								<BOOL/>
+								<BOOL />
 							</type>
 						</variable>
 						<variable name="ERRORID">
 							<type>
-								<WORD/>
+								<WORD />
+							</type>
+						</variable>
+					</outputVars>
+					<localVars>
+						<variable name="Execute0">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="Done0">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="Active0">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="_PENDING">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="_EXEC_ID">
+							<type>
+								<WORD />
+							</type>
+						</variable>
+					</localVars>
+				</interface>
+				<body>
+					<ST><![CDATA[ {{ extern void __mcl_cmd_MoveProfile(HDY_MOVEPROFILE *data__);	__mcl_cmd_MoveProfile(data__);	 }}			]]></ST>
+				</body>
+			</pou>
+			<pou name="HDY_LoadProfile" pouType="functionBlock">
+				<interface>
+					<inputVars>
+						<variable name="EXECUTE">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="AXISID">
+							<type>
+								<SINT />
+							</type>
+						</variable>
+						<variable name="MOTION">
+							<type>
+								<derived name="HDY_AxisMotion" />
+							</type>
+						</variable>
+					</inputVars>
+					<outputVars>
+						<variable name="BUSY">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="DONE">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="ERROR">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="ERRORID">
+							<type>
+								<WORD />
+							</type>
+						</variable>
+					</outputVars>
+					<localVars>
+						<variable name="Execute0">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="Done0">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+					</localVars>
+				</interface>
+				<body>
+					<ST>
+						<xhtml:p><![CDATA[{{ extern void __mcl_cmd_LoadProfile(HDY_LOADPROFILE *data__);	__mcl_cmd_LoadProfile(data__);	 }}	]]></xhtml:p>
+					</ST>
+				</body>
+			</pou>
+			<pou name="HDY_Stop" pouType="functionBlock">
+				<interface>
+					<inputVars>
+						<variable name="EXECUTE">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="AXISID">
+							<type>
+								<SINT />
+							</type>
+						</variable>
+						<variable name="DECELERATION">
+							<type>
+								<REAL />
+							</type>
+						</variable>
+					</inputVars>
+					<outputVars>
+						<variable name="BUSY">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="DONE">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="COMMANDABORTED">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="ERROR">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="ERRORID">
+							<type>
+								<WORD />
+							</type>
+						</variable>
+					</outputVars>
+					<localVars>
+						<variable name="Execute0">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="Done0">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="Active0">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="_PENDING">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+					</localVars>
+				</interface>
+				<body>
+					<ST>
+						<xhtml:p><![CDATA[{{ extern void __mcl_cmd_Stop(HDY_STOP *data__);	__mcl_cmd_Stop(data__);	 }}	]]></xhtml:p>
+					</ST>
+				</body>
+			</pou>
+			<pou name="HDY_MoveAbsolute" pouType="functionBlock">
+				<interface>
+					<inputVars>
+						<variable name="EXECUTE">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="AXISID">
+							<type>
+								<SINT />
+							</type>
+						</variable>
+						<variable name="ContinuousUpdate">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="POSITION">
+							<type>
+								<REAL />
+							</type>
+						</variable>
+						<variable name="VELOCITY">
+							<type>
+								<REAL />
+							</type>
+						</variable>
+						<variable name="ACCELERATION">
+							<type>
+								<REAL />
+							</type>
+						</variable>
+						<variable name="DECELERATION">
+							<type>
+								<REAL />
+							</type>
+						</variable>
+						<variable name="JERK">
+							<type>
+								<REAL />
+							</type>
+						</variable>
+						<variable name="DIRECTION">
+							<type>
+								<SINT />
+							</type>
+						</variable>
+						<variable name="BUFFERMODE">
+							<type>
+								<INT />
+							</type>
+						</variable>
+					</inputVars>
+					<outputVars>
+						<variable name="DONE">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="BUSY">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="ACTIVE">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="COMMANDABORTED">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="ERROR">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="ERRORID">
+							<type>
+								<WORD />
 							</type>
 						</variable>
 					</outputVars>
 					<localVars>
 						<variable name="EXECUTE0">
 							<type>
-								<BOOL/>
+								<BOOL />
 							</type>
 						</variable>
-						<variable name="INVELOCITY0">
+						<variable name="DONE0">
 							<type>
-								<BOOL/>
+								<BOOL />
 							</type>
 						</variable>
 						<variable name="ACTIVE0">
 							<type>
-								<BOOL/>
+								<BOOL />
 							</type>
 						</variable>
-				        <variable name="_PENDING">
-			              <type>
-			                <BOOL/>
-			              </type>
-			            </variable>
-			            <variable name="_EXEC_ID">
-			              <type>
-			                <WORD/>
-			              </type>
-			            </variable>							
+						<variable name="_PENDING">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="_EXEC_ID">
+							<type>
+								<WORD />
+							</type>
+						</variable>
+					</localVars>
+				</interface>
+				<body>
+					<ST>
+						<xhtml:p><![CDATA[{{ extern void __mcl_cmd_MoveAbsolute(HDY_MOVEABSOLUTE*); __mcl_cmd_MoveAbsolute(data__); }}	]]></xhtml:p>
+					</ST>
+				</body>
+				<documentation><![CDATA[This Function Block commands a controlled motion to a specified absolute position. ]]></documentation>
+			</pou>
+			<pou name="HDY_MoveVelocity" pouType="functionBlock">
+				<interface>
+					<inputVars>
+						<variable name="EXECUTE">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="AXISID">
+							<type>
+								<SINT />
+							</type>
+						</variable>
+						<variable name="CONTINUOUSUPDATE">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="VELOCITY">
+							<type>
+								<REAL />
+							</type>
+						</variable>
+						<variable name="ACCELERATION">
+							<type>
+								<REAL />
+							</type>
+						</variable>
+						<variable name="DECELERATION">
+							<type>
+								<REAL />
+							</type>
+						</variable>
+						<variable name="JERK">
+							<type>
+								<REAL />
+							</type>
+						</variable>
+						<variable name="DIRECTION">
+							<type>
+								<SINT />
+							</type>
+						</variable>
+						<variable name="BUFFERMODE">
+							<type>
+								<INT />
+							</type>
+						</variable>
+					</inputVars>
+					<outputVars>
+						<variable name="INVELOCITY">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="BUSY">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="ACTIVE">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="COMMANDABORTED">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="ERROR">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="ERRORID">
+							<type>
+								<WORD />
+							</type>
+						</variable>
+					</outputVars>
+					<localVars>
+						<variable name="EXECUTE0">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="INVELOCITY0">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="ACTIVE0">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="_PENDING">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="_EXEC_ID">
+							<type>
+								<WORD />
+							</type>
+						</variable>
 					</localVars>
 				</interface>
 				<body>
@@ -578,46 +584,46 @@
 					<inputVars>
 						<variable name="EXECUTE">
 							<type>
-								<BOOL/>
+								<BOOL />
 							</type>
 						</variable>
 						<variable name="AXISID">
-                             <type>
-                                 <SINT/>
-                             </type>
-						</variable>   
+							<type>
+								<SINT />
+							</type>
+						</variable>
 					</inputVars>
 					<outputVars>
 						<variable name="DONE">
 							<type>
-								<BOOL/>
+								<BOOL />
 							</type>
 						</variable>
 						<variable name="BUSY">
 							<type>
-								<BOOL/>
+								<BOOL />
 							</type>
 						</variable>
 						<variable name="ERROR">
 							<type>
-								<BOOL/>
+								<BOOL />
 							</type>
 						</variable>
 						<variable name="ERRORID">
 							<type>
-								<WORD/>
+								<WORD />
 							</type>
 						</variable>
 					</outputVars>
 					<localVars>
 						<variable name="EXECUTE0">
 							<type>
-								<BOOL/>
+								<BOOL />
 							</type>
 						</variable>
 						<variable name="DONE0">
 							<type>
-								<BOOL/>
+								<BOOL />
 							</type>
 						</variable>
 					</localVars>
@@ -626,99 +632,99 @@
 					<ST><![CDATA[{{ extern void __mcl_cmd_Reset(HDY_RESET*); __mcl_cmd_Reset(data__); }} ]]></ST>
 				</body>
 				<documentation><![CDATA[This Function Block makes the transition from the state ‘ErrorStop’ to ‘Disabled’ by resetting all internal axis-related errors ]]></documentation>
-			</pou>	
+			</pou>
 			<pou name="HDY_PressureHandle" pouType="functionBlock">
 				<interface>
 					<inputVars>
 						<variable name="EXECUTE">
 							<type>
-								<BOOL/>
+								<BOOL />
 							</type>
 						</variable>
 						<variable name="AXISID">
-                             <type>
-                                 <SINT/>
-                             </type>
-						</variable>   						
+							<type>
+								<SINT />
+							</type>
+						</variable>
 						<variable name="PRESSURE">
 							<type>
-								<REAL/>
+								<REAL />
 							</type>
 						</variable>
 						<variable name="PRESSURERAMPRATE">
 							<type>
-								<REAL/>
+								<REAL />
 							</type>
 						</variable>
 						<variable name="DURATION">
 							<type>
-								<REAL/>
+								<REAL />
 							</type>
 						</variable>
 						<variable name="BUFFERMODE">
 							<type>
-								<INT/>
+								<INT />
 							</type>
 						</variable>
 					</inputVars>
 					<outputVars>
 						<variable name="INPRESSURE">
 							<type>
-								<BOOL/>
+								<BOOL />
 							</type>
 						</variable>
 						<variable name="BUSY">
 							<type>
-								<BOOL/>
+								<BOOL />
 							</type>
 						</variable>
 						<variable name="ACTIVE">
 							<type>
-								<BOOL/>
+								<BOOL />
 							</type>
 						</variable>
 						<variable name="COMMANDABORTED">
 							<type>
-								<BOOL/>
+								<BOOL />
 							</type>
 						</variable>
 						<variable name="ERROR">
 							<type>
-								<BOOL/>
+								<BOOL />
 							</type>
 						</variable>
 						<variable name="ERRORID">
 							<type>
-								<WORD/>
+								<WORD />
 							</type>
 						</variable>
 					</outputVars>
 					<localVars>
 						<variable name="EXECUTE0">
 							<type>
-								<BOOL/>
+								<BOOL />
 							</type>
 						</variable>
 						<variable name="INPRESSURE0">
 							<type>
-								<BOOL/>
+								<BOOL />
 							</type>
 						</variable>
 						<variable name="ACTIVE0">
 							<type>
-								<BOOL/>
+								<BOOL />
 							</type>
 						</variable>
-				        <variable name="_PENDING">
-			              <type>
-			                <BOOL/>
-			              </type>
-			            </variable>
-			            <variable name="_EXEC_ID">
-			              <type>
-			                <WORD/>
-			              </type>
-			            </variable>							
+						<variable name="_PENDING">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="_EXEC_ID">
+							<type>
+								<WORD />
+							</type>
+						</variable>
 					</localVars>
 				</interface>
 				<body>
@@ -726,312 +732,312 @@
 				</body>
 				<documentation><![CDATA[This Function Block commands pressure closed control. ]]></documentation>
 			</pou>
-		     <pou name="HDY_CreateMotion" pouType="functionBlock">
-		        <interface>
-		          <inputVars>
-		            <variable name="USE_RECIPE">
-		              <type>
-		                <BOOL/>
-		              </type>
-		              <initialValue>
-		                <simpleValue value="0"/>
-		              </initialValue>
-		            </variable>
-		            <variable name="FLOW_TO_PUMPSPEED">
-		              <type>
-		                <REAL/>
-		              </type>
-		              <initialValue>
-		                <simpleValue value="20.0"/>
-		              </initialValue>
-		            </variable>
-		            <variable name="PUMPSPEED_LIMIT">
-		              <type>
-		                <REAL/>
-		              </type>
-		              <initialValue>
-		                <simpleValue value="1800.0"/>
-		              </initialValue>
-		            </variable>
-		            <variable name="USE_SIMULATION">
-		              <type>
-		                <BOOL/>
-		              </type>
-		              <initialValue>
-		                <simpleValue value="0"/>
-		              </initialValue>
-		            </variable>
-		          </inputVars>
-		          <outputVars>
-		            <variable name="AXISID">
-		              <type>
-		                <SINT/>
-		              </type>
-		            </variable>
-					<variable name="BUSY">
-						<type>
-							<BOOL/>
-						</type>
-					</variable>
-					<variable name="DONE">
-						<type>
-							<BOOL/>
-						</type>
-					</variable>					
-					<variable name="ERROR">
-						<type>
-							<BOOL/>
-						</type>
-					</variable>
-					<variable name="ERRORID">
-						<type>
-							<WORD/>
-						</type>
-					</variable>		            
-		          </outputVars>
-		          <localVars>
-		            <variable name="DONE0">
-		              <type>
-		                <BOOL/>
-		              </type>
-		            </variable>
-		          </localVars>
-		        </interface>
-		        <body>
-		          <ST>
-		          <xhtml:p><![CDATA[{{ extern void __mcl_cmd_CreateMotion(HDY_CREATEMOTION*); __mcl_cmd_CreateMotion(data__); }} ]]></xhtml:p>
-		           </ST>
-		        </body>
-		        <documentation><![CDATA[This allocates a simulation Axis, for testing.One axis per instanciated FB.]]></documentation>
-		      </pou>
-		      <pou name="HDY_SetAxisFeedback" pouType="functionBlock">
-		        <interface>
-		          <inputVars>
-		            <variable name="ENABLE">
-		              <type>
-		                <BOOL/>
-		              </type>
-		            </variable>
-		            <variable name="AXISID">
-		              <type>
-		                <SINT/>
-		              </type>
-		            </variable>
-		            <variable name="ACT_POSITION">
-		              <type>
-		                <REAL/>
-		              </type>
-		            </variable>
-		            <variable name="ACT_VELOCITY">
-		              <type>
-		                <REAL/>
-		              </type>
-		            </variable>
-		            <variable name="ACT_FLOW">
-		              <type>
-		                <REAL/>
-		              </type>
-		            </variable>
-		            <variable name="ACT_PRESSURE">
-		              <type>
-		                <REAL/>
-		              </type>
-		            </variable>
-		            <variable name="TIMESTAMP">
-		              <type>
-		                <REAL/>
-		              </type>
-		            </variable>		            
-		          </inputVars>
-		          <outputVars>
-					<variable name="BUSY">
-						<type>
-							<BOOL/>
-						</type>
-					</variable>
-					<variable name="DONE">
-						<type>
-							<BOOL/>
-						</type>
-					</variable>					
-					<variable name="ERROR">
-						<type>
-							<BOOL/>
-						</type>
-					</variable>
-					<variable name="ERRORID">
-						<type>
-							<WORD/>
-						</type>
-					</variable>		            
-		          </outputVars>
-		          <localVars>
-		            <variable name="DONE0">
-		              <type>
-		                <BOOL/>
-		              </type>
-		            </variable>
-		          </localVars>
-		        </interface>
-		        <body>
-		          <ST>
-		          <xhtml:p><![CDATA[{{ extern void __mcl_cmd_SetAxisFeedback(HDY_SETAXISFEEDBACK*); __mcl_cmd_SetAxisFeedback(data__); }} ]]></xhtml:p>
-		           </ST>
-		        </body>
-		        <documentation><![CDATA[set feedback to motion.]]></documentation>
-		      </pou>
-		      <pou name="HDY_GetPumpRequest" pouType="functionBlock">
-		        <interface>
-		          <inputVars>
-		            <variable name="ENABLE">
-		              <type>
-		                <BOOL/>
-		              </type>
-		            </variable>
-		            <variable name="STRATEGY">
-		              <type>
-		                <SINT/>
-		              </type>
-		            </variable>	            
-		          </inputVars>
-		          <outputVars>
-		            <variable name="PUMPSPEED">
-		              <type>
-		                <REAL/>
-		              </type>
-		            </variable>		            
-					<variable name="BUSY">
-						<type>
-							<BOOL/>
-						</type>
-					</variable>
-					<variable name="DONE">
-						<type>
-							<BOOL/>
-						</type>
-					</variable>					
-					<variable name="ERROR">
-						<type>
-							<BOOL/>
-						</type>
-					</variable>
-					<variable name="ERRORID">
-						<type>
-							<WORD/>
-						</type>
-					</variable>		            
-		          </outputVars>
-		          <localVars>
-		            <variable name="DONE0">
-		              <type>
-		                <BOOL/>
-		              </type>
-		            </variable>
-		          </localVars>
-		        </interface>
-		        <body>
-		          <ST>
-		          <xhtml:p><![CDATA[{{ extern void __mcl_cmd_GetPumpRequest(HDY_GETPUMPREQUEST*); __mcl_cmd_GetPumpRequest(data__); }} ]]></xhtml:p>
-		           </ST>
-		        </body>
-		        <documentation><![CDATA[get only one pump speed command from motion.]]></documentation>
-		      </pou>
-		      <pou name="HDY_ReadStatus" pouType="functionBlock">
-		        <interface>
-		          <inputVars>
-		            <variable name="ENABLE">
-		              <type>
-		                <BOOL/>
-		              </type>
-		            </variable>
-		            <variable name="AXISID">
-		              <type>
-		                <SINT/>
-		              </type>
-		            </variable>	            
-		          </inputVars>
-		          <outputVars>
-		            <variable name="VALID">
-		              <type>
-		                <BOOL/>
-		              </type>
-		            </variable>		            
-					<variable name="BUSY">
-						<type>
-							<BOOL/>
-						</type>
-					</variable>				
-					<variable name="ERROR">
-						<type>
-							<BOOL/>
-						</type>
-					</variable>
-					<variable name="ERRORID">
-						<type>
-							<WORD/>
-						</type>
-					</variable>
-					<variable name="STATE">
-						<type>
-							<UINT/>
-						</type>
-					</variable>															            
-		          </outputVars>
-		        </interface>
-		        <body>
-		          <ST>
-		          <xhtml:p><![CDATA[{{ extern void __mcl_cmd_ReadStatus(HDY_READSTATUS*); __mcl_cmd_ReadStatus(data__); }} ]]></xhtml:p>
-		           </ST>
-		        </body>
-		        <documentation><![CDATA[get axis status from motion.]]></documentation>
-		      </pou>
-		      <pou name="HDY_ReadError" pouType="functionBlock">
-		        <interface>
-		          <inputVars>
-		            <variable name="ENABLE">
-		              <type>
-		                <BOOL/>
-		              </type>
-		            </variable>
-		            <variable name="AXISID">
-		              <type>
-		                <SINT/>
-		              </type>
-		            </variable>	            
-		          </inputVars>
-		          <outputVars>
-		            <variable name="VALID">
-		              <type>
-		                <BOOL/>
-		              </type>
-		            </variable>		            
-					<variable name="BUSY">
-						<type>
-							<BOOL/>
-						</type>
-					</variable>				
-					<variable name="ERROR">
-						<type>
-							<BOOL/>
-						</type>
-					</variable>
-					<variable name="ERRORID">
-						<type>
-							<WORD/>
-						</type>
-					</variable>														            
-		          </outputVars>
-		        </interface>
-		        <body>
-		          <ST>
-		          <xhtml:p><![CDATA[{{ extern void __mcl_cmd_ReadError(HDY_READERROR*); __mcl_cmd_ReadError(data__); }} ]]></xhtml:p>
-		           </ST>
-		        </body>
-		        <documentation><![CDATA[get axis error from motion.]]></documentation>
-		      </pou>			      		      				      															      
+			<pou name="HDY_CreateMotion" pouType="functionBlock">
+				<interface>
+					<inputVars>
+						<variable name="USE_RECIPE">
+							<type>
+								<BOOL />
+							</type>
+							<initialValue>
+								<simpleValue value="0" />
+							</initialValue>
+						</variable>
+						<variable name="FLOW_TO_PUMPSPEED">
+							<type>
+								<REAL />
+							</type>
+							<initialValue>
+								<simpleValue value="20.0" />
+							</initialValue>
+						</variable>
+						<variable name="PUMPSPEED_LIMIT">
+							<type>
+								<REAL />
+							</type>
+							<initialValue>
+								<simpleValue value="1800.0" />
+							</initialValue>
+						</variable>
+						<variable name="USE_SIMULATION">
+							<type>
+								<BOOL />
+							</type>
+							<initialValue>
+								<simpleValue value="0" />
+							</initialValue>
+						</variable>
+					</inputVars>
+					<outputVars>
+						<variable name="AXISID">
+							<type>
+								<SINT />
+							</type>
+						</variable>
+						<variable name="BUSY">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="DONE">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="ERROR">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="ERRORID">
+							<type>
+								<WORD />
+							</type>
+						</variable>
+					</outputVars>
+					<localVars>
+						<variable name="DONE0">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+					</localVars>
+				</interface>
+				<body>
+					<ST>
+						<xhtml:p><![CDATA[{{ extern void __mcl_cmd_CreateMotion(HDY_CREATEMOTION*); __mcl_cmd_CreateMotion(data__); }} ]]></xhtml:p>
+					</ST>
+				</body>
+				<documentation><![CDATA[This allocates a simulation Axis, for testing.One axis per instanciated FB.]]></documentation>
+			</pou>
+			<pou name="HDY_SetAxisFeedback" pouType="functionBlock">
+				<interface>
+					<inputVars>
+						<variable name="ENABLE">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="AXISID">
+							<type>
+								<SINT />
+							</type>
+						</variable>
+						<variable name="ACT_POSITION">
+							<type>
+								<REAL />
+							</type>
+						</variable>
+						<variable name="ACT_VELOCITY">
+							<type>
+								<REAL />
+							</type>
+						</variable>
+						<variable name="ACT_FLOW">
+							<type>
+								<REAL />
+							</type>
+						</variable>
+						<variable name="ACT_PRESSURE">
+							<type>
+								<REAL />
+							</type>
+						</variable>
+						<variable name="TIMESTAMP">
+							<type>
+								<REAL />
+							</type>
+						</variable>
+					</inputVars>
+					<outputVars>
+						<variable name="BUSY">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="DONE">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="ERROR">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="ERRORID">
+							<type>
+								<WORD />
+							</type>
+						</variable>
+					</outputVars>
+					<localVars>
+						<variable name="DONE0">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+					</localVars>
+				</interface>
+				<body>
+					<ST>
+						<xhtml:p><![CDATA[{{ extern void __mcl_cmd_SetAxisFeedback(HDY_SETAXISFEEDBACK*); __mcl_cmd_SetAxisFeedback(data__); }} ]]></xhtml:p>
+					</ST>
+				</body>
+				<documentation><![CDATA[set feedback to motion.]]></documentation>
+			</pou>
+			<pou name="HDY_GetPumpRequest" pouType="functionBlock">
+				<interface>
+					<inputVars>
+						<variable name="ENABLE">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="STRATEGY">
+							<type>
+								<SINT />
+							</type>
+						</variable>
+					</inputVars>
+					<outputVars>
+						<variable name="PUMPSPEED">
+							<type>
+								<REAL />
+							</type>
+						</variable>
+						<variable name="BUSY">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="DONE">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="ERROR">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="ERRORID">
+							<type>
+								<WORD />
+							</type>
+						</variable>
+					</outputVars>
+					<localVars>
+						<variable name="DONE0">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+					</localVars>
+				</interface>
+				<body>
+					<ST>
+						<xhtml:p><![CDATA[{{ extern void __mcl_cmd_GetPumpRequest(HDY_GETPUMPREQUEST*); __mcl_cmd_GetPumpRequest(data__); }} ]]></xhtml:p>
+					</ST>
+				</body>
+				<documentation><![CDATA[get only one pump speed command from motion.]]></documentation>
+			</pou>
+			<pou name="HDY_ReadStatus" pouType="functionBlock">
+				<interface>
+					<inputVars>
+						<variable name="ENABLE">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="AXISID">
+							<type>
+								<SINT />
+							</type>
+						</variable>
+					</inputVars>
+					<outputVars>
+						<variable name="VALID">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="BUSY">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="ERROR">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="ERRORID">
+							<type>
+								<WORD />
+							</type>
+						</variable>
+						<variable name="STATE">
+							<type>
+								<UINT />
+							</type>
+						</variable>
+					</outputVars>
+				</interface>
+				<body>
+					<ST>
+						<xhtml:p><![CDATA[{{ extern void __mcl_cmd_ReadStatus(HDY_READSTATUS*); __mcl_cmd_ReadStatus(data__); }} ]]></xhtml:p>
+					</ST>
+				</body>
+				<documentation><![CDATA[get axis status from motion.]]></documentation>
+			</pou>
+			<pou name="HDY_ReadError" pouType="functionBlock">
+				<interface>
+					<inputVars>
+						<variable name="ENABLE">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="AXISID">
+							<type>
+								<SINT />
+							</type>
+						</variable>
+					</inputVars>
+					<outputVars>
+						<variable name="VALID">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="BUSY">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="ERROR">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="ERRORID">
+							<type>
+								<WORD />
+							</type>
+						</variable>
+					</outputVars>
+				</interface>
+				<body>
+					<ST>
+						<xhtml:p><![CDATA[{{ extern void __mcl_cmd_ReadError(HDY_READERROR*); __mcl_cmd_ReadError(data__); }} ]]></xhtml:p>
+					</ST>
+				</body>
+				<documentation><![CDATA[get axis error from motion.]]></documentation>
+			</pou>
 		</pous>
 	</types>
 	<instances>
-		<configurations/>
+		<configurations />
 	</instances>
 </project>
