@@ -5,7 +5,7 @@
 	xsi:schemaLocation="http://www.plcopen.org/xml/tc6.xsd">
 	<fileHeader companyName="Porcheson"
 		creationDateTime="2023-02-10T00:00:00" productVersion="0.0"
-		productName="AuxBAse Framework" />
+		productName="Hydraulic Motion" />
 	<contentHeader name="HydMotion Functions library"
 		modificationDateTime="2026-02-10T00:00:00">
 		<coordinateInfo>

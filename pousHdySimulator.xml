@@ -5,8 +5,8 @@
 	xsi:schemaLocation="http://www.plcopen.org/xml/tc6.xsd">
 	<fileHeader companyName="Porcheson"
 		creationDateTime="2023-02-10T00:00:00" productVersion="0.0"
-		productName="AuxBAse Framework" />
-	<contentHeader name="HdySimulator Functions library"
+		productName="Hydraulic Simulator" />
+	<contentHeader name="Hydraulic Simulator Functions library"
 		modificationDateTime="2026-02-10T00:00:00">
 		<coordinateInfo>
 			<fbd>
@@ -22,7 +22,7 @@
 	</contentHeader>
 	<types>
 		<pous>
-			<pou name="HDY_CreateSimAxis" pouType="functionBlock">
+			<pou name="HYD_CreateSimAxis" pouType="functionBlock">
 				<interface>
 					<inputVars>
 						<variable name="AXISTYPE">
@@ -61,11 +61,11 @@
 				</interface>
 				<body>
 					<ST>
-						<xhtml:p><![CDATA[{{ extern void __mcl_cmd_createSimAxis(HDY_CREATESIMAXIS *data__);	__mcl_cmd_createSimAxis(data__);	 }}	]]></xhtml:p>
+						<xhtml:p><![CDATA[{{ extern void __mcl_cmd_createSimAxis(HYD_CREATESIMAXIS *data__);	__mcl_cmd_createSimAxis(data__);	 }}	]]></xhtml:p>
 					</ST>
 				</body>
 			</pou>
-			<pou name="HDY_MoveSimAxis" pouType="functionBlock">
+			<pou name="HYD_MoveSimAxis" pouType="functionBlock">
 				<interface>
 					<inputVars>
 						<variable name="ENABLE">
@@ -99,11 +99,11 @@
 				</interface>
 				<body>
 					<ST>
-						<xhtml:p><![CDATA[{{ extern void __mcl_cmd_moveSimAxis(HDY_MOVESIMAXIS *data__);	__mcl_cmd_moveSimAxis(data__);	 }}	]]></xhtml:p>
+						<xhtml:p><![CDATA[{{ extern void __mcl_cmd_moveSimAxis(HYD_MOVESIMAXIS *data__);	__mcl_cmd_moveSimAxis(data__);	 }}	]]></xhtml:p>
 					</ST>
 				</body>
 			</pou>
-			<pou name="HDY_ReadSimAxis" pouType="functionBlock">
+			<pou name="HYD_ReadSimAxis" pouType="functionBlock">
 				<interface>
 					<inputVars>
 						<variable name="ENABLE">
@@ -147,7 +147,7 @@
 				</interface>
 				<body>
 					<ST>
-						<xhtml:p><![CDATA[{{ extern void __mcl_cmd_readSimAxis(HDY_READSIMAXIS *data__);	__mcl_cmd_readSimAxis(data__);	 }}	]]></xhtml:p>
+						<xhtml:p><![CDATA[{{ extern void __mcl_cmd_readSimAxis(HYD_READSIMAXIS *data__);	__mcl_cmd_readSimAxis(data__);	 }}	]]></xhtml:p>
 					</ST>
 				</body>
 			</pou>
