@@ -394,9 +394,6 @@ void __mcl_cmd_MoveProfile(HDY_MOVEPROFILE *data__)
             __SET_VAR(data__->, DONE,, (HDY_MotionControlFB_IsDone(fb) && fb->STATE.finished) ? true : false);
             __SET_VAR(data__->, ERROR,, HDY_MotionControlFB_IsError(fb) ? true : false);
             __SET_VAR(data__->, ERRORID,, (IEC_WORD)fb->ERROR_ID);
-            __SET_VAR(data__->, STATE,, (IEC_WORD)fb->STATE.status);
-            __SET_VAR(data__->, PUMP_SPEED,, (IEC_REAL)fb->PUMP_SPEED);
-            __SET_VAR(data__->, ENO,, true);
 
             if (fb->_activeSegmentValid) {
                 HDY_AXISMOTION motionOut = __GET_VAR(data__->MOTION);
@@ -418,19 +415,6 @@ void __mcl_cmd_Stop(HDY_STOP *data__)
     IEC_BOOL execute = __GET_VAR(data__->EXECUTE);
     IEC_BOOL execRising = execute && !__GET_VAR(data__->EXECUTE0);
     IEC_SINT axisIndex = __GET_VAR(data__->AXISID);
-
-    __SET_VAR(data__->, ENO, , __GET_VAR(data__->EN));
-
-    if (!__GET_VAR(data__->EN))
-    {
-        __SET_VAR(data__->, DONE, , false);
-        __SET_VAR(data__->, BUSY, , false);
-        __SET_VAR(data__->, COMMANDABORTED, , false);
-        __SET_VAR(data__->, ERROR, , false);
-        __SET_VAR(data__->, ERRORID, , 0);
-        __SET_VAR(data__->, EXECUTE0, , execute);
-        return;
-    }
 
     if (axisIndex < 0 || axisIndex >= (IEC_SINT)nextAllocatedFB)
     {
@@ -488,20 +472,6 @@ void __mcl_cmd_MoveAbsolute(HDY_MOVEABSOLUTE *data__)
     IEC_BOOL execute = __GET_VAR(data__->EXECUTE);
     IEC_BOOL execRising = execute && !__GET_VAR(data__->EXECUTE0);
     IEC_SINT axisIndex = __GET_VAR(data__->AXISID);
-
-    __SET_VAR(data__->, ENO, , __GET_VAR(data__->EN));
-
-    if (!__GET_VAR(data__->EN))
-    {
-        __SET_VAR(data__->, DONE, , false);
-        __SET_VAR(data__->, BUSY, , false);
-        __SET_VAR(data__->, ACTIVE, , false);
-        __SET_VAR(data__->, COMMANDABORTED, , false);
-        __SET_VAR(data__->, ERROR, , false);
-        __SET_VAR(data__->, ERRORID, , 0);
-        __SET_VAR(data__->, EXECUTE0, , execute);
-        return;
-    }
 
     if (axisIndex < 0 || axisIndex >= (IEC_SINT)nextAllocatedFB)
     {
@@ -622,20 +592,6 @@ void __mcl_cmd_MoveVelocity(HDY_MOVEVELOCITY *data__)
     IEC_BOOL execute = __GET_VAR(data__->EXECUTE);
     IEC_BOOL execRising = execute && !__GET_VAR(data__->EXECUTE0);
     IEC_SINT axisIndex = __GET_VAR(data__->AXISID);
-
-    __SET_VAR(data__->, ENO, , __GET_VAR(data__->EN));
-
-    if (!__GET_VAR(data__->EN))
-    {
-        __SET_VAR(data__->, INVELOCITY, , false);
-        __SET_VAR(data__->, BUSY, , false);
-        __SET_VAR(data__->, ACTIVE, , false);
-        __SET_VAR(data__->, COMMANDABORTED, , false);
-        __SET_VAR(data__->, ERROR, , false);
-        __SET_VAR(data__->, ERRORID, , 0);
-        __SET_VAR(data__->, EXECUTE0, , execute);
-        return;
-    }
 
     if (axisIndex < 0 || axisIndex >= (IEC_SINT)nextAllocatedFB)
     {
@@ -765,18 +721,6 @@ void __mcl_cmd_Reset(HDY_RESET *data__)
     IEC_BOOL execRising = execute && !__GET_VAR(data__->EXECUTE0);
     IEC_SINT axisIndex = __GET_VAR(data__->AXISID);
 
-    __SET_VAR(data__->, ENO, , __GET_VAR(data__->EN));
-
-    if (!__GET_VAR(data__->EN))
-    {
-        __SET_VAR(data__->, DONE, , false);
-        __SET_VAR(data__->, BUSY, , false);
-        __SET_VAR(data__->, ERROR, , false);
-        __SET_VAR(data__->, ERRORID, , 0);
-        __SET_VAR(data__->, EXECUTE0, , execute);
-        return;
-    }
-
     if (axisIndex < 0 || axisIndex >= (IEC_SINT)nextAllocatedFB)
     {
         __SET_VAR(data__->, ERROR, , true);
@@ -813,20 +757,6 @@ void __mcl_cmd_PressureHandle(HDY_PRESSUREHANDLE *data__)
     IEC_BOOL execute = __GET_VAR(data__->EXECUTE);
     IEC_BOOL execRising = execute && !__GET_VAR(data__->EXECUTE0);
     IEC_SINT axisIndex = __GET_VAR(data__->AXISID);
-
-    __SET_VAR(data__->, ENO, , __GET_VAR(data__->EN));
-
-    if (!__GET_VAR(data__->EN))
-    {
-        __SET_VAR(data__->, INPRESSURE, , false);
-        __SET_VAR(data__->, BUSY, , false);
-        __SET_VAR(data__->, ACTIVE, , false);
-        __SET_VAR(data__->, COMMANDABORTED, , false);
-        __SET_VAR(data__->, ERROR, , false);
-        __SET_VAR(data__->, ERRORID, , 0);
-        __SET_VAR(data__->, EXECUTE0, , execute);
-        return;
-    }
 
     if (axisIndex < 0 || axisIndex >= (IEC_SINT)nextAllocatedFB)
     {
@@ -1010,15 +940,6 @@ void __mcl_cmd_ReadStatus(HDY_READSTATUS* data__)
     IEC_BOOL enable = __GET_VAR(data__->ENABLE);
     IEC_SINT axisIndex = __GET_VAR(data__->AXISID);
 
-    __SET_VAR(data__->, ENO,, __GET_VAR(data__->EN));
-
-    if (!__GET_VAR(data__->EN))
-    {
-        __SET_VAR(data__->, STATE,, 0);
-        __SET_VAR(data__->, BUSY,, false);
-        return;
-    }
-
     if (axisIndex < 0 || axisIndex >= (IEC_SINT)nextAllocatedFB)
     {
         __SET_VAR(data__->, STATE,, 0);
@@ -1047,16 +968,6 @@ void __mcl_cmd_ReadError(HDY_READERROR* data__)
 {
     IEC_BOOL enable = __GET_VAR(data__->ENABLE);
     IEC_SINT axisIndex = __GET_VAR(data__->AXISID);
-
-    __SET_VAR(data__->, ENO,, __GET_VAR(data__->EN));
-
-    if (!__GET_VAR(data__->EN))
-    {
-        __SET_VAR(data__->, ERROR,, false);
-        __SET_VAR(data__->, ERRORID,, (IEC_WORD)0);
-        __SET_VAR(data__->, BUSY,, false);
-        return;
-    }
 
     if (axisIndex < 0 || axisIndex >= (IEC_SINT)nextAllocatedFB)
     {
