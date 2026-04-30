@@ -10,14 +10,14 @@
 
 ---
 
-### Task 1: 新增 HDY_BufferMode 枚举
+### Task 1: 新增 HYD_BufferMode 枚举
 
 **Files:**
 - Modify: `include/common_types.h` — 在枚举区域新增
 
 - [ ] **Step 1: 在 common_types.h 中新增枚举**
 
-在 `HDY_FbCommand` 枚举附近（或其他枚举区域）新增：
+在 `HYD_FbCommand` 枚举附近（或其他枚举区域）新增：
 
 ```c
 /* BufferMode: PLCopen-standard buffering mode for motion commands.
@@ -25,9 +25,9 @@
  * BUFFER (1): execute only when axis is idle; reject if axis is busy.
  * Values 2-5 are reserved for future blending modes. */
 typedef enum {
-    HDY_BUFFER_MODE_ABORT  = 0,
-    HDY_BUFFER_MODE_BUFFER = 1
-} HDY_BufferMode;
+    HYD_BUFFER_MODE_ABORT  = 0,
+    HYD_BUFFER_MODE_BUFFER = 1
+} HYD_BufferMode;
 ```
 
 - [ ] **Step 2: 构建验证**
@@ -41,7 +41,7 @@ Expected: 编译通过（仅新增枚举，无引用者，无警告）。
 
 ```bash
 git add include/common_types.h
-git commit -m "feat: add HDY_BufferMode enum for PLCopen buffer mode support"
+git commit -m "feat: add HYD_BufferMode enum for PLCopen buffer mode support"
 ```
 
 ---
@@ -55,11 +55,11 @@ git commit -m "feat: add HDY_BufferMode enum for PLCopen buffer mode support"
 
 ```c
 // 旧 (line ~200-201):
-    HDY_UINT8 _index;
+    HYD_UINT8 _index;
     uint16_t _commandGeneration;   /* incremented on Abort, used by IEC layer for COMMANDABORTED detection */
 
 // 新:
-    HDY_UINT8 _index;
+    HYD_UINT8 _index;
     uint16_t _executionId;   /* incremented on BeginSegment success; IEC layer uses for ownership tracking */
 ```
 
@@ -82,40 +82,40 @@ Expected: 编译**失败**——`motion_control.c` 中仍引用 `_commandGenerat
 
 - [ ] **Step 1: 删除 AbortNow 中的递增**
 
-在 `HDY_AbortNow` 函数中删除一行：
+在 `HYD_AbortNow` 函数中删除一行：
 
 ```c
 // 旧 (line ~609):
-static void HDY_AbortNow(HDY_MotionControlFB* fb,
-                         HDY_TIME timestamp) {
+static void HYD_AbortNow(HYD_MotionControlFB* fb,
+                         HYD_TIME timestamp) {
     if (fb == NULL) {
         return;
     }
 
     fb->_commandGeneration++;    // ← 删除这行
-    HDY_ClearStartCommandInput(fb);
+    HYD_ClearStartCommandInput(fb);
 
 // 新:
-static void HDY_AbortNow(HDY_MotionControlFB* fb,
-                         HDY_TIME timestamp) {
+static void HYD_AbortNow(HYD_MotionControlFB* fb,
+                         HYD_TIME timestamp) {
     if (fb == NULL) {
         return;
     }
 
-    HDY_ClearStartCommandInput(fb);
+    HYD_ClearStartCommandInput(fb);
 ```
 
 - [ ] **Step 2: 在 BeginSegment 末尾新增递增**
 
-在 `HDY_BeginSegment` 函数中，`HDY_StateReporter_SetFbState(fb, HDY_FB_STATE_STARTING);` 之后、`return true;` 之前新增：
+在 `HYD_BeginSegment` 函数中，`HYD_StateReporter_SetFbState(fb, HYD_FB_STATE_STARTING);` 之后、`return true;` 之前新增：
 
 ```c
 // 旧 (line ~494-495):
-    HDY_StateReporter_SetFbState(fb, HDY_FB_STATE_STARTING);
+    HYD_StateReporter_SetFbState(fb, HYD_FB_STATE_STARTING);
     return true;
 
 // 新:
-    HDY_StateReporter_SetFbState(fb, HDY_FB_STATE_STARTING);
+    HYD_StateReporter_SetFbState(fb, HYD_FB_STATE_STARTING);
     fb->_executionId++;
     return true;
 ```
@@ -322,7 +322,7 @@ git commit -m "refactor: remove GEN, add BUFFERMODE and internal tracking fields
 将 `__mcl_cmd_MoveAbsolute` 整个函数替换为：
 
 ```c
-void __mcl_cmd_MoveAbsolute(HDY_MOVEABSOLUTE *data__)
+void __mcl_cmd_MoveAbsolute(HYD_MOVEABSOLUTE *data__)
 {
     IEC_BOOL execute = __GET_VAR(data__->EXECUTE);
     IEC_BOOL execRising = execute && !__GET_VAR(data__->EXECUTE0);
@@ -345,39 +345,39 @@ void __mcl_cmd_MoveAbsolute(HDY_MOVEABSOLUTE *data__)
     if (axisIndex < 0 || axisIndex >= (IEC_SINT)nextAllocatedFB)
     {
         __SET_VAR(data__->, ERROR, , true);
-        __SET_VAR(data__->, ERRORID, , (IEC_WORD)HDY_DIAG_CODE_START_CONTEXT_INVALID);
+        __SET_VAR(data__->, ERRORID, , (IEC_WORD)HYD_DIAG_CODE_START_CONTEXT_INVALID);
         __SET_VAR(data__->, EXECUTE0, , execute);
         return;
     }
 
-    HDY_MotionControlFB* fb = &HDY_MotionControlFB_inst[axisIndex];
+    HYD_MotionControlFB* fb = &HYD_MotionControlFB_inst[axisIndex];
     IEC_INT bufferMode = __GET_VAR(data__->BUFFERMODE);
     IEC_BOOL isPending = __GET_VAR(data__->_PENDING);
     IEC_WORD myExecId = __GET_VAR(data__->_EXEC_ID);
 
     if (execRising)
     {
-        if (bufferMode == HDY_BUFFER_MODE_ABORT) {
-            HDY_MotionControlFB_Abort(fb);
-            HDY_MotionControlFB_Scan(fb);
+        if (bufferMode == HYD_BUFFER_MODE_ABORT) {
+            HYD_MotionControlFB_Abort(fb);
+            HYD_MotionControlFB_Scan(fb);
         }
 
-        HDY_MotionDirection dir = mapPlcOpenDirection(__GET_VAR(data__->DIRECTION));
-        HDY_MotionSegment segment = buildPositionSegment(
+        HYD_MotionDirection dir = mapPlcOpenDirection(__GET_VAR(data__->DIRECTION));
+        HYD_MotionSegment segment = buildPositionSegment(
             __GET_VAR(data__->POSITION),
             __GET_VAR(data__->VELOCITY),
             __GET_VAR(data__->ACCELERATION),
             dir);
 
-        if (!HDY_MotionControlFB_LoadDirectSegment(fb, &segment))
+        if (!HYD_MotionControlFB_LoadDirectSegment(fb, &segment))
         {
             __SET_VAR(data__->, ERROR, , true);
-            __SET_VAR(data__->, ERRORID, , (IEC_WORD)HDY_DIAG_CODE_SEGMENT_INVALID);
+            __SET_VAR(data__->, ERRORID, , (IEC_WORD)HYD_DIAG_CODE_SEGMENT_INVALID);
             __SET_VAR(data__->, EXECUTE0, , execute);
             return;
         }
 
-        if (!HDY_MotionControlFB_StartSegment(fb, 0, fb->AXIS_REF.timestamp))
+        if (!HYD_MotionControlFB_StartSegment(fb, 0, fb->AXIS_REF.timestamp))
         {
             __SET_VAR(data__->, ERROR, , true);
             __SET_VAR(data__->, ERRORID, , (IEC_WORD)fb->ERROR_ID);
@@ -398,11 +398,11 @@ void __mcl_cmd_MoveAbsolute(HDY_MOVEABSOLUTE *data__)
 
     if (isPending)
     {
-        if (fb->STATE.active && fb->_activeSegmentSource == HDY_SEGMENT_SOURCE_DIRECT) {
+        if (fb->STATE.active && fb->_activeSegmentSource == HYD_SEGMENT_SOURCE_DIRECT) {
             __SET_VAR(data__->, _EXEC_ID, , (IEC_WORD)fb->_executionId);
             __SET_VAR(data__->, _PENDING, , false);
             myExecId = (IEC_WORD)fb->_executionId;
-        } else if (fb->FB_STATE == HDY_FB_STATE_ABORTED && !fb->STATE.active) {
+        } else if (fb->FB_STATE == HYD_FB_STATE_ABORTED && !fb->STATE.active) {
             __SET_VAR(data__->, COMMANDABORTED, , true);
             __SET_VAR(data__->, BUSY, , false);
             __SET_VAR(data__->, ACTIVE, , false);
@@ -422,7 +422,7 @@ void __mcl_cmd_MoveAbsolute(HDY_MOVEABSOLUTE *data__)
             __SET_VAR(data__->, ACTIVE, , false);
             __SET_VAR(data__->, DONE, , false);
         } else {
-            if (fb->SEGMENT_COMPLETED || (HDY_MotionControlFB_IsDone(fb) && fb->STATE.finished))
+            if (fb->SEGMENT_COMPLETED || (HYD_MotionControlFB_IsDone(fb) && fb->STATE.finished))
             {
                 __SET_VAR(data__->, DONE, , true);
                 __SET_VAR(data__->, BUSY, , false);
@@ -433,7 +433,7 @@ void __mcl_cmd_MoveAbsolute(HDY_MOVEABSOLUTE *data__)
                 __SET_VAR(data__->, BUSY, , true);
                 __SET_VAR(data__->, ACTIVE, , true);
             }
-            else if (HDY_MotionControlFB_IsError(fb))
+            else if (HYD_MotionControlFB_IsError(fb))
             {
                 __SET_VAR(data__->, ERROR, , true);
                 __SET_VAR(data__->, ERRORID, , (IEC_WORD)fb->ERROR_ID);
@@ -442,7 +442,7 @@ void __mcl_cmd_MoveAbsolute(HDY_MOVEABSOLUTE *data__)
             }
             else
             {
-                __SET_VAR(data__->, BUSY, , HDY_MotionControlFB_IsBusy(fb));
+                __SET_VAR(data__->, BUSY, , HYD_MotionControlFB_IsBusy(fb));
                 __SET_VAR(data__->, ACTIVE, , fb->STATE.active ? true : false);
             }
         }
@@ -477,7 +477,7 @@ git commit -m "refactor: rewrite MoveAbsolute with unified command flow, remove 
 - [ ] **Step 1: 替换 MoveVelocity 实现**
 
 ```c
-void __mcl_cmd_MoveVelocity(HDY_MOVEVELOCITY *data__)
+void __mcl_cmd_MoveVelocity(HYD_MOVEVELOCITY *data__)
 {
     IEC_BOOL execute = __GET_VAR(data__->EXECUTE);
     IEC_BOOL execRising = execute && !__GET_VAR(data__->EXECUTE0);
@@ -500,39 +500,39 @@ void __mcl_cmd_MoveVelocity(HDY_MOVEVELOCITY *data__)
     if (axisIndex < 0 || axisIndex >= (IEC_SINT)nextAllocatedFB)
     {
         __SET_VAR(data__->, ERROR, , true);
-        __SET_VAR(data__->, ERRORID, , (IEC_WORD)HDY_DIAG_CODE_START_CONTEXT_INVALID);
+        __SET_VAR(data__->, ERRORID, , (IEC_WORD)HYD_DIAG_CODE_START_CONTEXT_INVALID);
         __SET_VAR(data__->, EXECUTE0, , execute);
         return;
     }
 
-    HDY_MotionControlFB* fb = &HDY_MotionControlFB_inst[axisIndex];
+    HYD_MotionControlFB* fb = &HYD_MotionControlFB_inst[axisIndex];
     IEC_INT bufferMode = __GET_VAR(data__->BUFFERMODE);
     IEC_BOOL isPending = __GET_VAR(data__->_PENDING);
     IEC_WORD myExecId = __GET_VAR(data__->_EXEC_ID);
-    HDY_REAL targetVelocity = __GET_VAR(data__->VELOCITY);
+    HYD_REAL targetVelocity = __GET_VAR(data__->VELOCITY);
 
     if (execRising)
     {
-        if (bufferMode == HDY_BUFFER_MODE_ABORT) {
-            HDY_MotionControlFB_Abort(fb);
-            HDY_MotionControlFB_Scan(fb);
+        if (bufferMode == HYD_BUFFER_MODE_ABORT) {
+            HYD_MotionControlFB_Abort(fb);
+            HYD_MotionControlFB_Scan(fb);
         }
 
-        HDY_MotionDirection dir = mapPlcOpenDirection(__GET_VAR(data__->DIRECTION));
-        HDY_MotionSegment segment = buildVelocitySegment(
+        HYD_MotionDirection dir = mapPlcOpenDirection(__GET_VAR(data__->DIRECTION));
+        HYD_MotionSegment segment = buildVelocitySegment(
             targetVelocity,
             __GET_VAR(data__->ACCELERATION),
             dir);
 
-        if (!HDY_MotionControlFB_LoadDirectSegment(fb, &segment))
+        if (!HYD_MotionControlFB_LoadDirectSegment(fb, &segment))
         {
             __SET_VAR(data__->, ERROR, , true);
-            __SET_VAR(data__->, ERRORID, , (IEC_WORD)HDY_DIAG_CODE_SEGMENT_INVALID);
+            __SET_VAR(data__->, ERRORID, , (IEC_WORD)HYD_DIAG_CODE_SEGMENT_INVALID);
             __SET_VAR(data__->, EXECUTE0, , execute);
             return;
         }
 
-        if (!HDY_MotionControlFB_StartSegment(fb, 0, fb->AXIS_REF.timestamp))
+        if (!HYD_MotionControlFB_StartSegment(fb, 0, fb->AXIS_REF.timestamp))
         {
             __SET_VAR(data__->, ERROR, , true);
             __SET_VAR(data__->, ERRORID, , (IEC_WORD)fb->ERROR_ID);
@@ -553,11 +553,11 @@ void __mcl_cmd_MoveVelocity(HDY_MOVEVELOCITY *data__)
 
     if (isPending)
     {
-        if (fb->STATE.active && fb->_activeSegmentSource == HDY_SEGMENT_SOURCE_DIRECT) {
+        if (fb->STATE.active && fb->_activeSegmentSource == HYD_SEGMENT_SOURCE_DIRECT) {
             __SET_VAR(data__->, _EXEC_ID, , (IEC_WORD)fb->_executionId);
             __SET_VAR(data__->, _PENDING, , false);
             myExecId = (IEC_WORD)fb->_executionId;
-        } else if (fb->FB_STATE == HDY_FB_STATE_ABORTED && !fb->STATE.active) {
+        } else if (fb->FB_STATE == HYD_FB_STATE_ABORTED && !fb->STATE.active) {
             __SET_VAR(data__->, COMMANDABORTED, , true);
             __SET_VAR(data__->, BUSY, , false);
             __SET_VAR(data__->, ACTIVE, , false);
@@ -583,7 +583,7 @@ void __mcl_cmd_MoveVelocity(HDY_MOVEVELOCITY *data__)
                 __SET_VAR(data__->, BUSY, , true);
                 __SET_VAR(data__->, ACTIVE, , true);
 
-                HDY_REAL velError = fb->AXIS_REF.velocity - targetVelocity;
+                HYD_REAL velError = fb->AXIS_REF.velocity - targetVelocity;
                 if (velError < 0.0f) velError = -velError;
                 if (targetVelocity > 0.0f && velError < targetVelocity * 0.05f)
                 {
@@ -594,7 +594,7 @@ void __mcl_cmd_MoveVelocity(HDY_MOVEVELOCITY *data__)
                     __SET_VAR(data__->, INVELOCITY, , false);
                 }
             }
-            else if (HDY_MotionControlFB_IsError(fb))
+            else if (HYD_MotionControlFB_IsError(fb))
             {
                 __SET_VAR(data__->, ERROR, , true);
                 __SET_VAR(data__->, ERRORID, , (IEC_WORD)fb->ERROR_ID);
@@ -604,7 +604,7 @@ void __mcl_cmd_MoveVelocity(HDY_MOVEVELOCITY *data__)
             }
             else
             {
-                __SET_VAR(data__->, BUSY, , HDY_MotionControlFB_IsBusy(fb));
+                __SET_VAR(data__->, BUSY, , HYD_MotionControlFB_IsBusy(fb));
                 __SET_VAR(data__->, ACTIVE, , fb->STATE.active ? true : false);
             }
         }
@@ -639,7 +639,7 @@ git commit -m "refactor: rewrite MoveVelocity with unified command flow, remove 
 - [ ] **Step 1: 替换 PressureHandle 实现**
 
 ```c
-void __mcl_cmd_PressureHandle(HDY_PRESSUREHANDLE *data__)
+void __mcl_cmd_PressureHandle(HYD_PRESSUREHANDLE *data__)
 {
     IEC_BOOL execute = __GET_VAR(data__->EXECUTE);
     IEC_BOOL execRising = execute && !__GET_VAR(data__->EXECUTE0);
@@ -662,38 +662,38 @@ void __mcl_cmd_PressureHandle(HDY_PRESSUREHANDLE *data__)
     if (axisIndex < 0 || axisIndex >= (IEC_SINT)nextAllocatedFB)
     {
         __SET_VAR(data__->, ERROR, , true);
-        __SET_VAR(data__->, ERRORID, , (IEC_WORD)HDY_DIAG_CODE_START_CONTEXT_INVALID);
+        __SET_VAR(data__->, ERRORID, , (IEC_WORD)HYD_DIAG_CODE_START_CONTEXT_INVALID);
         __SET_VAR(data__->, EXECUTE0, , execute);
         return;
     }
 
-    HDY_MotionControlFB* fb = &HDY_MotionControlFB_inst[axisIndex];
+    HYD_MotionControlFB* fb = &HYD_MotionControlFB_inst[axisIndex];
     IEC_INT bufferMode = __GET_VAR(data__->BUFFERMODE);
     IEC_BOOL isPending = __GET_VAR(data__->_PENDING);
     IEC_WORD myExecId = __GET_VAR(data__->_EXEC_ID);
-    HDY_REAL targetPressure = __GET_VAR(data__->PRESSURE);
+    HYD_REAL targetPressure = __GET_VAR(data__->PRESSURE);
 
     if (execRising)
     {
-        if (bufferMode == HDY_BUFFER_MODE_ABORT) {
-            HDY_MotionControlFB_Abort(fb);
-            HDY_MotionControlFB_Scan(fb);
+        if (bufferMode == HYD_BUFFER_MODE_ABORT) {
+            HYD_MotionControlFB_Abort(fb);
+            HYD_MotionControlFB_Scan(fb);
         }
 
-        HDY_MotionSegment segment = buildPressureSegment(
+        HYD_MotionSegment segment = buildPressureSegment(
             targetPressure,
             __GET_VAR(data__->PRESSURERAMPRATE),
             __GET_VAR(data__->DURATION));
 
-        if (!HDY_MotionControlFB_LoadDirectSegment(fb, &segment))
+        if (!HYD_MotionControlFB_LoadDirectSegment(fb, &segment))
         {
             __SET_VAR(data__->, ERROR, , true);
-            __SET_VAR(data__->, ERRORID, , (IEC_WORD)HDY_DIAG_CODE_SEGMENT_INVALID);
+            __SET_VAR(data__->, ERRORID, , (IEC_WORD)HYD_DIAG_CODE_SEGMENT_INVALID);
             __SET_VAR(data__->, EXECUTE0, , execute);
             return;
         }
 
-        if (!HDY_MotionControlFB_StartSegment(fb, 0, fb->AXIS_REF.timestamp))
+        if (!HYD_MotionControlFB_StartSegment(fb, 0, fb->AXIS_REF.timestamp))
         {
             __SET_VAR(data__->, ERROR, , true);
             __SET_VAR(data__->, ERRORID, , (IEC_WORD)fb->ERROR_ID);
@@ -714,11 +714,11 @@ void __mcl_cmd_PressureHandle(HDY_PRESSUREHANDLE *data__)
 
     if (isPending)
     {
-        if (fb->STATE.active && fb->_activeSegmentSource == HDY_SEGMENT_SOURCE_DIRECT) {
+        if (fb->STATE.active && fb->_activeSegmentSource == HYD_SEGMENT_SOURCE_DIRECT) {
             __SET_VAR(data__->, _EXEC_ID, , (IEC_WORD)fb->_executionId);
             __SET_VAR(data__->, _PENDING, , false);
             myExecId = (IEC_WORD)fb->_executionId;
-        } else if (fb->FB_STATE == HDY_FB_STATE_ABORTED && !fb->STATE.active) {
+        } else if (fb->FB_STATE == HYD_FB_STATE_ABORTED && !fb->STATE.active) {
             __SET_VAR(data__->, COMMANDABORTED, , true);
             __SET_VAR(data__->, BUSY, , false);
             __SET_VAR(data__->, ACTIVE, , false);
@@ -739,7 +739,7 @@ void __mcl_cmd_PressureHandle(HDY_PRESSUREHANDLE *data__)
             __SET_VAR(data__->, ACTIVE, , false);
             __SET_VAR(data__->, INPRESSURE, , false);
         } else {
-            if (fb->SEGMENT_COMPLETED || (HDY_MotionControlFB_IsDone(fb) && fb->STATE.finished))
+            if (fb->SEGMENT_COMPLETED || (HYD_MotionControlFB_IsDone(fb) && fb->STATE.finished))
             {
                 __SET_VAR(data__->, BUSY, , false);
                 __SET_VAR(data__->, ACTIVE, , false);
@@ -750,7 +750,7 @@ void __mcl_cmd_PressureHandle(HDY_PRESSUREHANDLE *data__)
                 __SET_VAR(data__->, BUSY, , true);
                 __SET_VAR(data__->, ACTIVE, , true);
 
-                HDY_REAL pressError = fb->AXIS_REF.pressure - targetPressure;
+                HYD_REAL pressError = fb->AXIS_REF.pressure - targetPressure;
                 if (pressError < 0.0f) pressError = -pressError;
                 if (targetPressure > 0.0f && pressError < 0.5f)
                 {
@@ -761,7 +761,7 @@ void __mcl_cmd_PressureHandle(HDY_PRESSUREHANDLE *data__)
                     __SET_VAR(data__->, INPRESSURE, , false);
                 }
             }
-            else if (HDY_MotionControlFB_IsError(fb))
+            else if (HYD_MotionControlFB_IsError(fb))
             {
                 __SET_VAR(data__->, ERROR, , true);
                 __SET_VAR(data__->, ERRORID, , (IEC_WORD)fb->ERROR_ID);
@@ -771,7 +771,7 @@ void __mcl_cmd_PressureHandle(HDY_PRESSUREHANDLE *data__)
             }
             else
             {
-                __SET_VAR(data__->, BUSY, , HDY_MotionControlFB_IsBusy(fb));
+                __SET_VAR(data__->, BUSY, , HYD_MotionControlFB_IsBusy(fb));
                 __SET_VAR(data__->, ACTIVE, , fb->STATE.active ? true : false);
             }
         }
@@ -806,14 +806,14 @@ git commit -m "refactor: rewrite PressureHandle with unified command flow, remov
 - [ ] **Step 1: 替换 MoveProfile 实现**
 
 ```c
-void __mcl_cmd_MoveProfile(HDY_MOVEPROFILE *data__)
+void __mcl_cmd_MoveProfile(HYD_MOVEPROFILE *data__)
 {
     IEC_SINT axisIndex = __GET_VAR(data__->AXISID);
-    HDY_MotionControlFB *fb = __MK_GetPublic_MotionControlFB(axisIndex);
+    HYD_MotionControlFB *fb = __MK_GetPublic_MotionControlFB(axisIndex);
 
     if (fb == NULL) {
         __SET_VAR(data__->, ERROR,, true);
-        __SET_VAR(data__->, ERRORID,, (IEC_WORD)HDY_DIAG_CODE_INTERNAL_ERROR);
+        __SET_VAR(data__->, ERRORID,, (IEC_WORD)HYD_DIAG_CODE_INTERNAL_ERROR);
         __SET_VAR(data__->, ENO,, false);
         return;
     }
@@ -822,7 +822,7 @@ void __mcl_cmd_MoveProfile(HDY_MOVEPROFILE *data__)
     IEC_BOOL execRising = execute && !__GET_VAR(data__->EXECUTE0);
 
     /* Update AXIS_REF from MOTION feedback */
-    HDY_AXISMOTION motionData = __GET_VAR(data__->MOTION);
+    HYD_AXISMOTION motionData = __GET_VAR(data__->MOTION);
     fb->AXIS_REF.position = motionData.ACTPOSITION;
     fb->AXIS_REF.velocity = motionData.ACTVELOCITY;
     fb->AXIS_REF.flow     = motionData.ACTFLOW;
@@ -834,28 +834,28 @@ void __mcl_cmd_MoveProfile(HDY_MOVEPROFILE *data__)
     IEC_WORD myExecId = __GET_VAR(data__->_EXEC_ID);
 
     if (execRising) {
-        HDY_TIME currentTime = motionData.TIMESTAMP;
+        HYD_TIME currentTime = motionData.TIMESTAMP;
 
-        if (bufferMode == HDY_BUFFER_MODE_ABORT) {
-            HDY_MotionControlFB_Abort(fb);
-            HDY_MotionControlFB_Scan(fb);
+        if (bufferMode == HYD_BUFFER_MODE_ABORT) {
+            HYD_MotionControlFB_Abort(fb);
+            HYD_MotionControlFB_Scan(fb);
         }
 
         /* Build 1-segment recipe from MOTION if no preloaded recipe */
         if (fb->RECIPE_SIZE == 0 && !fb->DIRECT_SEGMENT_VALID) {
-            HDY_MotionSegment segment = buildSegmentFromMotion(&motionData);
-            if (!HDY_MotionControlFB_LoadRecipe(fb, &segment, 1)) {
+            HYD_MotionSegment segment = buildSegmentFromMotion(&motionData);
+            if (!HYD_MotionControlFB_LoadRecipe(fb, &segment, 1)) {
                 __SET_VAR(data__->, ERROR,, true);
-                __SET_VAR(data__->, ERRORID,, (IEC_WORD)HDY_DIAG_CODE_SEGMENT_INVALID);
+                __SET_VAR(data__->, ERRORID,, (IEC_WORD)HYD_DIAG_CODE_SEGMENT_INVALID);
                 __SET_VAR(data__->, EXECUTE0,, execute);
                 return;
             }
         }
 
         /* Start segment (recipe or direct) */
-        if (!HDY_MotionControlFB_StartSegment(fb, 0, currentTime)) {
+        if (!HYD_MotionControlFB_StartSegment(fb, 0, currentTime)) {
             __SET_VAR(data__->, ERROR,, true);
-            __SET_VAR(data__->, ERRORID,, (IEC_WORD)HDY_DIAG_CODE_START_CONTEXT_INVALID);
+            __SET_VAR(data__->, ERRORID,, (IEC_WORD)HYD_DIAG_CODE_START_CONTEXT_INVALID);
             __SET_VAR(data__->, EXECUTE0,, execute);
             return;
         }
@@ -872,7 +872,7 @@ void __mcl_cmd_MoveProfile(HDY_MOVEPROFILE *data__)
             __SET_VAR(data__->, _EXEC_ID,, (IEC_WORD)fb->_executionId);
             __SET_VAR(data__->, _PENDING,, false);
             myExecId = (IEC_WORD)fb->_executionId;
-        } else if (fb->FB_STATE == HDY_FB_STATE_ABORTED && !fb->STATE.active) {
+        } else if (fb->FB_STATE == HYD_FB_STATE_ABORTED && !fb->STATE.active) {
             __SET_VAR(data__->, ACTIVE,, false);
             __SET_VAR(data__->, BUSY,, false);
             __SET_VAR(data__->, _PENDING,, false);
@@ -889,16 +889,16 @@ void __mcl_cmd_MoveProfile(HDY_MOVEPROFILE *data__)
             __SET_VAR(data__->, BUSY,, false);
         } else {
             __SET_VAR(data__->, ACTIVE,, fb->STATE.active ? true : false);
-            __SET_VAR(data__->, BUSY,, HDY_MotionControlFB_IsBusy(fb));
-            __SET_VAR(data__->, DONE,, (HDY_MotionControlFB_IsDone(fb) && fb->STATE.finished) ? true : false);
-            __SET_VAR(data__->, ERROR,, HDY_MotionControlFB_IsError(fb) ? true : false);
+            __SET_VAR(data__->, BUSY,, HYD_MotionControlFB_IsBusy(fb));
+            __SET_VAR(data__->, DONE,, (HYD_MotionControlFB_IsDone(fb) && fb->STATE.finished) ? true : false);
+            __SET_VAR(data__->, ERROR,, HYD_MotionControlFB_IsError(fb) ? true : false);
             __SET_VAR(data__->, ERRORID,, (IEC_WORD)fb->ERROR_ID);
             __SET_VAR(data__->, STATE,, (IEC_WORD)fb->STATE.status);
             __SET_VAR(data__->, PUMP_SPEED,, (IEC_REAL)fb->PUMP_SPEED);
             __SET_VAR(data__->, ENO,, true);
 
             if (fb->_activeSegmentValid) {
-                HDY_AXISMOTION motionOut = __GET_VAR(data__->MOTION);
+                HYD_AXISMOTION motionOut = __GET_VAR(data__->MOTION);
                 writeMotionFromSegment(&motionOut, fb);
                 __SET_VAR(data__->, MOTION,, motionOut);
             }
@@ -934,7 +934,7 @@ git commit -m "refactor: rewrite MoveProfile with unified command flow, remove G
 Stop 不使用 `_executionId`——通过 `FB_STATE` 和 `STATE.active` 直接判断 Abort 完成。
 
 ```c
-void __mcl_cmd_Stop(HDY_STOP *data__)
+void __mcl_cmd_Stop(HYD_STOP *data__)
 {
     IEC_BOOL execute = __GET_VAR(data__->EXECUTE);
     IEC_BOOL execRising = execute && !__GET_VAR(data__->EXECUTE0);
@@ -956,18 +956,18 @@ void __mcl_cmd_Stop(HDY_STOP *data__)
     if (axisIndex < 0 || axisIndex >= (IEC_SINT)nextAllocatedFB)
     {
         __SET_VAR(data__->, ERROR, , true);
-        __SET_VAR(data__->, ERRORID, , (IEC_WORD)HDY_DIAG_CODE_START_CONTEXT_INVALID);
+        __SET_VAR(data__->, ERRORID, , (IEC_WORD)HYD_DIAG_CODE_START_CONTEXT_INVALID);
         __SET_VAR(data__->, EXECUTE0, , execute);
         return;
     }
 
-    HDY_MotionControlFB* fb = &HDY_MotionControlFB_inst[axisIndex];
+    HYD_MotionControlFB* fb = &HYD_MotionControlFB_inst[axisIndex];
     IEC_BOOL isPending = __GET_VAR(data__->_PENDING);
 
     if (execRising)
     {
-        HDY_MotionControlFB_Abort(fb);
-        HDY_MotionControlFB_Scan(fb);
+        HYD_MotionControlFB_Abort(fb);
+        HYD_MotionControlFB_Scan(fb);
         __SET_VAR(data__->, _PENDING, , true);
         __SET_VAR(data__->, BUSY, , true);
         __SET_VAR(data__->, DONE, , false);
@@ -978,7 +978,7 @@ void __mcl_cmd_Stop(HDY_STOP *data__)
 
     if (isPending)
     {
-        if (!fb->STATE.active && fb->FB_STATE != HDY_FB_STATE_RUNNING)
+        if (!fb->STATE.active && fb->FB_STATE != HYD_FB_STATE_RUNNING)
         {
             __SET_VAR(data__->, DONE, , true);
             __SET_VAR(data__->, BUSY, , false);
@@ -989,7 +989,7 @@ void __mcl_cmd_Stop(HDY_STOP *data__)
             __SET_VAR(data__->, BUSY, , true);
         }
 
-        if (HDY_MotionControlFB_IsError(fb))
+        if (HYD_MotionControlFB_IsError(fb))
         {
             __SET_VAR(data__->, ERROR, , true);
             __SET_VAR(data__->, ERRORID, , (IEC_WORD)fb->ERROR_ID);
@@ -1027,7 +1027,7 @@ git commit -m "refactor: rewrite Stop with simplified state-based completion, re
 Reset 不涉及段或抢占，直接 SoftReset → DONE。
 
 ```c
-void __mcl_cmd_Reset(HDY_RESET *data__)
+void __mcl_cmd_Reset(HYD_RESET *data__)
 {
     IEC_BOOL execute = __GET_VAR(data__->EXECUTE);
     IEC_BOOL execRising = execute && !__GET_VAR(data__->EXECUTE0);
@@ -1048,13 +1048,13 @@ void __mcl_cmd_Reset(HDY_RESET *data__)
     if (axisIndex < 0 || axisIndex >= (IEC_SINT)nextAllocatedFB)
     {
         __SET_VAR(data__->, ERROR, , true);
-        __SET_VAR(data__->, ERRORID, , (IEC_WORD)HDY_DIAG_CODE_START_CONTEXT_INVALID);
+        __SET_VAR(data__->, ERRORID, , (IEC_WORD)HYD_DIAG_CODE_START_CONTEXT_INVALID);
         __SET_VAR(data__->, EXECUTE0, , execute);
         return;
     }
 
-    HDY_MotionControlFB* fb = &HDY_MotionControlFB_inst[axisIndex];
-    if (fb->FB_STATE == HDY_FB_STATE_DISABLED)
+    HYD_MotionControlFB* fb = &HYD_MotionControlFB_inst[axisIndex];
+    if (fb->FB_STATE == HYD_FB_STATE_DISABLED)
     {
         __SET_VAR(data__->, DONE, , true);
         __SET_VAR(data__->, BUSY, , false);
@@ -1064,7 +1064,7 @@ void __mcl_cmd_Reset(HDY_RESET *data__)
 
     if (execRising)
     {
-        HDY_MotionControlFB_SoftReset(fb);
+        HYD_MotionControlFB_SoftReset(fb);
         __SET_VAR(data__->, DONE, , true);
         __SET_VAR(data__->, BUSY, , false);
     }
@@ -1118,7 +1118,7 @@ git status
 
 | 文件 | 变更 |
 |------|------|
-| `include/common_types.h` | +`HDY_BufferMode` 枚举 |
+| `include/common_types.h` | +`HYD_BufferMode` 枚举 |
 | `include/motion_control.h` | `_commandGeneration` → `_executionId` |
 | `src/motion_control.c` | 递增点移动（`AbortNow` 删除，`BeginSegment` 新增） |
 | `include/motion_interface.h` | 7 个 FB 删除 GEN，5 个 FB 新增 BUFFERMODE + _PENDING + _EXEC_ID |

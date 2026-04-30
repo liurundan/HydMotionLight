@@ -1,99 +1,99 @@
 #include "motion_utils.h"
 #include "common_types.h"
-#include "hdy_config.h"
+#include "hyd_config.h"
 #include <math.h>
 #include <string.h>
 
-HDY_REAL HDY_MotionUtils_MinReal(HDY_REAL left, HDY_REAL right) {
+HYD_REAL HYD_MotionUtils_MinReal(HYD_REAL left, HYD_REAL right) {
     return (left < right) ? left : right;
 }
 
-HDY_REAL HDY_MotionUtils_AbsReal(HDY_REAL value) {
+HYD_REAL HYD_MotionUtils_AbsReal(HYD_REAL value) {
     return (value < 0.0) ? -value : value;
 }
 
-HDY_BOOL HDY_MotionUtils_IsFiniteReal(HDY_REAL value) {
+HYD_BOOL HYD_MotionUtils_IsFiniteReal(HYD_REAL value) {
     return isfinite(value) ? true : false;
 }
 
-HDY_BOOL HDY_MotionUtils_AxisRefIsValid(const HDY_AxisRef* axisRef) {
+HYD_BOOL HYD_MotionUtils_AxisRefIsValid(const HYD_AxisRef* axisRef) {
     if (axisRef == NULL) {
         return false;
     }
 
-    return HDY_MotionUtils_IsFiniteReal(axisRef->position) &&
-        HDY_MotionUtils_IsFiniteReal(axisRef->velocity) &&
-        HDY_MotionUtils_IsFiniteReal(axisRef->flow) &&
-        HDY_MotionUtils_IsFiniteReal(axisRef->pressure) &&
-        HDY_MotionUtils_IsFiniteReal(axisRef->timestamp) &&
+    return HYD_MotionUtils_IsFiniteReal(axisRef->position) &&
+        HYD_MotionUtils_IsFiniteReal(axisRef->velocity) &&
+        HYD_MotionUtils_IsFiniteReal(axisRef->flow) &&
+        HYD_MotionUtils_IsFiniteReal(axisRef->pressure) &&
+        HYD_MotionUtils_IsFiniteReal(axisRef->timestamp) &&
         (axisRef->pressure >= 0.0) &&
         (axisRef->timestamp >= 0.0);
 }
 
-const char* HDY_MotionUtils_CommandToString(HDY_FbCommand command) {
+const char* HYD_MotionUtils_CommandToString(HYD_FbCommand command) {
     switch (command) {
-        case HDY_CMD_START:
+        case HYD_CMD_START:
             return "START";
-        case HDY_CMD_NEXT:
+        case HYD_CMD_NEXT:
             return "NEXT";
-        case HDY_CMD_STOP:
+        case HYD_CMD_STOP:
             return "STOP";
-        case HDY_CMD_HOLD:
+        case HYD_CMD_HOLD:
             return "HOLD";
-        case HDY_CMD_RESUME:
+        case HYD_CMD_RESUME:
             return "RESUME";
-        case HDY_CMD_ABORT:
+        case HYD_CMD_ABORT:
             return "ABORT";
-        case HDY_CMD_RESET:
+        case HYD_CMD_RESET:
             return "RESET";
-        case HDY_CMD_ACK:
+        case HYD_CMD_ACK:
             return "ACK";
-        case HDY_CMD_NONE:
+        case HYD_CMD_NONE:
         default:
             return "NONE";
     }
 }
 
-const char* HDY_MotionUtils_StateToString(HDY_FbState state) {
+const char* HYD_MotionUtils_StateToString(HYD_FbState state) {
     switch (state) {
-        case HDY_FB_STATE_DISABLED:
+        case HYD_FB_STATE_DISABLED:
             return "DISABLED";
-        case HDY_FB_STATE_IDLE:
+        case HYD_FB_STATE_IDLE:
             return "IDLE";
-        case HDY_FB_STATE_READY:
+        case HYD_FB_STATE_READY:
             return "READY";
-        case HDY_FB_STATE_STARTING:
+        case HYD_FB_STATE_STARTING:
             return "STARTING";
-        case HDY_FB_STATE_RUNNING:
+        case HYD_FB_STATE_RUNNING:
             return "RUNNING";
-        case HDY_FB_STATE_SEGMENT_COMPLETE:
+        case HYD_FB_STATE_SEGMENT_COMPLETE:
             return "SEGMENT_COMPLETE";
-        case HDY_FB_STATE_HOLD:
+        case HYD_FB_STATE_HOLD:
             return "HOLD";
-        case HDY_FB_STATE_DONE:
+        case HYD_FB_STATE_DONE:
             return "DONE";
-        case HDY_FB_STATE_ABORTED:
+        case HYD_FB_STATE_ABORTED:
             return "ABORTED";
-        case HDY_FB_STATE_FAULT:
+        case HYD_FB_STATE_FAULT:
             return "FAULT";
         default:
             return "UNKNOWN";
     }
 }
 
-HDY_ConfigInfo HDY_GetConfigInfo(void) {
-    HDY_ConfigInfo config;
+HYD_ConfigInfo HYD_GetConfigInfo(void) {
+    HYD_ConfigInfo config;
     memset(&config, 0, sizeof(config));
 
-    config.maxSegments = HDY_MAX_SEGMENTS;
-    config.maxSegmentTagValue = HDY_SEGMENT_TAG_MAX;
-    config.maxNameLength = HDY_SEGMENT_TAG_MAX;
-    config.maxHistoryDepth = 1;  /* Single-snapshot model; HDY_DIAG_HISTORY_DEPTH is deprecated */
-    config.diagnosticHistoryEnabled = HDY_ENABLE_DIAGNOSTIC_HISTORY;
-    config.pressureLoopTelemetryEnabled = HDY_ENABLE_PRESSURE_LOOP_TELEMETRY;
-    config.executionReferenceEnabled = HDY_ENABLE_EXECUTION_REFERENCE;
-    config.versionString = HDY_VERSION_STRING;
-    config.buildTime = HDY_VERSION_BUILD_TIME;
+    config.maxSegments = HYD_MAX_SEGMENTS;
+    config.maxSegmentTagValue = HYD_SEGMENT_TAG_MAX;
+    config.maxNameLength = HYD_SEGMENT_TAG_MAX;
+    config.maxHistoryDepth = 1;  /* Single-snapshot model; HYD_DIAG_HISTORY_DEPTH is deprecated */
+    config.diagnosticHistoryEnabled = HYD_ENABLE_DIAGNOSTIC_HISTORY;
+    config.pressureLoopTelemetryEnabled = HYD_ENABLE_PRESSURE_LOOP_TELEMETRY;
+    config.executionReferenceEnabled = HYD_ENABLE_EXECUTION_REFERENCE;
+    config.versionString = HYD_VERSION_STRING;
+    config.buildTime = HYD_VERSION_BUILD_TIME;
 
     return config;
 }

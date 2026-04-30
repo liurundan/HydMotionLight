@@ -2,38 +2,38 @@
 
 #include <string.h>
 
-#define HDY_SIM_DEFAULT_CYCLE_TIME_S (0.001f)
+#define HYD_SIM_DEFAULT_CYCLE_TIME_S (0.001f)
 
 static HydraulicSimEnv g_shared_env;
-static HDY_HydraulicSimFB _sim_fb[HDY_MAX_HYDRAULIC_SIM_FB];
-static int g_axis_slot_by_id[HDY_MAX_HYDRAULIC_SIM_FB];
+static HYD_HydraulicSimFB _sim_fb[HYD_MAX_HYDRAULIC_SIM_FB];
+static int g_axis_slot_by_id[HYD_MAX_HYDRAULIC_SIM_FB];
 static unsigned int NextAllocatedHydraulicSimFB = 0U;
 
-static int Hdy_IsValidAxisType(int axis_type) {
+static int Hyd_IsValidAxisType(int axis_type) {
     return (axis_type == (int)SIM_AXIS_CLAMP) || (axis_type == (int)SIM_AXIS_INJECT);
 }
 
-static void Hdy_ResetAxisMapping(void) {
+static void Hyd_ResetAxisMapping(void) {
     int i;
-    for (i = 0; i < HDY_MAX_HYDRAULIC_SIM_FB; ++i) {
+    for (i = 0; i < HYD_MAX_HYDRAULIC_SIM_FB; ++i) {
         g_axis_slot_by_id[i] = -1;
     }
 }
 
-static int Hdy_GetSlotByAxisId(int axis_id) {
-    if (axis_id < 0 || axis_id >= HDY_MAX_HYDRAULIC_SIM_FB) {
+static int Hyd_GetSlotByAxisId(int axis_id) {
+    if (axis_id < 0 || axis_id >= HYD_MAX_HYDRAULIC_SIM_FB) {
         return -1;
     }
     return g_axis_slot_by_id[axis_id];
 }
 
-static void Hdy_ResetHandle(HDY_HydraulicSimFB* fb) {
+static void Hyd_ResetHandle(HYD_HydraulicSimFB* fb) {
     if (fb == NULL) return;
     memset(fb, 0, sizeof(*fb));
     fb->axis_id = -1;
 }
 
-static void Hdy_CopyAxisFeedbackToHandle(HDY_HydraulicSimFB* fb) {
+static void Hyd_CopyAxisFeedbackToHandle(HYD_HydraulicSimFB* fb) {
     AxisFeedback feedback;
 
     if (fb == NULL || fb->_env == NULL || fb->axis_id < 0) return;
@@ -45,15 +45,15 @@ static void Hdy_CopyAxisFeedbackToHandle(HDY_HydraulicSimFB* fb) {
     fb->active = fb->enable && (fb->_env->pump_owner_axis_id == fb->axis_id);
 }
 
-static void Hdy_InitSharedHandle(HDY_HydraulicSimFB* fb,
+static void Hyd_InitSharedHandle(HYD_HydraulicSimFB* fb,
                                  int axis_id,
-                                 HDY_UINT8 axis_type,
-                                 HDY_REAL max_vel,
-                                 HDY_REAL max_acc,
-                                 HDY_REAL max_dec) {
+                                 HYD_UINT8 axis_type,
+                                 HYD_REAL max_vel,
+                                 HYD_REAL max_acc,
+                                 HYD_REAL max_dec) {
     if (fb == NULL) return;
 
-    Hdy_ResetHandle(fb);
+    Hyd_ResetHandle(fb);
     fb->allocated = true;
     fb->axis_id = axis_id;
     fb->axis_type = axis_type;
@@ -66,12 +66,12 @@ static void Hdy_InitSharedHandle(HDY_HydraulicSimFB* fb,
     fb->_env = &g_shared_env;
     fb->_isSharedEnv = true;
     fb->_initialized = true;
-    Hdy_CopyAxisFeedbackToHandle(fb);
+    Hyd_CopyAxisFeedbackToHandle(fb);
 }
 
-HDY_HydraulicSimFB* __MK_GetPublic_HydraulicSimFB(int index) {
-    int slot = Hdy_GetSlotByAxisId(index);
-    if (slot < 0 || slot >= (int)HDY_MAX_HYDRAULIC_SIM_FB) {
+HYD_HydraulicSimFB* __MK_GetPublic_HydraulicSimFB(int index) {
+    int slot = Hyd_GetSlotByAxisId(index);
+    if (slot < 0 || slot >= (int)HYD_MAX_HYDRAULIC_SIM_FB) {
         return NULL;
     }
     if (!_sim_fb[slot].allocated) {
@@ -80,12 +80,12 @@ HDY_HydraulicSimFB* __MK_GetPublic_HydraulicSimFB(int index) {
     return &_sim_fb[slot];
 }
 
-void HDY_HydraulicSimFB_Cycle(HDY_HydraulicSimFB* fb) {
+void HYD_HydraulicSimFB_Cycle(HYD_HydraulicSimFB* fb) {
     if (fb == NULL || !fb->_initialized || fb->_env == NULL) return;
 
-    /* 共享模式下只读取快照，步进由 __HdySimulator_framework_Publish 统一完成 */
+    /* 共享模式下只读取快照，步进由 __HydSimulator_framework_Publish 统一完成 */
     if (fb->_isSharedEnv) {
-        Hdy_CopyAxisFeedbackToHandle(fb);
+        Hyd_CopyAxisFeedbackToHandle(fb);
         return;
     }
 
@@ -95,42 +95,42 @@ void HDY_HydraulicSimFB_Cycle(HDY_HydraulicSimFB* fb) {
                                 fb->enable,
                                 (float)fb->cmd_rpm,
                                 HydraulicSim_NormalizeDirection((int)fb->direction));
-    HydraulicSim_Step(fb->_env, HDY_SIM_DEFAULT_CYCLE_TIME_S);
-    Hdy_CopyAxisFeedbackToHandle(fb);
+    HydraulicSim_Step(fb->_env, HYD_SIM_DEFAULT_CYCLE_TIME_S);
+    Hyd_CopyAxisFeedbackToHandle(fb);
 }
 
-int __HdySimulator_framework_Init() {
+int __HydSimulator_framework_Init() {
     int i;
 
     HydraulicSim_Init(&g_shared_env);
     NextAllocatedHydraulicSimFB = 0U;
-    Hdy_ResetAxisMapping();
+    Hyd_ResetAxisMapping();
 
-    for (i = 0; i < HDY_MAX_HYDRAULIC_SIM_FB; ++i) {
-        Hdy_ResetHandle(&_sim_fb[i]);
+    for (i = 0; i < HYD_MAX_HYDRAULIC_SIM_FB; ++i) {
+        Hyd_ResetHandle(&_sim_fb[i]);
     }
 
     return 0;
 }
 
-void __HdySimulator_framework_Cleanup() {
+void __HydSimulator_framework_Cleanup() {
 }
 
-void __HdySimulator_framework_Retrieve() {
+void __HydSimulator_framework_Retrieve() {
 }
 
-void __HdySimulator_framework_Publish() {
+void __HydSimulator_framework_Publish() {
     unsigned int i;
 
-    HydraulicSim_Step(&g_shared_env, HDY_SIM_DEFAULT_CYCLE_TIME_S);
+    HydraulicSim_Step(&g_shared_env, HYD_SIM_DEFAULT_CYCLE_TIME_S);
     for (i = 0; i < NextAllocatedHydraulicSimFB; ++i) {
         if (_sim_fb[i].allocated) {
-            Hdy_CopyAxisFeedbackToHandle(&_sim_fb[i]);
+            Hyd_CopyAxisFeedbackToHandle(&_sim_fb[i]);
         }
     }
 }
 
-void __mcl_cmd_createSimAxis(HDY_CREATESIMAXIS *data__) {
+void __mcl_cmd_createSimAxis(HYD_CREATESIMAXIS *data__) {
     int axis_type;
     int axis_id;
 
@@ -139,12 +139,12 @@ void __mcl_cmd_createSimAxis(HDY_CREATESIMAXIS *data__) {
     if(!__GET_VAR(data__->DONE)) {
 
 		axis_type = (int) __GET_VAR(data__->AXISTYPE);
-		if (!Hdy_IsValidAxisType(axis_type)) {
+		if (!Hyd_IsValidAxisType(axis_type)) {
 			return;
 		}
 
 		/* 预分配 axis_id，但不提交计数器；注册失败时无需回退 */
-		if (NextAllocatedHydraulicSimFB >= HDY_MAX_HYDRAULIC_SIM_FB) {
+		if (NextAllocatedHydraulicSimFB >= HYD_MAX_HYDRAULIC_SIM_FB) {
 			return;
 		}
 		axis_id = (int) NextAllocatedHydraulicSimFB;
@@ -165,10 +165,10 @@ void __mcl_cmd_createSimAxis(HDY_CREATESIMAXIS *data__) {
 				(float) __GET_VAR(data__->MAXACC),
 				(float) __GET_VAR(data__->MAXDEC));
 
-		Hdy_InitSharedHandle(&_sim_fb[axis_id], axis_id, (HDY_UINT8) axis_type,
-				(HDY_REAL) __GET_VAR(data__->MAXVEL),
-				(HDY_REAL) __GET_VAR(data__->MAXACC),
-				(HDY_REAL) __GET_VAR(data__->MAXDEC));
+		Hyd_InitSharedHandle(&_sim_fb[axis_id], axis_id, (HYD_UINT8) axis_type,
+				(HYD_REAL) __GET_VAR(data__->MAXVEL),
+				(HYD_REAL) __GET_VAR(data__->MAXACC),
+				(HYD_REAL) __GET_VAR(data__->MAXDEC));
 
 		__SET_VAR(data__->, AXISID,, axis_id);
 		__SET_VAR(data__->, DONE,, 1);
@@ -176,9 +176,9 @@ void __mcl_cmd_createSimAxis(HDY_CREATESIMAXIS *data__) {
     }
 }
 
-void __mcl_cmd_moveSimAxis(HDY_MOVESIMAXIS *data__) {
+void __mcl_cmd_moveSimAxis(HYD_MOVESIMAXIS *data__) {
     int axis_id;
-    HDY_HydraulicSimFB* fb;
+    HYD_HydraulicSimFB* fb;
 
     if (data__ == NULL) return;
 
@@ -189,7 +189,7 @@ void __mcl_cmd_moveSimAxis(HDY_MOVESIMAXIS *data__) {
     }
 
     fb->enable = __GET_VAR(data__->ENABLE);
-    fb->cmd_rpm = (HDY_REAL)__GET_VAR(data__->CMD_RPM);
+    fb->cmd_rpm = (HYD_REAL)__GET_VAR(data__->CMD_RPM);
     fb->direction = HydraulicSim_NormalizeDirection((int)__GET_VAR(data__->DIRECTION));
 
     HydraulicSim_SetAxisCommand(&g_shared_env,
@@ -197,15 +197,15 @@ void __mcl_cmd_moveSimAxis(HDY_MOVESIMAXIS *data__) {
                                 fb->enable,
                                 (float)fb->cmd_rpm,
                                 (int)fb->direction);
-    Hdy_CopyAxisFeedbackToHandle(fb);
+    Hyd_CopyAxisFeedbackToHandle(fb);
 
     __SET_VAR(data__->, BUSY,, fb->active);
     __SET_VAR(data__->, ENO,, 1);
 }
 
-void __mcl_cmd_readSimAxis(HDY_READSIMAXIS *data__) {
+void __mcl_cmd_readSimAxis(HYD_READSIMAXIS *data__) {
     int axis_id;
-    HDY_HydraulicSimFB* fb;
+    HYD_HydraulicSimFB* fb;
 
     if (data__ == NULL) return;
     if (!__GET_VAR(data__->ENABLE)) {
@@ -218,7 +218,7 @@ void __mcl_cmd_readSimAxis(HDY_READSIMAXIS *data__) {
         return;
     }
 
-    Hdy_CopyAxisFeedbackToHandle(fb);
+    Hyd_CopyAxisFeedbackToHandle(fb);
 
     __SET_VAR(data__->, ACTIVE,, fb->active);
     __SET_VAR(data__->, POS_MM,, fb->pos_mm);

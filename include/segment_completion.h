@@ -1,17 +1,17 @@
-#ifndef HDY_SEGMENT_COMPLETION_H
-#define HDY_SEGMENT_COMPLETION_H
+#ifndef HYD_SEGMENT_COMPLETION_H
+#define HYD_SEGMENT_COMPLETION_H
 
 #include "common_types.h"
 
 typedef struct {
-    const HDY_MotionSegment* segment;
-    const HDY_AxisRef* axisRef;
-    const HDY_ExecutionReference* references;
-} HDY_SegmentCompletionContext;
+    const HYD_MotionSegment* segment;
+    const HYD_AxisRef* axisRef;
+    const HYD_ExecutionReference* references;
+} HYD_SegmentCompletionContext;
 
-HDY_BOOL HDY_SegmentCompletion_CheckWithContext(const HDY_SegmentCompletionContext* context);
-HDY_BOOL HDY_SegmentCompletion_Check(const HDY_MotionSegment* segment,
-                                     const HDY_AxisRef* axisRef,
-                                     HDY_REAL elapsed);
+HYD_BOOL HYD_SegmentCompletion_CheckWithContext(const HYD_SegmentCompletionContext* context);
+HYD_BOOL HYD_SegmentCompletion_Check(const HYD_MotionSegment* segment,
+                                     const HYD_AxisRef* axisRef,
+                                     HYD_REAL elapsed);
 
-#endif /* HDY_SEGMENT_COMPLETION_H */
+#endif /* HYD_SEGMENT_COMPLETION_H */

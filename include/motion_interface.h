@@ -1,5 +1,5 @@
-#ifndef HDY_MOTION_INTERFACE_H
-#define HDY_MOTION_INTERFACE_H
+#ifndef HYD_MOTION_INTERFACE_H
+#define HYD_MOTION_INTERFACE_H
 
 #include "motion_control.h"
 #include "accessor.h"
@@ -16,13 +16,13 @@
 4. 本类函数不会直接操作激活(ACTIVE)、忙碌(BUSY)输出信号；
    该类输出由内部状态机在Cycle()/Scan()周期内，根据待执行指令与当前运行上下文统一管理。
 5. 备注：本接口函数的具体实现位于 motion_control.c 文件；
-   设计用于可访问 HDY_MotionControlFB 实例的外部代码调用（如通过API分层接口、嵌入式场景直接调用）。 */
+   设计用于可访问 HYD_MotionControlFB 实例的外部代码调用（如通过API分层接口、嵌入式场景直接调用）。 */
 
 
 
 
 
-__DECLARE_STRUCT_TYPE(HDY_AXISMOTION,
+__DECLARE_STRUCT_TYPE(HYD_AXISMOTION,
     USINT SEGMENTTAG;
     USINT PLANNER;
     USINT MODE;
@@ -43,7 +43,7 @@ __DECLARE_STRUCT_TYPE(HDY_AXISMOTION,
     REAL TIMESTAMP;
 )
 
-// FUNCTION_BLOCK HDY_MOVEPROFILE
+// FUNCTION_BLOCK HYD_MOVEPROFILE
 // Recipe模式：配方驱动的多段运动控制
 // MOTION字段为双向通道：
 //   输入侧(ACT*): 轴反馈数据 → AXIS_REF
@@ -58,7 +58,7 @@ typedef struct
    __DECLARE_VAR(BOOL, EN)
    __DECLARE_VAR(BOOL, ENO)
    __DECLARE_VAR(BOOL, EXECUTE)
-   __DECLARE_VAR(HDY_AXISMOTION, MOTION)
+   __DECLARE_VAR(HYD_AXISMOTION, MOTION)
    __DECLARE_VAR(SINT, AXISID)
    __DECLARE_VAR(INT, BUFFERMODE)
 
@@ -74,9 +74,9 @@ typedef struct
    __DECLARE_VAR(BOOL, ACTIVE0)
    __DECLARE_VAR(BOOL, _PENDING)
    __DECLARE_VAR(WORD, _EXEC_ID)
-} HDY_MOVEPROFILE;
+} HYD_MOVEPROFILE;
 
-// FUNCTION_BLOCK HDY_LOADPROFILE
+// FUNCTION_BLOCK HYD_LOADPROFILE
 // Data part
 typedef struct
 {
@@ -84,7 +84,7 @@ typedef struct
    __DECLARE_VAR(BOOL, EN)
    __DECLARE_VAR(BOOL, ENO)
    __DECLARE_VAR(BOOL, EXECUTE)
-   __DECLARE_VAR(HDY_AXISMOTION, MOTION)
+   __DECLARE_VAR(HYD_AXISMOTION, MOTION)
    __DECLARE_VAR(SINT, AXISID)
 
    __DECLARE_VAR(BOOL, BUSY)
@@ -98,9 +98,9 @@ typedef struct
    // FB private variables - TEMP, private and located variables
    __DECLARE_VAR(BOOL, EXECUTE0)
    __DECLARE_VAR(BOOL, DONE0)
-} HDY_LOADPROFILE;
+} HYD_LOADPROFILE;
 
-// FUNCTION_BLOCK HDY_STOP
+// FUNCTION_BLOCK HYD_STOP
 // Data part
 typedef struct {
     __DECLARE_VAR(BOOL,EN)
@@ -119,9 +119,9 @@ typedef struct {
     __DECLARE_VAR(BOOL,DONE0)
     __DECLARE_VAR(BOOL,ACTIVE0)
     __DECLARE_VAR(BOOL,_PENDING)
-} HDY_STOP;
+} HYD_STOP;
 
-// FUNCTION_BLOCK HDY_MoveAbsolute
+// FUNCTION_BLOCK HYD_MoveAbsolute
 // Data part
 typedef struct {
     __DECLARE_VAR(BOOL,EN)
@@ -149,9 +149,9 @@ typedef struct {
     __DECLARE_VAR(BOOL,ACTIVE0)
     __DECLARE_VAR(BOOL,_PENDING)
     __DECLARE_VAR(WORD,_EXEC_ID)
-} HDY_MOVEABSOLUTE;
+} HYD_MOVEABSOLUTE;
 
-// FUNCTION_BLOCK HDY_MoveVelocity
+// FUNCTION_BLOCK HYD_MoveVelocity
 // Data part
 typedef struct {
     __DECLARE_VAR(BOOL,EN)
@@ -178,9 +178,9 @@ typedef struct {
     __DECLARE_VAR(BOOL,ACTIVE0)
     __DECLARE_VAR(BOOL,_PENDING)
     __DECLARE_VAR(WORD,_EXEC_ID)
-} HDY_MOVEVELOCITY;
+} HYD_MOVEVELOCITY;
 
-// FUNCTION_BLOCK HDY_Reset
+// FUNCTION_BLOCK HYD_Reset
 // Data part
 typedef struct {
     __DECLARE_VAR(BOOL,EN)
@@ -194,9 +194,9 @@ typedef struct {
     __DECLARE_VAR(WORD,ERRORID)
     __DECLARE_VAR(BOOL,EXECUTE0)
     __DECLARE_VAR(BOOL,DONE0)
-} HDY_RESET;
+} HYD_RESET;
 
-// FUNCTION_BLOCK HDY_PressureHandle
+// FUNCTION_BLOCK HYD_PressureHandle
 // Data part
 typedef struct {
     __DECLARE_VAR(BOOL,EN)
@@ -220,9 +220,9 @@ typedef struct {
     __DECLARE_VAR(BOOL,ACTIVE0)
     __DECLARE_VAR(BOOL,_PENDING)
     __DECLARE_VAR(WORD,_EXEC_ID)
-} HDY_PRESSUREHANDLE;
+} HYD_PRESSUREHANDLE;
 
-// FUNCTION_BLOCK HDY_CREATEMOTION
+// FUNCTION_BLOCK HYD_CREATEMOTION
 // Data part
 typedef struct
 {
@@ -243,9 +243,9 @@ typedef struct
    // FB private variables - TEMP, private and located variables
    __DECLARE_VAR(BOOL, DONE0)
 
-} HDY_CREATEMOTION;
+} HYD_CREATEMOTION;
 
-// FUNCTION_BLOCK HDY_SETAXISFEEDBACK
+// FUNCTION_BLOCK HYD_SETAXISFEEDBACK
 // Data part
 typedef struct
 {
@@ -270,9 +270,9 @@ typedef struct
    // FB private variables - TEMP, private and located variables
    __DECLARE_VAR(BOOL, DONE0)
 
-} HDY_SETAXISFEEDBACK;
+} HYD_SETAXISFEEDBACK;
 
-// FUNCTION_BLOCK HDY_GETPUMPREQUEST
+// FUNCTION_BLOCK HYD_GETPUMPREQUEST
 // Data part
 typedef struct
 {
@@ -291,9 +291,9 @@ typedef struct
    // FB private variables - TEMP, private and located variables
    __DECLARE_VAR(BOOL, DONE0)
 
-} HDY_GETPUMPREQUEST;
+} HYD_GETPUMPREQUEST;
 
-// FUNCTION_BLOCK HDY_READSTATUS
+// FUNCTION_BLOCK HYD_READSTATUS
 // Data part
 typedef struct
 {
@@ -311,9 +311,9 @@ typedef struct
    // FB private variables - TEMP, private and located variables
 
 
-} HDY_READSTATUS;
+} HYD_READSTATUS;
 
-// FUNCTION_BLOCK HDY_READERROR
+// FUNCTION_BLOCK HYD_READERROR
 // Data part
 typedef struct
 {
@@ -331,25 +331,25 @@ typedef struct
 
    // FB private variables - TEMP, private and located variables
 
-} HDY_READERROR;
+} HYD_READERROR;
 
-extern int  __HdyMotion_framework_Init();
-extern void __HdyMotion_framework_Cleanup();
-extern void __HdyMotion_framework_Retrieve();
-extern void __HdyMotion_framework_Publish();
+extern int  __HydMotion_framework_Init();
+extern void __HydMotion_framework_Cleanup();
+extern void __HydMotion_framework_Retrieve();
+extern void __HydMotion_framework_Publish();
 
-extern void __mcl_cmd_CreateMotion(HDY_CREATEMOTION *data__);
-extern void __mcl_cmd_LoadProfile(HDY_LOADPROFILE *data__);
-extern void __mcl_cmd_MoveProfile(HDY_MOVEPROFILE *data__);
-extern void __mcl_cmd_Stop(HDY_STOP *data__);
-extern void __mcl_cmd_MoveAbsolute(HDY_MOVEABSOLUTE *data__);
-extern void __mcl_cmd_Reset(HDY_RESET *data__);
-extern void __mcl_cmd_MoveVelocity(HDY_MOVEVELOCITY *data__);
-extern void __mcl_cmd_PressureHandle(HDY_PRESSUREHANDLE *data__);
-extern void __mcl_cmd_SetAxisFeedback(HDY_SETAXISFEEDBACK *data__);
-extern void __mcl_cmd_GetPumpRequest(HDY_GETPUMPREQUEST *data__);
+extern void __mcl_cmd_CreateMotion(HYD_CREATEMOTION *data__);
+extern void __mcl_cmd_LoadProfile(HYD_LOADPROFILE *data__);
+extern void __mcl_cmd_MoveProfile(HYD_MOVEPROFILE *data__);
+extern void __mcl_cmd_Stop(HYD_STOP *data__);
+extern void __mcl_cmd_MoveAbsolute(HYD_MOVEABSOLUTE *data__);
+extern void __mcl_cmd_Reset(HYD_RESET *data__);
+extern void __mcl_cmd_MoveVelocity(HYD_MOVEVELOCITY *data__);
+extern void __mcl_cmd_PressureHandle(HYD_PRESSUREHANDLE *data__);
+extern void __mcl_cmd_SetAxisFeedback(HYD_SETAXISFEEDBACK *data__);
+extern void __mcl_cmd_GetPumpRequest(HYD_GETPUMPREQUEST *data__);
 
-extern void __mcl_cmd_ReadStatus(HDY_READSTATUS* data__);
-extern void __mcl_cmd_ReadError(HDY_READERROR* data__);
+extern void __mcl_cmd_ReadStatus(HYD_READSTATUS* data__);
+extern void __mcl_cmd_ReadError(HYD_READERROR* data__);
 
 #endif

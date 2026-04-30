@@ -10,7 +10,7 @@ Direct模式允许工艺层完全控制段切换，无需使用配方机制。�
 
 ```c
 // 初始化功能块
-void HDY_MotionControlFB_Init(HDY_MotionControlFB* fb);
+void HYD_MotionControlFB_Init(HYD_MotionControlFB* fb);
 
 // 配置Direct模式
 fb.EN = true;                    // 使能功能块
@@ -23,30 +23,30 @@ fb.PUMP_SPEED_LIMIT = 3000.0;   // 泵速限制
 
 ```c
 // 加载Direct段参数
-HDY_BOOL HDY_MotionControlFB_LoadDirectSegment(
-    HDY_MotionControlFB* fb, 
-    const HDY_MotionSegment* segment
+HYD_BOOL HYD_MotionControlFB_LoadDirectSegment(
+    HYD_MotionControlFB* fb, 
+    const HYD_MotionSegment* segment
 );
 
 // 清除Direct段参数
-void HDY_MotionControlFB_ClearDirectSegment(HDY_MotionControlFB* fb);
+void HYD_MotionControlFB_ClearDirectSegment(HYD_MotionControlFB* fb);
 ```
 
 ### 3. 执行控制
 
 ```c
 // 启动段执行
-HDY_BOOL HDY_MotionControlFB_StartSegment(
-    HDY_MotionControlFB* fb, 
+HYD_BOOL HYD_MotionControlFB_StartSegment(
+    HYD_MotionControlFB* fb, 
     size_t segmentIndex,  // 在Direct模式下忽略此参数
-    HDY_TIME timestamp
+    HYD_TIME timestamp
 );
 
 // 周期性执行（推荐使用Execute）
-void HDY_MotionControlFB_Execute(HDY_MotionControlFB* fb);
+void HYD_MotionControlFB_Execute(HYD_MotionControlFB* fb);
 
 // 或者使用Scan（自动处理边沿触发）
-void HDY_MotionControlFB_Scan(HDY_MotionControlFB* fb);
+void HYD_MotionControlFB_Scan(HYD_MotionControlFB* fb);
 ```
 
 ### 4. 状态监控
@@ -93,26 +93,26 @@ fb.LAST_FAULT_SNAPSHOT          // 最后故障快照
 工艺层PLC程序 (1ms周期)
     ↓
 1. 初始化
-    HDY_MotionControlFB_Init()
+    HYD_MotionControlFB_Init()
     配置参数
     ↓
 2. 段配置
-    HDY_MotionControlFB_LoadDirectSegment()
+    HYD_MotionControlFB_LoadDirectSegment()
     ↓
 3. 段启动
-    HDY_MotionControlFB_StartSegment()
+    HYD_MotionControlFB_StartSegment()
     ↓
 4. 周期循环 (每个PLC周期)
     更新AXIS_REF反馈
-    HDY_MotionControlFB_Execute()
+    HYD_MotionControlFB_Execute()
     读取PUMP_SPEED输出
     检查SEGMENT_COMPLETED
     ↓
 5. 段切换 (工艺层决策)
     检查SEGMENT_COMPLETED
     配置新段参数
-    HDY_MotionControlFB_LoadDirectSegment()
-    HDY_MotionControlFB_StartSegment()
+    HYD_MotionControlFB_LoadDirectSegment()
+    HYD_MotionControlFB_StartSegment()
     ↓
 6. 重复步骤4-5
 ```
@@ -120,7 +120,7 @@ fb.LAST_FAULT_SNAPSHOT          // 最后故障快照
 ### 内部执行流程
 
 ```
-HDY_MotionControlFB_Execute()
+HYD_MotionControlFB_Execute()
     ↓
 1. 输入处理
     - 检查EN/RESET信号
@@ -133,26 +133,26 @@ HDY_MotionControlFB_Execute()
     - 执行状态转换
     ↓
 3. 压力斜坡控制
-    - HDY_RampController_Execute()
+    - HYD_RampController_Execute()
     - 平滑压力目标变化
     ↓
 4. 运动规划
-    - HDY_MotionPlanner_Execute()
+    - HYD_MotionPlanner_Execute()
     - 根据控制模式计算速度/流量
     - 应用位置/时间约束
     ↓
 5. 压力控制
-    - HDY_PressureController_Execute()
+    - HYD_PressureController_Execute()
     - P/PI/PID/RBF-PID策略
     - 前馈+反馈控制
     ↓
 6. 泵速转换
-    - HDY_PumpConverter_Execute()
+    - HYD_PumpConverter_Execute()
     - 流量到泵速转换
     - 应用泵速限制
     ↓
 7. 段完成检查
-    - HDY_SegmentCompletion_CheckWithContext()
+    - HYD_SegmentCompletion_CheckWithContext()
     - 检查位置/时间/压力/流量条件
     ↓
 8. 诊断更新
@@ -173,23 +173,23 @@ HDY_MotionControlFB_Execute()
 
 #define CYCLE_PERIOD 0.001  // 1ms PLC周期
 
-HDY_MotionControlFB fb;
-HDY_TIME currentTime = 0.0;
+HYD_MotionControlFB fb;
+HYD_TIME currentTime = 0.0;
 
 // 1. 初始化
-HDY_MotionControlFB_Init(&fb);
+HYD_MotionControlFB_Init(&fb);
 fb.EN = true;
 fb.USE_RECIPE = false;  // Direct模式
 fb.FLOW_TO_PUMP_SPEED_GAIN = 1.2;
 fb.PUMP_SPEED_LIMIT = 3000.0;
 
 // 2. 配置并启动注射段
-HDY_MotionSegment injectionSeg;
+HYD_MotionSegment injectionSeg;
 memset(&injectionSeg, 0, sizeof(injectionSeg));
 injectionSeg.segmentTag = 1;  // 段标签（替代原name字段）
-injectionSeg.mode = HDY_MODE_SPEED_RAMP;
-injectionSeg.endCondition = HDY_END_POSITION;
-injectionSeg.direction = HDY_DIRECTION_EXTEND;
+injectionSeg.mode = HYD_MODE_SPEED_RAMP;
+injectionSeg.endCondition = HYD_END_POSITION;
+injectionSeg.direction = HYD_DIRECTION_EXTEND;
 injectionSeg.targetPosition = 100.0;  // mm
 injectionSeg.maxVelocity = 200.0;    // mm/s
 injectionSeg.maxAcceleration = 500.0; // mm/s²
@@ -198,8 +198,8 @@ injectionSeg.targetFlow = 40.0;      // L/min
 injectionSeg.velocityToFlowGain = 0.2;
 injectionSeg.positionTolerance = 0.1;
 
-HDY_MotionControlFB_LoadDirectSegment(&fb, &injectionSeg);
-HDY_MotionControlFB_StartSegment(&fb, 0, currentTime);
+HYD_MotionControlFB_LoadDirectSegment(&fb, &injectionSeg);
+HYD_MotionControlFB_StartSegment(&fb, 0, currentTime);
 
 // 3. 周期循环
 while (!fb.SEGMENT_COMPLETED) {
@@ -211,7 +211,7 @@ while (!fb.SEGMENT_COMPLETED) {
     fb.AXIS_REF.timestamp = currentTime;
     
     // 执行控制周期
-    HDY_MotionControlFB_Execute(&fb);
+    HYD_MotionControlFB_Execute(&fb);
     
     // 输出泵速命令
     SetPumpSpeed(fb.PUMP_SPEED);
@@ -226,25 +226,25 @@ while (!fb.SEGMENT_COMPLETED) {
 }
 
 // 4. 工艺层决定切换到保压段
-HDY_MotionSegment holdingSeg;
+HYD_MotionSegment holdingSeg;
 memset(&holdingSeg, 0, sizeof(holdingSeg));
 holdingSeg.segmentTag = 2;  // 段标签（替代原name字段）
-holdingSeg.mode = HDY_MODE_PRESSURE_CLOSED_LOOP;
-holdingSeg.endCondition = HDY_END_TIME;
-holdingSeg.direction = HDY_DIRECTION_HOLD;
+holdingSeg.mode = HYD_MODE_PRESSURE_CLOSED_LOOP;
+holdingSeg.endCondition = HYD_END_TIME;
+holdingSeg.direction = HYD_DIRECTION_HOLD;
 holdingSeg.targetPressure = 80.0;   // MPa
 holdingSeg.targetFlow = 5.0;       // L/min
 holdingSeg.maxFlow = 20.0;
 holdingSeg.duration = 2.0;         // s
-holdingSeg.pressureController = HDY_PRESSURE_CONTROLLER_PI;
+holdingSeg.pressureController = HYD_PRESSURE_CONTROLLER_PI;
 holdingSeg.pressureKp = 0.5;
 holdingSeg.pressureKi = 0.1;
 holdingSeg.pressureIntegralLimit = 10.0;
 holdingSeg.pressureRampRate = 5.0;
 holdingSeg.pressureTolerance = 0.5;
 
-HDY_MotionControlFB_LoadDirectSegment(&fb, &holdingSeg);
-HDY_MotionControlFB_StartSegment(&fb, 0, currentTime);
+HYD_MotionControlFB_LoadDirectSegment(&fb, &holdingSeg);
+HYD_MotionControlFB_StartSegment(&fb, 0, currentTime);
 
 // 5. 继续周期循环...
 ```
@@ -269,7 +269,7 @@ HDY_MotionControlFB_StartSegment(&fb, 0, currentTime);
 
 压力控制通过以下机制保证平滑性：
 
-- **压力斜坡控制器**: `HDY_RampController` 平滑压力目标变化
+- **压力斜坡控制器**: `HYD_RampController` 平滑压力目标变化
 - **斜坡率限制**: `pressureRampRate` 限制压力变化率 `dP/dt`
 - **测量滤波**: `pressureFilterAlpha` 压力测量滤波
 - **微分滤波**: `pressureDerivativeFilterAlpha` 微分项滤波
@@ -295,7 +295,7 @@ velocityMagnitude = sqrt(2 * acceleration * remainingDistance);  // 连续函数
 
 ```c
 // 段内加速度恒定
-const HDY_REAL maxAcceleration = segment->maxAcceleration;
+const HYD_REAL maxAcceleration = segment->maxAcceleration;
 
 // 段切换时加速度可能跳变（不同段的加速度参数不同）
 // 但速度保持连续，这是工业控制中常见且可接受的
@@ -307,9 +307,9 @@ const HDY_REAL maxAcceleration = segment->maxAcceleration;
 // ramp_controller.c
 // 压力斜坡保证平滑性
 if (input->rampRate > 0.0) {
-    HDY_REAL maxChange = input->rampRate * deltaTime;
+    HYD_REAL maxChange = input->rampRate * deltaTime;
     // 限制压力变化率，确保平滑
-    controller->rampedPressure = HDY_ClampReal(
+    controller->rampedPressure = HYD_ClampReal(
         controller->rampedPressure + maxChange,
         controller->rampedPressure,
         input->targetPressure
@@ -322,12 +322,12 @@ filteredPressure = alpha * currentPressure + (1-alpha) * previousPressure
 
 ## 控制模式选择
 
-### 1. 位置模式 (HDY_MODE_POSITION)
+### 1. 位置模式 (HYD_MODE_POSITION)
 
 ```c
-segment.mode = HDY_MODE_POSITION;
-segment.planner = HDY_PLANNER_POSITION_BASED;  // 或 TIME_BASED
-segment.endCondition = HDY_END_POSITION;
+segment.mode = HYD_MODE_POSITION;
+segment.planner = HYD_PLANNER_POSITION_BASED;  // 或 TIME_BASED
+segment.endCondition = HYD_END_POSITION;
 segment.targetPosition = 100.0;
 ```
 
@@ -341,12 +341,12 @@ segment.targetPosition = 100.0;
 - 保证准确停在目标位置
 - 支持EXTEND/RETRACT方向
 
-### 2. 速度斜坡模式 (HDY_MODE_SPEED_RAMP)
+### 2. 速度斜坡模式 (HYD_MODE_SPEED_RAMP)
 
 ```c
-segment.mode = HDY_MODE_SPEED_RAMP;
-segment.planner = HDY_PLANNER_TIME_BASED;
-segment.endCondition = HDY_END_POSITION;  // 或 HDY_END_TIME
+segment.mode = HYD_MODE_SPEED_RAMP;
+segment.planner = HYD_PLANNER_TIME_BASED;
+segment.endCondition = HYD_END_POSITION;  // 或 HYD_END_TIME
 segment.maxVelocity = 200.0;
 segment.maxAcceleration = 500.0;
 ```
@@ -361,14 +361,14 @@ segment.maxAcceleration = 500.0;
 - 可选位置制动保护
 - 灵活的结束条件
 
-### 3. 压力闭环模式 (HDY_MODE_PRESSURE_CLOSED_LOOP)
+### 3. 压力闭环模式 (HYD_MODE_PRESSURE_CLOSED_LOOP)
 
 ```c
-segment.mode = HDY_MODE_PRESSURE_CLOSED_LOOP;
-segment.endCondition = HDY_END_TIME;  // 或 HDY_END_PRESSURE
+segment.mode = HYD_MODE_PRESSURE_CLOSED_LOOP;
+segment.endCondition = HYD_END_TIME;  // 或 HYD_END_PRESSURE
 segment.targetPressure = 80.0;
 segment.targetFlow = 5.0;
-segment.pressureController = HDY_PRESSURE_CONTROLLER_PI;
+segment.pressureController = HYD_PRESSURE_CONTROLLER_PI;
 segment.pressureKp = 0.5;
 segment.pressureKi = 0.1;
 segment.pressureRampRate = 5.0;
@@ -404,8 +404,8 @@ fb.AXIS_REF.timestamp = systemTime;           // 时间戳
 // 在SEGMENT_COMPLETED为true时切换
 if (fb.SEGMENT_COMPLETED) {
     // 配置新段
-    HDY_MotionControlFB_LoadDirectSegment(&fb, &newSegment);
-    HDY_MotionControlFB_StartSegment(&fb, 0, currentTime);
+    HYD_MotionControlFB_LoadDirectSegment(&fb, &newSegment);
+    HYD_MotionControlFB_StartSegment(&fb, 0, currentTime);
 }
 ```
 
@@ -414,19 +414,19 @@ if (fb.SEGMENT_COMPLETED) {
 ```c
 // 检查故障状态
 if (fb.FAULT || fb.ERROR) {
-    HDY_DiagnosticCode code = fb.DIAGNOSTIC.code;
+    HYD_DiagnosticCode code = fb.DIAGNOSTIC.code;
     switch (code) {
-        case HDY_DIAG_CODE_OVER_PRESSURE:
+        case HYD_DIAG_CODE_OVER_PRESSURE:
             // 处理超压
             break;
-        case HDY_DIAG_CODE_TIMEOUT:
+        case HYD_DIAG_CODE_TIMEOUT:
             // 处理超时
             break;
         // ...其他故障
     }
     
     // 确认并清除诊断
-    HDY_MotionControlFB_AcknowledgeDiagnostics(&fb);
+    HYD_MotionControlFB_AcknowledgeDiagnostics(&fb);
 }
 ```
 
@@ -434,8 +434,8 @@ if (fb.FAULT || fb.ERROR) {
 
 ```c
 // 监控压力循环状态
-#if HDY_ENABLE_PRESSURE_LOOP_TELEMETRY
-HDY_PressureLoopState* loop = &fb.STATE.pressureLoop;
+#if HYD_ENABLE_PRESSURE_LOOP_TELEMETRY
+HYD_PressureLoopState* loop = &fb.STATE.pressureLoop;
 printf("Pressure: %.2f MPa, Error: %.2f MPa, Output: %.2f L/min\n",
        loop->filteredPressure, loop->controlError, loop->outputFlow);
 printf("Adaptive: Kp=%.2f, Ki=%.2f, Kd=%.2f\n",

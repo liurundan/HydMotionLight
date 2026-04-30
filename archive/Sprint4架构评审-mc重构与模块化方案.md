@@ -54,15 +54,15 @@
 #### 模块1：命令处理（Command Processing）
 **代码行数**：约300行
 **主要函数**：
-- `HDY_QueuePendingCommand()`
-- `HDY_RequestCommandQueue()`
-- `HDY_MotionControlFB_ConsumePendingCommand()`
-- `HDY_MotionControlFB_SampleCommands()`
-- `HDY_RequestStartCommand()`
-- `HDY_RequestNextRequest()`
-- `HDY_RequestHoldCommand()`
-- `HDY_RequestResumeCommand()`
-- `HDY_RequestAbortCommand()`
+- `HYD_QueuePendingCommand()`
+- `HYD_RequestCommandQueue()`
+- `HYD_MotionControlFB_ConsumePendingCommand()`
+- `HYD_MotionControlFB_SampleCommands()`
+- `HYD_RequestStartCommand()`
+- `HYD_RequestNextRequest()`
+- `HYD_RequestHoldCommand()`
+- `HYD_RequestResumeCommand()`
+- `HYD_RequestAbortCommand()`
 
 **职责**：
 - 命令验证（合法性检查）
@@ -73,13 +73,13 @@
 #### 模块2：状态机（State Machine）
 **代码行数**：约200行
 **主要函数**：
-- `HDY_ResolveEffectiveFbState()`
-- `HDY_IsCommandAllowedInState()`
-- `HDY_CommandAllowedStateMask()`
-- `HDY_FbStateToString()`
-- `HDY_HasSelectedStartSource()`
-- `HDY_UsesRecipeSource()`
-- `HDY_MotionControlFB_RunStateMachine()`
+- `HYD_ResolveEffectiveFbState()`
+- `HYD_IsCommandAllowedInState()`
+- `HYD_CommandAllowedStateMask()`
+- `HYD_FbStateToString()`
+- `HYD_HasSelectedStartSource()`
+- `HYD_UsesRecipeSource()`
+- `HYD_MotionControlFB_RunStateMachine()`
 
 **职责**：
 - 状态解析（EN/RESET影响）
@@ -90,15 +90,15 @@
 #### 模块3：运行时编排（Runtime Orchestration）
 **代码行数**：约600行
 **主要函数**：
-- `HDY_MotionControlFB_RunRunningState()`
-- `HDY_PrimeSegmentControllers()`
-- `HDY_BeginSegment()`
-- `HDY_AdvanceToNextSegment()`
-- `HDY_EnterHoldNow()`
-- `HDY_ResumeHeldSegment()`
-- `HDY_AbortNow()`
-- `HDY_MaintainNonExecutingState()`
-- `HDY_MaintainPausedHoldState()`
+- `HYD_MotionControlFB_RunRunningState()`
+- `HYD_PrimeSegmentControllers()`
+- `HYD_BeginSegment()`
+- `HYD_AdvanceToNextSegment()`
+- `HYD_EnterHoldNow()`
+- `HYD_ResumeHeldSegment()`
+- `HYD_AbortNow()`
+- `HYD_MaintainNonExecutingState()`
+- `HYD_MaintainPausedHoldState()`
 
 **职责**：
 - 段启动/切换/完成处理
@@ -110,11 +110,11 @@
 #### 模块4：故障处理（Fault Handling）
 **代码行数**：约250行
 **主要函数**：
-- `HDY_ReportFault()`
-- `HDY_ReportCommandNotAllowed()`
-- `HDY_ReportPendingCommandConflict()`
-- `HDY_RecordDiagnosticEvent()`
-- `HDY_ProtectionManager_EnterFaultStop()`
+- `HYD_ReportFault()`
+- `HYD_ReportCommandNotAllowed()`
+- `HYD_ReportPendingCommandConflict()`
+- `HYD_RecordDiagnosticEvent()`
+- `HYD_ProtectionManager_EnterFaultStop()`
 
 **职责**：
 - 故障上报
@@ -125,11 +125,11 @@
 #### 模块5：辅助工具（Utilities）
 **代码行数**：约100行
 **主要函数**：
-- `HDY_MinReal()`
-- `HDY_AbsReal()`
-- `HDY_IsFiniteReal()`
-- `HDY_CommandToString()`
-- `HDY_FbStateToString()`
+- `HYD_MinReal()`
+- `HYD_AbsReal()`
+- `HYD_IsFiniteReal()`
+- `HYD_CommandToString()`
+- `HYD_FbStateToString()`
 
 **职责**：
 - 数学工具函数
@@ -138,19 +138,19 @@
 #### 模块6：初始化与公共接口（Initialization & Public API）
 **代码行数**：约80行
 **主要函数**：
-- `HDY_MotionControlFB_Init()`
-- `HDY_MotionControlFB_LoadRecipe()`
-- `HDY_MotionControlFB_LoadDirectSegment()`
-- `HDY_MotionControlFB_ClearDirectSegment()`
-- `HDY_MotionControlFB_StartSegment()`
-- `HDY_MotionControlFB_NextSegment()`
-- `HDY_MotionControlFB_Hold()`
-- `HDY_MotionControlFB_Resume()`
-- `HDY_MotionControlFB_Abort()`
-- `HDY_MotionControlFB_AcknowledgeDiagnostics()`
-- `HDY_MotionControlFB_Cycle()`
-- `HDY_MotionControlFB_Scan()`
-- `HDY_MotionControlFB_Execute()`
+- `HYD_MotionControlFB_Init()`
+- `HYD_MotionControlFB_LoadRecipe()`
+- `HYD_MotionControlFB_LoadDirectSegment()`
+- `HYD_MotionControlFB_ClearDirectSegment()`
+- `HYD_MotionControlFB_StartSegment()`
+- `HYD_MotionControlFB_NextSegment()`
+- `HYD_MotionControlFB_Hold()`
+- `HYD_MotionControlFB_Resume()`
+- `HYD_MotionControlFB_Abort()`
+- `HYD_MotionControlFB_AcknowledgeDiagnostics()`
+- `HYD_MotionControlFB_Cycle()`
+- `HYD_MotionControlFB_Scan()`
+- `HYD_MotionControlFB_Execute()`
 
 **职责**：
 - 函数块初始化
@@ -165,7 +165,7 @@
 | 文件行数 | 1533行 | < 1000行 | ❌ 超出53% |
 | 函数数量 | 约40个 | 约30个 | ❌ 超出33% |
 | 平均函数长度 | 约38行 | < 30行 | ⚠️ 偏长 |
-| 最大函数长度 | 约180行（HDY_MotionControlFB_RunRunningState） | < 80行 | ❌ 严重超标 |
+| 最大函数长度 | 约180行（HYD_MotionControlFB_RunRunningState） | < 80行 | ❌ 严重超标 |
 | 静态函数比例 | 约87% | 约80% | ✅ 合理 |
 | 循环嵌套深度 | 最深4层 | < 3层 | ⚠️ 偏深 |
 | 分支复杂度 | 较高 | 中等 | ⚠️ 需优化 |
@@ -234,63 +234,63 @@ motion_control.c
 ```c
 /* motion_internal/motion_command.h */
 
-#ifndef HDY_MOTION_COMMAND_H
-#define HDY_MOTION_COMMAND_H
+#ifndef HYD_MOTION_COMMAND_H
+#define HYD_MOTION_COMMAND_H
 
 #include "motion_control.h"
 
 /* 命令验证结果 */
 typedef struct {
-    HDY_BOOL valid;
-    HDY_DiagnosticCode errorCode;
-    char errorMessage[HDY_MESSAGE_MAX];
-} HDY_CommandValidationResult;
+    HYD_BOOL valid;
+    HYD_DiagnosticCode errorCode;
+    char errorMessage[HYD_MESSAGE_MAX];
+} HYD_CommandValidationResult;
 
 /* 初始化命令模块 */
-void HDY_Command_Init(HDY_MotionControlFB* fb);
+void HYD_Command_Init(HYD_MotionControlFB* fb);
 
 /* 验证启动命令 */
-HDY_BOOL HDY_Command_ValidateStartRequest(
-    const HDY_MotionControlFB* fb,
+HYD_BOOL HYD_Command_ValidateStartRequest(
+    const HYD_MotionControlFB* fb,
     size_t segmentIndex,
-    HDY_DiagnosticCode* code,
+    HYD_DiagnosticCode* code,
     char* message,
     size_t messageSize);
 
 /* 验证Next命令 */
-HDY_BOOL HDY_Command_ValidateNextRequest(
-    const HDY_MotionControlFB* fb,
-    HDY_DiagnosticCode* code,
+HYD_BOOL HYD_Command_ValidateNextRequest(
+    const HYD_MotionControlFB* fb,
+    HYD_DiagnosticCode* code,
     char* message,
     size_t messageSize);
 
 /* 验证命令在当前状态是否允许 */
-HDY_BOOL HDY_Command_IsAllowedInState(
-    HDY_FbCommand command,
-    HDY_FbState state);
+HYD_BOOL HYD_Command_IsAllowedInState(
+    HYD_FbCommand command,
+    HYD_FbState state);
 
 /* 排队待处理命令 */
-HDY_BOOL HDY_Command_Queue(
-    HDY_MotionControlFB* fb,
-    HDY_FbCommand command,
-    HDY_UINT segmentIndex,
-    HDY_TIME timestamp);
+HYD_BOOL HYD_Command_Queue(
+    HYD_MotionControlFB* fb,
+    HYD_FbCommand command,
+    HYD_UINT segmentIndex,
+    HYD_TIME timestamp);
 
 /* 消费待处理命令 */
-HDY_BOOL HDY_Command_Consume(
-    HDY_MotionControlFB* fb,
-    HDY_FbCommand* processedCommand);
+HYD_BOOL HYD_Command_Consume(
+    HYD_MotionControlFB* fb,
+    HYD_FbCommand* processedCommand);
 
 /* 采样START_SEGMENT输入 */
-void HDY_Command_SampleStartInput(HDY_MotionControlFB* fb);
+void HYD_Command_SampleStartInput(HYD_MotionControlFB* fb);
 
 /* 清除待处理命令 */
-void HDY_Command_ClearPending(HDY_MotionControlFB* fb);
+void HYD_Command_ClearPending(HYD_MotionControlFB* fb);
 
 /* 清除START_SEGMENT输入 */
-void HDY_Command_ClearStartInput(HDY_MotionControlFB* fb);
+void HYD_Command_ClearStartInput(HYD_MotionControlFB* fb);
 
-#endif /* HDY_MOTION_COMMAND_H */
+#endif /* HYD_MOTION_COMMAND_H */
 ```
 
 **实现要点**：
@@ -315,70 +315,70 @@ void HDY_Command_ClearStartInput(HDY_MotionControlFB* fb);
 ```c
 /* motion_internal/motion_state.h */
 
-#ifndef HDY_MOTION_STATE_H
-#define HDY_MOTION_STATE_H
+#ifndef HYD_MOTION_STATE_H
+#define HYD_MOTION_STATE_H
 
 #include "motion_control.h"
 
 /* 解析有效状态（考虑EN影响） */
-HDY_FbState HDY_State_ResolveEffective(
-    const HDY_MotionControlFB* fb);
+HYD_FbState HYD_State_ResolveEffective(
+    const HYD_MotionControlFB* fb);
 
 /* 判断命令是否在当前状态允许 */
-HDY_BOOL HDY_State_IsCommandAllowed(
-    HDY_FbCommand command,
-    HDY_FbState state);
+HYD_BOOL HYD_State_IsCommandAllowed(
+    HYD_FbCommand command,
+    HYD_FbState state);
 
 /* 获取命令允许的状态掩码 */
-HDY_FbStateMask HDY_State_GetCommandAllowedMask(
-    HDY_FbCommand command);
+HYD_FbStateMask HYD_State_GetCommandAllowedMask(
+    HYD_FbCommand command);
 
 /* 转换到STARTING状态 */
-HDY_BOOL HDY_State_TransitionToStarting(
-    HDY_MotionControlFB* fb,
+HYD_BOOL HYD_State_TransitionToStarting(
+    HYD_MotionControlFB* fb,
     size_t segmentIndex,
-    HDY_TIME timestamp);
+    HYD_TIME timestamp);
 
 /* 转换到RUNNING状态 */
-HDY_BOOL HDY_State_TransitionToRunning(
-    HDY_MotionControlFB* fb);
+HYD_BOOL HYD_State_TransitionToRunning(
+    HYD_MotionControlFB* fb);
 
 /* 转换到SEGMENT_COMPLETE状态 */
-HDY_BOOL HDY_State_TransitionToSegmentComplete(
-    HDY_MotionControlFB* fb,
-    HDY_BOOL recipeFinished);
+HYD_BOOL HYD_State_TransitionToSegmentComplete(
+    HYD_MotionControlFB* fb,
+    HYD_BOOL recipeFinished);
 
 /* 转换到HOLD状态 */
-HDY_BOOL HDY_State_TransitionToHold(
-    HDY_MotionControlFB* fb,
-    HDY_TIME timestamp);
+HYD_BOOL HYD_State_TransitionToHold(
+    HYD_MotionControlFB* fb,
+    HYD_TIME timestamp);
 
 /* 转换到DONE状态 */
-HDY_BOOL HDY_State_TransitionToDone(
-    HDY_MotionControlFB* fb);
+HYD_BOOL HYD_State_TransitionToDone(
+    HYD_MotionControlFB* fb);
 
 /* 转换到ABORTED状态 */
-HDY_BOOL HDY_State_TransitionToAborted(
-    HDY_MotionControlFB* fb);
+HYD_BOOL HYD_State_TransitionToAborted(
+    HYD_MotionControlFB* fb);
 
 /* 转换到FAULT状态 */
-HDY_BOOL HDY_State_TransitionToFault(
-    HDY_MotionControlFB* fb,
-    HDY_DiagnosticCode code,
+HYD_BOOL HYD_State_TransitionToFault(
+    HYD_MotionControlFB* fb,
+    HYD_DiagnosticCode code,
     const char* message);
 
 /* 重置状态到IDLE */
-void HDY_State_ResetToIdle(HDY_MotionControlFB* fb);
+void HYD_State_ResetToIdle(HYD_MotionControlFB* fb);
 
 /* 设置就绪上下文预览 */
-void HDY_State_SetReadyContext(
-    HDY_MotionControlFB* fb);
+void HYD_State_SetReadyContext(
+    HYD_MotionControlFB* fb);
 
 /* 字符串转换 */
-const char* HDY_State_CommandToString(HDY_FbCommand command);
-const char* HDY_State_StateToString(HDY_FbState state);
+const char* HYD_State_CommandToString(HYD_FbCommand command);
+const char* HYD_State_StateToString(HYD_FbState state);
 
-#endif /* HDY_MOTION_STATE_H */
+#endif /* HYD_MOTION_STATE_H */
 ```
 
 ---
@@ -398,61 +398,61 @@ const char* HDY_State_StateToString(HDY_FbState state);
 ```c
 /* motion_internal/motion_runtime.h */
 
-#ifndef HDY_MOTION_RUNTIME_H
-#define HDY_MOTION_RUNTIME_H
+#ifndef HYD_MOTION_RUNTIME_H
+#define HYD_MOTION_RUNTIME_H
 
 #include "motion_control.h"
 
 /* 初始化控制器（pressure, ramp） */
-void HDY_Runtime_PrimeControllers(
-    HDY_MotionControlFB* fb,
-    const HDY_MotionSegment* segment,
-    HDY_TIME timestamp,
-    HDY_BOOL allowFlowCarryover);
+void HYD_Runtime_PrimeControllers(
+    HYD_MotionControlFB* fb,
+    const HYD_MotionSegment* segment,
+    HYD_TIME timestamp,
+    HYD_BOOL allowFlowCarryover);
 
 /* 执行运行时主循环（RUNNING状态） */
-void HDY_Runtime_ExecuteRunning(
-    HDY_MotionControlFB* fb);
+void HYD_Runtime_ExecuteRunning(
+    HYD_MotionControlFB* fb);
 
 /* 进入保持状态 */
-void HDY_Runtime_EnterHold(
-    HDY_MotionControlFB* fb,
-    HDY_TIME timestamp);
+void HYD_Runtime_EnterHold(
+    HYD_MotionControlFB* fb,
+    HYD_TIME timestamp);
 
 /* 恢复保持的段 */
-HDY_BOOL HDY_Runtime_ResumeHeld(
-    HDY_MotionControlFB* fb,
-    HDY_TIME timestamp);
+HYD_BOOL HYD_Runtime_ResumeHeld(
+    HYD_MotionControlFB* fb,
+    HYD_TIME timestamp);
 
 /* 中止执行 */
-void HDY_Runtime_Abort(
-    HDY_MotionControlFB* fb,
-    HDY_TIME timestamp);
+void HYD_Runtime_Abort(
+    HYD_MotionControlFB* fb,
+    HYD_TIME timestamp);
 
 /* 维护非执行状态 */
-void HDY_Runtime_MaintainIdle(
-    HDY_MotionControlFB* fb);
+void HYD_Runtime_MaintainIdle(
+    HYD_MotionControlFB* fb);
 
 /* 维护保持状态 */
-void HDY_Runtime_MaintainHold(
-    HDY_MotionControlFB* fb);
+void HYD_Runtime_MaintainHold(
+    HYD_MotionControlFB* fb);
 
 /* 更新段切换脉冲 */
-void HDY_Runtime_UpdateSegmentChangedPulse(
-    HDY_MotionControlFB* fb);
+void HYD_Runtime_UpdateSegmentChangedPulse(
+    HYD_MotionControlFB* fb);
 
 /* 开始一个段 */
-HDY_BOOL HDY_Runtime_BeginSegment(
-    HDY_MotionControlFB* fb,
+HYD_BOOL HYD_Runtime_BeginSegment(
+    HYD_MotionControlFB* fb,
     size_t segmentIndex,
-    HDY_TIME timestamp);
+    HYD_TIME timestamp);
 
 /* 推进到下一段 */
-HDY_BOOL HDY_Runtime_AdvanceToNextSegment(
-    HDY_MotionControlFB* fb,
-    HDY_TIME timestamp);
+HYD_BOOL HYD_Runtime_AdvanceToNextSegment(
+    HYD_MotionControlFB* fb,
+    HYD_TIME timestamp);
 
-#endif /* HDY_MOTION_RUNTIME_H */
+#endif /* HYD_MOTION_RUNTIME_H */
 ```
 
 ---
@@ -472,89 +472,89 @@ HDY_BOOL HDY_Runtime_AdvanceToNextSegment(
 ```c
 /* motion_internal/motion_fault.h */
 
-#ifndef HDY_MOTION_FAULT_H
-#define HDY_MOTION_FAULT_H
+#ifndef HYD_MOTION_FAULT_H
+#define HYD_MOTION_FAULT_H
 
 #include "motion_control.h"
 
 /* 上报故障 */
-void HDY_Fault_Report(
-    HDY_MotionControlFB* fb,
-    HDY_DiagnosticCode code,
+void HYD_Fault_Report(
+    HYD_MotionControlFB* fb,
+    HYD_DiagnosticCode code,
     const char* message,
-    HDY_TIME eventTimestamp,
-    const HDY_MotionSegment* segment,
-    const HDY_ExecutionReference* references);
+    HYD_TIME eventTimestamp,
+    const HYD_MotionSegment* segment,
+    const HYD_ExecutionReference* references);
 
 /* 上报传感器故障 */
-void HDY_Fault_ReportSensorFault(
-    HDY_MotionControlFB* fb,
+void HYD_Fault_ReportSensorFault(
+    HYD_MotionControlFB* fb,
     const char* message,
-    HDY_TIME eventTimestamp,
-    const HDY_MotionSegment* segment,
-    const HDY_ExecutionReference* references);
+    HYD_TIME eventTimestamp,
+    const HYD_MotionSegment* segment,
+    const HYD_ExecutionReference* references);
 
 /* 上报时间戳回退故障 */
-void HDY_Fault_ReportTimestampRollback(
-    HDY_MotionControlFB* fb,
+void HYD_Fault_ReportTimestampRollback(
+    HYD_MotionControlFB* fb,
     const char* message,
-    HDY_TIME eventTimestamp,
-    const HDY_MotionSegment* segment,
-    const HDY_ExecutionReference* references);
+    HYD_TIME eventTimestamp,
+    const HYD_MotionSegment* segment,
+    const HYD_ExecutionReference* references);
 
 /* 上报内部错误故障 */
-void HDY_Fault_ReportInternalError(
-    HDY_MotionControlFB* fb,
+void HYD_Fault_ReportInternalError(
+    HYD_MotionControlFB* fb,
     const char* message,
-    HDY_TIME eventTimestamp,
-    const HDY_MotionSegment* segment,
-    const HDY_ExecutionReference* references);
+    HYD_TIME eventTimestamp,
+    const HYD_MotionSegment* segment,
+    const HYD_ExecutionReference* references);
 
 /* 上报命令不允许诊断 */
-void HDY_Fault_ReportCommandNotAllowed(
-    HDY_MotionControlFB* fb,
-    HDY_FbCommand command,
-    HDY_FbState state,
-    HDY_TIME eventTimestamp,
-    HDY_UINT requestedSegmentIndex,
-    const HDY_ExecutionReference* references);
+void HYD_Fault_ReportCommandNotAllowed(
+    HYD_MotionControlFB* fb,
+    HYD_FbCommand command,
+    HYD_FbState state,
+    HYD_TIME eventTimestamp,
+    HYD_UINT requestedSegmentIndex,
+    const HYD_ExecutionReference* references);
 
 /* 上报命令冲突诊断 */
-void HDY_Fault_ReportCommandConflict(
-    HDY_MotionControlFB* fb,
-    HDY_FbCommand command,
-    HDY_TIME eventTimestamp,
-    HDY_UINT requestedSegmentIndex,
-    const HDY_ExecutionReference* references);
+void HYD_Fault_ReportCommandConflict(
+    HYD_MotionControlFB* fb,
+    HYD_FbCommand command,
+    HYD_TIME eventTimestamp,
+    HYD_UINT requestedSegmentIndex,
+    const HYD_ExecutionReference* references);
 
 /* 进入故障停止状态 */
-void HDY_Fault_EnterFaultStop(
-    HDY_MotionControlFB* fb);
+void HYD_Fault_EnterFaultStop(
+    HYD_MotionControlFB* fb);
 
 /* 应用安全输出 */
-void HDY_Fault_ApplySafeOutputs(
-    HDY_MotionControlFB* fb);
+void HYD_Fault_ApplySafeOutputs(
+    HYD_MotionControlFB* fb);
 
 /* 清除当前诊断 */
-void HDY_Fault_ClearCurrentDiagnostic(
-    HDY_MotionControlFB* fb);
+void HYD_Fault_ClearCurrentDiagnostic(
+    HYD_MotionControlFB* fb);
 
 /* 清除诊断保留（仅保留部分） */
-void HDY_Fault_ClearDiagnosticRetentionOnly(
-    HDY_MotionControlFB* fb);
+void HYD_Fault_ClearDiagnosticRetentionOnly(
+    HYD_MotionControlFB* fb);
 
 /* 重置诊断保留 */
-void HDY_Fault_ResetDiagnosticRetention(
-    HDY_MotionControlFB* fb);
+void HYD_Fault_ResetDiagnosticRetention(
+    HYD_MotionControlFB* fb);
 
 /* 记录诊断事件 */
-void HDY_Fault_RecordDiagnosticEvent(
-    HDY_MotionControlFB* fb,
-    HDY_TIME eventTimestamp,
-    const HDY_MotionSegment* segment,
-    const HDY_ExecutionReference* references);
+void HYD_Fault_RecordDiagnosticEvent(
+    HYD_MotionControlFB* fb,
+    HYD_TIME eventTimestamp,
+    const HYD_MotionSegment* segment,
+    const HYD_ExecutionReference* references);
 
-#endif /* HDY_MOTION_FAULT_H */
+#endif /* HYD_MOTION_FAULT_H */
 ```
 
 ---
@@ -580,7 +580,7 @@ void HDY_Fault_RecordDiagnosticEvent(
 
 /* ==================== 公共API ==================== */
 
-void HDY_MotionControlFB_Init(HDY_MotionControlFB* fb) {
+void HYD_MotionControlFB_Init(HYD_MotionControlFB* fb) {
     if (fb == NULL) {
         return;
     }
@@ -588,66 +588,66 @@ void HDY_MotionControlFB_Init(HDY_MotionControlFB* fb) {
     memset(fb, 0, sizeof(*fb));
 
     /* 初始化各模块 */
-    HDY_Fault_ResetDiagnosticRetention(fb);
-    HDY_Command_ClearPending(fb);
-    HDY_Command_ClearStartInput(fb);
-    HDY_State_ResetToIdle(fb);
+    HYD_Fault_ResetDiagnosticRetention(fb);
+    HYD_Command_ClearPending(fb);
+    HYD_Command_ClearStartInput(fb);
+    HYD_State_ResetToIdle(fb);
 
     /* 设置默认值 */
     fb->ENO = true;
     fb->USE_RECIPE = true;
-    fb->FB_STATE = HDY_FB_STATE_IDLE;
-    fb->STATE.currentSegmentIndex = HDY_MAX_SEGMENTS;
-    fb->_activeSegmentSource = HDY_SEGMENT_SOURCE_NONE;
-    HDY_StateReporter_SetPlannedDirection(fb, HDY_DIRECTION_HOLD);
-    HDY_StateReporter_SetSegmentSource(fb, HDY_SEGMENT_SOURCE_NONE);
-    HDY_StateReporter_SetStatus(fb, HDY_STATUS_IDLE);
-    HDY_StateReporter_SetFault(fb, false);
-    HDY_StateReporter_ClearSegmentName(fb);
+    fb->FB_STATE = HYD_FB_STATE_IDLE;
+    fb->STATE.currentSegmentIndex = HYD_MAX_SEGMENTS;
+    fb->_activeSegmentSource = HYD_SEGMENT_SOURCE_NONE;
+    HYD_StateReporter_SetPlannedDirection(fb, HYD_DIRECTION_HOLD);
+    HYD_StateReporter_SetSegmentSource(fb, HYD_SEGMENT_SOURCE_NONE);
+    HYD_StateReporter_SetStatus(fb, HYD_STATUS_IDLE);
+    HYD_StateReporter_SetFault(fb, false);
+    HYD_StateReporter_ClearSegmentName(fb);
 }
 
-HDY_BOOL HDY_MotionControlFB_LoadRecipe(HDY_MotionControlFB* fb,
-                                        const HDY_MotionSegment* recipe,
+HYD_BOOL HYD_MotionControlFB_LoadRecipe(HYD_MotionControlFB* fb,
+                                        const HYD_MotionSegment* recipe,
                                         size_t recipeSize) {
     /* ... 使用HDY_RecipeValidator_ValidateRecipe() ... */
     /* ... 调用HDY_State_SetReadyContext() ... */
 }
 
-HDY_BOOL HDY_MotionControlFB_StartSegment(HDY_MotionControlFB* fb,
+HYD_BOOL HYD_MotionControlFB_StartSegment(HYD_MotionControlFB* fb,
                                           size_t segmentIndex,
-                                          HDY_TIME timestamp) {
-    return HDY_Command_Queue(fb, HDY_CMD_START,
-                           (HDY_UINT)segmentIndex, timestamp);
+                                          HYD_TIME timestamp) {
+    return HYD_Command_Queue(fb, HYD_CMD_START,
+                           (HYD_UINT)segmentIndex, timestamp);
 }
 
-HDY_BOOL HDY_MotionControlFB_NextSegment(HDY_MotionControlFB* fb,
-                                        HDY_TIME timestamp) {
+HYD_BOOL HYD_MotionControlFB_NextSegment(HYD_MotionControlFB* fb,
+                                        HYD_TIME timestamp) {
     /* ... 使用HDY_Command_ValidateNextRequest() ... */
-    return HDY_Command_Queue(fb, HDY_CMD_NEXT, 0U, timestamp);
+    return HYD_Command_Queue(fb, HYD_CMD_NEXT, 0U, timestamp);
 }
 
-HDY_BOOL HDY_MotionControlFB_Hold(HDY_MotionControlFB* fb) {
-    return HDY_Command_Queue(fb, HDY_CMD_HOLD, 0U,
+HYD_BOOL HYD_MotionControlFB_Hold(HYD_MotionControlFB* fb) {
+    return HYD_Command_Queue(fb, HYD_CMD_HOLD, 0U,
                            (fb != NULL) ? fb->AXIS_REF.timestamp : 0.0);
 }
 
-HDY_BOOL HDY_MotionControlFB_Resume(HDY_MotionControlFB* fb) {
-    return HDY_Command_Queue(fb, HDY_CMD_RESUME, 0U,
+HYD_BOOL HYD_MotionControlFB_Resume(HYD_MotionControlFB* fb) {
+    return HYD_Command_Queue(fb, HYD_CMD_RESUME, 0U,
                            (fb != NULL) ? fb->AXIS_REF.timestamp : 0.0);
 }
 
-HDY_BOOL HDY_MotionControlFB_Abort(HDY_MotionControlFB* fb) {
-    return HDY_Command_Queue(fb, HDY_CMD_ABORT, 0U,
+HYD_BOOL HYD_MotionControlFB_Abort(HYD_MotionControlFB* fb) {
+    return HYD_Command_Queue(fb, HYD_CMD_ABORT, 0U,
                            (fb != NULL) ? fb->AXIS_REF.timestamp : 0.0);
 }
 
-HDY_BOOL HDY_MotionControlFB_AcknowledgeDiagnostics(HDY_MotionControlFB* fb) {
+HYD_BOOL HYD_MotionControlFB_AcknowledgeDiagnostics(HYD_MotionControlFB* fb) {
     /* ... 使用HDY_State_IsCommandAllowed() ... */
 }
 
-void HDY_MotionControlFB_Cycle(HDY_MotionControlFB* fb) {
-    HDY_FbCommand processedCommand;
-    HDY_BOOL allowRunningExecution;
+void HYD_MotionControlFB_Cycle(HYD_MotionControlFB* fb) {
+    HYD_FbCommand processedCommand;
+    HYD_BOOL allowRunningExecution;
 
     if (fb == NULL) {
         return;
@@ -658,35 +658,35 @@ void HDY_MotionControlFB_Cycle(HDY_MotionControlFB* fb) {
     /* 处理EN/RESET */
     if (!fb->EN) {
         fb->ENO = false;
-        HDY_Command_ClearPending(fb);
-        HDY_Command_ClearStartInput(fb);
-        HDY_ProtectionManager_ApplyDisabledState(fb);
+        HYD_Command_ClearPending(fb);
+        HYD_Command_ClearStartInput(fb);
+        HYD_ProtectionManager_ApplyDisabledState(fb);
         return;
     }
 
     fb->ENO = true;
     if (fb->RESET) {
-        HDY_MotionControlFB_Init(fb);
+        HYD_MotionControlFB_Init(fb);
         return;
     }
 
     /* 消费待处理命令 */
-    allowRunningExecution = HDY_Command_Consume(fb, &processedCommand);
+    allowRunningExecution = HYD_Command_Consume(fb, &processedCommand);
 
     /* 执行状态机 */
-    HDY_State_RunStateMachine(fb, allowRunningExecution);
+    HYD_State_RunStateMachine(fb, allowRunningExecution);
 
     /* 发布输出 */
-    HDY_Runtime_PublishOutputs(fb, processedCommand == HDY_CMD_NONE);
+    HYD_Runtime_PublishOutputs(fb, processedCommand == HYD_CMD_NONE);
 }
 
-void HDY_MotionControlFB_Scan(HDY_MotionControlFB* fb) {
-    HDY_Command_SampleStartInput(fb);
-    HDY_MotionControlFB_Cycle(fb);
+void HYD_MotionControlFB_Scan(HYD_MotionControlFB* fb) {
+    HYD_Command_SampleStartInput(fb);
+    HYD_MotionControlFB_Cycle(fb);
 }
 
-void HDY_MotionControlFB_Execute(HDY_MotionControlFB* fb) {
-    HDY_MotionControlFB_Scan(fb);
+void HYD_MotionControlFB_Execute(HYD_MotionControlFB* fb) {
+    HYD_MotionControlFB_Scan(fb);
 }
 ```
 

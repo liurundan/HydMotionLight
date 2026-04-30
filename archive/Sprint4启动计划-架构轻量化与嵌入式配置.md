@@ -8,7 +8,7 @@
 
 ## 📋 执行摘要
 
-**Sprint 4: 架构轻量化与嵌入式配置** 已在Sprint 3完成后立即启动。本Sprint的核心目标是继续收敛`motion_control`内部职责，必要时拆分为内部实现单元，同时引入统一平台配置头文件`hdy_config.h`，支持资源裁剪和平台适配。
+**Sprint 4: 架构轻量化与嵌入式配置** 已在Sprint 3完成后立即启动。本Sprint的核心目标是继续收敛`motion_control`内部职责，必要时拆分为内部实现单元，同时引入统一平台配置头文件`hyd_config.h`，支持资源裁剪和平台适配。
 
 **核心任务**：
 - ✅ motion_control.c内部职责拆分（command/state/runtime/fault）
@@ -55,20 +55,20 @@
 **子任务**：
 2.1 设计hdy_config.h结构
 2.2 实现配置项：
-    - `HDY_REAL`精度策略（float/double切换）
-    - 时间基类型（HDY_TIME）
-    - 诊断消息字符串开关（HDY_ENABLE_DIAGNOSTIC_MESSAGE）
-    - 历史深度（HDY_DIAG_HISTORY_DEPTH）
-    - 最大段数（HDY_MAX_SEGMENTS）
-    - 最大诊断历史深度（HDY_DIAG_HISTORY_DEPTH）
-    - 最大段名称长度（HDY_NAME_MAX）
-    - 最大诊断消息长度（HDY_MESSAGE_MAX）
+    - `HYD_REAL`精度策略（float/double切换）
+    - 时间基类型（HYD_TIME）
+    - 诊断消息字符串开关（HYD_ENABLE_DIAGNOSTIC_MESSAGE）
+    - 历史深度（HYD_DIAG_HISTORY_DEPTH）
+    - 最大段数（HYD_MAX_SEGMENTS）
+    - 最大诊断历史深度（HYD_DIAG_HISTORY_DEPTH）
+    - 最大段名称长度（HYD_NAME_MAX）
+    - 最大诊断消息长度（HYD_MESSAGE_MAX）
 2.3 更新common_types.h，使用hdy_config.h中的配置
 2.4 更新所有模块，使用统一的配置项
 2.5 编写配置说明文档
 
 **验收标准**：
-- hdy_config.h结构清晰，易于配置
+- hyd_config.h结构清晰，易于配置
 - 所有配置项有合理默认值
 - 配置变更不影响核心功能
 - 文档完整说明各配置项的含义和影响
@@ -169,43 +169,43 @@
 #### motion_command模块
 - 职责：命令入口、触发与参数校验
 - 接口：
-  - `HDY_Command_ValidateStartRequest()`
-  - `HDY_Command_ValidateNextRequest()`
-  - `HDY_Command_QueuePendingCommand()`
-  - `HDY_Command_ConsumePendingCommand()`
-  - `HDY_Command_SampleStartInput()`
+  - `HYD_Command_ValidateStartRequest()`
+  - `HYD_Command_ValidateNextRequest()`
+  - `HYD_Command_QueuePendingCommand()`
+  - `HYD_Command_ConsumePendingCommand()`
+  - `HYD_Command_SampleStartInput()`
 
 #### motion_state模块
 - 职责：状态转换与状态机规则
 - 接口：
-  - `HDY_State_ResolveEffectiveState()`
-  - `HDY_State_IsCommandAllowedInState()`
-  - `HDY_State_TransitionToStarting()`
-  - `HDY_State_TransitionToRunning()`
-  - `HDY_State_TransitionToSegmentComplete()`
-  - `HDY_State_TransitionToHold()`
-  - `HDY_State_TransitionToDone()`
-  - `HDY_State_TransitionToAborted()`
-  - `HDY_State_TransitionToFault()`
+  - `HYD_State_ResolveEffectiveState()`
+  - `HYD_State_IsCommandAllowedInState()`
+  - `HYD_State_TransitionToStarting()`
+  - `HYD_State_TransitionToRunning()`
+  - `HYD_State_TransitionToSegmentComplete()`
+  - `HYD_State_TransitionToHold()`
+  - `HYD_State_TransitionToDone()`
+  - `HYD_State_TransitionToAborted()`
+  - `HYD_State_TransitionToFault()`
 
 #### motion_runtime模块
 - 职责：周期运行时编排、planner/controller/converter调用
 - 接口：
-  - `HDY_Runtime_ExecuteRunning()`
-  - `HDY_Runtime_PrimeControllers()`
-  - `HDY_Runtime_UpdateReferences()`
-  - `HDY_Runtime_CallPlanner()`
-  - `HDY_Runtime_CallPressureController()`
-  - `HDY_Runtime_CallPumpConverter()`
+  - `HYD_Runtime_ExecuteRunning()`
+  - `HYD_Runtime_PrimeControllers()`
+  - `HYD_Runtime_UpdateReferences()`
+  - `HYD_Runtime_CallPlanner()`
+  - `HYD_Runtime_CallPressureController()`
+  - `HYD_Runtime_CallPumpConverter()`
 
 #### motion_fault模块
 - 职责：故障分流与安全停机
 - 接口：
-  - `HDY_Fault_ReportSensorFault()`
-  - `HDY_Fault_ReportTimestampRollback()`
-  - `HDY_Fault_ReportInternalError()`
-  - `HDY_Fault_EnterFaultStop()`
-  - `HDY_Fault_ApplySafeOutputs()`
+  - `HYD_Fault_ReportSensorFault()`
+  - `HYD_Fault_ReportTimestampRollback()`
+  - `HYD_Fault_ReportInternalError()`
+  - `HYD_Fault_EnterFaultStop()`
+  - `HYD_Fault_ApplySafeOutputs()`
 
 ---
 
@@ -293,7 +293,7 @@
 ### 新增文件
 ```
 include/
-├── hdy_config.h                    # 平台配置头文件
+├── hyd_config.h                    # 平台配置头文件
 └── motion_internal/               # 内部模块目录
     ├── motion_command.h           # 命令处理模块
     ├── motion_state.h             # 状态机模块

@@ -22,7 +22,7 @@
 	</contentHeader>
 	<types>
 		<dataTypes>
-			<dataType name="HDY_AxisMotion">
+			<dataType name="HYD_AxisMotion">
 				<baseType>
 					<struct>
 						<variable name="SEGMENTTAG">
@@ -126,7 +126,7 @@
 			</dataType>
 		</dataTypes>
 		<pous>
-			<pou name="HDY_MoveProfile" pouType="functionBlock">
+			<pou name="HYD_MoveProfile" pouType="functionBlock">
 				<interface>
 					<inputVars>
 						<variable name="EXECUTE">
@@ -136,7 +136,7 @@
 						</variable>
 						<variable name="MOTION">
 							<type>
-								<derived name="HDY_AxisMotion" />
+								<derived name="HYD_AxisMotion" />
 							</type>
 						</variable>
 						<variable name="AXISID">
@@ -206,10 +206,10 @@
 					</localVars>
 				</interface>
 				<body>
-					<ST><![CDATA[ {{ extern void __mcl_cmd_MoveProfile(HDY_MOVEPROFILE *data__);	__mcl_cmd_MoveProfile(data__);	 }}			]]></ST>
+					<ST><![CDATA[ {{ extern void __mcl_cmd_MoveProfile(HYD_MOVEPROFILE *data__);	__mcl_cmd_MoveProfile(data__);	 }}			]]></ST>
 				</body>
 			</pou>
-			<pou name="HDY_LoadProfile" pouType="functionBlock">
+			<pou name="HYD_LoadProfile" pouType="functionBlock">
 				<interface>
 					<inputVars>
 						<variable name="EXECUTE">
@@ -224,7 +224,7 @@
 						</variable>
 						<variable name="MOTION">
 							<type>
-								<derived name="HDY_AxisMotion" />
+								<derived name="HYD_AxisMotion" />
 							</type>
 						</variable>
 					</inputVars>
@@ -265,11 +265,11 @@
 				</interface>
 				<body>
 					<ST>
-						<xhtml:p><![CDATA[{{ extern void __mcl_cmd_LoadProfile(HDY_LOADPROFILE *data__);	__mcl_cmd_LoadProfile(data__);	 }}	]]></xhtml:p>
+						<xhtml:p><![CDATA[{{ extern void __mcl_cmd_LoadProfile(HYD_LOADPROFILE *data__);	__mcl_cmd_LoadProfile(data__);	 }}	]]></xhtml:p>
 					</ST>
 				</body>
 			</pou>
-			<pou name="HDY_Stop" pouType="functionBlock">
+			<pou name="HYD_Stop" pouType="functionBlock">
 				<interface>
 					<inputVars>
 						<variable name="EXECUTE">
@@ -340,11 +340,11 @@
 				</interface>
 				<body>
 					<ST>
-						<xhtml:p><![CDATA[{{ extern void __mcl_cmd_Stop(HDY_STOP *data__);	__mcl_cmd_Stop(data__);	 }}	]]></xhtml:p>
+						<xhtml:p><![CDATA[{{ extern void __mcl_cmd_Stop(HYD_STOP *data__);	__mcl_cmd_Stop(data__);	 }}	]]></xhtml:p>
 					</ST>
 				</body>
 			</pou>
-			<pou name="HDY_MoveAbsolute" pouType="functionBlock">
+			<pou name="HYD_MoveAbsolute" pouType="functionBlock">
 				<interface>
 					<inputVars>
 						<variable name="EXECUTE">
@@ -460,12 +460,12 @@
 				</interface>
 				<body>
 					<ST>
-						<xhtml:p><![CDATA[{{ extern void __mcl_cmd_MoveAbsolute(HDY_MOVEABSOLUTE*); __mcl_cmd_MoveAbsolute(data__); }}	]]></xhtml:p>
+						<xhtml:p><![CDATA[{{ extern void __mcl_cmd_MoveAbsolute(HYD_MOVEABSOLUTE*); __mcl_cmd_MoveAbsolute(data__); }}	]]></xhtml:p>
 					</ST>
 				</body>
 				<documentation><![CDATA[This Function Block commands a controlled motion to a specified absolute position. ]]></documentation>
 			</pou>
-			<pou name="HDY_MoveVelocity" pouType="functionBlock">
+			<pou name="HYD_MoveVelocity" pouType="functionBlock">
 				<interface>
 					<inputVars>
 						<variable name="EXECUTE">
@@ -575,11 +575,11 @@
 					</localVars>
 				</interface>
 				<body>
-					<ST><![CDATA[{{ extern void __mcl_cmd_MoveVelocity(HDY_MOVEVELOCITY*); __mcl_cmd_MoveVelocity(data__); }} ]]></ST>
+					<ST><![CDATA[{{ extern void __mcl_cmd_MoveVelocity(HYD_MOVEVELOCITY*); __mcl_cmd_MoveVelocity(data__); }} ]]></ST>
 				</body>
 				<documentation><![CDATA[This Function Block commands a never ending controlled motion at a specified velocity. ]]></documentation>
 			</pou>
-			<pou name="HDY_Reset" pouType="functionBlock">
+			<pou name="HYD_Reset" pouType="functionBlock">
 				<interface>
 					<inputVars>
 						<variable name="EXECUTE">
@@ -629,11 +629,11 @@
 					</localVars>
 				</interface>
 				<body>
-					<ST><![CDATA[{{ extern void __mcl_cmd_Reset(HDY_RESET*); __mcl_cmd_Reset(data__); }} ]]></ST>
+					<ST><![CDATA[{{ extern void __mcl_cmd_Reset(HYD_RESET*); __mcl_cmd_Reset(data__); }} ]]></ST>
 				</body>
 				<documentation><![CDATA[This Function Block makes the transition from the state ‘ErrorStop’ to ‘Disabled’ by resetting all internal axis-related errors ]]></documentation>
 			</pou>
-			<pou name="HDY_PressureHandle" pouType="functionBlock">
+			<pou name="HYD_PressureHandle" pouType="functionBlock">
 				<interface>
 					<inputVars>
 						<variable name="EXECUTE">
@@ -728,11 +728,11 @@
 					</localVars>
 				</interface>
 				<body>
-					<ST><![CDATA[{{ extern void __mcl_cmd_PressureHandle(HDY_PRESSUREHANDLE*); __mcl_cmd_PressureHandle(data__); }} ]]></ST>
+					<ST><![CDATA[{{ extern void __mcl_cmd_PressureHandle(HYD_PRESSUREHANDLE*); __mcl_cmd_PressureHandle(data__); }} ]]></ST>
 				</body>
 				<documentation><![CDATA[This Function Block commands pressure closed control. ]]></documentation>
 			</pou>
-			<pou name="HDY_CreateMotion" pouType="functionBlock">
+			<pou name="HYD_CreateMotion" pouType="functionBlock">
 				<interface>
 					<inputVars>
 						<variable name="USE_RECIPE">
@@ -805,12 +805,12 @@
 				</interface>
 				<body>
 					<ST>
-						<xhtml:p><![CDATA[{{ extern void __mcl_cmd_CreateMotion(HDY_CREATEMOTION*); __mcl_cmd_CreateMotion(data__); }} ]]></xhtml:p>
+						<xhtml:p><![CDATA[{{ extern void __mcl_cmd_CreateMotion(HYD_CREATEMOTION*); __mcl_cmd_CreateMotion(data__); }} ]]></xhtml:p>
 					</ST>
 				</body>
 				<documentation><![CDATA[This allocates a simulation Axis, for testing.One axis per instanciated FB.]]></documentation>
 			</pou>
-			<pou name="HDY_SetAxisFeedback" pouType="functionBlock">
+			<pou name="HYD_SetAxisFeedback" pouType="functionBlock">
 				<interface>
 					<inputVars>
 						<variable name="ENABLE">
@@ -881,12 +881,12 @@
 				</interface>
 				<body>
 					<ST>
-						<xhtml:p><![CDATA[{{ extern void __mcl_cmd_SetAxisFeedback(HDY_SETAXISFEEDBACK*); __mcl_cmd_SetAxisFeedback(data__); }} ]]></xhtml:p>
+						<xhtml:p><![CDATA[{{ extern void __mcl_cmd_SetAxisFeedback(HYD_SETAXISFEEDBACK*); __mcl_cmd_SetAxisFeedback(data__); }} ]]></xhtml:p>
 					</ST>
 				</body>
 				<documentation><![CDATA[set feedback to motion.]]></documentation>
 			</pou>
-			<pou name="HDY_GetPumpRequest" pouType="functionBlock">
+			<pou name="HYD_GetPumpRequest" pouType="functionBlock">
 				<interface>
 					<inputVars>
 						<variable name="ENABLE">
@@ -937,12 +937,12 @@
 				</interface>
 				<body>
 					<ST>
-						<xhtml:p><![CDATA[{{ extern void __mcl_cmd_GetPumpRequest(HDY_GETPUMPREQUEST*); __mcl_cmd_GetPumpRequest(data__); }} ]]></xhtml:p>
+						<xhtml:p><![CDATA[{{ extern void __mcl_cmd_GetPumpRequest(HYD_GETPUMPREQUEST*); __mcl_cmd_GetPumpRequest(data__); }} ]]></xhtml:p>
 					</ST>
 				</body>
 				<documentation><![CDATA[get only one pump speed command from motion.]]></documentation>
 			</pou>
-			<pou name="HDY_ReadStatus" pouType="functionBlock">
+			<pou name="HYD_ReadStatus" pouType="functionBlock">
 				<interface>
 					<inputVars>
 						<variable name="ENABLE">
@@ -986,12 +986,12 @@
 				</interface>
 				<body>
 					<ST>
-						<xhtml:p><![CDATA[{{ extern void __mcl_cmd_ReadStatus(HDY_READSTATUS*); __mcl_cmd_ReadStatus(data__); }} ]]></xhtml:p>
+						<xhtml:p><![CDATA[{{ extern void __mcl_cmd_ReadStatus(HYD_READSTATUS*); __mcl_cmd_ReadStatus(data__); }} ]]></xhtml:p>
 					</ST>
 				</body>
 				<documentation><![CDATA[get axis status from motion.]]></documentation>
 			</pou>
-			<pou name="HDY_ReadError" pouType="functionBlock">
+			<pou name="HYD_ReadError" pouType="functionBlock">
 				<interface>
 					<inputVars>
 						<variable name="ENABLE">
@@ -1030,7 +1030,7 @@
 				</interface>
 				<body>
 					<ST>
-						<xhtml:p><![CDATA[{{ extern void __mcl_cmd_ReadError(HDY_READERROR*); __mcl_cmd_ReadError(data__); }} ]]></xhtml:p>
+						<xhtml:p><![CDATA[{{ extern void __mcl_cmd_ReadError(HYD_READERROR*); __mcl_cmd_ReadError(data__); }} ]]></xhtml:p>
 					</ST>
 				</body>
 				<documentation><![CDATA[get axis error from motion.]]></documentation>

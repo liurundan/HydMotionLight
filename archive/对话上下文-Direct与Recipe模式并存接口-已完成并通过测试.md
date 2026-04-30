@@ -17,7 +17,7 @@
 
 ### 当前开发主题
 本轮开发的重点任务是：
-- 在同一个 `HDY_MotionControlFB` 中同时支持：
+- 在同一个 `HYD_MotionControlFB` 中同时支持：
   1. **Recipe 模式**：基于 `RECIPE[]` 的多段执行
   2. **Direct 模式**：基于单个 `DIRECT_SEGMENT` 的直接执行
 - 通过统一接口进行启动，并保证运行时段来源被锁存，不受外部中途修改影响。
@@ -76,7 +76,7 @@
 ## 🎯 实现目标（主要目标、具体要求、约束条件）
 
 ### 主要目标
-1. 在同一个 `HDY_MotionControlFB` 中支持 **Recipe 模式与 Direct 模式并存**
+1. 在同一个 `HYD_MotionControlFB` 中支持 **Recipe 模式与 Direct 模式并存**
 2. 用统一 `StartSegment()` 接口发起执行
 3. 启动时根据 `USE_RECIPE` 选择段来源
 4. 启动后锁存当前活动段来源与参数，确保运行稳定
@@ -104,7 +104,7 @@
 ### 必须遵守的原则
 - 纯 C99，禁止引入 C++ 风格设计
 - 静态内存、固定大小结构体、无动态分配
-- `HDY_` 前缀命名规范
+- `HYD_` 前缀命名规范
 - FB 输入/输出/内部状态分层清晰
 - 外部过程层决定工艺推进；控制库仅提供计算与状态
 
@@ -163,7 +163,7 @@
 ### 核心机制
 
 #### 1. 双来源共存
-在 `HDY_MotionControlFB` 中同时保留：
+在 `HYD_MotionControlFB` 中同时保留：
 - `RECIPE[]`
 - `DIRECT_SEGMENT`
 - `DIRECT_SEGMENT_VALID`
@@ -202,34 +202,34 @@ Direct 被定义为单段动作语义，因此：
 在 `include/common_types.h` 中新增：
 ```c
 typedef enum {
-    HDY_SEGMENT_SOURCE_NONE,
-    HDY_SEGMENT_SOURCE_RECIPE,
-    HDY_SEGMENT_SOURCE_DIRECT
-} HDY_SegmentSource;
+    HYD_SEGMENT_SOURCE_NONE,
+    HYD_SEGMENT_SOURCE_RECIPE,
+    HYD_SEGMENT_SOURCE_DIRECT
+} HYD_SegmentSource;
 ```
 
 新增诊断码：
 ```c
-HDY_DIAG_CODE_NO_DIRECT_SEGMENT
+HYD_DIAG_CODE_NO_DIRECT_SEGMENT
 ```
 
 在状态中新增：
 ```c
-HDY_MotionState.segmentSource
+HYD_MotionState.segmentSource
 ```
 
 在 `include/motion_control.h` 中新增：
 ```c
-HDY_BOOL USE_RECIPE;
-HDY_MotionSegment DIRECT_SEGMENT;
-HDY_BOOL DIRECT_SEGMENT_VALID;
+HYD_BOOL USE_RECIPE;
+HYD_MotionSegment DIRECT_SEGMENT;
+HYD_BOOL DIRECT_SEGMENT_VALID;
 ```
 
 新增 API：
 ```c
-HDY_BOOL HDY_MotionControlFB_LoadDirectSegment(HDY_MotionControlFB* fb, const HDY_MotionSegment* segment);
-void HDY_MotionControlFB_ClearDirectSegment(HDY_MotionControlFB* fb);
-HDY_BOOL HDY_MotionControlFB_StartSegment(HDY_MotionControlFB* fb, size_t segmentIndex, HDY_TIME timestamp);
+HYD_BOOL HYD_MotionControlFB_LoadDirectSegment(HYD_MotionControlFB* fb, const HYD_MotionSegment* segment);
+void HYD_MotionControlFB_ClearDirectSegment(HYD_MotionControlFB* fb);
+HYD_BOOL HYD_MotionControlFB_StartSegment(HYD_MotionControlFB* fb, size_t segmentIndex, HYD_TIME timestamp);
 ```
 
 新增内部字段：
@@ -245,9 +245,9 @@ _activeSegmentSource
 
 ### 1. `include/common_types.h`
 **变更内容**：
-- 新增 `HDY_SegmentSource` 枚举
-- 新增 `HDY_DIAG_CODE_NO_DIRECT_SEGMENT`
-- 在 `HDY_MotionState` 中增加 `segmentSource`
+- 新增 `HYD_SegmentSource` 枚举
+- 新增 `HYD_DIAG_CODE_NO_DIRECT_SEGMENT`
+- 在 `HYD_MotionState` 中增加 `segmentSource`
 
 **影响**：
 - 统一表达段来源
@@ -268,14 +268,14 @@ _activeSegmentSource
 ### 3. `src/motion_control.c`
 **变更内容**：
 - 新增/调整关键辅助逻辑：
-  - `HDY_UsesRecipeSource()`
-  - `HDY_HasSelectedStartSource()`
-  - `HDY_ResetReadyContextPreview()`
-  - `HDY_ResolveStartSourceSegment()`
-  - `HDY_ValidateStartRequest()`
-  - `HDY_ValidateNextRequest()`
-  - `HDY_BeginSegment()`
-  - `HDY_AdvanceToNextSegment()`
+  - `HYD_UsesRecipeSource()`
+  - `HYD_HasSelectedStartSource()`
+  - `HYD_ResetReadyContextPreview()`
+  - `HYD_ResolveStartSourceSegment()`
+  - `HYD_ValidateStartRequest()`
+  - `HYD_ValidateNextRequest()`
+  - `HYD_BeginSegment()`
+  - `HYD_AdvanceToNextSegment()`
 - 实现 `LoadDirectSegment()` / `ClearDirectSegment()`
 - `StartSegment()` 合法状态扩展，支持从 `IDLE` 启动
 - 执行期索引校验按 `_activeSegmentSource` 分支
@@ -287,7 +287,7 @@ _activeSegmentSource
 
 ### 4. `src/state_reporter.c`
 **变更内容**：
-- 新增 `HDY_StateReporter_SetSegmentSource()`
+- 新增 `HYD_StateReporter_SetSegmentSource()`
 - Idle/Ready 状态判定改为基于当前选中来源是否可启动
 
 ### 5. `src/protection_manager.c`
@@ -300,7 +300,7 @@ _activeSegmentSource
 ### 6. `src/diagnostics.c`
 **变更内容**：
 - 新增诊断映射：
-  - `HDY_DIAG_CODE_NO_DIRECT_SEGMENT -> "No direct segment configured"`
+  - `HYD_DIAG_CODE_NO_DIRECT_SEGMENT -> "No direct segment configured"`
 
 ### 7. `tests/test_motion_control.c`
 **变更内容**：
@@ -342,16 +342,16 @@ _activeSegmentSource
 
 ### 使用方式 1：Recipe 模式
 ```c
-fb.USE_RECIPE = HDY_TRUE;
-HDY_MotionControlFB_LoadRecipe(&fb, recipe, recipeSize);
-HDY_MotionControlFB_StartSegment(&fb, 0, timestamp);
+fb.USE_RECIPE = HYD_TRUE;
+HYD_MotionControlFB_LoadRecipe(&fb, recipe, recipeSize);
+HYD_MotionControlFB_StartSegment(&fb, 0, timestamp);
 ```
 
 ### 使用方式 2：Direct 模式
 ```c
-fb.USE_RECIPE = HDY_FALSE;
-HDY_MotionControlFB_LoadDirectSegment(&fb, &segment);
-HDY_MotionControlFB_StartSegment(&fb, 0, timestamp);
+fb.USE_RECIPE = HYD_FALSE;
+HYD_MotionControlFB_LoadDirectSegment(&fb, &segment);
+HYD_MotionControlFB_StartSegment(&fb, 0, timestamp);
 ```
 
 > 说明：Direct 模式下 `segmentIndex` 只是统一接口保留参数，不表示真正的 recipe 索引语义。

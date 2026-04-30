@@ -3,55 +3,55 @@
 #include "segment_limits.h"
 #include "pump_converter.h"
 
-static HDY_BOOL HDY_IsValidPlannerType(HDY_PlannerType planner) {
-    return (planner == HDY_PLANNER_POSITION_BASED) ||
-           (planner == HDY_PLANNER_TIME_BASED);
+static HYD_BOOL HYD_IsValidPlannerType(HYD_PlannerType planner) {
+    return (planner == HYD_PLANNER_POSITION_BASED) ||
+           (planner == HYD_PLANNER_TIME_BASED);
 }
 
-static HDY_BOOL HDY_IsValidControlMode(HDY_ControlMode mode) {
-    return (mode == HDY_MODE_POSITION) ||
-           (mode == HDY_MODE_SPEED_RAMP) ||
-           (mode == HDY_MODE_PRESSURE_CLOSED_LOOP);
+static HYD_BOOL HYD_IsValidControlMode(HYD_ControlMode mode) {
+    return (mode == HYD_MODE_POSITION) ||
+           (mode == HYD_MODE_SPEED_RAMP) ||
+           (mode == HYD_MODE_PRESSURE_CLOSED_LOOP);
 }
 
-static HDY_BOOL HDY_IsValidEndCondition(HDY_EndConditionType endCondition) {
-    return (endCondition == HDY_END_POSITION) ||
-           (endCondition == HDY_END_TIME) ||
-           (endCondition == HDY_END_PRESSURE) ||
-           (endCondition == HDY_END_FLOW) ||
-           (endCondition == HDY_END_MANUAL);
+static HYD_BOOL HYD_IsValidEndCondition(HYD_EndConditionType endCondition) {
+    return (endCondition == HYD_END_POSITION) ||
+           (endCondition == HYD_END_TIME) ||
+           (endCondition == HYD_END_PRESSURE) ||
+           (endCondition == HYD_END_FLOW) ||
+           (endCondition == HYD_END_MANUAL);
 }
 
-static HDY_BOOL HDY_IsValidMotionDirection(HDY_MotionDirection direction) {
-    return (direction == HDY_DIRECTION_AUTO) ||
-           (direction == HDY_DIRECTION_EXTEND) ||
-           (direction == HDY_DIRECTION_RETRACT) ||
-           (direction == HDY_DIRECTION_HOLD);
+static HYD_BOOL HYD_IsValidMotionDirection(HYD_MotionDirection direction) {
+    return (direction == HYD_DIRECTION_AUTO) ||
+           (direction == HYD_DIRECTION_EXTEND) ||
+           (direction == HYD_DIRECTION_RETRACT) ||
+           (direction == HYD_DIRECTION_HOLD);
 }
 
-static HDY_BOOL HDY_IsLinearMotionDirection(HDY_MotionDirection direction) {
-    return (direction == HDY_DIRECTION_EXTEND) ||
-           (direction == HDY_DIRECTION_RETRACT);
+static HYD_BOOL HYD_IsLinearMotionDirection(HYD_MotionDirection direction) {
+    return (direction == HYD_DIRECTION_EXTEND) ||
+           (direction == HYD_DIRECTION_RETRACT);
 }
 
-static HDY_BOOL HDY_IsValidPressureControllerType(HDY_PressureControllerType strategy) {
-    return (strategy == HDY_PRESSURE_CONTROLLER_NONE) ||
-           (strategy == HDY_PRESSURE_CONTROLLER_P) ||
-           (strategy == HDY_PRESSURE_CONTROLLER_PI) ||
-           (strategy == HDY_PRESSURE_CONTROLLER_PID) ||
-           (strategy == HDY_PRESSURE_CONTROLLER_RBF_PID);
+static HYD_BOOL HYD_IsValidPressureControllerType(HYD_PressureControllerType strategy) {
+    return (strategy == HYD_PRESSURE_CONTROLLER_NONE) ||
+           (strategy == HYD_PRESSURE_CONTROLLER_P) ||
+           (strategy == HYD_PRESSURE_CONTROLLER_PI) ||
+           (strategy == HYD_PRESSURE_CONTROLLER_PID) ||
+           (strategy == HYD_PRESSURE_CONTROLLER_RBF_PID);
 }
 
-static HDY_BOOL HDY_IsSupportedPressureControllerType(HDY_PressureControllerType strategy) {
-    return (strategy == HDY_PRESSURE_CONTROLLER_NONE) ||
-           (strategy == HDY_PRESSURE_CONTROLLER_P) ||
-           (strategy == HDY_PRESSURE_CONTROLLER_PI) ||
-           (strategy == HDY_PRESSURE_CONTROLLER_PID) ||
-           (strategy == HDY_PRESSURE_CONTROLLER_RBF_PID);
+static HYD_BOOL HYD_IsSupportedPressureControllerType(HYD_PressureControllerType strategy) {
+    return (strategy == HYD_PRESSURE_CONTROLLER_NONE) ||
+           (strategy == HYD_PRESSURE_CONTROLLER_P) ||
+           (strategy == HYD_PRESSURE_CONTROLLER_PI) ||
+           (strategy == HYD_PRESSURE_CONTROLLER_PID) ||
+           (strategy == HYD_PRESSURE_CONTROLLER_RBF_PID);
 }
 
-static HDY_BOOL HDY_RecipeValidator_Fail(HDY_DiagnosticCode* code,
-                                         HDY_DiagnosticCode failCode) {
+static HYD_BOOL HYD_RecipeValidator_Fail(HYD_DiagnosticCode* code,
+                                         HYD_DiagnosticCode failCode) {
     if (code != NULL) {
         *code = failCode;
     }
@@ -59,15 +59,15 @@ static HDY_BOOL HDY_RecipeValidator_Fail(HDY_DiagnosticCode* code,
     return false;
 }
 
-static HDY_REAL HDY_RecipeValidator_ResolvePositiveOrDefault(HDY_REAL configuredValue,
-                                                             HDY_REAL defaultValue) {
+static HYD_REAL HYD_RecipeValidator_ResolvePositiveOrDefault(HYD_REAL configuredValue,
+                                                             HYD_REAL defaultValue) {
     if (configuredValue > 0.0) {
         return configuredValue;
     }
     return defaultValue;
 }
 
-static HDY_BOOL HDY_RecipeValidator_HasCustomRbfConfig(const HDY_MotionSegment* segment) {
+static HYD_BOOL HYD_RecipeValidator_HasCustomRbfConfig(const HYD_MotionSegment* segment) {
     if (segment == NULL) {
         return false;
     }
@@ -86,116 +86,116 @@ static HDY_BOOL HDY_RecipeValidator_HasCustomRbfConfig(const HDY_MotionSegment* 
            (segment->pressureRbfConfig.etaD > 0.0);
 }
 
-HDY_BOOL HDY_RecipeValidator_ValidateSegment(const HDY_MotionSegment* segment,
+HYD_BOOL HYD_RecipeValidator_ValidateSegment(const HYD_MotionSegment* segment,
                                             size_t segmentIndex,
-                                            HDY_DiagnosticCode* code) {
+                                            HYD_DiagnosticCode* code) {
     if (segment == NULL) {
-        return HDY_RecipeValidator_Fail(code, HDY_DIAG_CODE_SEGMENT_INVALID);
+        return HYD_RecipeValidator_Fail(code, HYD_DIAG_CODE_SEGMENT_INVALID);
     }
 
-    if (!HDY_IsValidPlannerType(segment->planner)) {
-        return HDY_RecipeValidator_Fail(code, HDY_DIAG_CODE_SEGMENT_INVALID);
+    if (!HYD_IsValidPlannerType(segment->planner)) {
+        return HYD_RecipeValidator_Fail(code, HYD_DIAG_CODE_SEGMENT_INVALID);
     }
 
-    if (!HDY_IsValidControlMode(segment->mode)) {
-        return HDY_RecipeValidator_Fail(code, HDY_DIAG_CODE_SEGMENT_INVALID);
+    if (!HYD_IsValidControlMode(segment->mode)) {
+        return HYD_RecipeValidator_Fail(code, HYD_DIAG_CODE_SEGMENT_INVALID);
     }
 
-    if (!HDY_IsValidEndCondition(segment->endCondition)) {
-        return HDY_RecipeValidator_Fail(code, HDY_DIAG_CODE_SEGMENT_INVALID);
+    if (!HYD_IsValidEndCondition(segment->endCondition)) {
+        return HYD_RecipeValidator_Fail(code, HYD_DIAG_CODE_SEGMENT_INVALID);
     }
 
-    if (!HDY_IsValidMotionDirection(segment->direction)) {
-        return HDY_RecipeValidator_Fail(code, HDY_DIAG_CODE_SEGMENT_INVALID);
+    if (!HYD_IsValidMotionDirection(segment->direction)) {
+        return HYD_RecipeValidator_Fail(code, HYD_DIAG_CODE_SEGMENT_INVALID);
     }
 
-    if (!HDY_IsValidPressureControllerType(segment->pressureController)) {
-        return HDY_RecipeValidator_Fail(code, HDY_DIAG_CODE_SEGMENT_INVALID);
+    if (!HYD_IsValidPressureControllerType(segment->pressureController)) {
+        return HYD_RecipeValidator_Fail(code, HYD_DIAG_CODE_SEGMENT_INVALID);
     }
 
-    if (!HDY_IsSupportedPressureControllerType(segment->pressureController)) {
-        return HDY_RecipeValidator_Fail(code, HDY_DIAG_CODE_SEGMENT_INVALID);
+    if (!HYD_IsSupportedPressureControllerType(segment->pressureController)) {
+        return HYD_RecipeValidator_Fail(code, HYD_DIAG_CODE_SEGMENT_INVALID);
     }
 
-    if ((segment->mode == HDY_MODE_POSITION || segment->mode == HDY_MODE_SPEED_RAMP) &&
-        !HDY_IsLinearMotionDirection(segment->direction)) {
-        return HDY_RecipeValidator_Fail(code, HDY_DIAG_CODE_SEGMENT_INVALID);
+    if ((segment->mode == HYD_MODE_POSITION || segment->mode == HYD_MODE_SPEED_RAMP) &&
+        !HYD_IsLinearMotionDirection(segment->direction)) {
+        return HYD_RecipeValidator_Fail(code, HYD_DIAG_CODE_SEGMENT_INVALID);
     }
 
-    if (segment->mode == HDY_MODE_SPEED_RAMP && segment->planner != HDY_PLANNER_TIME_BASED) {
-        return HDY_RecipeValidator_Fail(code, HDY_DIAG_CODE_SEGMENT_INVALID);
+    if (segment->mode == HYD_MODE_SPEED_RAMP && segment->planner != HYD_PLANNER_TIME_BASED) {
+        return HYD_RecipeValidator_Fail(code, HYD_DIAG_CODE_SEGMENT_INVALID);
     }
 
     if (segment->tolerance < 0.0) {
-        return HDY_RecipeValidator_Fail(code, HDY_DIAG_CODE_SEGMENT_INVALID);
+        return HYD_RecipeValidator_Fail(code, HYD_DIAG_CODE_SEGMENT_INVALID);
     }
 
     if (segment->positionTolerance < 0.0) {
-        return HDY_RecipeValidator_Fail(code, HDY_DIAG_CODE_SEGMENT_INVALID);
+        return HYD_RecipeValidator_Fail(code, HYD_DIAG_CODE_SEGMENT_INVALID);
     }
 
     if (segment->pressureTolerance < 0.0) {
-        return HDY_RecipeValidator_Fail(code, HDY_DIAG_CODE_SEGMENT_INVALID);
+        return HYD_RecipeValidator_Fail(code, HYD_DIAG_CODE_SEGMENT_INVALID);
     }
 
     if (segment->flowTolerance < 0.0) {
-        return HDY_RecipeValidator_Fail(code, HDY_DIAG_CODE_SEGMENT_INVALID);
+        return HYD_RecipeValidator_Fail(code, HYD_DIAG_CODE_SEGMENT_INVALID);
     }
 
     if (segment->velocityTolerance < 0.0) {
-        return HDY_RecipeValidator_Fail(code, HDY_DIAG_CODE_SEGMENT_INVALID);
+        return HYD_RecipeValidator_Fail(code, HYD_DIAG_CODE_SEGMENT_INVALID);
     }
 
     if (segment->timeoutLimit < 0.0) {
-        return HDY_RecipeValidator_Fail(code, HDY_DIAG_CODE_SEGMENT_INVALID);
+        return HYD_RecipeValidator_Fail(code, HYD_DIAG_CODE_SEGMENT_INVALID);
     }
 
     if (segment->maxAcceleration < 0.0) {
-        return HDY_RecipeValidator_Fail(code, HDY_DIAG_CODE_SEGMENT_INVALID);
+        return HYD_RecipeValidator_Fail(code, HYD_DIAG_CODE_SEGMENT_INVALID);
     }
 
     if (segment->maxVelocity < 0.0) {
-        return HDY_RecipeValidator_Fail(code, HDY_DIAG_CODE_SEGMENT_INVALID);
+        return HYD_RecipeValidator_Fail(code, HYD_DIAG_CODE_SEGMENT_INVALID);
     }
 
     if (segment->maxFlow <= 0.0) {
-        return HDY_RecipeValidator_Fail(code, HDY_DIAG_CODE_SEGMENT_INVALID);
+        return HYD_RecipeValidator_Fail(code, HYD_DIAG_CODE_SEGMENT_INVALID);
     }
 
     if (segment->pressureRampRate < 0.0) {
-        return HDY_RecipeValidator_Fail(code, HDY_DIAG_CODE_SEGMENT_INVALID);
+        return HYD_RecipeValidator_Fail(code, HYD_DIAG_CODE_SEGMENT_INVALID);
     }
 
     if (segment->targetFlow < 0.0) {
-        return HDY_RecipeValidator_Fail(code, HDY_DIAG_CODE_SEGMENT_INVALID);
+        return HYD_RecipeValidator_Fail(code, HYD_DIAG_CODE_SEGMENT_INVALID);
     }
 
     if (segment->pressureKp < 0.0) {
-        return HDY_RecipeValidator_Fail(code, HDY_DIAG_CODE_SEGMENT_INVALID);
+        return HYD_RecipeValidator_Fail(code, HYD_DIAG_CODE_SEGMENT_INVALID);
     }
 
     if (segment->pressureKi < 0.0) {
-        return HDY_RecipeValidator_Fail(code, HDY_DIAG_CODE_SEGMENT_INVALID);
+        return HYD_RecipeValidator_Fail(code, HYD_DIAG_CODE_SEGMENT_INVALID);
     }
 
     if (segment->pressureKd < 0.0) {
-        return HDY_RecipeValidator_Fail(code, HDY_DIAG_CODE_SEGMENT_INVALID);
+        return HYD_RecipeValidator_Fail(code, HYD_DIAG_CODE_SEGMENT_INVALID);
     }
 
     if (segment->pressureIntegralLimit < 0.0) {
-        return HDY_RecipeValidator_Fail(code, HDY_DIAG_CODE_SEGMENT_INVALID);
+        return HYD_RecipeValidator_Fail(code, HYD_DIAG_CODE_SEGMENT_INVALID);
     }
 
     if (segment->pressureDeadband < 0.0) {
-        return HDY_RecipeValidator_Fail(code, HDY_DIAG_CODE_SEGMENT_INVALID);
+        return HYD_RecipeValidator_Fail(code, HYD_DIAG_CODE_SEGMENT_INVALID);
     }
 
     if (segment->pressureFilterAlpha < 0.0 || segment->pressureFilterAlpha > 1.0) {
-        return HDY_RecipeValidator_Fail(code, HDY_DIAG_CODE_SEGMENT_INVALID);
+        return HYD_RecipeValidator_Fail(code, HYD_DIAG_CODE_SEGMENT_INVALID);
     }
 
     if (segment->pressureDerivativeFilterAlpha < 0.0 || segment->pressureDerivativeFilterAlpha > 1.0) {
-        return HDY_RecipeValidator_Fail(code, HDY_DIAG_CODE_SEGMENT_INVALID);
+        return HYD_RecipeValidator_Fail(code, HYD_DIAG_CODE_SEGMENT_INVALID);
     }
 
     if (segment->pressureRbfConfig.minKp < 0.0 ||
@@ -210,145 +210,145 @@ HDY_BOOL HDY_RecipeValidator_ValidateSegment(const HDY_MotionSegment* segment,
         segment->pressureRbfConfig.etaP < 0.0 ||
         segment->pressureRbfConfig.etaI < 0.0 ||
         segment->pressureRbfConfig.etaD < 0.0) {
-        return HDY_RecipeValidator_Fail(code, HDY_DIAG_CODE_SEGMENT_INVALID);
+        return HYD_RecipeValidator_Fail(code, HYD_DIAG_CODE_SEGMENT_INVALID);
     }
 
-    if ((segment->mode == HDY_MODE_PRESSURE_CLOSED_LOOP) &&
-        (segment->pressureController == HDY_PRESSURE_CONTROLLER_RBF_PID ||
-         HDY_RecipeValidator_HasCustomRbfConfig(segment))) {
-        HDY_REAL resolvedMinKp;
-        HDY_REAL resolvedMaxKp;
-        HDY_REAL resolvedMinKi;
-        HDY_REAL resolvedMaxKi;
-        HDY_REAL resolvedMinKd;
-        HDY_REAL resolvedMaxKd;
+    if ((segment->mode == HYD_MODE_PRESSURE_CLOSED_LOOP) &&
+        (segment->pressureController == HYD_PRESSURE_CONTROLLER_RBF_PID ||
+         HYD_RecipeValidator_HasCustomRbfConfig(segment))) {
+        HYD_REAL resolvedMinKp;
+        HYD_REAL resolvedMaxKp;
+        HYD_REAL resolvedMinKi;
+        HYD_REAL resolvedMaxKi;
+        HYD_REAL resolvedMinKd;
+        HYD_REAL resolvedMaxKd;
 
-        resolvedMinKp = HDY_RecipeValidator_ResolvePositiveOrDefault(segment->pressureRbfConfig.minKp,
-                                                                     (HDY_REAL)PID_MIN_KP);
-        resolvedMaxKp = HDY_RecipeValidator_ResolvePositiveOrDefault(segment->pressureRbfConfig.maxKp,
-                                                                     (HDY_REAL)PID_MAX_KP);
-        resolvedMinKi = HDY_RecipeValidator_ResolvePositiveOrDefault(segment->pressureRbfConfig.minKi,
-                                                                     (HDY_REAL)PID_MIN_KI);
-        resolvedMaxKi = HDY_RecipeValidator_ResolvePositiveOrDefault(segment->pressureRbfConfig.maxKi,
-                                                                     (HDY_REAL)PID_MAX_KI);
-        resolvedMinKd = HDY_RecipeValidator_ResolvePositiveOrDefault(segment->pressureRbfConfig.minKd,
-                                                                     (HDY_REAL)PID_MIN_KD);
-        resolvedMaxKd = HDY_RecipeValidator_ResolvePositiveOrDefault(segment->pressureRbfConfig.maxKd,
-                                                                     (HDY_REAL)PID_MAX_KD);
+        resolvedMinKp = HYD_RecipeValidator_ResolvePositiveOrDefault(segment->pressureRbfConfig.minKp,
+                                                                     (HYD_REAL)PID_MIN_KP);
+        resolvedMaxKp = HYD_RecipeValidator_ResolvePositiveOrDefault(segment->pressureRbfConfig.maxKp,
+                                                                     (HYD_REAL)PID_MAX_KP);
+        resolvedMinKi = HYD_RecipeValidator_ResolvePositiveOrDefault(segment->pressureRbfConfig.minKi,
+                                                                     (HYD_REAL)PID_MIN_KI);
+        resolvedMaxKi = HYD_RecipeValidator_ResolvePositiveOrDefault(segment->pressureRbfConfig.maxKi,
+                                                                     (HYD_REAL)PID_MAX_KI);
+        resolvedMinKd = HYD_RecipeValidator_ResolvePositiveOrDefault(segment->pressureRbfConfig.minKd,
+                                                                     (HYD_REAL)PID_MIN_KD);
+        resolvedMaxKd = HYD_RecipeValidator_ResolvePositiveOrDefault(segment->pressureRbfConfig.maxKd,
+                                                                     (HYD_REAL)PID_MAX_KD);
 
         if (resolvedMinKp > resolvedMaxKp ||
             resolvedMinKi > resolvedMaxKi ||
             resolvedMinKd > resolvedMaxKd) {
-            return HDY_RecipeValidator_Fail(code, HDY_DIAG_CODE_SEGMENT_INVALID);
+            return HYD_RecipeValidator_Fail(code, HYD_DIAG_CODE_SEGMENT_INVALID);
         }
     }
 
-    if ((segment->mode == HDY_MODE_PRESSURE_CLOSED_LOOP) &&
-        (segment->pressureController == HDY_PRESSURE_CONTROLLER_PI ||
-         segment->pressureController == HDY_PRESSURE_CONTROLLER_PID) &&
+    if ((segment->mode == HYD_MODE_PRESSURE_CLOSED_LOOP) &&
+        (segment->pressureController == HYD_PRESSURE_CONTROLLER_PI ||
+         segment->pressureController == HYD_PRESSURE_CONTROLLER_PID) &&
         (segment->pressureKi <= 0.0)) {
-        return HDY_RecipeValidator_Fail(code, HDY_DIAG_CODE_SEGMENT_INVALID);
+        return HYD_RecipeValidator_Fail(code, HYD_DIAG_CODE_SEGMENT_INVALID);
     }
 
-    if ((segment->mode == HDY_MODE_PRESSURE_CLOSED_LOOP) &&
-        (segment->pressureController == HDY_PRESSURE_CONTROLLER_PID) &&
+    if ((segment->mode == HYD_MODE_PRESSURE_CLOSED_LOOP) &&
+        (segment->pressureController == HYD_PRESSURE_CONTROLLER_PID) &&
         (segment->pressureKd <= 0.0)) {
-        return HDY_RecipeValidator_Fail(code, HDY_DIAG_CODE_SEGMENT_INVALID);
+        return HYD_RecipeValidator_Fail(code, HYD_DIAG_CODE_SEGMENT_INVALID);
     }
 
-    if ((segment->mode == HDY_MODE_PRESSURE_CLOSED_LOOP) &&
-        (segment->pressureController == HDY_PRESSURE_CONTROLLER_P ||
-         segment->pressureController == HDY_PRESSURE_CONTROLLER_PI ||
-         segment->pressureController == HDY_PRESSURE_CONTROLLER_PID) &&
+    if ((segment->mode == HYD_MODE_PRESSURE_CLOSED_LOOP) &&
+        (segment->pressureController == HYD_PRESSURE_CONTROLLER_P ||
+         segment->pressureController == HYD_PRESSURE_CONTROLLER_PI ||
+         segment->pressureController == HYD_PRESSURE_CONTROLLER_PID) &&
         (segment->pressureKp <= 0.0)) {
-        return HDY_RecipeValidator_Fail(code, HDY_DIAG_CODE_SEGMENT_INVALID);
+        return HYD_RecipeValidator_Fail(code, HYD_DIAG_CODE_SEGMENT_INVALID);
     }
 
-    if ((segment->mode != HDY_MODE_PRESSURE_CLOSED_LOOP) &&
+    if ((segment->mode != HYD_MODE_PRESSURE_CLOSED_LOOP) &&
         (segment->velocityToFlowGain <= 0.0)) {
-        return HDY_RecipeValidator_Fail(code, HDY_DIAG_CODE_SEGMENT_INVALID);
+        return HYD_RecipeValidator_Fail(code, HYD_DIAG_CODE_SEGMENT_INVALID);
     }
 
-    if ((segment->planner == HDY_PLANNER_TIME_BASED) &&
-        (segment->mode != HDY_MODE_PRESSURE_CLOSED_LOOP) &&
+    if ((segment->planner == HYD_PLANNER_TIME_BASED) &&
+        (segment->mode != HYD_MODE_PRESSURE_CLOSED_LOOP) &&
         (segment->maxVelocity <= 0.0)) {
-        return HDY_RecipeValidator_Fail(code, HDY_DIAG_CODE_SEGMENT_INVALID);
+        return HYD_RecipeValidator_Fail(code, HYD_DIAG_CODE_SEGMENT_INVALID);
     }
 
-    if ((segment->endCondition == HDY_END_TIME) && (segment->duration <= 0.0)) {
-        return HDY_RecipeValidator_Fail(code, HDY_DIAG_CODE_SEGMENT_INVALID);
+    if ((segment->endCondition == HYD_END_TIME) && (segment->duration <= 0.0)) {
+        return HYD_RecipeValidator_Fail(code, HYD_DIAG_CODE_SEGMENT_INVALID);
     }
 
     if (code != NULL) {
-        *code = HDY_DIAG_CODE_NONE;
+        *code = HYD_DIAG_CODE_NONE;
     }
     return true;
 }
 
-HDY_BOOL HDY_RecipeValidator_ValidateRecipe(const HDY_MotionSegment* recipe,
+HYD_BOOL HYD_RecipeValidator_ValidateRecipe(const HYD_MotionSegment* recipe,
                                            size_t recipeSize,
-                                           HDY_DiagnosticCode* code) {
+                                           HYD_DiagnosticCode* code) {
     size_t index;
 
     if (recipe == NULL) {
-        return HDY_RecipeValidator_Fail(code, HDY_DIAG_CODE_RECIPE_EMPTY);
+        return HYD_RecipeValidator_Fail(code, HYD_DIAG_CODE_RECIPE_EMPTY);
     }
 
     if (recipeSize == 0U) {
-        return HDY_RecipeValidator_Fail(code, HDY_DIAG_CODE_RECIPE_EMPTY);
+        return HYD_RecipeValidator_Fail(code, HYD_DIAG_CODE_RECIPE_EMPTY);
     }
 
-    if (recipeSize > HDY_MAX_SEGMENTS) {
-        return HDY_RecipeValidator_Fail(code, HDY_DIAG_CODE_RECIPE_TOO_LARGE);
+    if (recipeSize > HYD_MAX_SEGMENTS) {
+        return HYD_RecipeValidator_Fail(code, HYD_DIAG_CODE_RECIPE_TOO_LARGE);
     }
 
     for (index = 0U; index < recipeSize; ++index) {
-        if (!HDY_RecipeValidator_ValidateSegment(&recipe[index], index, code)) {
+        if (!HYD_RecipeValidator_ValidateSegment(&recipe[index], index, code)) {
             return false;
         }
     }
 
     if (code != NULL) {
-        *code = HDY_DIAG_CODE_NONE;
+        *code = HYD_DIAG_CODE_NONE;
     }
     return true;
 }
 
-HDY_BOOL HDY_RecipeValidator_ValidateRuntimeConfig(HDY_REAL flowToPumpSpeedGain,
-                                                  HDY_REAL pumpSpeedLimit,
-                                                  HDY_DiagnosticCode* code) {
+HYD_BOOL HYD_RecipeValidator_ValidateRuntimeConfig(HYD_REAL flowToPumpSpeedGain,
+                                                  HYD_REAL pumpSpeedLimit,
+                                                  HYD_DiagnosticCode* code) {
     /* Delegate pump-related runtime config checks to the PumpConverter to
      * centralize validation logic and avoid duplication.
      */
-    return HDY_PumpConverter_ValidateConfig(flowToPumpSpeedGain, pumpSpeedLimit, code);
+    return HYD_PumpConverter_ValidateConfig(flowToPumpSpeedGain, pumpSpeedLimit, code);
 }
 
-HDY_BOOL HDY_RecipeValidator_ValidateStartContext(const HDY_MotionSegment* segment,
+HYD_BOOL HYD_RecipeValidator_ValidateStartContext(const HYD_MotionSegment* segment,
                                                  size_t segmentIndex,
-                                                 const HDY_AxisRef* axisRef,
-                                                 HDY_DiagnosticCode* code) {
-    HDY_REAL positionTolerance;
+                                                 const HYD_AxisRef* axisRef,
+                                                 HYD_DiagnosticCode* code) {
+    HYD_REAL positionTolerance;
 
     if (segment == NULL || axisRef == NULL) {
-        return HDY_RecipeValidator_Fail(code, HDY_DIAG_CODE_START_CONTEXT_INVALID);
+        return HYD_RecipeValidator_Fail(code, HYD_DIAG_CODE_START_CONTEXT_INVALID);
     }
 
-    positionTolerance = HDY_Segment_GetPositionTolerance(segment);
+    positionTolerance = HYD_Segment_GetPositionTolerance(segment);
 
-    if ((segment->mode == HDY_MODE_POSITION || segment->endCondition == HDY_END_POSITION) &&
-        (segment->direction == HDY_DIRECTION_EXTEND) &&
+    if ((segment->mode == HYD_MODE_POSITION || segment->endCondition == HYD_END_POSITION) &&
+        (segment->direction == HYD_DIRECTION_EXTEND) &&
         (segment->targetPosition + positionTolerance < axisRef->position)) {
-        return HDY_RecipeValidator_Fail(code, HDY_DIAG_CODE_START_CONTEXT_INVALID);
+        return HYD_RecipeValidator_Fail(code, HYD_DIAG_CODE_START_CONTEXT_INVALID);
     }
 
-    if ((segment->mode == HDY_MODE_POSITION || segment->endCondition == HDY_END_POSITION) &&
-        (segment->direction == HDY_DIRECTION_RETRACT) &&
+    if ((segment->mode == HYD_MODE_POSITION || segment->endCondition == HYD_END_POSITION) &&
+        (segment->direction == HYD_DIRECTION_RETRACT) &&
         (segment->targetPosition - positionTolerance > axisRef->position)) {
-        return HDY_RecipeValidator_Fail(code, HDY_DIAG_CODE_START_CONTEXT_INVALID);
+        return HYD_RecipeValidator_Fail(code, HYD_DIAG_CODE_START_CONTEXT_INVALID);
     }
 
     if (code != NULL) {
-        *code = HDY_DIAG_CODE_NONE;
+        *code = HYD_DIAG_CODE_NONE;
     }
     return true;
 }

@@ -102,11 +102,11 @@ include/
 **详细说明**：
 - ✅ 无动态内存分配
   - 所有数据结构使用固定大小数组
-  - HDY_MAX_SEGMENTS限制最大段数
-  - HDY_NAME_MAX限制段名长度
-  - HDY_MESSAGE_MAX限制消息长度
+  - HYD_MAX_SEGMENTS限制最大段数
+  - HYD_NAME_MAX限制段名长度
+  - HYD_MESSAGE_MAX限制消息长度
 - ✅ 内存占用可预测
-  - sizeof(HDY_MotionControlFB)固定
+  - sizeof(HYD_MotionControlFB)固定
   - 所有模块内部状态都在结构体中
 - ✅ 适合嵌入式平台
   - 无堆操作
@@ -117,11 +117,11 @@ include/
 ```c
 typedef struct {
     // ... 输入输出字段 ...
-    HDY_MotionSegment RECIPE[HDY_MAX_SEGMENTS];  // 固定大小数组
-    HDY_MotionState STATE;                        // 运行时状态
-    HDY_DiagnosticInfo DIAGNOSTIC;                // 诊断信息
+    HYD_MotionSegment RECIPE[HYD_MAX_SEGMENTS];  // 固定大小数组
+    HYD_MotionState STATE;                        // 运行时状态
+    HYD_DiagnosticInfo DIAGNOSTIC;                // 诊断信息
     // ... 内部字段 ...
-} HDY_MotionControlFB;
+} HYD_MotionControlFB;
 ```
 
 ### 4. 诊断体系完善
@@ -181,7 +181,7 @@ typedef struct {
 **问题描述**：
 - motion_control.c总行数：1533行
 - 包含命令处理、状态机、运行时编排、故障处理等多种职责
-- 最大函数长度：HDY_MotionControlFB_RunRunningState约180行
+- 最大函数长度：HYD_MotionControlFB_RunRunningState约180行
 
 **影响**：
 - 可维护性：代码过长，定位问题需要更多时间
@@ -224,42 +224,42 @@ typedef struct {
 创建hdy_config.h统一管理配置项：
 
 ```c
-#ifndef HDY_CONFIG_H
-#define HDY_CONFIG_H
+#ifndef HYD_CONFIG_H
+#define HYD_CONFIG_H
 
 /* 精度策略配置 */
-#define HDY_USE_DOUBLE_PRECISION 0  // 0: float, 1: double
-#if HDY_USE_DOUBLE_PRECISION
-typedef double HDY_REAL;
+#define HYD_USE_DOUBLE_PRECISION 0  // 0: float, 1: double
+#if HYD_USE_DOUBLE_PRECISION
+typedef double HYD_REAL;
 #else
-typedef float HDY_REAL;
+typedef float HYD_REAL;
 #endif
 
 /* 时间基类型配置 */
-#define HDY_TIME_IS_INT64 0  // 0: double, 1: int64
-#if HDY_TIME_IS_INT64
-typedef int64_t HDY_TIME;
+#define HYD_TIME_IS_INT64 0  // 0: double, 1: int64
+#if HYD_TIME_IS_INT64
+typedef int64_t HYD_TIME;
 #else
-typedef double HDY_TIME;
+typedef double HYD_TIME;
 #endif
 
 /* 资源上限配置 */
-#define HDY_MAX_SEGMENTS 32
-#define HDY_NAME_MAX 32
-#define HDY_MESSAGE_MAX 128
-#define HDY_HISTORY_SIZE 8
+#define HYD_MAX_SEGMENTS 32
+#define HYD_NAME_MAX 32
+#define HYD_MESSAGE_MAX 128
+#define HYD_HISTORY_SIZE 8
 
 /* 平台适配配置 */
-#define HDY_PLATFORM_PC 0
-#define HDY_PLATFORM_EMBEDDED 1
+#define HYD_PLATFORM_PC 0
+#define HYD_PLATFORM_EMBEDDED 1
 
-#if HDY_PLATFORM == HDY_PLATFORM_EMBEDDED
-#define HDY_ENABLE_RBF_PID 0  // 嵌入式平台禁用RBF-PID
+#if HYD_PLATFORM == HYD_PLATFORM_EMBEDDED
+#define HYD_ENABLE_RBF_PID 0  // 嵌入式平台禁用RBF-PID
 #else
-#define HDY_ENABLE_RBF_PID 1
+#define HYD_ENABLE_RBF_PID 1
 #endif
 
-#endif /* HDY_CONFIG_H */
+#endif /* HYD_CONFIG_H */
 ```
 
 **预期效果**：
@@ -592,12 +592,12 @@ typedef double HDY_TIME;
 
 | 模块 | 估算占用 | 说明 |
 |------|----------|------|
-| HDY_MotionControlFB | ~2KB | 包含所有运行时状态 |
-| HDY_MotionPlanner | ~0.1KB | 纯计算，无状态 |
-| HDY_PressureController | ~0.2KB | PI/PID状态 |
-| HDY_RampController | ~0.1KB | 斜坡状态 |
-| HDY_ProtectionManager | ~0.1KB | 保护状态 |
-| HDY_StateReporter | ~0.5KB | 诊断历史 |
+| HYD_MotionControlFB | ~2KB | 包含所有运行时状态 |
+| HYD_MotionPlanner | ~0.1KB | 纯计算，无状态 |
+| HYD_PressureController | ~0.2KB | PI/PID状态 |
+| HYD_RampController | ~0.1KB | 斜坡状态 |
+| HYD_ProtectionManager | ~0.1KB | 保护状态 |
+| HYD_StateReporter | ~0.5KB | 诊断历史 |
 | **总计** | **~3KB** | 静态内存占用 |
 
 ---

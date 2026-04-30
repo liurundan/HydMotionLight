@@ -40,10 +40,10 @@
 
 #### 2. 功能完整（5.0/5.0）
 - **运动模式支持**
-  - ✅ HDY_MODE_POSITION：位置模式
-  - ✅ HDY_MODE_SPEED_RAMP：速度斜坡模式
-  - ✅ HDY_MODE_PRESSURE：压力闭环模式
-  - ✅ HDY_MODE_FLOW：流量模式
+  - ✅ HYD_MODE_POSITION：位置模式
+  - ✅ HYD_MODE_SPEED_RAMP：速度斜坡模式
+  - ✅ HYD_MODE_PRESSURE：压力闭环模式
+  - ✅ HYD_MODE_FLOW：流量模式
 
 - **配方管理**
   - ✅ 多段配方加载
@@ -68,9 +68,9 @@
   - 无内存碎片问题
 
 - **内存使用优化**
-  - HDY_MAX_SEGMENTS定义最大段数
-  - HDY_NAME_MAX定义名称长度
-  - HDY_MESSAGE_MAX定义消息长度
+  - HYD_MAX_SEGMENTS定义最大段数
+  - HYD_NAME_MAX定义名称长度
+  - HYD_MESSAGE_MAX定义消息长度
 
 - **适合嵌入式平台**
   - RAM占用小
@@ -192,27 +192,27 @@
 
 **优化方案**：
 ```c
-// hdy_config.h 统一平台配置
-#ifndef HDY_CONFIG_H
-#define HDY_CONFIG_H
+// hyd_config.h 统一平台配置
+#ifndef HYD_CONFIG_H
+#define HYD_CONFIG_H
 
 // 资源配置
-#define HDY_MAX_SEGMENTS 32
-#define HDY_NAME_MAX 64
-#define HDY_MESSAGE_MAX 128
+#define HYD_MAX_SEGMENTS 32
+#define HYD_NAME_MAX 64
+#define HYD_MESSAGE_MAX 128
 
 // 平台适配
-#define HDY_PLATFORM_STM32
-// #define HDY_PLATFORM_LINUX
-// #define HDY_PLATFORM_WINDOWS
+#define HYD_PLATFORM_STM32
+// #define HYD_PLATFORM_LINUX
+// #define HYD_PLATFORM_WINDOWS
 
 // 功能开关
-#define HDY_FEATURE_RBF_PID 0
-#define HDY_FEATURE_DEBUG_LOG 0
+#define HYD_FEATURE_RBF_PID 0
+#define HYD_FEATURE_DEBUG_LOG 0
 
 // 性能配置
-#define HDY_CONTROL_CYCLE_MS 1
-#define HDY_MAX_CYCLE_TIME_MS 10
+#define HYD_CONTROL_CYCLE_MS 1
+#define HYD_MAX_CYCLE_TIME_MS 10
 
 #endif
 ```
@@ -403,12 +403,12 @@ motion_control.c       - 主编排器（保持结构，~1200行）
 ### 2. 工具函数模块创建
 
 **motion_utils.c/h功能**：
-1. ✅ HDY_MotionUtils_MinReal - 最小值计算
-2. ✅ HDY_MotionUtils_AbsReal - 绝对值计算
-3. ✅ HDY_MotionUtils_IsFiniteReal - 有限数检查
-4. ✅ HDY_MotionUtils_AxisRefIsValid - 轴反馈有效性检查
-5. ✅ HDY_MotionUtils_CommandToString - 命令转字符串
-6. ✅ HDY_MotionUtils_StateToString - 状态转字符串
+1. ✅ HYD_MotionUtils_MinReal - 最小值计算
+2. ✅ HYD_MotionUtils_AbsReal - 绝对值计算
+3. ✅ HYD_MotionUtils_IsFiniteReal - 有限数检查
+4. ✅ HYD_MotionUtils_AxisRefIsValid - 轴反馈有效性检查
+5. ✅ HYD_MotionUtils_CommandToString - 命令转字符串
+6. ✅ HYD_MotionUtils_StateToString - 状态转字符串
 
 **代码质量**：
 - 无依赖性
@@ -419,11 +419,11 @@ motion_control.c       - 主编排器（保持结构，~1200行）
 ### 3. 验证逻辑模块创建
 
 **motion_validator.c/h功能**：
-1. ✅ HDY_MotionValidator_ValidateStartRequest - 启动请求验证
-2. ✅ HDY_MotionValidator_ValidateNextRequest - 下一段请求验证
-3. ✅ HDY_MotionValidator_ValidatePumpConfig - 泵配置验证
-4. ✅ HDY_MotionValidator_ResolveStartSourceSegment - 解析启动源段
-5. ✅ HDY_MotionValidator_ResolveEffectiveFbState - 解析有效FB状态
+1. ✅ HYD_MotionValidator_ValidateStartRequest - 启动请求验证
+2. ✅ HYD_MotionValidator_ValidateNextRequest - 下一段请求验证
+3. ✅ HYD_MotionValidator_ValidatePumpConfig - 泵配置验证
+4. ✅ HYD_MotionValidator_ResolveStartSourceSegment - 解析启动源段
+5. ✅ HYD_MotionValidator_ResolveEffectiveFbState - 解析有效FB状态
 
 **代码质量**：
 - 逻辑清晰
@@ -641,16 +641,16 @@ motion_control.c       - 主编排器（保持结构，~1200行）
 // motion_utils.h
 
 // 数学工具函数
-float HDY_MotionUtils_MinReal(float a, float b);
-float HDY_MotionUtils_AbsReal(float x);
-bool HDY_MotionUtils_IsFiniteReal(float x);
+float HYD_MotionUtils_MinReal(float a, float b);
+float HYD_MotionUtils_AbsReal(float x);
+bool HYD_MotionUtils_IsFiniteReal(float x);
 
 // 轴反馈工具函数
-bool HDY_MotionUtils_AxisRefIsValid(const HDY_AxisRef* ref);
+bool HYD_MotionUtils_AxisRefIsValid(const HYD_AxisRef* ref);
 
 // 调试工具函数
-const char* HDY_MotionUtils_CommandToString(HDY_Command cmd);
-const char* HDY_MotionUtils_StateToString(HDY_FbState state);
+const char* HYD_MotionUtils_CommandToString(HYD_Command cmd);
+const char* HYD_MotionUtils_StateToString(HYD_FbState state);
 ```
 
 ### B. 验证逻辑模块API清单
@@ -659,31 +659,31 @@ const char* HDY_MotionUtils_StateToString(HDY_FbState state);
 // motion_validator.h
 
 // 命令验证
-bool HDY_MotionValidator_ValidateStartRequest(
-    const HDY_MotionControlFB* fb,
-    const HDY_MotionSegment* recipe,
+bool HYD_MotionValidator_ValidateStartRequest(
+    const HYD_MotionControlFB* fb,
+    const HYD_MotionSegment* recipe,
     int16_t startSegment,
-    HDY_CommandSource source,
-    HDY_DiagnosticInfo* diag);
+    HYD_CommandSource source,
+    HYD_DiagnosticInfo* diag);
 
-bool HDY_MotionValidator_ValidateNextRequest(
-    const HDY_MotionControlFB* fb,
-    const HDY_MotionSegment* recipe,
-    HDY_CommandSource source,
-    HDY_DiagnosticInfo* diag);
+bool HYD_MotionValidator_ValidateNextRequest(
+    const HYD_MotionControlFB* fb,
+    const HYD_MotionSegment* recipe,
+    HYD_CommandSource source,
+    HYD_DiagnosticInfo* diag);
 
 // 配置验证
-bool HDY_MotionValidator_ValidatePumpConfig(
-    const HDY_MotionControlFB* fb,
-    HDY_DiagnosticInfo* diag);
+bool HYD_MotionValidator_ValidatePumpConfig(
+    const HYD_MotionControlFB* fb,
+    HYD_DiagnosticInfo* diag);
 
 // 解析辅助
-int16_t HDY_MotionValidator_ResolveStartSourceSegment(
-    const HDY_MotionControlFB* fb,
+int16_t HYD_MotionValidator_ResolveStartSourceSegment(
+    const HYD_MotionControlFB* fb,
     int16_t startSegment);
 
-HDY_FbState HDY_MotionValidator_ResolveEffectiveFbState(
-    const HDY_MotionControlFB* fb);
+HYD_FbState HYD_MotionValidator_ResolveEffectiveFbState(
+    const HYD_MotionControlFB* fb);
 ```
 
 ### C. 参考文档

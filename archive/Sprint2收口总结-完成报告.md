@@ -49,17 +49,17 @@ Sprint 2 已于 2026-04-21 成功收口完成，所有核心目标均达成。�
 **状态枚举完整**:
 ```c
 typedef enum {
-    HDY_FB_STATE_DISABLED,      // EN=false，安全零输出
-    HDY_FB_STATE_IDLE,          // 空闲，未加载配方或未启动
-    HDY_FB_STATE_READY,         // 已加载配方，等待启动
-    HDY_FB_STATE_STARTING,      // 启动命令已接受，正在初始化
-    HDY_FB_STATE_RUNNING,       // 正在执行当前段
-    HDY_FB_STATE_SEGMENT_COMPLETE, // 当前段完成，等待NextSegment
-    HDY_FB_STATE_HOLD,          // 保持状态
-    HDY_FB_STATE_DONE,          // 正常完成（最后一段完成）
-    HDY_FB_STATE_ABORTED,        // 已中止
-    HDY_FB_STATE_FAULT          // 故障状态
-} HDY_FbState;
+    HYD_FB_STATE_DISABLED,      // EN=false，安全零输出
+    HYD_FB_STATE_IDLE,          // 空闲，未加载配方或未启动
+    HYD_FB_STATE_READY,         // 已加载配方，等待启动
+    HYD_FB_STATE_STARTING,      // 启动命令已接受，正在初始化
+    HYD_FB_STATE_RUNNING,       // 正在执行当前段
+    HYD_FB_STATE_SEGMENT_COMPLETE, // 当前段完成，等待NextSegment
+    HYD_FB_STATE_HOLD,          // 保持状态
+    HYD_FB_STATE_DONE,          // 正常完成（最后一段完成）
+    HYD_FB_STATE_ABORTED,        // 已中止
+    HYD_FB_STATE_FAULT          // 故障状态
+} HYD_FbState;
 ```
 
 **状态转换规则清晰**:
@@ -72,21 +72,21 @@ typedef enum {
 **命令枚举完整**:
 ```c
 typedef enum {
-    HDY_CMD_NONE,
-    HDY_CMD_START,      // 启动指定段（Recipe/Direct）
-    HDY_CMD_NEXT,       // 启动下一段（仅SegmentComplete状态）
-    HDY_CMD_STOP,       // (保留) 完成当前段后停止
-    HDY_CMD_HOLD,       // 保持当前状态
-    HDY_CMD_RESUME,     // 从Hold恢复
-    HDY_CMD_ABORT,      // 紧急中止
-    HDY_CMD_RESET,      // 重置到IDLE（全清）
-    HDY_CMD_ACK         // 确认诊断（清除警告/故障锁存）
-} HDY_FbCommand;
+    HYD_CMD_NONE,
+    HYD_CMD_START,      // 启动指定段（Recipe/Direct）
+    HYD_CMD_NEXT,       // 启动下一段（仅SegmentComplete状态）
+    HYD_CMD_STOP,       // (保留) 完成当前段后停止
+    HYD_CMD_HOLD,       // 保持当前状态
+    HYD_CMD_RESUME,     // 从Hold恢复
+    HYD_CMD_ABORT,      // 紧急中止
+    HYD_CMD_RESET,      // 重置到IDLE（全清）
+    HYD_CMD_ACK         // 确认诊断（清除警告/故障锁存）
+} HYD_FbCommand;
 ```
 
 **命令合法性矩阵**:
 ```c
-HDY_COMMAND_ALLOWED_STATE_MASKS:
+HYD_COMMAND_ALLOWED_STATE_MASKS:
 - START:   IDLE | READY | SEGMENT_COMPLETE | DONE | ABORTED
 - NEXT:    SEGMENT_COMPLETE
 - HOLD:    STARTING | RUNNING
@@ -99,9 +99,9 @@ HDY_COMMAND_ALLOWED_STATE_MASKS:
 ### 3. 故障路径统一
 
 **统一上报入口**:
-- 所有故障通过 `HDY_StateReporter_ReportFault` 统一上报
+- 所有故障通过 `HYD_StateReporter_ReportFault` 统一上报
 - 故障状态落点明确：
-  - `FB_STATE = HDY_FB_STATE_FAULT`
+  - `FB_STATE = HYD_FB_STATE_FAULT`
   - `STATE.fault = true`
   - `STATE.active = false`
   - `PUMP_SPEED = 0.0`（安全零值）

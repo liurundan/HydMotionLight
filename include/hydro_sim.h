@@ -7,8 +7,8 @@
 extern "C" {
 #endif
 
-#ifndef HDY_MAX_HYDRAULIC_SIM_FB
-#define HDY_MAX_HYDRAULIC_SIM_FB (2)
+#ifndef HYD_MAX_HYDRAULIC_SIM_FB
+#define HYD_MAX_HYDRAULIC_SIM_FB (2)
 #endif
 
 /* ==================================================================
@@ -102,7 +102,7 @@ struct HydraulicSimEnv {
     int pump_owner_axis_id;
     float cmd_rpm;
 
-    SimAxisState axes[HDY_MAX_HYDRAULIC_SIM_FB];
+    SimAxisState axes[HYD_MAX_HYDRAULIC_SIM_FB];
     int axis_count;
     char _initialized;
 };

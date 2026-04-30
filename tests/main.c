@@ -4,64 +4,64 @@
 #include <stdio.h>
 #include <time.h>
 
-static void print_live_diagnostic(const HDY_DiagnosticInfo* diagnostic) {
-    if (diagnostic == NULL || diagnostic->code == HDY_DIAG_CODE_NONE) {
+static void print_live_diagnostic(const HYD_DiagnosticInfo* diagnostic) {
+    if (diagnostic == NULL || diagnostic->code == HYD_DIAG_CODE_NONE) {
         return;
     }
 
     printf("    Diag: code=%s severity=%s source=%s recovery=%s action=%s flags=0x%02X",
-           HDY_Diagnostics_CodeToString(diagnostic->code),
-           HDY_Diagnostics_SeverityToString(diagnostic->severity),
-           HDY_Diagnostics_SourceToString(diagnostic->source),
-           HDY_Diagnostics_RecoveryToString(diagnostic->recovery),
-           HDY_Diagnostics_ProtectionActionToString(diagnostic->protectionAction),
+           HYD_Diagnostics_CodeToString(diagnostic->code),
+           HYD_Diagnostics_SeverityToString(diagnostic->severity),
+           HYD_Diagnostics_SourceToString(diagnostic->source),
+           HYD_Diagnostics_RecoveryToString(diagnostic->recovery),
+           HYD_Diagnostics_ProtectionActionToString(diagnostic->protectionAction),
            (unsigned int)diagnostic->flags);
     printf("\n");
 }
 
-static void print_retained_diagnostics(const HDY_MotionControlFB* controller) {
-    HDY_DiagnosticSnapshot latestSnapshot;
+static void print_retained_diagnostics(const HYD_MotionControlFB* controller) {
+    HYD_DiagnosticSnapshot latestSnapshot;
 
-    if (controller == NULL || controller->DIAGNOSTIC_HISTORY.lastSnapshot.diagnostic.code == HDY_DIAG_CODE_NONE) {
+    if (controller == NULL || controller->DIAGNOSTIC_HISTORY.lastSnapshot.diagnostic.code == HYD_DIAG_CODE_NONE) {
         return;
     }
 
     printf("    Retained: last=%s severity=%s totalRecorded=%u hasRecord=%u\n",
-           HDY_Diagnostics_CodeToString(controller->DIAGNOSTIC_HISTORY.lastSnapshot.diagnostic.code),
-           HDY_Diagnostics_SeverityToString(controller->DIAGNOSTIC_HISTORY.lastSnapshot.diagnostic.severity),
+           HYD_Diagnostics_CodeToString(controller->DIAGNOSTIC_HISTORY.lastSnapshot.diagnostic.code),
+           HYD_Diagnostics_SeverityToString(controller->DIAGNOSTIC_HISTORY.lastSnapshot.diagnostic.severity),
            (unsigned int)controller->DIAGNOSTIC_HISTORY.totalRecorded,
            (unsigned int)controller->DIAGNOSTIC_HISTORY.hasRecord);
 
-    if (HDY_DiagnosticsHistory_GetLatest(&controller->DIAGNOSTIC_HISTORY, &latestSnapshot)) {
+    if (HYD_DiagnosticsHistory_GetLatest(&controller->DIAGNOSTIC_HISTORY, &latestSnapshot)) {
         printf("    History latest: t=%.2f segment=%s code=%s action=%s\n",
                latestSnapshot.eventTimestamp,
                (latestSnapshot.segmentTag == 0 ? "(none)" : "active"),
-               HDY_Diagnostics_CodeToString(latestSnapshot.diagnostic.code),
-               HDY_Diagnostics_ProtectionActionToString(latestSnapshot.diagnostic.protectionAction));
+               HYD_Diagnostics_CodeToString(latestSnapshot.diagnostic.code),
+               HYD_Diagnostics_ProtectionActionToString(latestSnapshot.diagnostic.protectionAction));
     }
 
     if (controller->LAST_FAULT_SNAPSHOT.valid) {
         printf("    Last fault snapshot: t=%.2f segment=%s code=%s\n",
                controller->LAST_FAULT_SNAPSHOT.eventTimestamp,
                (controller->LAST_FAULT_SNAPSHOT.segmentTag == 0 ? "(none)" : "fault"),
-               HDY_Diagnostics_CodeToString(controller->LAST_FAULT_SNAPSHOT.diagnostic.code));
+               HYD_Diagnostics_CodeToString(controller->LAST_FAULT_SNAPSHOT.diagnostic.code));
     }
 }
 
 int main(void) {
-    HDY_MotionControlFB controller;
-    HDY_MotionControlFB_Init(&controller);
+    HYD_MotionControlFB controller;
+    HYD_MotionControlFB_Init(&controller);
     controller.FLOW_TO_PUMP_SPEED_GAIN = 80.0;
     controller.PUMP_SPEED_LIMIT = 5000.0;
 
-    HDY_MotionSegment recipe[5] = {
+    HYD_MotionSegment recipe[5] = {
         {
             .segmentTag = 1,
-            .segmentType = HDY_SEGMENT_TYPE_CLAMPING,
-            .planner = HDY_PLANNER_TIME_BASED,
-            .mode = HDY_MODE_SPEED_RAMP,
-            .endCondition = HDY_END_POSITION,
-            .direction = HDY_DIRECTION_EXTEND,
+            .segmentType = HYD_SEGMENT_TYPE_CLAMPING,
+            .planner = HYD_PLANNER_TIME_BASED,
+            .mode = HYD_MODE_SPEED_RAMP,
+            .endCondition = HYD_END_POSITION,
+            .direction = HYD_DIRECTION_EXTEND,
             .targetPosition = 10.0,
             .targetFlow = 5.0,
             .targetPressure = 5.5,
@@ -79,11 +79,11 @@ int main(void) {
         },
         {
             .segmentTag = 2,
-            .segmentType = HDY_SEGMENT_TYPE_CLAMPING,
-            .planner = HDY_PLANNER_TIME_BASED,
-            .mode = HDY_MODE_SPEED_RAMP,
-            .endCondition = HDY_END_POSITION,
-            .direction = HDY_DIRECTION_EXTEND,
+            .segmentType = HYD_SEGMENT_TYPE_CLAMPING,
+            .planner = HYD_PLANNER_TIME_BASED,
+            .mode = HYD_MODE_SPEED_RAMP,
+            .endCondition = HYD_END_POSITION,
+            .direction = HYD_DIRECTION_EXTEND,
             .targetPosition = 30.0,
             .targetFlow = 10.0,
             .targetPressure = 8.0,
@@ -101,11 +101,11 @@ int main(void) {
         },
         {
             .segmentTag = 3,
-            .segmentType = HDY_SEGMENT_TYPE_CLAMPING,
-            .planner = HDY_PLANNER_TIME_BASED,
-            .mode = HDY_MODE_PRESSURE_CLOSED_LOOP,
-            .endCondition = HDY_END_TIME,
-            .direction = HDY_DIRECTION_HOLD,
+            .segmentType = HYD_SEGMENT_TYPE_CLAMPING,
+            .planner = HYD_PLANNER_TIME_BASED,
+            .mode = HYD_MODE_PRESSURE_CLOSED_LOOP,
+            .endCondition = HYD_END_TIME,
+            .direction = HYD_DIRECTION_HOLD,
             .targetPosition = 30.0,
             .targetFlow = 8.0,
             .targetPressure = 12.0,
@@ -118,7 +118,7 @@ int main(void) {
             .timeoutLimit = 2.5,
             .velocityToFlowGain = 0.10,
             .pressureRampRate = 6.0,
-            .pressureController = HDY_PRESSURE_CONTROLLER_PI,
+            .pressureController = HYD_PRESSURE_CONTROLLER_PI,
             .pressureKp = 0.35,
             .pressureKi = 0.80,
             .pressureIntegralLimit = 6.0,
@@ -127,11 +127,11 @@ int main(void) {
         },
         {
             .segmentTag = 4,
-            .segmentType = HDY_SEGMENT_TYPE_INJECTION,
-            .planner = HDY_PLANNER_TIME_BASED,
-            .mode = HDY_MODE_SPEED_RAMP,
-            .endCondition = HDY_END_POSITION,
-            .direction = HDY_DIRECTION_EXTEND,
+            .segmentType = HYD_SEGMENT_TYPE_INJECTION,
+            .planner = HYD_PLANNER_TIME_BASED,
+            .mode = HYD_MODE_SPEED_RAMP,
+            .endCondition = HYD_END_POSITION,
+            .direction = HYD_DIRECTION_EXTEND,
             .targetPosition = 80.0,
             .targetFlow = 45.0,
             .targetPressure = 5.0,
@@ -149,11 +149,11 @@ int main(void) {
         },
         {
             .segmentTag = 5,
-            .segmentType = HDY_SEGMENT_TYPE_HOLDING,
-            .planner = HDY_PLANNER_TIME_BASED,
-            .mode = HDY_MODE_PRESSURE_CLOSED_LOOP,
-            .endCondition = HDY_END_TIME,
-            .direction = HDY_DIRECTION_HOLD,
+            .segmentType = HYD_SEGMENT_TYPE_HOLDING,
+            .planner = HYD_PLANNER_TIME_BASED,
+            .mode = HYD_MODE_PRESSURE_CLOSED_LOOP,
+            .endCondition = HYD_END_TIME,
+            .direction = HYD_DIRECTION_HOLD,
             .targetPosition = 80.0,
             .targetFlow = 25.0,
             .targetPressure = 14.0,
@@ -166,7 +166,7 @@ int main(void) {
             .timeoutLimit = 3.0,
             .velocityToFlowGain = 0.10,
             .pressureRampRate = 4.0,
-            .pressureController = HDY_PRESSURE_CONTROLLER_PI,
+            .pressureController = HYD_PRESSURE_CONTROLLER_PI,
             .pressureKp = 0.45,
             .pressureKi = 1.00,
             .pressureIntegralLimit = 8.0,
@@ -175,17 +175,17 @@ int main(void) {
         }
     };
 
-    HDY_MotionControlFB_LoadRecipe(&controller, recipe, 5);
+    HYD_MotionControlFB_LoadRecipe(&controller, recipe, 5);
     controller.START_SEGMENT = true;
     controller.START_SEGMENT_INDEX = 0;
 
-    HDY_AxisRef ref = {0};
-    HDY_REAL timeStep = 0.1;
+    HYD_AxisRef ref = {0};
+    HYD_REAL timeStep = 0.1;
 
     for (int step = 0; step < 250; ++step) {
         ref.timestamp = step * timeStep;
         controller.AXIS_REF = ref;
-        HDY_MotionControlFB_Execute(&controller);
+        HYD_MotionControlFB_Execute(&controller);
 
         printf("[%.1f s] %s | PumpSpeed=%.1f rpm | Flow=%.1f | Velocity=%.2f | Pressure=%.2f MPa | Status=%s | Changed=%s\n",
                ref.timestamp,
@@ -197,14 +197,14 @@ int main(void) {
                controller.SEGMENT_COMPLETED ? "Segment completed" : "Segment running",
                controller.SEGMENT_CHANGED ? "Yes" : "No");
 
-        if (controller.DIAGNOSTIC.code != HDY_DIAG_CODE_NONE) {
+        if (controller.DIAGNOSTIC.code != HYD_DIAG_CODE_NONE) {
             print_live_diagnostic(&controller.DIAGNOSTIC);
-        } else if (!controller.STATE.active && controller.DIAGNOSTIC_HISTORY.lastSnapshot.diagnostic.code != HDY_DIAG_CODE_NONE) {
+        } else if (!controller.STATE.active && controller.DIAGNOSTIC_HISTORY.lastSnapshot.diagnostic.code != HYD_DIAG_CODE_NONE) {
             print_retained_diagnostics(&controller);
         }
 
         if (controller.SEGMENT_COMPLETED) {
-            HDY_MotionControlFB_NextSegment(&controller, ref.timestamp);
+            HYD_MotionControlFB_NextSegment(&controller, ref.timestamp);
             if (controller.STATE.finished) {
                 printf("Recipe finished.\n");
                 break;
@@ -221,7 +221,7 @@ int main(void) {
             }
 
             {
-                HDY_REAL pressureIncrement = 0.0;
+                HYD_REAL pressureIncrement = 0.0;
                 if (ref.flow > 3.0) {
                     pressureIncrement = (ref.flow / 30.0 - 0.1) * timeStep;
                 }
@@ -238,10 +238,10 @@ int main(void) {
         }
     }
 
-    if (!controller.STATE.faultActive && controller.DIAGNOSTIC.code == HDY_DIAG_CODE_NONE &&
-        controller.DIAGNOSTIC_HISTORY.lastSnapshot.diagnostic.code != HDY_DIAG_CODE_NONE) {
+    if (!controller.STATE.faultActive && controller.DIAGNOSTIC.code == HYD_DIAG_CODE_NONE &&
+        controller.DIAGNOSTIC_HISTORY.lastSnapshot.diagnostic.code != HYD_DIAG_CODE_NONE) {
         print_retained_diagnostics(&controller);
-        if (HDY_MotionControlFB_AcknowledgeDiagnostics(&controller)) {
+        if (HYD_MotionControlFB_AcknowledgeDiagnostics(&controller)) {
             printf("Service acknowledgment cleared retained diagnostics before exit.\n");
         }
     }

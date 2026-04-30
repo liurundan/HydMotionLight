@@ -2,7 +2,7 @@
 #include <math.h>
 #include <string.h>
 
-void HDY_DiagnosticCriteria_InitState(HDY_DiagnosticCriteriaState* state) {
+void HYD_DiagnosticCriteria_InitState(HYD_DiagnosticCriteriaState* state) {
     if (state == NULL) {
         return;
     }
@@ -15,7 +15,7 @@ void HDY_DiagnosticCriteria_InitState(HDY_DiagnosticCriteriaState* state) {
     state->faultEscalated = false;
 }
 
-void HDY_DiagnosticCriteria_ResetState(HDY_DiagnosticCriteriaState* state) {
+void HYD_DiagnosticCriteria_ResetState(HYD_DiagnosticCriteriaState* state) {
     if (state == NULL) {
         return;
     }
@@ -23,10 +23,10 @@ void HDY_DiagnosticCriteria_ResetState(HDY_DiagnosticCriteriaState* state) {
     memset(state, 0, sizeof(*state));
 
     /* 重置告警到故障升级状态 */
-    HDY_DiagnosticCriteria_ResetFaultEscalation(state);
+    HYD_DiagnosticCriteria_ResetFaultEscalation(state);
 }
 
-HDY_BOOL HDY_IsStartupSuppressActive(HDY_TIME segmentElapsedTime, HDY_TIME suppressTime) {
+HYD_BOOL HYD_IsStartupSuppressActive(HYD_TIME segmentElapsedTime, HYD_TIME suppressTime) {
     if (suppressTime <= 0.0) {
         return false;
     }
@@ -34,7 +34,7 @@ HDY_BOOL HDY_IsStartupSuppressActive(HDY_TIME segmentElapsedTime, HDY_TIME suppr
     return (segmentElapsedTime < suppressTime) ? true : false;
 }
 
-HDY_BOOL HDY_IsSwitchSuppressActive(HDY_BOOL isSwitchPhase, HDY_TIME segmentElapsedTime, HDY_TIME suppressTime) {
+HYD_BOOL HYD_IsSwitchSuppressActive(HYD_BOOL isSwitchPhase, HYD_TIME segmentElapsedTime, HYD_TIME suppressTime) {
     if (!isSwitchPhase || suppressTime <= 0.0) {
         return false;
     }
@@ -42,7 +42,7 @@ HDY_BOOL HDY_IsSwitchSuppressActive(HDY_BOOL isSwitchPhase, HDY_TIME segmentElap
     return (segmentElapsedTime < suppressTime) ? true : false;
 }
 
-HDY_REAL HDY_CalculateLoopBuildFactor(HDY_TIME loopBuildTime, HDY_TIME suppressTime) {
+HYD_REAL HYD_CalculateLoopBuildFactor(HYD_TIME loopBuildTime, HYD_TIME suppressTime) {
     if (suppressTime <= 0.0) {
         return 1.0;
     }
@@ -55,17 +55,17 @@ HDY_REAL HDY_CalculateLoopBuildFactor(HDY_TIME loopBuildTime, HDY_TIME suppressT
     return loopBuildTime / suppressTime;
 }
 
-static HDY_BOOL HDY_DiagnosticCriteria_IsFiniteReal(HDY_REAL value) {
+static HYD_BOOL HYD_DiagnosticCriteria_IsFiniteReal(HYD_REAL value) {
     return isfinite(value) ? true : false;
 }
 
-static HDY_BOOL HDY_DiagnosticCriteria_CheckSuppressCondition(const HDY_DiagnosticCriteria* criteria,
-                                                               HDY_TIME segmentElapsedTime,
-                                                               HDY_BOOL isStartupPhase,
-                                                               HDY_BOOL isSwitchPhase,
-                                                               HDY_SuppressType* suppressType,
-                                                               HDY_TIME* suppressTime) {
-    *suppressType = HDY_SUPPRESS_NONE;
+static HYD_BOOL HYD_DiagnosticCriteria_CheckSuppressCondition(const HYD_DiagnosticCriteria* criteria,
+                                                               HYD_TIME segmentElapsedTime,
+                                                               HYD_BOOL isStartupPhase,
+                                                               HYD_BOOL isSwitchPhase,
+                                                               HYD_SuppressType* suppressType,
+                                                               HYD_TIME* suppressTime) {
+    *suppressType = HYD_SUPPRESS_NONE;
     *suppressTime = 0.0;
 
     if (criteria == NULL) {
@@ -74,8 +74,8 @@ static HDY_BOOL HDY_DiagnosticCriteria_CheckSuppressCondition(const HDY_Diagnost
 
     /* 检查启动阶段抑制 */
     if (criteria->enableStartupSuppress && isStartupPhase) {
-        if (HDY_IsStartupSuppressActive(segmentElapsedTime, criteria->startupSuppressTime)) {
-            *suppressType = HDY_SUPPRESS_STARTUP;
+        if (HYD_IsStartupSuppressActive(segmentElapsedTime, criteria->startupSuppressTime)) {
+            *suppressType = HYD_SUPPRESS_STARTUP;
             *suppressTime = criteria->startupSuppressTime;
             return true;
         }
@@ -83,8 +83,8 @@ static HDY_BOOL HDY_DiagnosticCriteria_CheckSuppressCondition(const HDY_Diagnost
 
     /* 检查切段阶段抑制 */
     if (criteria->enableSwitchSuppress && isSwitchPhase) {
-        if (HDY_IsSwitchSuppressActive(isSwitchPhase, segmentElapsedTime, criteria->switchSuppressTime)) {
-            *suppressType = HDY_SUPPRESS_SWITCH;
+        if (HYD_IsSwitchSuppressActive(isSwitchPhase, segmentElapsedTime, criteria->switchSuppressTime)) {
+            *suppressType = HYD_SUPPRESS_SWITCH;
             *suppressTime = criteria->switchSuppressTime;
             return true;
         }
@@ -98,12 +98,12 @@ static HDY_BOOL HDY_DiagnosticCriteria_CheckSuppressCondition(const HDY_Diagnost
     return false;
 }
 
-static HDY_REAL HDY_DiagnosticCriteria_CalculateEffectiveThreshold(const HDY_DiagnosticCriteria* criteria,
-                                                                    HDY_TIME loopBuildTime,
-                                                                    HDY_BOOL errorActive,
-                                                                    const HDY_DiagnosticCriteriaState* state) {
-    HDY_REAL effectiveThreshold = criteria->baseThreshold;
-    HDY_REAL loopBuildFactor = 1.0;
+static HYD_REAL HYD_DiagnosticCriteria_CalculateEffectiveThreshold(const HYD_DiagnosticCriteria* criteria,
+                                                                    HYD_TIME loopBuildTime,
+                                                                    HYD_BOOL errorActive,
+                                                                    const HYD_DiagnosticCriteriaState* state) {
+    HYD_REAL effectiveThreshold = criteria->baseThreshold;
+    HYD_REAL loopBuildFactor = 1.0;
 
     if (criteria == NULL) {
         return 0.0;
@@ -113,7 +113,7 @@ static HDY_REAL HDY_DiagnosticCriteria_CalculateEffectiveThreshold(const HDY_Dia
      * 仅当误差实际存在时才降低阈值；若误差不存在（errorActive=false），
      * 不应将阈值降为0，否则微小数值噪声就会触发诊断。 */
     if (criteria->enableLoopBuildSuppress && errorActive) {
-        loopBuildFactor = HDY_CalculateLoopBuildFactor(loopBuildTime, criteria->loopBuildSuppressTime);
+        loopBuildFactor = HYD_CalculateLoopBuildFactor(loopBuildTime, criteria->loopBuildSuppressTime);
         effectiveThreshold = effectiveThreshold * loopBuildFactor;
     }
 
@@ -126,11 +126,11 @@ static HDY_REAL HDY_DiagnosticCriteria_CalculateEffectiveThreshold(const HDY_Dia
     return effectiveThreshold;
 }
 
-static HDY_BOOL HDY_DiagnosticCriteria_CheckDebounce(const HDY_DiagnosticCriteria* criteria,
-                                                      HDY_DiagnosticCriteriaState* state,
-                                                      HDY_BOOL errorExceedsThreshold,
-                                                      HDY_TIME currentTime,
-                                                      HDY_TIME* triggerTime) {
+static HYD_BOOL HYD_DiagnosticCriteria_CheckDebounce(const HYD_DiagnosticCriteria* criteria,
+                                                      HYD_DiagnosticCriteriaState* state,
+                                                      HYD_BOOL errorExceedsThreshold,
+                                                      HYD_TIME currentTime,
+                                                      HYD_TIME* triggerTime) {
     if (criteria == NULL || state == NULL) {
         return false;
     }
@@ -170,21 +170,21 @@ static HDY_BOOL HDY_DiagnosticCriteria_CheckDebounce(const HDY_DiagnosticCriteri
     }
 }
 
-HDY_BOOL HDY_DiagnosticCriteria_CheckPressure(HDY_DiagnosticResult* result,
-                                              const HDY_ErrorMonitor* monitor,
-                                              const HDY_DiagnosticCriteria* criteria,
-                                              HDY_DiagnosticCriteriaState* state,
-                                              HDY_TIME currentTime,
-                                              HDY_TIME segmentElapsedTime,
-                                              HDY_BOOL isStartupPhase,
-                                              HDY_BOOL isSwitchPhase) {
-    HDY_REAL absoluteError;
-    HDY_REAL effectiveThreshold;
-    HDY_BOOL errorExceedsThreshold;
-    HDY_SuppressType suppressType;
-    HDY_TIME suppressTime;
-    HDY_BOOL triggered;
-    HDY_TIME loopBuildTime = 0.0;
+HYD_BOOL HYD_DiagnosticCriteria_CheckPressure(HYD_DiagnosticResult* result,
+                                              const HYD_ErrorMonitor* monitor,
+                                              const HYD_DiagnosticCriteria* criteria,
+                                              HYD_DiagnosticCriteriaState* state,
+                                              HYD_TIME currentTime,
+                                              HYD_TIME segmentElapsedTime,
+                                              HYD_BOOL isStartupPhase,
+                                              HYD_BOOL isSwitchPhase) {
+    HYD_REAL absoluteError;
+    HYD_REAL effectiveThreshold;
+    HYD_BOOL errorExceedsThreshold;
+    HYD_SuppressType suppressType;
+    HYD_TIME suppressTime;
+    HYD_BOOL triggered;
+    HYD_TIME loopBuildTime = 0.0;
 
     if (result == NULL || monitor == NULL || criteria == NULL || state == NULL) {
         return false;
@@ -194,12 +194,12 @@ HDY_BOOL HDY_DiagnosticCriteria_CheckPressure(HDY_DiagnosticResult* result,
 
     /* 计算绝对误差 */
     absoluteError = fabs(monitor->pressureError);
-    if (!HDY_DiagnosticCriteria_IsFiniteReal(absoluteError)) {
+    if (!HYD_DiagnosticCriteria_IsFiniteReal(absoluteError)) {
         return false;
     }
 
     /* 检查抑制条件 */
-    if (HDY_DiagnosticCriteria_CheckSuppressCondition(criteria,
+    if (HYD_DiagnosticCriteria_CheckSuppressCondition(criteria,
                                                        segmentElapsedTime,
                                                        isStartupPhase,
                                                        isSwitchPhase,
@@ -217,14 +217,14 @@ HDY_BOOL HDY_DiagnosticCriteria_CheckPressure(HDY_DiagnosticResult* result,
     }
 
     /* 计算有效阈值（考虑滞回和闭环建立） */
-    effectiveThreshold = HDY_DiagnosticCriteria_CalculateEffectiveThreshold(criteria, loopBuildTime, monitor->pressureErrorActive, state);
+    effectiveThreshold = HYD_DiagnosticCriteria_CalculateEffectiveThreshold(criteria, loopBuildTime, monitor->pressureErrorActive, state);
     result->effectiveThreshold = effectiveThreshold;
 
     /* 判断误差是否超过阈值 */
     errorExceedsThreshold = (absoluteError > effectiveThreshold);
 
     /* 应用去抖动逻辑 */
-    triggered = HDY_DiagnosticCriteria_CheckDebounce(criteria, state, errorExceedsThreshold, currentTime, &result->triggerTime);
+    triggered = HYD_DiagnosticCriteria_CheckDebounce(criteria, state, errorExceedsThreshold, currentTime, &result->triggerTime);
 
     if (triggered) {
         /* 激活滞回 */
@@ -239,20 +239,20 @@ HDY_BOOL HDY_DiagnosticCriteria_CheckPressure(HDY_DiagnosticResult* result,
     return triggered;
 }
 
-HDY_BOOL HDY_DiagnosticCriteria_CheckFlow(HDY_DiagnosticResult* result,
-                                           const HDY_ErrorMonitor* monitor,
-                                           const HDY_DiagnosticCriteria* criteria,
-                                           HDY_DiagnosticCriteriaState* state,
-                                           HDY_TIME currentTime,
-                                           HDY_TIME segmentElapsedTime,
-                                           HDY_BOOL isStartupPhase,
-                                           HDY_BOOL isSwitchPhase) {
-    HDY_REAL absoluteError;
-    HDY_REAL effectiveThreshold;
-    HDY_BOOL errorExceedsThreshold;
-    HDY_SuppressType suppressType;
-    HDY_TIME suppressTime;
-    HDY_BOOL triggered;
+HYD_BOOL HYD_DiagnosticCriteria_CheckFlow(HYD_DiagnosticResult* result,
+                                           const HYD_ErrorMonitor* monitor,
+                                           const HYD_DiagnosticCriteria* criteria,
+                                           HYD_DiagnosticCriteriaState* state,
+                                           HYD_TIME currentTime,
+                                           HYD_TIME segmentElapsedTime,
+                                           HYD_BOOL isStartupPhase,
+                                           HYD_BOOL isSwitchPhase) {
+    HYD_REAL absoluteError;
+    HYD_REAL effectiveThreshold;
+    HYD_BOOL errorExceedsThreshold;
+    HYD_SuppressType suppressType;
+    HYD_TIME suppressTime;
+    HYD_BOOL triggered;
 
     if (result == NULL || monitor == NULL || criteria == NULL || state == NULL) {
         return false;
@@ -262,12 +262,12 @@ HDY_BOOL HDY_DiagnosticCriteria_CheckFlow(HDY_DiagnosticResult* result,
 
     /* 计算绝对误差 */
     absoluteError = fabs(monitor->flowError);
-    if (!HDY_DiagnosticCriteria_IsFiniteReal(absoluteError)) {
+    if (!HYD_DiagnosticCriteria_IsFiniteReal(absoluteError)) {
         return false;
     }
 
     /* 检查抑制条件 */
-    if (HDY_DiagnosticCriteria_CheckSuppressCondition(criteria,
+    if (HYD_DiagnosticCriteria_CheckSuppressCondition(criteria,
                                                        segmentElapsedTime,
                                                        isStartupPhase,
                                                        isSwitchPhase,
@@ -280,20 +280,20 @@ HDY_BOOL HDY_DiagnosticCriteria_CheckFlow(HDY_DiagnosticResult* result,
     }
 
     /* 计算闭环建立时间 */
-    HDY_TIME loopBuildTime_flow = 0.0;
+    HYD_TIME loopBuildTime_flow = 0.0;
     if (monitor->flowErrorActive) {
         loopBuildTime_flow = monitor->flowErrorDuration;
     }
 
     /* 计算有效阈值（考虑滞回和闭环建立） */
-    effectiveThreshold = HDY_DiagnosticCriteria_CalculateEffectiveThreshold(criteria, loopBuildTime_flow, monitor->flowErrorActive, state);
+    effectiveThreshold = HYD_DiagnosticCriteria_CalculateEffectiveThreshold(criteria, loopBuildTime_flow, monitor->flowErrorActive, state);
     result->effectiveThreshold = effectiveThreshold;
 
     /* 判断误差是否超过阈值 */
     errorExceedsThreshold = (absoluteError > effectiveThreshold);
 
     /* 应用去抖动逻辑 */
-    triggered = HDY_DiagnosticCriteria_CheckDebounce(criteria, state, errorExceedsThreshold, currentTime, &result->triggerTime);
+    triggered = HYD_DiagnosticCriteria_CheckDebounce(criteria, state, errorExceedsThreshold, currentTime, &result->triggerTime);
 
     if (triggered) {
         state->hysteresisActive = true;
@@ -307,20 +307,20 @@ HDY_BOOL HDY_DiagnosticCriteria_CheckFlow(HDY_DiagnosticResult* result,
     return triggered;
 }
 
-HDY_BOOL HDY_DiagnosticCriteria_CheckVelocity(HDY_DiagnosticResult* result,
-                                                const HDY_ErrorMonitor* monitor,
-                                                const HDY_DiagnosticCriteria* criteria,
-                                                HDY_DiagnosticCriteriaState* state,
-                                                HDY_TIME currentTime,
-                                                HDY_TIME segmentElapsedTime,
-                                                HDY_BOOL isStartupPhase,
-                                                HDY_BOOL isSwitchPhase) {
-    HDY_REAL absoluteError;
-    HDY_REAL effectiveThreshold;
-    HDY_BOOL errorExceedsThreshold;
-    HDY_SuppressType suppressType;
-    HDY_TIME suppressTime;
-    HDY_BOOL triggered;
+HYD_BOOL HYD_DiagnosticCriteria_CheckVelocity(HYD_DiagnosticResult* result,
+                                                const HYD_ErrorMonitor* monitor,
+                                                const HYD_DiagnosticCriteria* criteria,
+                                                HYD_DiagnosticCriteriaState* state,
+                                                HYD_TIME currentTime,
+                                                HYD_TIME segmentElapsedTime,
+                                                HYD_BOOL isStartupPhase,
+                                                HYD_BOOL isSwitchPhase) {
+    HYD_REAL absoluteError;
+    HYD_REAL effectiveThreshold;
+    HYD_BOOL errorExceedsThreshold;
+    HYD_SuppressType suppressType;
+    HYD_TIME suppressTime;
+    HYD_BOOL triggered;
 
     if (result == NULL || monitor == NULL || criteria == NULL || state == NULL) {
         return false;
@@ -330,12 +330,12 @@ HDY_BOOL HDY_DiagnosticCriteria_CheckVelocity(HDY_DiagnosticResult* result,
 
     /* 计算绝对误差 */
     absoluteError = fabs(monitor->velocityError);
-    if (!HDY_DiagnosticCriteria_IsFiniteReal(absoluteError)) {
+    if (!HYD_DiagnosticCriteria_IsFiniteReal(absoluteError)) {
         return false;
     }
 
     /* 检查抑制条件（速度检查启动和切换阶段抑制） */
-    if (HDY_DiagnosticCriteria_CheckSuppressCondition(criteria,
+    if (HYD_DiagnosticCriteria_CheckSuppressCondition(criteria,
                                                        segmentElapsedTime,
                                                        isStartupPhase,
                                                        isSwitchPhase,
@@ -348,20 +348,20 @@ HDY_BOOL HDY_DiagnosticCriteria_CheckVelocity(HDY_DiagnosticResult* result,
     }
 
     /* 计算闭环建立时间 */
-    HDY_TIME loopBuildTime_velocity = 0.0;
+    HYD_TIME loopBuildTime_velocity = 0.0;
     if (monitor->velocityErrorActive) {
         loopBuildTime_velocity = monitor->velocityErrorDuration;
     }
 
     /* 计算有效阈值（考虑滞回和闭环建立） */
-    effectiveThreshold = HDY_DiagnosticCriteria_CalculateEffectiveThreshold(criteria, loopBuildTime_velocity, monitor->velocityErrorActive, state);
+    effectiveThreshold = HYD_DiagnosticCriteria_CalculateEffectiveThreshold(criteria, loopBuildTime_velocity, monitor->velocityErrorActive, state);
     result->effectiveThreshold = effectiveThreshold;
 
     /* 判断误差是否超过阈值 */
     errorExceedsThreshold = (absoluteError > effectiveThreshold);
 
     /* 应用去抖动逻辑 */
-    triggered = HDY_DiagnosticCriteria_CheckDebounce(criteria, state, errorExceedsThreshold, currentTime, &result->triggerTime);
+    triggered = HYD_DiagnosticCriteria_CheckDebounce(criteria, state, errorExceedsThreshold, currentTime, &result->triggerTime);
 
     if (triggered) {
         state->hysteresisActive = true;
@@ -375,20 +375,20 @@ HDY_BOOL HDY_DiagnosticCriteria_CheckVelocity(HDY_DiagnosticResult* result,
     return triggered;
 }
 
-HDY_BOOL HDY_DiagnosticCriteria_CheckPosition(HDY_DiagnosticResult* result,
-                                               const HDY_ErrorMonitor* monitor,
-                                               const HDY_DiagnosticCriteria* criteria,
-                                               HDY_DiagnosticCriteriaState* state,
-                                               HDY_TIME currentTime,
-                                               HDY_TIME segmentElapsedTime,
-                                               HDY_BOOL isStartupPhase,
-                                               HDY_BOOL isSwitchPhase) {
-    HDY_REAL absoluteError;
-    HDY_REAL effectiveThreshold;
-    HDY_BOOL errorExceedsThreshold;
-    HDY_SuppressType suppressType;
-    HDY_TIME suppressTime;
-    HDY_BOOL triggered;
+HYD_BOOL HYD_DiagnosticCriteria_CheckPosition(HYD_DiagnosticResult* result,
+                                               const HYD_ErrorMonitor* monitor,
+                                               const HYD_DiagnosticCriteria* criteria,
+                                               HYD_DiagnosticCriteriaState* state,
+                                               HYD_TIME currentTime,
+                                               HYD_TIME segmentElapsedTime,
+                                               HYD_BOOL isStartupPhase,
+                                               HYD_BOOL isSwitchPhase) {
+    HYD_REAL absoluteError;
+    HYD_REAL effectiveThreshold;
+    HYD_BOOL errorExceedsThreshold;
+    HYD_SuppressType suppressType;
+    HYD_TIME suppressTime;
+    HYD_BOOL triggered;
 
     if (result == NULL || monitor == NULL || criteria == NULL || state == NULL) {
         return false;
@@ -398,12 +398,12 @@ HDY_BOOL HDY_DiagnosticCriteria_CheckPosition(HDY_DiagnosticResult* result,
 
     /* 计算绝对误差 */
     absoluteError = fabs(monitor->positionError);
-    if (!HDY_DiagnosticCriteria_IsFiniteReal(absoluteError)) {
+    if (!HYD_DiagnosticCriteria_IsFiniteReal(absoluteError)) {
         return false;
     }
 
     /* 检查抑制条件（位置检查启动和切换阶段抑制） */
-    if (HDY_DiagnosticCriteria_CheckSuppressCondition(criteria,
+    if (HYD_DiagnosticCriteria_CheckSuppressCondition(criteria,
                                                        segmentElapsedTime,
                                                        isStartupPhase,
                                                        isSwitchPhase,
@@ -416,20 +416,20 @@ HDY_BOOL HDY_DiagnosticCriteria_CheckPosition(HDY_DiagnosticResult* result,
     }
 
     /* 计算闭环建立时间 */
-    HDY_TIME loopBuildTime_position = 0.0;
+    HYD_TIME loopBuildTime_position = 0.0;
     if (monitor->positionErrorActive) {
         loopBuildTime_position = monitor->positionErrorDuration;
     }
 
     /* 计算有效阈值（考虑滞回和闭环建立） */
-    effectiveThreshold = HDY_DiagnosticCriteria_CalculateEffectiveThreshold(criteria, loopBuildTime_position, monitor->positionErrorActive, state);
+    effectiveThreshold = HYD_DiagnosticCriteria_CalculateEffectiveThreshold(criteria, loopBuildTime_position, monitor->positionErrorActive, state);
     result->effectiveThreshold = effectiveThreshold;
 
     /* 判断误差是否超过阈值 */
     errorExceedsThreshold = (absoluteError > effectiveThreshold);
 
     /* 应用去抖动逻辑 */
-    triggered = HDY_DiagnosticCriteria_CheckDebounce(criteria, state, errorExceedsThreshold, currentTime, &result->triggerTime);
+    triggered = HYD_DiagnosticCriteria_CheckDebounce(criteria, state, errorExceedsThreshold, currentTime, &result->triggerTime);
 
     if (triggered) {
         state->hysteresisActive = true;
@@ -443,7 +443,7 @@ HDY_BOOL HDY_DiagnosticCriteria_CheckPosition(HDY_DiagnosticResult* result,
     return triggered;
 }
 
-void HDY_DiagnosticCriteria_CreateDefaultPressureCriteria(HDY_DiagnosticCriteria* criteria) {
+void HYD_DiagnosticCriteria_CreateDefaultPressureCriteria(HYD_DiagnosticCriteria* criteria) {
     if (criteria == NULL) {
         return;
     }
@@ -469,14 +469,14 @@ void HDY_DiagnosticCriteria_CreateDefaultPressureCriteria(HDY_DiagnosticCriteria
     /* 启用告警到故障升级（默认2秒升级） */
     criteria->enableFaultEscalation = true;
     criteria->faultEscalationTime = 2.0;
-    criteria->faultCode = HDY_DIAG_CODE_OVER_PRESSURE;
+    criteria->faultCode = HYD_DIAG_CODE_OVER_PRESSURE;
 
-    criteria->diagnosticCode = HDY_DIAG_CODE_OVER_PRESSURE;
-    criteria->severity = HDY_DIAG_SEVERITY_WARNING;
-    criteria->protectionAction = HDY_PROTECTION_ACTION_WARNING;
+    criteria->diagnosticCode = HYD_DIAG_CODE_OVER_PRESSURE;
+    criteria->severity = HYD_DIAG_SEVERITY_WARNING;
+    criteria->protectionAction = HYD_PROTECTION_ACTION_WARNING;
 }
 
-void HDY_DiagnosticCriteria_CreateDefaultFlowCriteria(HDY_DiagnosticCriteria* criteria) {
+void HYD_DiagnosticCriteria_CreateDefaultFlowCriteria(HYD_DiagnosticCriteria* criteria) {
     if (criteria == NULL) {
         return;
     }
@@ -502,14 +502,14 @@ void HDY_DiagnosticCriteria_CreateDefaultFlowCriteria(HDY_DiagnosticCriteria* cr
     /* 启用告警到故障升级（默认3秒升级） */
     criteria->enableFaultEscalation = true;
     criteria->faultEscalationTime = 3.0;
-    criteria->faultCode = HDY_DIAG_CODE_FLOW_DEVIATION;
+    criteria->faultCode = HYD_DIAG_CODE_FLOW_DEVIATION;
 
-    criteria->diagnosticCode = HDY_DIAG_CODE_FLOW_DEVIATION;
-    criteria->severity = HDY_DIAG_SEVERITY_WARNING;
-    criteria->protectionAction = HDY_PROTECTION_ACTION_DERATE;
+    criteria->diagnosticCode = HYD_DIAG_CODE_FLOW_DEVIATION;
+    criteria->severity = HYD_DIAG_SEVERITY_WARNING;
+    criteria->protectionAction = HYD_PROTECTION_ACTION_DERATE;
 }
 
-void HDY_DiagnosticCriteria_CreateDefaultVelocityCriteria(HDY_DiagnosticCriteria* criteria) {
+void HYD_DiagnosticCriteria_CreateDefaultVelocityCriteria(HYD_DiagnosticCriteria* criteria) {
     if (criteria == NULL) {
         return;
     }
@@ -535,14 +535,14 @@ void HDY_DiagnosticCriteria_CreateDefaultVelocityCriteria(HDY_DiagnosticCriteria
     /* 启用告警到故障升级（默认2秒升级） */
     criteria->enableFaultEscalation = true;
     criteria->faultEscalationTime = 2.0;
-    criteria->faultCode = HDY_DIAG_CODE_VELOCITY_DEVIATION;
+    criteria->faultCode = HYD_DIAG_CODE_VELOCITY_DEVIATION;
 
-    criteria->diagnosticCode = HDY_DIAG_CODE_VELOCITY_DEVIATION;
-    criteria->severity = HDY_DIAG_SEVERITY_WARNING;
-    criteria->protectionAction = HDY_PROTECTION_ACTION_WARNING;
+    criteria->diagnosticCode = HYD_DIAG_CODE_VELOCITY_DEVIATION;
+    criteria->severity = HYD_DIAG_SEVERITY_WARNING;
+    criteria->protectionAction = HYD_PROTECTION_ACTION_WARNING;
 }
 
-void HDY_DiagnosticCriteria_CreateDefaultPositionCriteria(HDY_DiagnosticCriteria* criteria) {
+void HYD_DiagnosticCriteria_CreateDefaultPositionCriteria(HYD_DiagnosticCriteria* criteria) {
     if (criteria == NULL) {
         return;
     }
@@ -568,17 +568,17 @@ void HDY_DiagnosticCriteria_CreateDefaultPositionCriteria(HDY_DiagnosticCriteria
     /* 启用告警到故障升级（默认2秒升级） */
     criteria->enableFaultEscalation = true;
     criteria->faultEscalationTime = 2.0;
-    criteria->faultCode = HDY_DIAG_CODE_POSITION_DEVIATION;
+    criteria->faultCode = HYD_DIAG_CODE_POSITION_DEVIATION;
 
-    criteria->diagnosticCode = HDY_DIAG_CODE_POSITION_DEVIATION;
-    criteria->severity = HDY_DIAG_SEVERITY_WARNING;
-    criteria->protectionAction = HDY_PROTECTION_ACTION_WARNING;
+    criteria->diagnosticCode = HYD_DIAG_CODE_POSITION_DEVIATION;
+    criteria->severity = HYD_DIAG_SEVERITY_WARNING;
+    criteria->protectionAction = HYD_PROTECTION_ACTION_WARNING;
 }
 
-HDY_BOOL HDY_DiagnosticCriteria_CheckFaultEscalation(HDY_DiagnosticResult* result,
-                                                      const HDY_DiagnosticCriteria* criteria,
-                                                      HDY_DiagnosticCriteriaState* state,
-                                                      HDY_TIME currentTime) {
+HYD_BOOL HYD_DiagnosticCriteria_CheckFaultEscalation(HYD_DiagnosticResult* result,
+                                                      const HYD_DiagnosticCriteria* criteria,
+                                                      HYD_DiagnosticCriteriaState* state,
+                                                      HYD_TIME currentTime) {
     if (result == NULL || criteria == NULL || state == NULL) {
         return false;
     }
@@ -601,7 +601,7 @@ HDY_BOOL HDY_DiagnosticCriteria_CheckFaultEscalation(HDY_DiagnosticResult* resul
     }
 
     /* 只有 WARNING 级别才能升级 */
-    if (result->severity != HDY_DIAG_SEVERITY_WARNING) {
+    if (result->severity != HYD_DIAG_SEVERITY_WARNING) {
         return false;
     }
 
@@ -619,18 +619,18 @@ HDY_BOOL HDY_DiagnosticCriteria_CheckFaultEscalation(HDY_DiagnosticResult* resul
 
     /* WARNING 持续存在，检查是否升级 */
     if (state->warningActive) {
-        HDY_TIME warningDuration = currentTime - state->warningStartTime;
+        HYD_TIME warningDuration = currentTime - state->warningStartTime;
 
         /* 超过升级时间，升级为 FAULT */
         if (warningDuration >= criteria->faultEscalationTime) {
             state->faultEscalated = true;
 
             /* 升级诊断结果 */
-            result->severity = HDY_DIAG_SEVERITY_FAULT;
-            result->action = HDY_PROTECTION_ACTION_STOP;
+            result->severity = HYD_DIAG_SEVERITY_FAULT;
+            result->action = HYD_PROTECTION_ACTION_STOP;
 
             /* 如果配置了故障码，更新故障码 */
-            if (criteria->faultCode != HDY_DIAG_CODE_NONE) {
+            if (criteria->faultCode != HYD_DIAG_CODE_NONE) {
                 result->code = criteria->faultCode;
             }
 
@@ -641,7 +641,7 @@ HDY_BOOL HDY_DiagnosticCriteria_CheckFaultEscalation(HDY_DiagnosticResult* resul
     return false;
 }
 
-void HDY_DiagnosticCriteria_ResetFaultEscalation(HDY_DiagnosticCriteriaState* state) {
+void HYD_DiagnosticCriteria_ResetFaultEscalation(HYD_DiagnosticCriteriaState* state) {
     if (state == NULL) {
         return;
     }
@@ -651,17 +651,17 @@ void HDY_DiagnosticCriteria_ResetFaultEscalation(HDY_DiagnosticCriteriaState* st
     state->faultEscalated = false;
 }
 
-HDY_BOOL HDY_DiagnosticCriteria_CheckTimeout(HDY_DiagnosticResult* result,
-                                               const HDY_DiagnosticCriteria* criteria,
-                                               HDY_DiagnosticCriteriaState* state,
-                                               HDY_TIME currentTime,
-                                               HDY_TIME segmentElapsedTime,
-                                               HDY_BOOL isStartupPhase,
-                                               HDY_BOOL isSwitchPhase) {
-    HDY_SuppressType suppressType;
-    HDY_TIME suppressTime;
-    HDY_BOOL timeoutExceeded;
-    HDY_BOOL triggered;
+HYD_BOOL HYD_DiagnosticCriteria_CheckTimeout(HYD_DiagnosticResult* result,
+                                               const HYD_DiagnosticCriteria* criteria,
+                                               HYD_DiagnosticCriteriaState* state,
+                                               HYD_TIME currentTime,
+                                               HYD_TIME segmentElapsedTime,
+                                               HYD_BOOL isStartupPhase,
+                                               HYD_BOOL isSwitchPhase) {
+    HYD_SuppressType suppressType;
+    HYD_TIME suppressTime;
+    HYD_BOOL timeoutExceeded;
+    HYD_BOOL triggered;
 
     if (result == NULL || criteria == NULL || state == NULL) {
         return false;
@@ -676,7 +676,7 @@ HDY_BOOL HDY_DiagnosticCriteria_CheckTimeout(HDY_DiagnosticResult* result,
 
     /* Check suppression conditions — timeout should still be suppressed
      * during startup/switch phases to avoid false alarms during transition. */
-    if (HDY_DiagnosticCriteria_CheckSuppressCondition(criteria,
+    if (HYD_DiagnosticCriteria_CheckSuppressCondition(criteria,
                                                        segmentElapsedTime,
                                                        isStartupPhase,
                                                        isSwitchPhase,
@@ -692,7 +692,7 @@ HDY_BOOL HDY_DiagnosticCriteria_CheckTimeout(HDY_DiagnosticResult* result,
     timeoutExceeded = (segmentElapsedTime > criteria->baseThreshold);
 
     /* Apply debounce (though timeout typically uses debounceTime=0) */
-    triggered = HDY_DiagnosticCriteria_CheckDebounce(criteria, state, timeoutExceeded, currentTime, &result->triggerTime);
+    triggered = HYD_DiagnosticCriteria_CheckDebounce(criteria, state, timeoutExceeded, currentTime, &result->triggerTime);
 
     if (triggered) {
         state->hysteresisActive = true;
@@ -706,7 +706,7 @@ HDY_BOOL HDY_DiagnosticCriteria_CheckTimeout(HDY_DiagnosticResult* result,
     return triggered;
 }
 
-void HDY_DiagnosticCriteria_CreateDefaultTimeoutCriteria(HDY_DiagnosticCriteria* criteria) {
+void HYD_DiagnosticCriteria_CreateDefaultTimeoutCriteria(HYD_DiagnosticCriteria* criteria) {
     if (criteria == NULL) {
         return;
     }
@@ -733,7 +733,7 @@ void HDY_DiagnosticCriteria_CreateDefaultTimeoutCriteria(HDY_DiagnosticCriteria*
     criteria->enableFaultEscalation = false;
     criteria->faultEscalationTime = 0.0;
 
-    criteria->diagnosticCode = HDY_DIAG_CODE_TIMEOUT;
-    criteria->severity = HDY_DIAG_SEVERITY_FAULT;
-    criteria->protectionAction = HDY_PROTECTION_ACTION_STOP;
+    criteria->diagnosticCode = HYD_DIAG_CODE_TIMEOUT;
+    criteria->severity = HYD_DIAG_SEVERITY_FAULT;
+    criteria->protectionAction = HYD_PROTECTION_ACTION_STOP;
 }

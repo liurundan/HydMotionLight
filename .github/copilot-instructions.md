@@ -1,7 +1,7 @@
 # Project Guidelines
 
 ## Code Style
-Use C99 standard with `HDY_` prefix for all symbols. Follow PLCopen function block patterns with input/output structs. Reference [include/common_types.h](include/common_types.h) for type definitions and [include/motion_control.h](include/motion_control.h) for API examples.
+Use C99 standard with `HYD_` prefix for all symbols. Follow PLCopen function block patterns with input/output structs. Reference [include/common_types.h](include/common_types.h) for type definitions and [include/motion_control.h](include/motion_control.h) for API examples.
 
 ## Architecture
 PLCopen-inspired function block design separating process layer (recipe management, segment switching) from motion control layer (pure planning calculations). Motion control acts as a calculator for pump commands, not hardware control. See [项目需求与设计说明书.md](项目需求与设计说明书.md) for detailed architecture and component boundaries.

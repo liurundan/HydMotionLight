@@ -1,24 +1,24 @@
-#ifndef HDY_RECIPE_VALIDATOR_H
-#define HDY_RECIPE_VALIDATOR_H
+#ifndef HYD_RECIPE_VALIDATOR_H
+#define HYD_RECIPE_VALIDATOR_H
 
 #include "common_types.h"
 #include <stddef.h>
 
-HDY_BOOL HDY_RecipeValidator_ValidateSegment(const HDY_MotionSegment* segment,
+HYD_BOOL HYD_RecipeValidator_ValidateSegment(const HYD_MotionSegment* segment,
                                             size_t segmentIndex,
-                                            HDY_DiagnosticCode* code);
+                                            HYD_DiagnosticCode* code);
 
-HDY_BOOL HDY_RecipeValidator_ValidateRecipe(const HDY_MotionSegment* recipe,
+HYD_BOOL HYD_RecipeValidator_ValidateRecipe(const HYD_MotionSegment* recipe,
                                            size_t recipeSize,
-                                           HDY_DiagnosticCode* code);
+                                           HYD_DiagnosticCode* code);
 
-HDY_BOOL HDY_RecipeValidator_ValidateRuntimeConfig(HDY_REAL flowToPumpSpeedGain,
-                                                  HDY_REAL pumpSpeedLimit,
-                                                  HDY_DiagnosticCode* code);
+HYD_BOOL HYD_RecipeValidator_ValidateRuntimeConfig(HYD_REAL flowToPumpSpeedGain,
+                                                  HYD_REAL pumpSpeedLimit,
+                                                  HYD_DiagnosticCode* code);
 
-HDY_BOOL HDY_RecipeValidator_ValidateStartContext(const HDY_MotionSegment* segment,
+HYD_BOOL HYD_RecipeValidator_ValidateStartContext(const HYD_MotionSegment* segment,
                                                  size_t segmentIndex,
-                                                 const HDY_AxisRef* axisRef,
-                                                 HDY_DiagnosticCode* code);
+                                                 const HYD_AxisRef* axisRef,
+                                                 HYD_DiagnosticCode* code);
 
-#endif /* HDY_RECIPE_VALIDATOR_H */
+#endif /* HYD_RECIPE_VALIDATOR_H */

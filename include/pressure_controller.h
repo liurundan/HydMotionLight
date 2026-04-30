@@ -1,66 +1,66 @@
-#ifndef HDY_PRESSURE_CONTROLLER_H
-#define HDY_PRESSURE_CONTROLLER_H
+#ifndef HYD_PRESSURE_CONTROLLER_H
+#define HYD_PRESSURE_CONTROLLER_H
 
 #include "common_types.h"
 #include "rbf_pid.h"
 
 typedef struct {
-    HDY_REAL targetPressure;
-    HDY_REAL measuredPressure;
-    HDY_REAL feedforwardFlow;
-    HDY_REAL outputMin;
-    HDY_REAL outputMax;
-    HDY_TIME timestamp;
-} HDY_PressureControllerInput;
+    HYD_REAL targetPressure;
+    HYD_REAL measuredPressure;
+    HYD_REAL feedforwardFlow;
+    HYD_REAL outputMin;
+    HYD_REAL outputMax;
+    HYD_TIME timestamp;
+} HYD_PressureControllerInput;
 
 typedef struct {
-    HDY_BOOL initialized;
-    HDY_BOOL trackingRequested;
-    HDY_BOOL rbfInitialized;
-    HDY_REAL integralOutput;
-    HDY_REAL previousError;
-    HDY_REAL previousFilteredPressure;
-    HDY_REAL previousFilteredPressureRate;
-    HDY_REAL previousOutput;
-    HDY_TIME previousTimestamp;
-    HDY_PressureControllerType activeStrategy;
+    HYD_BOOL initialized;
+    HYD_BOOL trackingRequested;
+    HYD_BOOL rbfInitialized;
+    HYD_REAL integralOutput;
+    HYD_REAL previousError;
+    HYD_REAL previousFilteredPressure;
+    HYD_REAL previousFilteredPressureRate;
+    HYD_REAL previousOutput;
+    HYD_TIME previousTimestamp;
+    HYD_PressureControllerType activeStrategy;
     RBF_PID_Handle rbfPid;
-} HDY_PressureControllerState;
+} HYD_PressureControllerState;
 
 typedef struct {
-    HDY_PressureControllerType appliedStrategy;
-    HDY_REAL targetPressure;
-    HDY_REAL filteredPressure;
-    HDY_REAL filteredPressureRate;
-    HDY_REAL controlError;
-    HDY_REAL proportionalTerm;
-    HDY_REAL integralTerm;
-    HDY_REAL derivativeTerm;
-    HDY_REAL trackingTerm;
-    HDY_REAL feedforwardFlow;
-    HDY_REAL feedbackFlow;
-    HDY_REAL unsaturatedOutputFlow;
-    HDY_REAL outputFlow;
-    HDY_REAL samplingPeriod;
-    HDY_REAL adaptiveKp;
-    HDY_REAL adaptiveKi;
-    HDY_REAL adaptiveKd;
-    HDY_REAL adaptiveJacobian;
-    HDY_BOOL trackingApplied;
-    HDY_BOOL saturated;
-    HDY_BOOL adaptiveActive;
-} HDY_PressureControllerOutput;
+    HYD_PressureControllerType appliedStrategy;
+    HYD_REAL targetPressure;
+    HYD_REAL filteredPressure;
+    HYD_REAL filteredPressureRate;
+    HYD_REAL controlError;
+    HYD_REAL proportionalTerm;
+    HYD_REAL integralTerm;
+    HYD_REAL derivativeTerm;
+    HYD_REAL trackingTerm;
+    HYD_REAL feedforwardFlow;
+    HYD_REAL feedbackFlow;
+    HYD_REAL unsaturatedOutputFlow;
+    HYD_REAL outputFlow;
+    HYD_REAL samplingPeriod;
+    HYD_REAL adaptiveKp;
+    HYD_REAL adaptiveKi;
+    HYD_REAL adaptiveKd;
+    HYD_REAL adaptiveJacobian;
+    HYD_BOOL trackingApplied;
+    HYD_BOOL saturated;
+    HYD_BOOL adaptiveActive;
+} HYD_PressureControllerOutput;
 
-void HDY_PressureController_ClearState(HDY_PressureControllerState* state);
-void HDY_PressureController_InitState(HDY_PressureControllerState* state,
-                                      HDY_REAL initialPressure,
-                                      HDY_REAL initialOutputFlow,
-                                      HDY_TIME timestamp);
-void HDY_PressureController_RequestTracking(HDY_PressureControllerState* state,
-                                           HDY_REAL trackedOutputFlow);
-void HDY_PressureController_Execute(const HDY_MotionSegment* segment,
-                                    HDY_PressureControllerState* state,
-                                    const HDY_PressureControllerInput* input,
-                                    HDY_PressureControllerOutput* output);
+void HYD_PressureController_ClearState(HYD_PressureControllerState* state);
+void HYD_PressureController_InitState(HYD_PressureControllerState* state,
+                                      HYD_REAL initialPressure,
+                                      HYD_REAL initialOutputFlow,
+                                      HYD_TIME timestamp);
+void HYD_PressureController_RequestTracking(HYD_PressureControllerState* state,
+                                           HYD_REAL trackedOutputFlow);
+void HYD_PressureController_Execute(const HYD_MotionSegment* segment,
+                                    HYD_PressureControllerState* state,
+                                    const HYD_PressureControllerInput* input,
+                                    HYD_PressureControllerOutput* output);
 
-#endif /* HDY_PRESSURE_CONTROLLER_H */
+#endif /* HYD_PRESSURE_CONTROLLER_H */

@@ -21,7 +21,7 @@
 #include "motion_interface.h"
 #include "motion_control.h"
 
-extern HDY_MotionControlFB* __MK_GetPublic_MotionControlFB(int index);
+extern HYD_MotionControlFB* __MK_GetPublic_MotionControlFB(int index);
 
 #define IEC_VAL(var) ((var).value)
 
@@ -37,7 +37,7 @@ static int tests_passed = 0;
 /* 辅助: 通过CreateMotion分配指定数量的轴 */
 static void ensure_axes_allocated(int count) {
     for (int i = 0; i < count; i++) {
-        HDY_CREATEMOTION cm;
+        HYD_CREATEMOTION cm;
         memset(&cm, 0, sizeof(cm));
         IEC_VAL(cm.EN) = true;
         IEC_VAL(cm.USE_RECIPE) = false;
@@ -49,7 +49,7 @@ static void ensure_axes_allocated(int count) {
 }
 
 /* 辅助: 在指定轴上启动 MoveAbsolute 并经过一次Publish */
-static void start_moveabsolute_on_axis(int axisIndex, HDY_MOVEABSOLUTE* ma) {
+static void start_moveabsolute_on_axis(int axisIndex, HYD_MOVEABSOLUTE* ma) {
     memset(ma, 0, sizeof(*ma));
     IEC_VAL(ma->EN) = true;
     IEC_VAL(ma->EXECUTE) = true;
@@ -61,7 +61,7 @@ static void start_moveabsolute_on_axis(int axisIndex, HDY_MOVEABSOLUTE* ma) {
     IEC_VAL(ma->DIRECTION) = 1;
 
     __mcl_cmd_MoveAbsolute(ma);
-    __HdyMotion_framework_Publish();
+    __HydMotion_framework_Publish();
 
     /* 下一周期: EXECUTE保持true, 非上升沿 */
     IEC_VAL(ma->EXECUTE) = true;
@@ -70,7 +70,7 @@ static void start_moveabsolute_on_axis(int axisIndex, HDY_MOVEABSOLUTE* ma) {
 }
 
 /* 辅助: 在指定轴上启动 MoveVelocity 并经过一次Publish */
-static void start_movevelocity_on_axis(int axisIndex, HDY_MOVEVELOCITY* mv) {
+static void start_movevelocity_on_axis(int axisIndex, HYD_MOVEVELOCITY* mv) {
     memset(mv, 0, sizeof(*mv));
     IEC_VAL(mv->EN) = true;
     IEC_VAL(mv->EXECUTE) = true;
@@ -81,7 +81,7 @@ static void start_movevelocity_on_axis(int axisIndex, HDY_MOVEVELOCITY* mv) {
     IEC_VAL(mv->DIRECTION) = 1;
 
     __mcl_cmd_MoveVelocity(mv);
-    __HdyMotion_framework_Publish();
+    __HydMotion_framework_Publish();
 
     /* 下一周期 */
     IEC_VAL(mv->EXECUTE) = true;
@@ -93,10 +93,10 @@ static void start_movevelocity_on_axis(int axisIndex, HDY_MOVEVELOCITY* mv) {
  * Test 1: MoveAbsolute 被 Stop 抢占 → COMMANDABORTED
  * ================================================================== */
 static void test_moveabsolute_preempted_by_stop(void) {
-    HDY_MOVEABSOLUTE ma;
-    HDY_STOP stop;
+    HYD_MOVEABSOLUTE ma;
+    HYD_STOP stop;
 
-    __HdyMotion_framework_Init();
+    __HydMotion_framework_Init();
     ensure_axes_allocated(2);
 
     /* Step 1: 启动 MoveAbsolute */
@@ -111,7 +111,7 @@ static void test_moveabsolute_preempted_by_stop(void) {
     stop.EXECUTE0.value = false;
     IEC_VAL(stop.AXISID) = 0;
     __mcl_cmd_Stop(&stop);
-    __HdyMotion_framework_Publish();
+    __HydMotion_framework_Publish();
 
     /* 下一周期Stop继续 */
     IEC_VAL(stop.EXECUTE) = true;
@@ -133,10 +133,10 @@ static void test_moveabsolute_preempted_by_stop(void) {
  * Test 2: MoveAbsolute 被 MoveVelocity 抢占 → COMMANDABORTED
  * ================================================================== */
 static void test_moveabsolute_preempted_by_movevelocity(void) {
-    HDY_MOVEABSOLUTE ma;
-    HDY_MOVEVELOCITY mv;
+    HYD_MOVEABSOLUTE ma;
+    HYD_MOVEVELOCITY mv;
 
-    __HdyMotion_framework_Init();
+    __HydMotion_framework_Init();
     ensure_axes_allocated(2);
 
     /* Step 1: 启动 MoveAbsolute */
@@ -154,7 +154,7 @@ static void test_moveabsolute_preempted_by_movevelocity(void) {
     IEC_VAL(mv.ACCELERATION) = 150.0f;
     IEC_VAL(mv.DIRECTION) = 1;
     __mcl_cmd_MoveVelocity(&mv);
-    __HdyMotion_framework_Publish();
+    __HydMotion_framework_Publish();
 
     /* Step 3: MoveAbsolute 应检测到被抢占 */
     IEC_VAL(ma.EXECUTE) = true;
@@ -173,10 +173,10 @@ static void test_moveabsolute_preempted_by_movevelocity(void) {
  * Test 3: MoveVelocity 被 MoveAbsolute 抢占 → COMMANDABORTED
  * ================================================================== */
 static void test_movevelocity_preempted_by_moveabsolute(void) {
-    HDY_MOVEVELOCITY mv;
-    HDY_MOVEABSOLUTE ma;
+    HYD_MOVEVELOCITY mv;
+    HYD_MOVEABSOLUTE ma;
 
-    __HdyMotion_framework_Init();
+    __HydMotion_framework_Init();
     ensure_axes_allocated(2);
 
     /* Step 1: 启动 MoveVelocity */
@@ -195,7 +195,7 @@ static void test_movevelocity_preempted_by_moveabsolute(void) {
     IEC_VAL(ma.ACCELERATION) = 200.0f;
     IEC_VAL(ma.DIRECTION) = 1;
     __mcl_cmd_MoveAbsolute(&ma);
-    __HdyMotion_framework_Publish();
+    __HydMotion_framework_Publish();
 
     /* Step 3: MoveVelocity 应检测到被抢占 */
     IEC_VAL(mv.EXECUTE) = true;
@@ -214,10 +214,10 @@ static void test_movevelocity_preempted_by_moveabsolute(void) {
  * Test 4: PressureHandle 被 Stop 抢占 → COMMANDABORTED
  * ================================================================== */
 static void test_pressurehandle_preempted_by_stop(void) {
-    HDY_PRESSUREHANDLE ph;
-    HDY_STOP stop;
+    HYD_PRESSUREHANDLE ph;
+    HYD_STOP stop;
 
-    __HdyMotion_framework_Init();
+    __HydMotion_framework_Init();
     ensure_axes_allocated(2);
 
     /* Step 1: 启动 PressureHandle */
@@ -229,7 +229,7 @@ static void test_pressurehandle_preempted_by_stop(void) {
     IEC_VAL(ph.PRESSURE) = 10.0f;
     IEC_VAL(ph.PRESSURERAMPRATE) = 2.0f;
     __mcl_cmd_PressureHandle(&ph);
-    __HdyMotion_framework_Publish();
+    __HydMotion_framework_Publish();
 
     IEC_VAL(ph.EXECUTE) = true;
     ph.EXECUTE0.value = true;
@@ -244,7 +244,7 @@ static void test_pressurehandle_preempted_by_stop(void) {
     stop.EXECUTE0.value = false;
     IEC_VAL(stop.AXISID) = 0;
     __mcl_cmd_Stop(&stop);
-    __HdyMotion_framework_Publish();
+    __HydMotion_framework_Publish();
 
     /* Step 3: PressureHandle 应检测到被抢占 */
     IEC_VAL(ph.EXECUTE) = true;
@@ -261,10 +261,10 @@ static void test_pressurehandle_preempted_by_stop(void) {
  * Test 5: 多轴隔离 — 轴0的命令不影响轴1
  * ================================================================== */
 static void test_multi_axis_isolation(void) {
-    HDY_MOVEABSOLUTE ma0, ma1;
-    HDY_STOP stop;
+    HYD_MOVEABSOLUTE ma0, ma1;
+    HYD_STOP stop;
 
-    __HdyMotion_framework_Init();
+    __HydMotion_framework_Init();
     ensure_axes_allocated(2);
 
     /* 轴0: 启动 MoveAbsolute */
@@ -278,7 +278,7 @@ static void test_multi_axis_isolation(void) {
     IEC_VAL(ma0.ACCELERATION) = 200.0f;
     IEC_VAL(ma0.DIRECTION) = 1;
     __mcl_cmd_MoveAbsolute(&ma0);
-    __HdyMotion_framework_Publish();
+    __HydMotion_framework_Publish();
 
     IEC_VAL(ma0.EXECUTE) = true;
     ma0.EXECUTE0.value = true;
@@ -297,7 +297,7 @@ static void test_multi_axis_isolation(void) {
     IEC_VAL(ma1.ACCELERATION) = 150.0f;
     IEC_VAL(ma1.DIRECTION) = 1;
     __mcl_cmd_MoveAbsolute(&ma1);
-    __HdyMotion_framework_Publish();
+    __HydMotion_framework_Publish();
 
     IEC_VAL(ma1.EXECUTE) = true;
     ma1.EXECUTE0.value = true;
@@ -322,7 +322,7 @@ static void test_multi_axis_isolation(void) {
     stop.EXECUTE0.value = false;
     IEC_VAL(stop.AXISID) = 0;
     __mcl_cmd_Stop(&stop);
-    __HdyMotion_framework_Publish();
+    __HydMotion_framework_Publish();
 
     /* 轴0被抢占 */
     IEC_VAL(ma0.EXECUTE) = true;
@@ -345,10 +345,10 @@ static void test_multi_axis_isolation(void) {
  * Test 6: Stop 成功停止运动后, 新命令可以启动
  * ================================================================== */
 static void test_stop_success_then_new_command_starts(void) {
-    HDY_MOVEABSOLUTE ma;
-    HDY_STOP stop;
+    HYD_MOVEABSOLUTE ma;
+    HYD_STOP stop;
 
-    __HdyMotion_framework_Init();
+    __HydMotion_framework_Init();
     ensure_axes_allocated(2);
 
     /* Step 1: 先启动 MoveAbsolute */
@@ -363,7 +363,7 @@ static void test_stop_success_then_new_command_starts(void) {
     stop.EXECUTE0.value = false;
     IEC_VAL(stop.AXISID) = 0;
     __mcl_cmd_Stop(&stop);
-    __HdyMotion_framework_Publish();
+    __HydMotion_framework_Publish();
 
     /* Stop 应该在下一周期完成 */
     IEC_VAL(stop.EXECUTE) = true;
@@ -385,7 +385,7 @@ static void test_stop_success_then_new_command_starts(void) {
     IEC_VAL(ma.ACCELERATION) = 200.0f;
     IEC_VAL(ma.DIRECTION) = 1;  /* EXTEND: 从0到200 */
     __mcl_cmd_MoveAbsolute(&ma);
-    __HdyMotion_framework_Publish();
+    __HydMotion_framework_Publish();
 
     /* 新的 MoveAbsolute 应正常运行 */
     IEC_VAL(ma.EXECUTE) = true;
@@ -401,9 +401,9 @@ static void test_stop_success_then_new_command_starts(void) {
  * Test 7: 自抢占 — 同一FB连续两次EXECUTE上升沿
  * ================================================================== */
 static void test_self_preemption_same_fb_twice(void) {
-    HDY_MOVEABSOLUTE ma;
+    HYD_MOVEABSOLUTE ma;
 
-    __HdyMotion_framework_Init();
+    __HydMotion_framework_Init();
     ensure_axes_allocated(2);
 
     /* 第一次启动 */
@@ -417,7 +417,7 @@ static void test_self_preemption_same_fb_twice(void) {
     IEC_VAL(ma.ACCELERATION) = 200.0f;
     IEC_VAL(ma.DIRECTION) = 1;
     __mcl_cmd_MoveAbsolute(&ma);
-    __HdyMotion_framework_Publish();
+    __HydMotion_framework_Publish();
 
     /* 第二次启动 (同一个FB, 新的参数) — 模拟EXECUTE下降再上升 */
     IEC_VAL(ma.EXECUTE) = false;
@@ -429,7 +429,7 @@ static void test_self_preemption_same_fb_twice(void) {
     IEC_VAL(ma.POSITION) = 200.0f;  /* 新目标位置 */
     IEC_VAL(ma.VELOCITY) = 80.0f;
     __mcl_cmd_MoveAbsolute(&ma);
-    __HdyMotion_framework_Publish();
+    __HydMotion_framework_Publish();
 
     /* 第二次启动应该成功 */
     IEC_VAL(ma.EXECUTE) = true;
@@ -446,10 +446,10 @@ static void test_self_preemption_same_fb_twice(void) {
  * Test 8: Reset 后旧命令失去所有权
  * ================================================================== */
 static void test_previous_command_loses_ownership_after_reset(void) {
-    HDY_MOVEABSOLUTE ma;
-    HDY_RESET reset;
+    HYD_MOVEABSOLUTE ma;
+    HYD_RESET reset;
 
-    __HdyMotion_framework_Init();
+    __HydMotion_framework_Init();
     ensure_axes_allocated(2);
 
     /* 启动 MoveAbsolute */
@@ -464,7 +464,7 @@ static void test_previous_command_loses_ownership_after_reset(void) {
     reset.EXECUTE0.value = false;
     IEC_VAL(reset.AXISID) = 0;
     __mcl_cmd_Reset(&reset);
-    __HdyMotion_framework_Publish();
+    __HydMotion_framework_Publish();
 
     /* MoveAbsolute 应检测到失去所有权 (executionId不匹配, Reset归零了_executionId) */
     IEC_VAL(ma.EXECUTE) = true;
@@ -479,11 +479,11 @@ static void test_previous_command_loses_ownership_after_reset(void) {
  * Test 9: 抢占链 — MoveAbsolute → MoveVelocity → Stop
  * ================================================================== */
 static void test_preemption_chain_three_commands(void) {
-    HDY_MOVEABSOLUTE ma;
-    HDY_MOVEVELOCITY mv;
-    HDY_STOP stop;
+    HYD_MOVEABSOLUTE ma;
+    HYD_MOVEVELOCITY mv;
+    HYD_STOP stop;
 
-    __HdyMotion_framework_Init();
+    __HydMotion_framework_Init();
     ensure_axes_allocated(2);
 
     /* Command 1: MoveAbsolute */
@@ -500,7 +500,7 @@ static void test_preemption_chain_three_commands(void) {
     IEC_VAL(mv.ACCELERATION) = 150.0f;
     IEC_VAL(mv.DIRECTION) = 1;
     __mcl_cmd_MoveVelocity(&mv);
-    __HdyMotion_framework_Publish();
+    __HydMotion_framework_Publish();
 
     /* Command 1 被抢占 */
     IEC_VAL(ma.EXECUTE) = true;
@@ -522,7 +522,7 @@ static void test_preemption_chain_three_commands(void) {
     stop.EXECUTE0.value = false;
     IEC_VAL(stop.AXISID) = 0;
     __mcl_cmd_Stop(&stop);
-    __HdyMotion_framework_Publish();
+    __HydMotion_framework_Publish();
 
     /* Command 2 被抢占 */
     IEC_VAL(mv.EXECUTE) = true;
@@ -536,9 +536,9 @@ static void test_preemption_chain_three_commands(void) {
  * Test 10: 空转生成 — 从未激活的FB不应误报COMMANDABORTED
  * ================================================================== */
 static void test_never_activated_fb_no_false_commandaborted(void) {
-    HDY_MOVEABSOLUTE ma;
+    HYD_MOVEABSOLUTE ma;
 
-    __HdyMotion_framework_Init();
+    __HydMotion_framework_Init();
     ensure_axes_allocated(2);
     memset(&ma, 0, sizeof(ma));
 

@@ -185,7 +185,7 @@ HydroMotionLib - 嵌入式生产版本
 2. 将 include/ 中的头文件复制到您的项目头文件目录
 3. 在编译器中添加头文件搜索路径
 4. 链接时添加: -lm -lHydroMotionLib
-5. 根据目标平台调整 include/hdy_config.h 中的配置项
+5. 根据目标平台调整 include/hyd_config.h 中的配置项
 
 注意事项:
 - 本库不包含液压仿真器（HydraulicSimLib）

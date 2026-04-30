@@ -26,18 +26,18 @@
 
 2. **命令处理机制完善**
    - 命令队列设计：pendingCommand机制避免命令冲突
-   - 命令权限矩阵：HDY_COMMAND_ALLOWED_STATE_MASKS明确定义每个命令在哪些状态下允许执行
+   - 命令权限矩阵：HYD_COMMAND_ALLOWED_STATE_MASKS明确定义每个命令在哪些状态下允许执行
    - 边缘检测：START_SEGMENT信号的上升沿检测机制
 
 3. **运行时编排逻辑合理**
-   - HDY_MotionControlFB_RunRunningState作为主执行入口
+   - HYD_MotionControlFB_RunRunningState作为主执行入口
    - 清晰的执行流程：反馈验证 → 调度计算 → 保护检查 → 完成判断
    - 与下层模块（motion_planner, pressure_controller, pump_converter）接口清晰
 
 4. **故障处理机制健全**
-   - 故障报告集中：HDY_ReportFault和HDY_ReportCommandNotAllowed
-   - 诊断事件记录：HDY_RecordDiagnosticEvent
-   - 保护动作触发：HDY_ProtectionManager_EnterFaultStop
+   - 故障报告集中：HYD_ReportFault和HDY_ReportCommandNotAllowed
+   - 诊断事件记录：HYD_RecordDiagnosticEvent
+   - 保护动作触发：HYD_ProtectionManager_EnterFaultStop
 
 5. **代码结构分层明确**
    - 顶部：函数块结构定义和公共API
@@ -56,12 +56,12 @@
 #### ⚠️ 可优化点（2项，非必须）
 
 1. **部分函数较长**（低优先级）
-   - HDY_MotionControlFB_RunRunningState：约180行
-   - HDY_MotionControlFB_Execute：包含完整的执行流程
+   - HYD_MotionControlFB_RunRunningState：约180行
+   - HYD_MotionControlFB_Execute：包含完整的执行流程
    - **建议**：未来可以考虑将HDY_MotionControlFB_RunRunningState拆分为几个子函数，但**不紧急**
 
 2. **工具函数可复用性提升**（已完成）
-   - HDY_MinReal, HDY_AbsReal, HDY_IsFiniteReal等工具函数当前为static
+   - HYD_MinReal, HYD_AbsReal, HYD_IsFiniteReal等工具函数当前为static
    - **已完成优化**：已提取到motion_utils.c/h模块
 
 ---
@@ -148,19 +148,19 @@ motion_control.c       - 主编排器（优化版，~1200行）
 
 #### 已完成
 1. ✅ 创建motion_utils.c/h模块
-   - HDY_MotionUtils_MinReal
-   - HDY_MotionUtils_AbsReal
-   - HDY_MotionUtils_IsFiniteReal
-   - HDY_MotionUtils_AxisRefIsValid
-   - HDY_MotionUtils_CommandToString
-   - HDY_MotionUtils_StateToString
+   - HYD_MotionUtils_MinReal
+   - HYD_MotionUtils_AbsReal
+   - HYD_MotionUtils_IsFiniteReal
+   - HYD_MotionUtils_AxisRefIsValid
+   - HYD_MotionUtils_CommandToString
+   - HYD_MotionUtils_StateToString
 
 2. ✅ 创建motion_validator.c/h模块
-   - HDY_MotionValidator_ValidateStartRequest
-   - HDY_MotionValidator_ValidateNextRequest
-   - HDY_MotionValidator_ValidatePumpConfig
-   - HDY_MotionValidator_ResolveStartSourceSegment
-   - HDY_MotionValidator_ResolveEffectiveFbState
+   - HYD_MotionValidator_ValidateStartRequest
+   - HYD_MotionValidator_ValidateNextRequest
+   - HYD_MotionValidator_ValidatePumpConfig
+   - HYD_MotionValidator_ResolveStartSourceSegment
+   - HYD_MotionValidator_ResolveEffectiveFbState
 
 #### 待完成（可选）
 1. ⏳ 在motion_control.c中使用新模块替换静态函数

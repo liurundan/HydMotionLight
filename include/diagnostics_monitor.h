@@ -1,5 +1,5 @@
-#ifndef HDY_DIAGNOSTICS_MONITOR_H
-#define HDY_DIAGNOSTICS_MONITOR_H
+#ifndef HYD_DIAGNOSTICS_MONITOR_H
+#define HYD_DIAGNOSTICS_MONITOR_H
 
 #include "common_types.h"
 
@@ -20,50 +20,50 @@
 
 typedef struct {
     /* 实时误差值 */
-    HDY_REAL positionError;
-    HDY_REAL velocityError;
-    HDY_REAL flowError;
-    HDY_REAL pressureError;
+    HYD_REAL positionError;
+    HYD_REAL velocityError;
+    HYD_REAL flowError;
+    HYD_REAL pressureError;
 
     /* 误差激活状态 */
-    HDY_BOOL positionErrorActive;
-    HDY_BOOL velocityErrorActive;
-    HDY_BOOL flowErrorActive;
-    HDY_BOOL pressureErrorActive;
+    HYD_BOOL positionErrorActive;
+    HYD_BOOL velocityErrorActive;
+    HYD_BOOL flowErrorActive;
+    HYD_BOOL pressureErrorActive;
 
     /* 误差持续时间 */
-    HDY_TIME positionErrorStartTime;
-    HDY_TIME velocityErrorStartTime;
-    HDY_TIME flowErrorStartTime;
-    HDY_TIME pressureErrorStartTime;
+    HYD_TIME positionErrorStartTime;
+    HYD_TIME velocityErrorStartTime;
+    HYD_TIME flowErrorStartTime;
+    HYD_TIME pressureErrorStartTime;
 
-    HDY_TIME positionErrorDuration;
-    HDY_TIME velocityErrorDuration;
-    HDY_TIME flowErrorDuration;
-    HDY_TIME pressureErrorDuration;
+    HYD_TIME positionErrorDuration;
+    HYD_TIME velocityErrorDuration;
+    HYD_TIME flowErrorDuration;
+    HYD_TIME pressureErrorDuration;
 
     /* 误差统计（自上次清零以来的统计） */
-    HDY_REAL maxPositionError;
-    HDY_REAL minPositionError;
-    HDY_REAL avgPositionError;
-    HDY_REAL maxVelocityError;
-    HDY_REAL minVelocityError;
-    HDY_REAL avgVelocityError;
-    HDY_REAL maxFlowError;
-    HDY_REAL minFlowError;
-    HDY_REAL avgFlowError;
-    HDY_REAL maxPressureError;
-    HDY_REAL minPressureError;
-    HDY_REAL avgPressureError;
+    HYD_REAL maxPositionError;
+    HYD_REAL minPositionError;
+    HYD_REAL avgPositionError;
+    HYD_REAL maxVelocityError;
+    HYD_REAL minVelocityError;
+    HYD_REAL avgVelocityError;
+    HYD_REAL maxFlowError;
+    HYD_REAL minFlowError;
+    HYD_REAL avgFlowError;
+    HYD_REAL maxPressureError;
+    HYD_REAL minPressureError;
+    HYD_REAL avgPressureError;
 
     /* 采样计数 */
-    HDY_UINT sampleCount;
-} HDY_ErrorMonitor;
+    HYD_UINT sampleCount;
+} HYD_ErrorMonitor;
 
 /*
  * 初始化误差监视器
  */
-void HDY_ErrorMonitor_Init(HDY_ErrorMonitor* monitor);
+void HYD_ErrorMonitor_Init(HYD_ErrorMonitor* monitor);
 
 /*
  * 更新误差监视器
@@ -79,10 +79,10 @@ void HDY_ErrorMonitor_Init(HDY_ErrorMonitor* monitor);
  * - 跟踪误差持续时间
  * - 更新最大值/最小值/平均值
  */
-void HDY_ErrorMonitor_Update(HDY_ErrorMonitor* monitor,
-                             const HDY_AxisRef* axisRef,
-                             const HDY_ExecutionReference* references,
-                             HDY_TIME currentTime);
+void HYD_ErrorMonitor_Update(HYD_ErrorMonitor* monitor,
+                             const HYD_AxisRef* axisRef,
+                             const HYD_ExecutionReference* references,
+                             HYD_TIME currentTime);
 
 /*
  * 重置误差统计
@@ -91,7 +91,7 @@ void HDY_ErrorMonitor_Update(HDY_ErrorMonitor* monitor,
  * - 清除历史统计信息（最大值/最小值/平均值/采样计数）
  * - 不影响当前误差状态和持续时间跟踪
  */
-void HDY_ErrorMonitor_ResetStatistics(HDY_ErrorMonitor* monitor);
+void HYD_ErrorMonitor_ResetStatistics(HYD_ErrorMonitor* monitor);
 
 /*
  * 重置误差监视器
@@ -100,6 +100,6 @@ void HDY_ErrorMonitor_ResetStatistics(HDY_ErrorMonitor* monitor);
  * - 完全重置监视器状态
  * - 清除所有误差信息、统计数据、持续时间
  */
-void HDY_ErrorMonitor_Reset(HDY_ErrorMonitor* monitor);
+void HYD_ErrorMonitor_Reset(HYD_ErrorMonitor* monitor);
 
-#endif /* HDY_DIAGNOSTICS_MONITOR_H */
+#endif /* HYD_DIAGNOSTICS_MONITOR_H */

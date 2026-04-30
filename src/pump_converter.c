@@ -1,14 +1,14 @@
 #include "pump_converter.h"
 #include <math.h>
 
-static HDY_BOOL HDY_PumpConverter_IsFiniteReal(HDY_REAL value) {
+static HYD_BOOL HYD_PumpConverter_IsFiniteReal(HYD_REAL value) {
     return isfinite(value) ? true : false;
 }
 
-void HDY_PumpConverter_Execute(const HDY_PumpConverterInput* input,
-                               HDY_PumpConverterOutput* output) {
-    HDY_REAL requestedFlow;
-    HDY_REAL maxFlowFromPumpLimit;
+void HYD_PumpConverter_Execute(const HYD_PumpConverterInput* input,
+                               HYD_PumpConverterOutput* output) {
+    HYD_REAL requestedFlow;
+    HYD_REAL maxFlowFromPumpLimit;
 
     if (output == NULL) {
         return;
@@ -23,9 +23,9 @@ void HDY_PumpConverter_Execute(const HDY_PumpConverterInput* input,
 
     (void)input->direction;
 
-    if (!HDY_PumpConverter_IsFiniteReal(input->requestedFlow) ||
-        !HDY_PumpConverter_IsFiniteReal(input->flowToPumpSpeedGain) ||
-        !HDY_PumpConverter_IsFiniteReal(input->pumpSpeedLimit) ||
+    if (!HYD_PumpConverter_IsFiniteReal(input->requestedFlow) ||
+        !HYD_PumpConverter_IsFiniteReal(input->flowToPumpSpeedGain) ||
+        !HYD_PumpConverter_IsFiniteReal(input->pumpSpeedLimit) ||
         input->flowToPumpSpeedGain <= 0.0 ||
         input->pumpSpeedLimit < 0.0) {
         return;
@@ -37,29 +37,29 @@ void HDY_PumpConverter_Execute(const HDY_PumpConverterInput* input,
     }
 
     maxFlowFromPumpLimit = input->pumpSpeedLimit / input->flowToPumpSpeedGain;
-    output->commandFlow = HDY_ClampReal(requestedFlow, 0.0, maxFlowFromPumpLimit);
+    output->commandFlow = HYD_ClampReal(requestedFlow, 0.0, maxFlowFromPumpLimit);
     output->pumpSpeed = output->commandFlow * input->flowToPumpSpeedGain;
 }
 
-HDY_BOOL HDY_PumpConverter_ValidateConfig(HDY_REAL flowToPumpSpeedGain,
-                                          HDY_REAL pumpSpeedLimit,
-                                          HDY_DiagnosticCode* code) {
-    if (!HDY_PumpConverter_IsFiniteReal(flowToPumpSpeedGain) || flowToPumpSpeedGain <= 0.0) {
+HYD_BOOL HYD_PumpConverter_ValidateConfig(HYD_REAL flowToPumpSpeedGain,
+                                          HYD_REAL pumpSpeedLimit,
+                                          HYD_DiagnosticCode* code) {
+    if (!HYD_PumpConverter_IsFiniteReal(flowToPumpSpeedGain) || flowToPumpSpeedGain <= 0.0) {
         if (code != NULL) {
-            *code = HDY_DIAG_CODE_RUNTIME_CONFIG_INVALID;
+            *code = HYD_DIAG_CODE_RUNTIME_CONFIG_INVALID;
         }
         return false;
     }
 
-    if (!HDY_PumpConverter_IsFiniteReal(pumpSpeedLimit) || pumpSpeedLimit < 0.0) {
+    if (!HYD_PumpConverter_IsFiniteReal(pumpSpeedLimit) || pumpSpeedLimit < 0.0) {
         if (code != NULL) {
-            *code = HDY_DIAG_CODE_RUNTIME_CONFIG_INVALID;
+            *code = HYD_DIAG_CODE_RUNTIME_CONFIG_INVALID;
         }
         return false;
     }
 
     if (code != NULL) {
-        *code = HDY_DIAG_CODE_NONE;
+        *code = HYD_DIAG_CODE_NONE;
     }
     return true;
 }

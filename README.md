@@ -13,7 +13,7 @@
 ```
 项目根目录
 ├── include/                    # 对外头文件
-│   ├── hdy_config.h          # 统一平台配置 (新增)
+│   ├── hyd_config.h          # 统一平台配置 (新增)
 │   ├── motion_control.h       # PLCopen风格函数块接口
 │   ├── common_types.h         # 公共类型定义
 │   ├── diagnostics.h          # 诊断接口
@@ -155,34 +155,34 @@ ctest --test-dir out/build/unixgcc -R '^test_hydro_sim_fb$' --output-on-failure
 
 ### 平台配置 (新增)
 
-通过 `include/hdy_config.h` 可以针对不同目标平台进行优化配置：
+通过 `include/hyd_config.h` 可以针对不同目标平台进行优化配置：
 
 **主要配置项**：
 
 1. **资源限制**
-   - `HDY_MAX_SEGMENTS` - 最大配方段数
-   - `HDY_DIAG_HISTORY_DEPTH` - 诊断历史深度（已弃用，固定为1）
+   - `HYD_MAX_SEGMENTS` - 最大配方段数
+   - `HYD_DIAG_HISTORY_DEPTH` - 诊断历史深度（已弃用，固定为1）
 
 2. **功能开关**
-   - `HDY_ENABLE_DIAGNOSTIC_HISTORY` - 启用诊断历史记录
-   - `HDY_ENABLE_DIAGNOSTIC_FLAGS` - 启用诊断标志位
-   - `HDY_ENABLE_PRESSURE_LOOP_TELEMETRY` - 启用压力环遥测
-   - `HDY_ENABLE_EXECUTION_REFERENCE` - 启用执行参考
+   - `HYD_ENABLE_DIAGNOSTIC_HISTORY` - 启用诊断历史记录
+   - `HYD_ENABLE_DIAGNOSTIC_FLAGS` - 启用诊断标志位
+   - `HYD_ENABLE_PRESSURE_LOOP_TELEMETRY` - 启用压力环遥测
+   - `HYD_ENABLE_EXECUTION_REFERENCE` - 启用执行参考
 
 3. **性能优化**
-   - `HDY_ENABLE_INLINE_FUNCTIONS` - 启用内联函数
-   - `HDY_ENABLE_FAST_MATH` - 启用快速数学函数
+   - `HYD_ENABLE_INLINE_FUNCTIONS` - 启用内联函数
+   - `HYD_ENABLE_FAST_MATH` - 启用快速数学函数
 
 **配置示例**：
 
 ```c
 // 低资源平台配置
-#define HDY_MAX_SEGMENTS 8
-#define HDY_ENABLE_DIAGNOSTIC_FLAGS 0
-#define HDY_ENABLE_PRESSURE_LOOP_TELEMETRY 0
+#define HYD_MAX_SEGMENTS 8
+#define HYD_ENABLE_DIAGNOSTIC_FLAGS 0
+#define HYD_ENABLE_PRESSURE_LOOP_TELEMETRY 0
 
 // 获取当前配置信息
-HDY_ConfigInfo config = HDY_GetConfigInfo();
+HYD_ConfigInfo config = HYD_GetConfigInfo();
 printf("Max Segments: %d\n", config.maxSegments);
 printf("Version: %s\n", config.versionString);
 ```
@@ -195,21 +195,21 @@ printf("Version: %s\n", config.versionString);
 
 推荐按 PLCopen function block 语义集成：
 
-1. `HDY_MotionControlFB_Init()` 初始化函数块
+1. `HYD_MotionControlFB_Init()` 初始化函数块
 2. 配置 `FLOW_TO_PUMP_SPEED_GAIN`、`PUMP_SPEED_LIMIT`
-3. 调用 `HDY_MotionControlFB_LoadRecipe()` 装载配方
+3. 调用 `HYD_MotionControlFB_LoadRecipe()` 装载配方
 4. 工艺层在合适时机调用：
-   - `HDY_MotionControlFB_StartSegment()`；或
+   - `HYD_MotionControlFB_StartSegment()`；或
    - 置位 `START_SEGMENT/START_SEGMENT_INDEX` 后再进入周期调用
-5. 每周期刷新 `AXIS_REF` 后调用 `HDY_MotionControlFB_Execute()`
+5. 每周期刷新 `AXIS_REF` 后调用 `HYD_MotionControlFB_Execute()`
 6. 读取：
    - `PUMP_SPEED`（泵速命令）
    - `STATE`（执行状态）
    - `DIAGNOSTIC`（诊断信息）
    - `SEGMENT_COMPLETED`（段完成标志）
    - `SEGMENT_CHANGED`（段切换脉冲）
-7. 当 `SEGMENT_COMPLETED=true` 时，由工艺层决定是否调用 `HDY_MotionControlFB_NextSegment()`
-8. 需要安全停机时调用 `HDY_MotionControlFB_Abort()`；需要彻底重置时置位 `RESET`
+7. 当 `SEGMENT_COMPLETED=true` 时，由工艺层决定是否调用 `HYD_MotionControlFB_NextSegment()`
+8. 需要安全停机时调用 `HYD_MotionControlFB_Abort()`；需要彻底重置时置位 `RESET`
 
 ## 段切换约定
 
@@ -232,8 +232,8 @@ printf("Version: %s\n", config.versionString);
 ### Direct 模式（`USE_RECIPE = false`）
 
 - `StartSegment()` 忽略 `segmentIndex`，使用 `DIRECT_SEGMENT` 作为单段直接执行来源
-- 必须先通过 `HDY_MotionControlFB_LoadDirectSegment()` 装载 `DIRECT_SEGMENT` 并使 `DIRECT_SEGMENT_VALID=true`
-- Direct 模式下 `NextSegment()` 不被允许，库会拒绝并上报诊断（例如 `HDY_DIAG_CODE_COMMAND_NOT_ALLOWED` 或 `HDY_DIAG_CODE_NO_DIRECT_SEGMENT`）
+- 必须先通过 `HYD_MotionControlFB_LoadDirectSegment()` 装载 `DIRECT_SEGMENT` 并使 `DIRECT_SEGMENT_VALID=true`
+- Direct 模式下 `NextSegment()` 不被允许，库会拒绝并上报诊断（例如 `HYD_DIAG_CODE_COMMAND_NOT_ALLOWED` 或 `HYD_DIAG_CODE_NO_DIRECT_SEGMENT`）
 - 适合手动调试或动态参数调整
 
 **Direct 模式特性**：
@@ -243,7 +243,7 @@ printf("Version: %s\n", config.versionString);
 
 ### 模式识别
 
-- `STATE.segmentSource`：控制器通过该字段（枚举值 `HDY_SEGMENT_SOURCE_NONE/RECIPE/DIRECT`）对外暴露当前（或最近）活动段的来源
+- `STATE.segmentSource`：控制器通过该字段（枚举值 `HYD_SEGMENT_SOURCE_NONE/RECIPE/DIRECT`）对外暴露当前（或最近）活动段的来源
 - HMI 与工艺层可据此判断当前执行语义，例如禁止在 `DIRECT` 来源下调用 `NextSegment()`
 
 ### 使用示例
@@ -251,9 +251,9 @@ printf("Version: %s\n", config.versionString);
 Direct 模式调用示例：
 
 ```c
-fb->USE_RECIPE = HDY_FALSE;
-HDY_MotionControlFB_LoadDirectSegment(&fb, &segment);
-HDY_MotionControlFB_StartSegment(&fb, 0, timestamp); // index 被忽略
+fb->USE_RECIPE = HYD_FALSE;
+HYD_MotionControlFB_LoadDirectSegment(&fb, &segment);
+HYD_MotionControlFB_StartSegment(&fb, 0, timestamp); // index 被忽略
 ```
 
 **注意**：Direct 模式下 `segmentIndex` 仅为兼容接口保留，不代表 recipe 索引。
@@ -265,16 +265,16 @@ HDY_MotionControlFB_StartSegment(&fb, 0, timestamp); // index 被忽略
 提供通用的工具函数,供整个运动控制系统复用:
 
 **数学工具**:
-- `HDY_MotionUtils_MinReal()` - 获取两个实数的最小值
-- `HDY_MotionUtils_AbsReal()` - 获取实数的绝对值
-- `HDY_MotionUtils_IsFiniteReal()` - 检查实数是否为有限值(非NaN或无穷大)
+- `HYD_MotionUtils_MinReal()` - 获取两个实数的最小值
+- `HYD_MotionUtils_AbsReal()` - 获取实数的绝对值
+- `HYD_MotionUtils_IsFiniteReal()` - 检查实数是否为有限值(非NaN或无穷大)
 
 **验证工具**:
-- `HDY_MotionUtils_AxisRefIsValid()` - 检查轴反馈数据是否有效
+- `HYD_MotionUtils_AxisRefIsValid()` - 检查轴反馈数据是否有效
 
 **字符串转换**:
-- `HDY_MotionUtils_CommandToString()` - 命令枚举转字符串(用于诊断)
-- `HDY_MotionUtils_StateToString()` - 状态枚举转字符串(用于诊断)
+- `HYD_MotionUtils_CommandToString()` - 命令枚举转字符串(用于诊断)
+- `HYD_MotionUtils_StateToString()` - 状态枚举转字符串(用于诊断)
 
 **设计目的**:
 - 提升代码复用性,避免重复实现
@@ -286,17 +286,17 @@ HDY_MotionControlFB_StartSegment(&fb, 0, timestamp); // index 被忽略
 集中处理运动控制的验证逻辑:
 
 **请求验证**:
-- `HDY_MotionValidator_ValidateStartRequest()` - 验证Start请求
-- `HDY_MotionValidator_ValidateNextRequest()` - 验证Next请求
+- `HYD_MotionValidator_ValidateStartRequest()` - 验证Start请求
+- `HYD_MotionValidator_ValidateNextRequest()` - 验证Next请求
 
 **配置验证**:
-- `HDY_MotionValidator_ValidatePumpConfig()` - 验证泵配置参数
+- `HYD_MotionValidator_ValidatePumpConfig()` - 验证泵配置参数
 
 **段源解析**:
-- `HDY_MotionValidator_ResolveStartSourceSegment()` - 解析启动段来源
-- `HDY_MotionValidator_UsesRecipeSource()` - 判断是否使用配方源
-- `HDY_MotionValidator_HasSelectedStartSource()` - 检查是否已选择启动源
-- `HDY_MotionValidator_ResolveEffectiveFbState()` - 解析有效功能块状态
+- `HYD_MotionValidator_ResolveStartSourceSegment()` - 解析启动段来源
+- `HYD_MotionValidator_UsesRecipeSource()` - 判断是否使用配方源
+- `HYD_MotionValidator_HasSelectedStartSource()` - 检查是否已选择启动源
+- `HYD_MotionValidator_ResolveEffectiveFbState()` - 解析有效功能块状态
 
 **设计目的**:
 - 分离验证逻辑与业务逻辑
@@ -325,24 +325,24 @@ HDY_MotionControlFB_StartSegment(&fb, 0, timestamp); // index 被忽略
 
 #### 核心功能
 - **PLCopen 风格函数块**：`Init / LoadRecipe / StartSegment / NextSegment / Abort / Execute`
-- **多段配方执行**：`HDY_MAX_SEGMENTS = 16`
+- **多段配方执行**：`HYD_MAX_SEGMENTS = 16`
 - **双模式参数来源**：Recipe 模式与 Direct 模式并存
 
 #### 控制模式
-- `HDY_MODE_POSITION`：位置控制模式
-- `HDY_MODE_SPEED_RAMP`：速度斜坡模式
-- `HDY_MODE_PRESSURE_CLOSED_LOOP`：压力闭环模式
+- `HYD_MODE_POSITION`：位置控制模式
+- `HYD_MODE_SPEED_RAMP`：速度斜坡模式
+- `HYD_MODE_PRESSURE_CLOSED_LOOP`：压力闭环模式
 
 #### 压力闭环策略
 - P / PI / PID 三种策略
 - 支持配置不同压力控制参数
 
 #### 结束条件
-- `HDY_END_POSITION`：位置结束
-- `HDY_END_TIME`：时间结束
-- `HDY_END_PRESSURE`：压力结束
-- `HDY_END_FLOW`：流量结束
-- `HDY_END_MANUAL`：手动结束
+- `HYD_END_POSITION`：位置结束
+- `HYD_END_TIME`：时间结束
+- `HYD_END_PRESSURE`：压力结束
+- `HYD_END_FLOW`：流量结束
+- `HYD_END_MANUAL`：手动结束
 
 #### 运行期模块
 - 运动规划
@@ -396,7 +396,7 @@ HDY_MotionControlFB_StartSegment(&fb, 0, timestamp); // index 被忽略
 - `DIAGNOSTIC_LATCH`：最近一次非 `NONE` 事件
 - `LAST_DIAGNOSTIC_SNAPSHOT`：最近一次诊断事件的上下文快照
 - `LAST_FAULT_SNAPSHOT`：最近一次故障停机快照，仅 `FAULT` 事件更新
-- `DIAGNOSTIC_HISTORY`：单快照历史，仅保留最近一条快照与累计事件计数（`HDY_DIAG_HISTORY_DEPTH` 已弃用，固定为1）
+- `DIAGNOSTIC_HISTORY`：单快照历史，仅保留最近一条快照与累计事件计数（`HYD_DIAG_HISTORY_DEPTH` 已弃用，固定为1）
 
 ### 诊断保留语义
 
@@ -404,9 +404,9 @@ HDY_MotionControlFB_StartSegment(&fb, 0, timestamp); // index 被忽略
 - `DIAGNOSTIC_LATCH`：最近一次非 `NONE` 事件
 - `LAST_DIAGNOSTIC_SNAPSHOT`：最近一次诊断事件的上下文快照
 - `LAST_FAULT_SNAPSHOT`：最近一次故障停机快照，仅 `FAULT` 事件更新
-- `DIAGNOSTIC_HISTORY`：单快照模型，保留最近一条快照（`lastSnapshot`）与累计事件计数（`totalRecorded`）。`GetEntry(0)` 返回最新快照，`GetEntry(n>0)` 返回 false。`HDY_DIAG_HISTORY_DEPTH` 已弃用，固定为1。
+- `DIAGNOSTIC_HISTORY`：单快照模型，保留最近一条快照（`lastSnapshot`）与累计事件计数（`totalRecorded`）。`GetEntry(0)` 返回最新快照，`GetEntry(n>0)` 返回 false。`HYD_DIAG_HISTORY_DEPTH` 已弃用，固定为1。
 
-在实时故障已清除且控制器不处于故障态时，可调用 `HDY_MotionControlFB_AcknowledgeDiagnostics()` 清除保留诊断；故障停机保留信息仍应通过 `RESET` 清除。
+在实时故障已清除且控制器不处于故障态时，可调用 `HYD_MotionControlFB_AcknowledgeDiagnostics()` 清除保留诊断；故障停机保留信息仍应通过 `RESET` 清除。
 
 ### HMI 文案映射
 
@@ -420,7 +420,7 @@ HDY_MotionControlFB_StartSegment(&fb, 0, timestamp); // index 被忽略
 | --- | --- | --- | --- | --- | --- |
 | `NONE` | `NONE` | `NONE` | `NONE` | `NONE` | 当前无活动诊断 |
 | `RECIPE_EMPTY` | `WARNING` | `RECIPE` | `RELOAD_RECIPE` | `WARNING` | 装载空配方 |
-| `RECIPE_TOO_LARGE` | `WARNING` | `RECIPE` | `RELOAD_RECIPE` | `WARNING` | 配方段数超过 `HDY_MAX_SEGMENTS` |
+| `RECIPE_TOO_LARGE` | `WARNING` | `RECIPE` | `RELOAD_RECIPE` | `WARNING` | 配方段数超过 `HYD_MAX_SEGMENTS` |
 | `SEGMENT_INVALID` | `WARNING` | `RECIPE` | `RELOAD_RECIPE` | `WARNING` | 段参数非法，或配置了当前主链路未支持的策略/参数组合 |
 | `RUNTIME_CONFIG_INVALID` | `FAULT` | `RUNTIME` | `RESET_CONTROLLER` | `STOP` | 运行期配置无效，如泵速增益/限幅非法 |
 | `START_CONTEXT_INVALID` | `WARNING` | `COMMAND` | `CHECK_COMMAND` | `WARNING` | 启动段时上下文不满足要求 |
@@ -460,14 +460,14 @@ HDY_MotionControlFB_StartSegment(&fb, 0, timestamp); // index 被忽略
 
 | 标志位 | 十六进制 | 含义 |
 | --- | --- | --- |
-| `HDY_DIAG_FLAG_OVER_PRESSURE` | `0x01` | 当前周期检测到超压 |
-| `HDY_DIAG_FLAG_UNDER_PRESSURE` | `0x02` | 当前周期检测到欠压 |
-| `HDY_DIAG_FLAG_FLOW_DEVIATION` | `0x04` | 当前周期检测到流量偏差 |
-| `HDY_DIAG_FLAG_POSITION_DEVIATION` | `0x08` | 当前周期检测到位置偏差 |
-| `HDY_DIAG_FLAG_VELOCITY_DEVIATION` | `0x10` | 当前周期检测到速度偏差 |
-| `HDY_DIAG_FLAG_TIMEOUT` | `0x20` | 当前周期检测到超时 |
-| `HDY_DIAG_FLAG_SENSOR_FAULT` | `0x40` | 当前周期检测到反馈异常 |
-| `HDY_DIAG_FLAG_TIMESTAMP_ROLLBACK` | `0x80` | 当前周期检测到时间戳倒退 |
+| `HYD_DIAG_FLAG_OVER_PRESSURE` | `0x01` | 当前周期检测到超压 |
+| `HYD_DIAG_FLAG_UNDER_PRESSURE` | `0x02` | 当前周期检测到欠压 |
+| `HYD_DIAG_FLAG_FLOW_DEVIATION` | `0x04` | 当前周期检测到流量偏差 |
+| `HYD_DIAG_FLAG_POSITION_DEVIATION` | `0x08` | 当前周期检测到位置偏差 |
+| `HYD_DIAG_FLAG_VELOCITY_DEVIATION` | `0x10` | 当前周期检测到速度偏差 |
+| `HYD_DIAG_FLAG_TIMEOUT` | `0x20` | 当前周期检测到超时 |
+| `HYD_DIAG_FLAG_SENSOR_FAULT` | `0x40` | 当前周期检测到反馈异常 |
+| `HYD_DIAG_FLAG_TIMESTAMP_ROLLBACK` | `0x80` | 当前周期检测到时间戳倒退 |
 
 ## 自动化测试
 
@@ -509,7 +509,7 @@ HDY_MotionControlFB_StartSegment(&fb, 0, timestamp); // index 被忽略
 - **纯 C99**：无语言扩展，可移植性强
 - **无动态内存分配**：所有数据结构静态分配，避免碎片化
 - **固定上限数组与单快照诊断历史**：内存占用可控
-- **统一 `HDY_` 前缀**的数据模型与接口：避免命名冲突
+- **统一 `HYD_` 前缀**的数据模型与接口：避免命名冲突
 - **适合在 PLC/嵌入式控制器的周期任务中调用**：执行时间确定
 
 ## 项目文档体系
@@ -584,7 +584,7 @@ HDY_MotionControlFB_StartSegment(&fb, 0, timestamp); // index 被忽略
 ┌──────────────▼──────────────────────┐
 │       运动控制层（本库）              │
 │  ┌────────────────────────────┐    │
-│  │  HDY_MotionControlFB       │    │
+│  │  HYD_MotionControlFB       │    │
 │  │  - 状态机管理               │    │
 │  │  - 命令接口                │    │
 │  │  - 诊断上报                │    │
@@ -607,13 +607,13 @@ HDY_MotionControlFB_StartSegment(&fb, 0, timestamp); // index 被忽略
 
 | 模块 | 职责 | 关键函数 |
 | --- | --- | --- |
-| `motion_control` | 函数块编排器，状态机管理，命令接口 | `HDY_MotionControlFB_Execute()` |
-| `motion_planner` | 运动规划，速度/流量计算 | `HDY_MotionPlanner_Execute()` |
-| `pressure_controller` | 压力闭环控制，P/PI/PID 策略 | `HDY_PressureController_Execute()` |
-| `pump_converter` | 泵速换算 | `HDY_PumpConverter_Execute()` |
-| `segment_completion` | 段完成判定 | `HDY_SegmentCompletion_Check()` |
-| `ramp_controller` | 压力目标斜坡平滑 | `HDY_RampController_Execute()` |
-| `diagnostics` | 诊断管理，快照/历史记录 | `HDY_DiagnosticsHistory_Push()` |
+| `motion_control` | 函数块编排器，状态机管理，命令接口 | `HYD_MotionControlFB_Execute()` |
+| `motion_planner` | 运动规划，速度/流量计算 | `HYD_MotionPlanner_Execute()` |
+| `pressure_controller` | 压力闭环控制，P/PI/PID 策略 | `HYD_PressureController_Execute()` |
+| `pump_converter` | 泵速换算 | `HYD_PumpConverter_Execute()` |
+| `segment_completion` | 段完成判定 | `HYD_SegmentCompletion_Check()` |
+| `ramp_controller` | 压力目标斜坡平滑 | `HYD_RampController_Execute()` |
+| `diagnostics` | 诊断管理，快照/历史记录 | `HYD_DiagnosticsHistory_Push()` |
 
 ### 数据流
 
@@ -621,7 +621,7 @@ HDY_MotionControlFB_StartSegment(&fb, 0, timestamp); // index 被忽略
 AXIS_REF（反馈）
     │
     ▼
-HDY_MotionControlFB_Execute()
+HYD_MotionControlFB_Execute()
     │
     ├──► 运动规划 ──► 速度/流量参考
     │
@@ -639,7 +639,7 @@ HDY_MotionControlFB_Execute()
 ### 编码规范
 
 - **语言**：纯 C99，不使用 C++ 特性
-- **命名**：公共接口使用 `HDY_` 前缀
+- **命名**：公共接口使用 `HYD_` 前缀
 - **内存**：静态分配，不使用 `malloc/free`
 - **风格**：遵循 PLCopen 函数块风格
 

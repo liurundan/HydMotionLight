@@ -138,12 +138,12 @@ FAULT
 
 ```c
 /* 固定大小数组 */
-HDY_MotionSegment RECIPE[HDY_MAX_SEGMENTS];           // 最大16段
-HDY_DiagnosticHistory DIAGNOSTIC_HISTORY[HDY_DIAG_HISTORY_DEPTH]; // 最大4条历史
+HYD_MotionSegment RECIPE[HYD_MAX_SEGMENTS];           // 最大16段
+HYD_DiagnosticHistory DIAGNOSTIC_HISTORY[HYD_DIAG_HISTORY_DEPTH]; // 最大4条历史
 
 /* 固定大小字符串 */
-char name[HDY_NAME_MAX];              // 最大32字符
-char message[HDY_MESSAGE_MAX];        // 最大64字符
+char name[HYD_NAME_MAX];              // 最大32字符
+char message[HYD_MESSAGE_MAX];        // 最大64字符
 ```
 
 **评价**：✅ **静态内存设计合理，无动态分配，适合嵌入式平台**
@@ -380,8 +380,8 @@ char message[HDY_MESSAGE_MAX];        // 最大64字符
 **修改方案**：
 - 创建hdy_config.h，集中管理所有配置项
 - 支持精度策略（float/double切换）
-- 支持时间基类型（HDY_TIME）
-- 支持诊断消息字符串开关（HDY_ENABLE_DIAGNOSTIC_MESSAGE）
+- 支持时间基类型（HYD_TIME）
+- 支持诊断消息字符串开关（HYD_ENABLE_DIAGNOSTIC_MESSAGE）
 - 支持历史深度、最大段数等资源上限配置
 
 **预期效果**：
@@ -495,7 +495,7 @@ char message[HDY_MESSAGE_MAX];        // 最大64字符
 |------|------|------|
 | 静态内存 | ✅ 完整 | 固定大小数组，无动态分配 |
 | 有界资源 | ✅ 完整 | 最大段数、诊断历史深度等有明确上限 |
-| 可配置类型 | ✅ 部分完整 | HDY_REAL/HDY_TIME可切换（但缺少统一配置） |
+| 可配置类型 | ✅ 部分完整 | HYD_REAL/HYD_TIME可切换（但缺少统一配置） |
 | 可裁剪特性 | ⚠️ 部分完整 | 诊断消息字符串、历史深度等可裁剪（但缺少配置接口） |
 | 周期调用友好 | ✅ 完整 | 状态机设计适合周期任务调用 |
 
@@ -545,17 +545,17 @@ char message[HDY_MESSAGE_MAX];        // 最大64字符
 
 | 接口 | 清晰度 | 易用性 | 评价 |
 |------|--------|--------|------|
-| HDY_MotionControlFB_Init() | ✅ 清晰 | ✅ 易用 | 设计优秀 |
-| HDY_MotionControlFB_LoadRecipe() | ✅ 清晰 | ✅ 易用 | 设计优秀 |
-| HDY_MotionControlFB_StartSegment() | ✅ 清晰 | ✅ 易用 | 设计优秀 |
-| HDY_MotionControlFB_NextSegment() | ✅ 清晰 | ✅ 易用 | 设计优秀 |
-| HDY_MotionControlFB_Hold() | ✅ 清晰 | ✅ 易用 | 设计优秀 |
-| HDY_MotionControlFB_Resume() | ✅ 清晰 | ✅ 易用 | 设计优秀 |
-| HDY_MotionControlFB_Abort() | ✅ 清晰 | ✅ 易用 | 设计优秀 |
-| HDY_MotionControlFB_AcknowledgeDiagnostics() | ✅ 清晰 | ✅ 易用 | 设计优秀 |
-| HDY_MotionControlFB_Cycle() | ✅ 清晰 | ✅ 易用 | 设计优秀 |
-| HDY_MotionControlFB_Scan() | ✅ 清晰 | ✅ 易用 | 设计优秀 |
-| HDY_MotionControlFB_Execute() | ✅ 清晰 | ✅ 易用 | 设计优秀 |
+| HYD_MotionControlFB_Init() | ✅ 清晰 | ✅ 易用 | 设计优秀 |
+| HYD_MotionControlFB_LoadRecipe() | ✅ 清晰 | ✅ 易用 | 设计优秀 |
+| HYD_MotionControlFB_StartSegment() | ✅ 清晰 | ✅ 易用 | 设计优秀 |
+| HYD_MotionControlFB_NextSegment() | ✅ 清晰 | ✅ 易用 | 设计优秀 |
+| HYD_MotionControlFB_Hold() | ✅ 清晰 | ✅ 易用 | 设计优秀 |
+| HYD_MotionControlFB_Resume() | ✅ 清晰 | ✅ 易用 | 设计优秀 |
+| HYD_MotionControlFB_Abort() | ✅ 清晰 | ✅ 易用 | 设计优秀 |
+| HYD_MotionControlFB_AcknowledgeDiagnostics() | ✅ 清晰 | ✅ 易用 | 设计优秀 |
+| HYD_MotionControlFB_Cycle() | ✅ 清晰 | ✅ 易用 | 设计优秀 |
+| HYD_MotionControlFB_Scan() | ✅ 清晰 | ✅ 易用 | 设计优秀 |
+| HYD_MotionControlFB_Execute() | ✅ 清晰 | ✅ 易用 | 设计优秀 |
 
 **总体评价**：✅ **接口设计清晰易用，符合PLCopen标准**
 

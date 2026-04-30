@@ -2,35 +2,35 @@
 #include "segment_limits.h"
 #include <math.h>
 
-static HDY_REAL HDY_MinReal(HDY_REAL left, HDY_REAL right) {
+static HYD_REAL HYD_MinReal(HYD_REAL left, HYD_REAL right) {
     return (left < right) ? left : right;
 }
 
-static HDY_REAL HDY_GetDirectionSign(HDY_MotionDirection direction) {
+static HYD_REAL HYD_GetDirectionSign(HYD_MotionDirection direction) {
     switch (direction) {
-        case HDY_DIRECTION_EXTEND:
+        case HYD_DIRECTION_EXTEND:
             return 1.0;
-        case HDY_DIRECTION_RETRACT:
+        case HYD_DIRECTION_RETRACT:
             return -1.0;
         default:
             return 0.0;
     }
 }
 
-static HDY_REAL HDY_ComputeRemainingDistance(const HDY_MotionSegment* segment,
-                                             const HDY_AxisRef* axisRef,
-                                             HDY_MotionDirection direction) {
-    HDY_REAL remainingDistance;
+static HYD_REAL HYD_ComputeRemainingDistance(const HYD_MotionSegment* segment,
+                                             const HYD_AxisRef* axisRef,
+                                             HYD_MotionDirection direction) {
+    HYD_REAL remainingDistance;
 
     if (segment == NULL || axisRef == NULL) {
         return 0.0;
     }
 
     switch (direction) {
-        case HDY_DIRECTION_EXTEND:
+        case HYD_DIRECTION_EXTEND:
             remainingDistance = segment->targetPosition - axisRef->position;
             break;
-        case HDY_DIRECTION_RETRACT:
+        case HYD_DIRECTION_RETRACT:
             remainingDistance = axisRef->position - segment->targetPosition;
             break;
         default:
@@ -44,36 +44,36 @@ static HDY_REAL HDY_ComputeRemainingDistance(const HDY_MotionSegment* segment,
     return remainingDistance;
 }
 
-static HDY_REAL HDY_ComputePositionBasedVelocityMagnitude(HDY_REAL remainingDistance,
-                                                          HDY_REAL acceleration,
-                                                          HDY_REAL maxVelocity) {
-    HDY_REAL velocityMagnitude;
+static HYD_REAL HYD_ComputePositionBasedVelocityMagnitude(HYD_REAL remainingDistance,
+                                                          HYD_REAL acceleration,
+                                                          HYD_REAL maxVelocity) {
+    HYD_REAL velocityMagnitude;
 
     if (remainingDistance <= 0.0 || acceleration <= 0.0 || maxVelocity <= 0.0) {
         return 0.0;
     }
 
     velocityMagnitude = sqrt(2.0 * acceleration * remainingDistance);
-    return HDY_ClampReal(velocityMagnitude, 0.0, maxVelocity);
+    return HYD_ClampReal(velocityMagnitude, 0.0, maxVelocity);
 }
 
-static HDY_REAL HDY_ComputeTimeBasedVelocityMagnitude(HDY_REAL elapsedTime,
-                                                      HDY_REAL acceleration,
-                                                      HDY_REAL maxVelocity) {
-    HDY_REAL velocityMagnitude;
+static HYD_REAL HYD_ComputeTimeBasedVelocityMagnitude(HYD_REAL elapsedTime,
+                                                      HYD_REAL acceleration,
+                                                      HYD_REAL maxVelocity) {
+    HYD_REAL velocityMagnitude;
 
     if (elapsedTime <= 0.0 || acceleration <= 0.0 || maxVelocity <= 0.0) {
         return 0.0;
     }
 
     velocityMagnitude = acceleration * elapsedTime;
-    return HDY_ClampReal(velocityMagnitude, 0.0, maxVelocity);
+    return HYD_ClampReal(velocityMagnitude, 0.0, maxVelocity);
 }
 
-static HDY_REAL HDY_ConvertVelocityToFlowMagnitude(HDY_REAL velocityMagnitude,
-                                                   const HDY_MotionSegment* segment) {
-    HDY_REAL gain;
-    HDY_REAL flowMagnitude;
+static HYD_REAL HYD_ConvertVelocityToFlowMagnitude(HYD_REAL velocityMagnitude,
+                                                   const HYD_MotionSegment* segment) {
+    HYD_REAL gain;
+    HYD_REAL flowMagnitude;
 
     if (segment == NULL || velocityMagnitude <= 0.0) {
         return 0.0;
@@ -85,90 +85,90 @@ static HDY_REAL HDY_ConvertVelocityToFlowMagnitude(HDY_REAL velocityMagnitude,
     }
 
     flowMagnitude = velocityMagnitude * gain;
-    return HDY_ClampReal(flowMagnitude, 0.0, segment->maxFlow);
+    return HYD_ClampReal(flowMagnitude, 0.0, segment->maxFlow);
 }
 
-static HDY_REAL HDY_ApplyModeFlowCap(const HDY_MotionSegment* segment,
-                                     HDY_REAL flowMagnitude) {
-    HDY_REAL flowLimit;
+static HYD_REAL HYD_ApplyModeFlowCap(const HYD_MotionSegment* segment,
+                                     HYD_REAL flowMagnitude) {
+    HYD_REAL flowLimit;
 
     if (segment == NULL) {
         return 0.0;
     }
 
     flowLimit = segment->maxFlow;
-    if ((segment->mode == HDY_MODE_POSITION || segment->mode == HDY_MODE_SPEED_RAMP) &&
+    if ((segment->mode == HYD_MODE_POSITION || segment->mode == HYD_MODE_SPEED_RAMP) &&
         (segment->targetFlow > 0.0) &&
         (segment->targetFlow < flowLimit)) {
         flowLimit = segment->targetFlow;
     }
 
-    return HDY_ClampReal(flowMagnitude, 0.0, flowLimit);
+    return HYD_ClampReal(flowMagnitude, 0.0, flowLimit);
 }
 
-static HDY_REAL HDY_ComputePositionModeVelocityMagnitude(const HDY_MotionPlannerInput* input,
-                                                         HDY_MotionDirection direction) {
-    HDY_REAL remainingDistance;
-    HDY_REAL brakeVelocityMagnitude;
-    HDY_REAL rampVelocityMagnitude;
+static HYD_REAL HYD_ComputePositionModeVelocityMagnitude(const HYD_MotionPlannerInput* input,
+                                                         HYD_MotionDirection direction) {
+    HYD_REAL remainingDistance;
+    HYD_REAL brakeVelocityMagnitude;
+    HYD_REAL rampVelocityMagnitude;
 
     if (input == NULL || input->segment == NULL || input->axisRef == NULL) {
         return 0.0;
     }
 
-    remainingDistance = HDY_ComputeRemainingDistance(input->segment, input->axisRef, direction);
-    brakeVelocityMagnitude = HDY_ComputePositionBasedVelocityMagnitude(remainingDistance,
+    remainingDistance = HYD_ComputeRemainingDistance(input->segment, input->axisRef, direction);
+    brakeVelocityMagnitude = HYD_ComputePositionBasedVelocityMagnitude(remainingDistance,
                                                                        input->segment->maxAcceleration,
                                                                        input->segment->maxVelocity);
 
-    if (input->segment->planner == HDY_PLANNER_POSITION_BASED) {
+    if (input->segment->planner == HYD_PLANNER_POSITION_BASED) {
         return brakeVelocityMagnitude;
     }
 
-    rampVelocityMagnitude = HDY_ComputeTimeBasedVelocityMagnitude(input->elapsedTime,
+    rampVelocityMagnitude = HYD_ComputeTimeBasedVelocityMagnitude(input->elapsedTime,
                                                                   input->segment->maxAcceleration,
                                                                   input->segment->maxVelocity);
-    return HDY_MinReal(rampVelocityMagnitude, brakeVelocityMagnitude);
+    return HYD_MinReal(rampVelocityMagnitude, brakeVelocityMagnitude);
 }
 
-static HDY_REAL HDY_ComputeSpeedRampVelocityMagnitude(const HDY_MotionPlannerInput* input,
-                                                      HDY_MotionDirection direction) {
-    HDY_REAL velocityMagnitude;
-    HDY_REAL remainingDistance;
-    HDY_REAL brakeVelocityMagnitude;
+static HYD_REAL HYD_ComputeSpeedRampVelocityMagnitude(const HYD_MotionPlannerInput* input,
+                                                      HYD_MotionDirection direction) {
+    HYD_REAL velocityMagnitude;
+    HYD_REAL remainingDistance;
+    HYD_REAL brakeVelocityMagnitude;
 
     if (input == NULL || input->segment == NULL || input->axisRef == NULL) {
         return 0.0;
     }
 
-    velocityMagnitude = HDY_ComputeTimeBasedVelocityMagnitude(input->elapsedTime,
+    velocityMagnitude = HYD_ComputeTimeBasedVelocityMagnitude(input->elapsedTime,
                                                               input->segment->maxAcceleration,
                                                               input->segment->maxVelocity);
 
-    if (input->segment->endCondition != HDY_END_POSITION) {
+    if (input->segment->endCondition != HYD_END_POSITION) {
         return velocityMagnitude;
     }
 
-    remainingDistance = HDY_ComputeRemainingDistance(input->segment,
+    remainingDistance = HYD_ComputeRemainingDistance(input->segment,
                                                      input->axisRef,
                                                      direction);
-    brakeVelocityMagnitude = HDY_ComputePositionBasedVelocityMagnitude(remainingDistance,
+    brakeVelocityMagnitude = HYD_ComputePositionBasedVelocityMagnitude(remainingDistance,
                                                                        input->segment->maxAcceleration,
                                                                        input->segment->maxVelocity);
-    return HDY_MinReal(velocityMagnitude, brakeVelocityMagnitude);
+    return HYD_MinReal(velocityMagnitude, brakeVelocityMagnitude);
 }
 
-void HDY_MotionPlanner_Execute(const HDY_MotionPlannerInput* input, HDY_MotionPlannerOutput* output) {
-    HDY_MotionDirection direction;
-    HDY_REAL directionSign;
-    HDY_REAL velocityMagnitude;
-    HDY_REAL flowMagnitude;
+void HYD_MotionPlanner_Execute(const HYD_MotionPlannerInput* input, HYD_MotionPlannerOutput* output) {
+    HYD_MotionDirection direction;
+    HYD_REAL directionSign;
+    HYD_REAL velocityMagnitude;
+    HYD_REAL flowMagnitude;
 
     if (output == NULL) {
         return;
     }
 
-    output->direction = HDY_DIRECTION_HOLD;
+    output->direction = HYD_DIRECTION_HOLD;
     output->targetVelocity = 0.0;
     output->targetFlow = 0.0;
 
@@ -176,23 +176,23 @@ void HDY_MotionPlanner_Execute(const HDY_MotionPlannerInput* input, HDY_MotionPl
         return;
     }
 
-    direction = HDY_Segment_ResolveDirection(input->segment, input->axisRef);
+    direction = HYD_Segment_ResolveDirection(input->segment, input->axisRef);
     output->direction = direction;
 
-    if (input->segment->mode == HDY_MODE_PRESSURE_CLOSED_LOOP ||
-        direction == HDY_DIRECTION_HOLD) {
+    if (input->segment->mode == HYD_MODE_PRESSURE_CLOSED_LOOP ||
+        direction == HYD_DIRECTION_HOLD) {
         return;
     }
 
-    if (input->segment->mode == HDY_MODE_POSITION) {
-        velocityMagnitude = HDY_ComputePositionModeVelocityMagnitude(input, direction);
+    if (input->segment->mode == HYD_MODE_POSITION) {
+        velocityMagnitude = HYD_ComputePositionModeVelocityMagnitude(input, direction);
     } else {
-        velocityMagnitude = HDY_ComputeSpeedRampVelocityMagnitude(input, direction);
+        velocityMagnitude = HYD_ComputeSpeedRampVelocityMagnitude(input, direction);
     }
 
-    flowMagnitude = HDY_ConvertVelocityToFlowMagnitude(velocityMagnitude, input->segment);
-    flowMagnitude = HDY_ApplyModeFlowCap(input->segment, flowMagnitude);
-    directionSign = HDY_GetDirectionSign(direction);
+    flowMagnitude = HYD_ConvertVelocityToFlowMagnitude(velocityMagnitude, input->segment);
+    flowMagnitude = HYD_ApplyModeFlowCap(input->segment, flowMagnitude);
+    directionSign = HYD_GetDirectionSign(direction);
 
     output->targetVelocity = velocityMagnitude * directionSign;
     output->targetFlow = flowMagnitude;

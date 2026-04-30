@@ -114,9 +114,9 @@
 #### motion_utils.c/h（已完成）
 
 **功能**：
-- 数学工具：HDY_MotionUtils_MinReal, HDY_MotionUtils_AbsReal, HDY_MotionUtils_IsFiniteReal
-- 验证工具：HDY_MotionUtils_AxisRefIsValid
-- 字符串转换：HDY_MotionUtils_CommandToString, HDY_MotionUtils_StateToString
+- 数学工具：HYD_MotionUtils_MinReal, HYD_MotionUtils_AbsReal, HYD_MotionUtils_IsFiniteReal
+- 验证工具：HYD_MotionUtils_AxisRefIsValid
+- 字符串转换：HYD_MotionUtils_CommandToString, HYD_MotionUtils_StateToString
 
 **效果**：
 - ✅ 工具函数可复用性提升100%
@@ -126,10 +126,10 @@
 #### motion_validator.c/h（已完成）
 
 **功能**：
-- 验证逻辑：HDY_MotionValidator_ValidateStartRequest, HDY_MotionValidator_ValidateNextRequest
-- 配置验证：HDY_MotionValidator_ValidatePumpConfig
-- 段解析：HDY_MotionValidator_ResolveStartSourceSegment
-- 状态解析：HDY_MotionValidator_ResolveEffectiveFbState
+- 验证逻辑：HYD_MotionValidator_ValidateStartRequest, HYD_MotionValidator_ValidateNextRequest
+- 配置验证：HYD_MotionValidator_ValidatePumpConfig
+- 段解析：HYD_MotionValidator_ResolveStartSourceSegment
+- 状态解析：HYD_MotionValidator_ResolveEffectiveFbState
 
 **效果**：
 - ✅ 验证逻辑可复用性提升100%
@@ -188,7 +188,7 @@
 ### 可优化点（2项，非必须）
 
 1. **部分函数较长**（低优先级）
-   - HDY_MotionControlFB_RunRunningState：约180行
+   - HYD_MotionControlFB_RunRunningState：约180行
    - 建议：未来可以考虑拆分，但不紧急
 
 2. **工具函数可复用性提升**（已完成）

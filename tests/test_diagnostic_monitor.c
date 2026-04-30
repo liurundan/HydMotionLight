@@ -7,9 +7,9 @@
 #define EPSILON 1e-6
 
 void test_error_monitor_init() {
-    HDY_ErrorMonitor monitor;
+    HYD_ErrorMonitor monitor;
 
-    HDY_ErrorMonitor_Init(&monitor);
+    HYD_ErrorMonitor_Init(&monitor);
 
     assert(monitor.positionError == 0.0);
     assert(monitor.velocityError == 0.0);
@@ -27,12 +27,12 @@ void test_error_monitor_init() {
 }
 
 void test_error_monitor_pressure_error() {
-    HDY_ErrorMonitor monitor;
-    HDY_AxisRef axisRef;
-    HDY_ExecutionReference references;
-    HDY_TIME currentTime = 0.0;
+    HYD_ErrorMonitor monitor;
+    HYD_AxisRef axisRef;
+    HYD_ExecutionReference references;
+    HYD_TIME currentTime = 0.0;
 
-    HDY_ErrorMonitor_Init(&monitor);
+    HYD_ErrorMonitor_Init(&monitor);
 
     /* 模拟压力误差 */
     axisRef.position = 100.0;
@@ -46,7 +46,7 @@ void test_error_monitor_pressure_error() {
     references.velocityReference = 12.0;
     references.elapsedTime = 0.1;
 
-    HDY_ErrorMonitor_Update(&monitor, &axisRef, &references, currentTime);
+    HYD_ErrorMonitor_Update(&monitor, &axisRef, &references, currentTime);
 
     /* 验证压力误差 = 12.0 - 10.0 = 2.0 */
     assert(fabs(monitor.pressureError - 2.0) < EPSILON);
@@ -56,12 +56,12 @@ void test_error_monitor_pressure_error() {
 }
 
 void test_error_monitor_flow_error() {
-    HDY_ErrorMonitor monitor;
-    HDY_AxisRef axisRef;
-    HDY_ExecutionReference references;
-    HDY_TIME currentTime = 0.0;
+    HYD_ErrorMonitor monitor;
+    HYD_AxisRef axisRef;
+    HYD_ExecutionReference references;
+    HYD_TIME currentTime = 0.0;
 
-    HDY_ErrorMonitor_Init(&monitor);
+    HYD_ErrorMonitor_Init(&monitor);
 
     /* 模拟流量误差 */
     axisRef.position = 100.0;
@@ -75,7 +75,7 @@ void test_error_monitor_flow_error() {
     references.velocityReference = 12.0;
     references.elapsedTime = 0.1;
 
-    HDY_ErrorMonitor_Update(&monitor, &axisRef, &references, currentTime);
+    HYD_ErrorMonitor_Update(&monitor, &axisRef, &references, currentTime);
 
     /* 验证流量误差 = 10.0 - |-5.0| = 5.0 */
     assert(fabs(monitor.flowError - 5.0) < EPSILON);
@@ -85,12 +85,12 @@ void test_error_monitor_flow_error() {
 }
 
 void test_error_monitor_velocity_error() {
-    HDY_ErrorMonitor monitor;
-    HDY_AxisRef axisRef;
-    HDY_ExecutionReference references;
-    HDY_TIME currentTime = 0.0;
+    HYD_ErrorMonitor monitor;
+    HYD_AxisRef axisRef;
+    HYD_ExecutionReference references;
+    HYD_TIME currentTime = 0.0;
 
-    HDY_ErrorMonitor_Init(&monitor);
+    HYD_ErrorMonitor_Init(&monitor);
 
     /* 模拟速度误差 */
     axisRef.position = 100.0;
@@ -104,7 +104,7 @@ void test_error_monitor_velocity_error() {
     references.velocityReference = 15.0;  /* 参考速度 */
     references.elapsedTime = 0.1;
 
-    HDY_ErrorMonitor_Update(&monitor, &axisRef, &references, currentTime);
+    HYD_ErrorMonitor_Update(&monitor, &axisRef, &references, currentTime);
 
     /* 验证速度误差 = 15.0 - 10.0 = 5.0 */
     assert(fabs(monitor.velocityError - 5.0) < EPSILON);
@@ -114,13 +114,13 @@ void test_error_monitor_velocity_error() {
 }
 
 void test_error_monitor_duration_tracking() {
-    HDY_ErrorMonitor monitor;
-    HDY_AxisRef axisRef;
-    HDY_ExecutionReference references;
-    HDY_TIME currentTime = 0.0;
+    HYD_ErrorMonitor monitor;
+    HYD_AxisRef axisRef;
+    HYD_ExecutionReference references;
+    HYD_TIME currentTime = 0.0;
     int i;
 
-    HDY_ErrorMonitor_Init(&monitor);
+    HYD_ErrorMonitor_Init(&monitor);
 
     /* 设置初始误差状态 */
     axisRef.position = 100.0;
@@ -137,7 +137,7 @@ void test_error_monitor_duration_tracking() {
     /* 模拟10个周期的误差持续 */
     for (i = 0; i < 10; i++) {
         currentTime += 0.05;
-        HDY_ErrorMonitor_Update(&monitor, &axisRef, &references, currentTime);
+        HYD_ErrorMonitor_Update(&monitor, &axisRef, &references, currentTime);
     }
 
     /* 验证持续时间 = 0.5秒 */
@@ -147,13 +147,13 @@ void test_error_monitor_duration_tracking() {
 }
 
 void test_error_monitor_statistics() {
-    HDY_ErrorMonitor monitor;
-    HDY_AxisRef axisRef;
-    HDY_ExecutionReference references;
-    HDY_TIME currentTime = 0.0;
+    HYD_ErrorMonitor monitor;
+    HYD_AxisRef axisRef;
+    HYD_ExecutionReference references;
+    HYD_TIME currentTime = 0.0;
     int i;
 
-    HDY_ErrorMonitor_Init(&monitor);
+    HYD_ErrorMonitor_Init(&monitor);
 
     /* 模拟变化的压力误差 */
     axisRef.position = 100.0;
@@ -170,14 +170,14 @@ void test_error_monitor_statistics() {
     /* 第一批采样：压力误差2.0 */
     for (i = 0; i < 5; i++) {
         currentTime += 0.01;
-        HDY_ErrorMonitor_Update(&monitor, &axisRef, &references, currentTime);
+        HYD_ErrorMonitor_Update(&monitor, &axisRef, &references, currentTime);
     }
 
     /* 第二批采样：压力误差1.0 */
     axisRef.pressure = 11.0;
     for (i = 0; i < 5; i++) {
         currentTime += 0.01;
-        HDY_ErrorMonitor_Update(&monitor, &axisRef, &references, currentTime);
+        HYD_ErrorMonitor_Update(&monitor, &axisRef, &references, currentTime);
     }
 
     /* 验证统计信息 */
@@ -190,13 +190,13 @@ void test_error_monitor_statistics() {
 }
 
 void test_error_monitor_reset_statistics() {
-    HDY_ErrorMonitor monitor;
-    HDY_AxisRef axisRef;
-    HDY_ExecutionReference references;
-    HDY_TIME currentTime = 0.0;
+    HYD_ErrorMonitor monitor;
+    HYD_AxisRef axisRef;
+    HYD_ExecutionReference references;
+    HYD_TIME currentTime = 0.0;
     int i;
 
-    HDY_ErrorMonitor_Init(&monitor);
+    HYD_ErrorMonitor_Init(&monitor);
 
     /* 生成一些统计数据 */
     axisRef.position = 100.0;
@@ -212,14 +212,14 @@ void test_error_monitor_reset_statistics() {
 
     for (i = 0; i < 10; i++) {
         currentTime += 0.01;
-        HDY_ErrorMonitor_Update(&monitor, &axisRef, &references, currentTime);
+        HYD_ErrorMonitor_Update(&monitor, &axisRef, &references, currentTime);
     }
 
     assert(monitor.sampleCount > 0);
     assert(monitor.pressureErrorActive);
 
     /* 重置统计 */
-    HDY_ErrorMonitor_ResetStatistics(&monitor);
+    HYD_ErrorMonitor_ResetStatistics(&monitor);
 
     /* 验证统计已清除，但误差状态保留 */
     assert(monitor.sampleCount == 0);
@@ -232,13 +232,13 @@ void test_error_monitor_reset_statistics() {
 }
 
 void test_error_monitor_reset() {
-    HDY_ErrorMonitor monitor;
-    HDY_AxisRef axisRef;
-    HDY_ExecutionReference references;
-    HDY_TIME currentTime = 0.0;
+    HYD_ErrorMonitor monitor;
+    HYD_AxisRef axisRef;
+    HYD_ExecutionReference references;
+    HYD_TIME currentTime = 0.0;
     int i;
 
-    HDY_ErrorMonitor_Init(&monitor);
+    HYD_ErrorMonitor_Init(&monitor);
 
     /* 生成一些数据 */
     axisRef.position = 100.0;
@@ -254,14 +254,14 @@ void test_error_monitor_reset() {
 
     for (i = 0; i < 10; i++) {
         currentTime += 0.01;
-        HDY_ErrorMonitor_Update(&monitor, &axisRef, &references, currentTime);
+        HYD_ErrorMonitor_Update(&monitor, &axisRef, &references, currentTime);
     }
 
     assert(monitor.sampleCount > 0);
     assert(monitor.pressureErrorActive);
 
     /* 完全重置 */
-    HDY_ErrorMonitor_Reset(&monitor);
+    HYD_ErrorMonitor_Reset(&monitor);
 
     /* 验证所有数据已清除 */
     assert(monitor.sampleCount == 0);

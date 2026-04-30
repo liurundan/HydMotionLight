@@ -14,25 +14,25 @@
 1. **深入架构分析** - 完成对motion_control.c的全面评审
    - 总代码行数：1533行
    - 静态函数数量：约50个
-   - 最大函数长度：HDY_MotionControlFB_RunRunningState（约180行）
+   - 最大函数长度：HYD_MotionControlFB_RunRunningState（约180行）
    - 职责识别：命令处理、状态机、运行时编排、故障处理
    - 评审结论：**架构设计优越，不建议大规模重构**
 
 2. **创建工具模块**（2个）
    - ✅ `include/motion_utils.h` / `src/motion_utils.c` - 工具函数模块
-     - HDY_MotionUtils_MinReal
-     - HDY_MotionUtils_AbsReal
-     - HDY_MotionUtils_IsFiniteReal
-     - HDY_MotionUtils_AxisRefIsValid
-     - HDY_MotionUtils_CommandToString
-     - HDY_MotionUtils_StateToString
+     - HYD_MotionUtils_MinReal
+     - HYD_MotionUtils_AbsReal
+     - HYD_MotionUtils_IsFiniteReal
+     - HYD_MotionUtils_AxisRefIsValid
+     - HYD_MotionUtils_CommandToString
+     - HYD_MotionUtils_StateToString
 
    - ✅ `include/motion_validator.h` / `src/motion_validator.c` - 验证逻辑模块
-     - HDY_MotionValidator_ValidateStartRequest
-     - HDY_MotionValidator_ValidateNextRequest
-     - HDY_MotionValidator_ValidatePumpConfig
-     - HDY_MotionValidator_ResolveStartSourceSegment
-     - HDY_MotionValidator_ResolveEffectiveFbState
+     - HYD_MotionValidator_ValidateStartRequest
+     - HYD_MotionValidator_ValidateNextRequest
+     - HYD_MotionValidator_ValidatePumpConfig
+     - HYD_MotionValidator_ResolveStartSourceSegment
+     - HYD_MotionValidator_ResolveEffectiveFbState
 
 3. **生成完整评审报告**
    - ✅ `Sprint4架构评审最终报告.md` - 最终评审结论

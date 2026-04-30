@@ -16,12 +16,12 @@
 void test_pressure_increase(void) {
     printf("\n=== Test 1: Pressure Increase (升压) ===\n");
 
-    HDY_RampController controller;
-    HDY_RampControllerInput input;
-    HDY_RampControllerOutput output;
+    HYD_RampController controller;
+    HYD_RampControllerInput input;
+    HYD_RampControllerOutput output;
 
     // Initialize: current pressure = 2.0 MPa
-    HDY_RampController_Init(&controller, 2.0, 0.0);
+    HYD_RampController_Init(&controller, 2.0, 0.0);
 
     // Set target: ramp from 2.0 to 10.0 MPa at 5.0 MPa/s
     input.targetPressure = 10.0;
@@ -34,10 +34,10 @@ void test_pressure_increase(void) {
     printf("\n");
 
     // Simulate 2 seconds of execution
-    HDY_TIME dt = 0.01;  // 10ms cycle
+    HYD_TIME dt = 0.01;  // 10ms cycle
     for (int i = 0; i < 200; i++) {
         input.currentTime = (i + 1) * dt;
-        HDY_RampController_Execute(&controller, &input, &output);
+        HYD_RampController_Execute(&controller, &input, &output);
 
         // Print every 50 cycles (0.5s)
         if ((i + 1) % 50 == 0) {
@@ -49,7 +49,7 @@ void test_pressure_increase(void) {
 
     // Verification: after 2 seconds at 5 MPa/s, pressure should increase by 10 MPa
     // Expected: 2.0 + 5.0 * 2.0 = 12.0, but clamped to target 10.0
-    HDY_REAL expected = input.targetPressure;
+    HYD_REAL expected = input.targetPressure;
     if (fabs(output.rampedPressure - expected) < EPSILON) {
         printf("✓ PASS: Final pressure %.2f MPa equals target %.2f MPa\n", output.rampedPressure, expected);
     } else {
@@ -63,12 +63,12 @@ void test_pressure_increase(void) {
 void test_pressure_decrease(void) {
     printf("\n=== Test 2: Pressure Decrease (降压) ===\n");
 
-    HDY_RampController controller;
-    HDY_RampControllerInput input;
-    HDY_RampControllerOutput output;
+    HYD_RampController controller;
+    HYD_RampControllerInput input;
+    HYD_RampControllerOutput output;
 
     // Initialize: current pressure = 10.0 MPa
-    HDY_RampController_Init(&controller, 10.0, 0.0);
+    HYD_RampController_Init(&controller, 10.0, 0.0);
 
     // Set target: ramp from 10.0 to 2.0 MPa at 5.0 MPa/s
     input.targetPressure = 2.0;
@@ -81,10 +81,10 @@ void test_pressure_decrease(void) {
     printf("\n");
 
     // Simulate 2 seconds of execution
-    HDY_TIME dt = 0.01;  // 10ms cycle
+    HYD_TIME dt = 0.01;  // 10ms cycle
     for (int i = 0; i < 200; i++) {
         input.currentTime = (i + 1) * dt;
-        HDY_RampController_Execute(&controller, &input, &output);
+        HYD_RampController_Execute(&controller, &input, &output);
 
         // Print every 50 cycles (0.5s)
         if ((i + 1) % 50 == 0) {
@@ -96,7 +96,7 @@ void test_pressure_decrease(void) {
 
     // Verification: after 2 seconds at 5 MPa/s, pressure should decrease by 10 MPa
     // Expected: 10.0 - 5.0 * 2.0 = 0.0, but clamped to target 2.0
-    HDY_REAL expected = input.targetPressure;
+    HYD_REAL expected = input.targetPressure;
     if (fabs(output.rampedPressure - expected) < EPSILON) {
         printf("✓ PASS: Final pressure %.2f MPa equals target %.2f MPa\n", output.rampedPressure, expected);
     } else {
@@ -110,27 +110,27 @@ void test_pressure_decrease(void) {
 void test_ramp_symmetry(void) {
     printf("\n=== Test 3: Ramp Rate Symmetry (斜坡对称性) ===\n");
 
-    HDY_RampController controller;
-    HDY_RampControllerInput input;
-    HDY_RampControllerOutput output;
+    HYD_RampController controller;
+    HYD_RampControllerInput input;
+    HYD_RampControllerOutput output;
 
-    HDY_REAL startPressure = 5.0;
-    HDY_REAL rampRate = 2.0;
-    HDY_TIME rampTime = 1.0;
+    HYD_REAL startPressure = 5.0;
+    HYD_REAL rampRate = 2.0;
+    HYD_TIME rampTime = 1.0;
 
     // Test increase: 5.0 -> 7.0 MPa
     printf("\nPart A: Increase from %.1f to %.1f MPa at %.1f MPa/s\n",
            startPressure, startPressure + rampRate, rampRate);
-    HDY_RampController_Init(&controller, startPressure, 0.0);
+    HYD_RampController_Init(&controller, startPressure, 0.0);
     input.targetPressure = startPressure + rampRate;
     input.rampRate = rampRate;
     input.currentTime = 0.0;
 
     int steps = (int)(rampTime / 0.01);
-    HDY_REAL pressureAfterIncrease;
+    HYD_REAL pressureAfterIncrease;
     for (int i = 0; i < steps; i++) {
         input.currentTime = (i + 1) * 0.01;
-        HDY_RampController_Execute(&controller, &input, &output);
+        HYD_RampController_Execute(&controller, &input, &output);
     }
     pressureAfterIncrease = output.rampedPressure;
     printf("Result: %.4f MPa\n", pressureAfterIncrease);
@@ -138,14 +138,14 @@ void test_ramp_symmetry(void) {
     // Test decrease: 7.0 -> 5.0 MPa
     printf("\nPart B: Decrease from %.1f to %.1f MPa at %.1f MPa/s\n",
            pressureAfterIncrease, startPressure, rampRate);
-    HDY_RampController_Init(&controller, pressureAfterIncrease, 0.0);
+    HYD_RampController_Init(&controller, pressureAfterIncrease, 0.0);
     input.targetPressure = startPressure;
     input.rampRate = rampRate;
     input.currentTime = 0.0;
 
     for (int i = 0; i < steps; i++) {
         input.currentTime = (i + 1) * 0.01;
-        HDY_RampController_Execute(&controller, &input, &output);
+        HYD_RampController_Execute(&controller, &input, &output);
     }
     printf("Result: %.4f MPa\n", output.rampedPressure);
 
@@ -163,13 +163,13 @@ void test_ramp_symmetry(void) {
 void test_ramp_rate_calculation(void) {
     printf("\n=== Test 4: Ramp Rate Calculation (变化率验证) ===\n");
 
-    HDY_RampController controller;
-    HDY_RampControllerInput input;
-    HDY_RampControllerOutput output;
+    HYD_RampController controller;
+    HYD_RampControllerInput input;
+    HYD_RampControllerOutput output;
 
-    HDY_REAL startPressure = 0.0;
-    HDY_REAL rampRate = 10.0;
-    HDY_TIME dt = 0.01;
+    HYD_REAL startPressure = 0.0;
+    HYD_REAL rampRate = 10.0;
+    HYD_TIME dt = 0.01;
 
     printf("Testing pressure increase from %.1f MPa with rate %.1f MPa/s\n",
            startPressure, rampRate);
@@ -177,19 +177,19 @@ void test_ramp_rate_calculation(void) {
     printf("Expected change per cycle: %.4f MPa\n", rampRate * dt);
     printf("\n");
 
-    HDY_RampController_Init(&controller, startPressure, 0.0);
+    HYD_RampController_Init(&controller, startPressure, 0.0);
     input.targetPressure = 100.0;  // Far target
     input.rampRate = rampRate;
     input.currentTime = 0.0;
 
     // Check first 10 cycles
-    HDY_REAL previousPressure = startPressure;
+    HYD_REAL previousPressure = startPressure;
     for (int i = 0; i < 10; i++) {
         input.currentTime = (i + 1) * dt;
-        HDY_RampController_Execute(&controller, &input, &output);
+        HYD_RampController_Execute(&controller, &input, &output);
 
-        HDY_REAL actualChange = output.rampedPressure - previousPressure;
-        HDY_REAL expectedChange = rampRate * dt;
+        HYD_REAL actualChange = output.rampedPressure - previousPressure;
+        HYD_REAL expectedChange = rampRate * dt;
 
         printf("Cycle %d: pressure=%.4f MPa, change=%.4f MPa (expected=%.4f MPa)\n",
                i + 1, output.rampedPressure, actualChange, expectedChange);
@@ -212,11 +212,11 @@ void test_ramp_rate_calculation(void) {
 void test_zero_ramp_rate(void) {
     printf("\n=== Test 5: Zero Ramp Rate (立即跳转) ===\n");
 
-    HDY_RampController controller;
-    HDY_RampControllerInput input;
-    HDY_RampControllerOutput output;
+    HYD_RampController controller;
+    HYD_RampControllerInput input;
+    HYD_RampControllerOutput output;
 
-    HDY_RampController_Init(&controller, 5.0, 0.0);
+    HYD_RampController_Init(&controller, 5.0, 0.0);
 
     input.targetPressure = 10.0;
     input.rampRate = 0.0;  // Zero ramp rate should cause immediate jump
@@ -226,7 +226,7 @@ void test_zero_ramp_rate(void) {
     printf("Target pressure: %.2f MPa\n", input.targetPressure);
     printf("Ramp rate: 0.0 (immediate jump)\n");
 
-    HDY_RampController_Execute(&controller, &input, &output);
+    HYD_RampController_Execute(&controller, &input, &output);
 
     printf("Result: %.2f MPa\n", output.rampedPressure);
 

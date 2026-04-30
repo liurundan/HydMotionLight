@@ -6,7 +6,7 @@
 
 | 机制 | 位置 | 职责 |
 |------|------|------|
-| `HDY_IsCommandAllowedInState` + 状态掩码表 | 核心层 `motion_control.c` | 命令 X 在状态 Y 下是否合法 |
+| `HYD_IsCommandAllowedInState` + 状态掩码表 | 核心层 `motion_control.c` | 命令 X 在状态 Y 下是否合法 |
 | `_commandGeneration` + `GEN : WORD` 参数 | IEC 层 `motion_interface.c` | 此 IEC FB 实例是否还拥有轴控制权（多 FB 抢占检测） |
 
 问题：
@@ -18,7 +18,7 @@
 
 1. **PLCopen 对齐**：状态机是命令准入的唯一判定依据；增加 BufferMode 参数控制抢占/缓冲
 2. **GEN 消除**：从所有 IEC FB 公共接口删除 GEN 参数，用内部 `_executionId` 替代
-3. **校验统一**：命令可否执行由核心层 `HDY_IsCommandAllowedInState` 单一口径判决；IEC 层不做重复校验
+3. **校验统一**：命令可否执行由核心层 `HYD_IsCommandAllowedInState` 单一口径判决；IEC 层不做重复校验
 4. **失败即报错**：命令不被接受时 IEC FB 立即设置 ERROR=true，不做静默入队
 
 ## 公共接口变更
@@ -27,10 +27,10 @@
 
 ```c
 typedef enum {
-    HDY_BUFFER_MODE_ABORT  = 0,  // 抢占当前运动，立即执行本命令
-    HDY_BUFFER_MODE_BUFFER = 1,  // 缓冲：仅当轴空闲时执行；忙时返回错误
+    HYD_BUFFER_MODE_ABORT  = 0,  // 抢占当前运动，立即执行本命令
+    HYD_BUFFER_MODE_BUFFER = 1,  // 缓冲：仅当轴空闲时执行；忙时返回错误
     // 2-5 保留给后续 Blending 扩展
-} HDY_BufferMode;
+} HYD_BufferMode;
 ```
 
 本期仅实现 ABORT 和 BUFFER。BUFFER 在轴忙时直接返回 ERROR（无内部缓冲队列）。
@@ -50,7 +50,7 @@ typedef enum {
 
 ### `_commandGeneration` → `_executionId`
 
-递增时机调整为 **双点递增**——在 `HDY_AbortNow()` 和 `HDY_BeginSegment()` 两处均递增：
+递增时机调整为 **双点递增**——在 `HYD_AbortNow()` 和 `HYD_BeginSegment()` 两处均递增：
 
 ```
 旧：仅在 Abort() 时递增
@@ -63,8 +63,8 @@ typedef enum {
 
 ### 不改动的部分
 
-- `HDY_IsCommandAllowedInState` 状态掩码表完全保留
-- `HDY_RequestCommandQueue` 的状态校验逻辑保留
+- `HYD_IsCommandAllowedInState` 状态掩码表完全保留
+- `HYD_RequestCommandQueue` 的状态校验逻辑保留
 - 所有运动控制算法模块不变
 - 诊断、保护、段完成模块不变
 
@@ -155,17 +155,17 @@ Reset 直接调用 `SoftReset()`，不涉及段或抢占。
 
 | 拒绝场景 | 诊断码 |
 |---------|-------|
-| 状态不允许该命令 | `HDY_DIAG_CODE_COMMAND_NOT_ALLOWED` |
-| 轴未创建 (DISABLED) | `HDY_DIAG_CODE_START_CONTEXT_INVALID` |
-| 段参数无效 | `HDY_DIAG_CODE_SEGMENT_INVALID` |
-| 无配方 (MoveProfile) | `HDY_DIAG_CODE_NO_RECIPE` |
-| 轴索引越界（IEC 层） | `HDY_DIAG_CODE_START_CONTEXT_INVALID` |
+| 状态不允许该命令 | `HYD_DIAG_CODE_COMMAND_NOT_ALLOWED` |
+| 轴未创建 (DISABLED) | `HYD_DIAG_CODE_START_CONTEXT_INVALID` |
+| 段参数无效 | `HYD_DIAG_CODE_SEGMENT_INVALID` |
+| 无配方 (MoveProfile) | `HYD_DIAG_CODE_NO_RECIPE` |
+| 轴索引越界（IEC 层） | `HYD_DIAG_CODE_START_CONTEXT_INVALID` |
 
 ## 改动文件清单
 
 | 文件 | 改动 | 规模 |
 |------|------|------|
-| `include/common_types.h` | 新增 `HDY_BufferMode` 枚举 | +8 |
+| `include/common_types.h` | 新增 `HYD_BufferMode` 枚举 | +8 |
 | `include/motion_control.h` | `_commandGeneration` → `_executionId`；注释调整 | ±2 |
 | `src/motion_control.c` | `AbortNow` 保留递增；`BeginSegment` 末尾新增递增 | ±2 |
 | `include/motion_interface.h` | 5 个 FB 删除 GEN、增加 BUFFERMODE（INT） | -6 +5 |

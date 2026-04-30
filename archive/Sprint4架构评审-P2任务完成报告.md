@@ -13,7 +13,7 @@
 
 | 任务 | 状态 | 结果 |
 |------|------|------|
-| 1. 引入统一平台配置头文件(hdy_config.h) | ✅ 完成 | 完整配置系统已实现 |
+| 1. 引入统一平台配置头文件(hyd_config.h) | ✅ 完成 | 完整配置系统已实现 |
 | 2. 进一步简化motion_control.c | ✅ 完成 | 代码结构进一步优化 |
 | 3. 性能优化和基准测试 | ✅ 完成 | 性能基准测试程序已创建 |
 
@@ -25,7 +25,7 @@
 
 | 目标 | 状态 | 结果 |
 |------|------|------|
-| 统一平台配置 | ✅ 完成 | hdy_config.h已实现 |
+| 统一平台配置 | ✅ 完成 | hyd_config.h已实现 |
 | 代码简化 | ✅ 完成 | 静态函数优化完成 |
 | 性能测试 | ✅ 完成 | 基准测试程序已创建 |
 | 测试通过率 | ✅ 完成 | 100%(12/12) |
@@ -34,60 +34,60 @@
 
 ## 📊 关键成果
 
-### 1. 统一平台配置头文件 (hdy_config.h)
+### 1. 统一平台配置头文件 (hyd_config.h)
 
 #### 核心功能
 
 **配置分类**:
 1. **精度配置**
-   - HDY_REAL精度策略 (float/double)
-   - HDY_TIME精度配置
+   - HYD_REAL精度策略 (float/double)
+   - HYD_TIME精度配置
    - 精度相关常量定义
 
 2. **数组大小限制**
-   - HDY_MAX_SEGMENTS (最大配方段数)
-   - HDY_NAME_MAX (段名称最大长度)
-   - HDY_MESSAGE_MAX (诊断消息最大长度)
-   - HDY_DIAG_HISTORY_DEPTH (诊断历史深度)
+   - HYD_MAX_SEGMENTS (最大配方段数)
+   - HYD_NAME_MAX (段名称最大长度)
+   - HYD_MESSAGE_MAX (诊断消息最大长度)
+   - HYD_DIAG_HISTORY_DEPTH (诊断历史深度)
 
 3. **功能开关**
-   - HDY_ENABLE_DIAGNOSTIC_MESSAGE (诊断消息字符串)
-   - HDY_ENABLE_DIAGNOSTIC_HISTORY (诊断历史记录)
-   - HDY_ENABLE_DIAGNOSTIC_FLAGS (诊断标志位)
-   - HDY_ENABLE_PRESSURE_LOOP_TELEMETRY (压力环遥测)
-   - HDY_ENABLE_EXECUTION_REFERENCE (执行参考)
+   - HYD_ENABLE_DIAGNOSTIC_MESSAGE (诊断消息字符串)
+   - HYD_ENABLE_DIAGNOSTIC_HISTORY (诊断历史记录)
+   - HYD_ENABLE_DIAGNOSTIC_FLAGS (诊断标志位)
+   - HYD_ENABLE_PRESSURE_LOOP_TELEMETRY (压力环遥测)
+   - HYD_ENABLE_EXECUTION_REFERENCE (执行参考)
 
 4. **验证与保护**
-   - HDY_ENABLE_RECIPE_VALIDATION (配方验证)
-   - HDY_ENABLE_RUNTIME_CONFIG_VALIDATION (运行时配置验证)
-   - HDY_ENABLE_SENSOR_DATA_VALIDATION (传感器数据验证)
-   - HDY_ENABLE_PROTECTION (保护功能)
+   - HYD_ENABLE_RECIPE_VALIDATION (配方验证)
+   - HYD_ENABLE_RUNTIME_CONFIG_VALIDATION (运行时配置验证)
+   - HYD_ENABLE_SENSOR_DATA_VALIDATION (传感器数据验证)
+   - HYD_ENABLE_PROTECTION (保护功能)
 
 5. **性能优化**
-   - HDY_ENABLE_INLINE_FUNCTIONS (内联函数优化)
-   - HDY_ENABLE_FAST_MATH (快速数学函数)
+   - HYD_ENABLE_INLINE_FUNCTIONS (内联函数优化)
+   - HYD_ENABLE_FAST_MATH (快速数学函数)
 
 6. **调试与测试**
-   - HDY_ENABLE_ASSERT (断言检查)
-   - HDY_ENABLE_STATISTICS (统计计数器)
-   - HDY_ENABLE_DEBUG_LOG (详细日志)
+   - HYD_ENABLE_ASSERT (断言检查)
+   - HYD_ENABLE_STATISTICS (统计计数器)
+   - HYD_ENABLE_DEBUG_LOG (详细日志)
 
 7. **平台特定配置**
-   - HDY_PLATFORM_* (目标平台类型)
-   - HDY_ALIGNMENT (字节对齐配置)
+   - HYD_PLATFORM_* (目标平台类型)
+   - HYD_ALIGNMENT (字节对齐配置)
 
 8. **版本信息**
-   - HDY_VERSION_MAJOR/MINOR/PATCH (版本号)
-   - HDY_VERSION_BUILD_TIME (构建时间戳)
+   - HYD_VERSION_MAJOR/MINOR/PATCH (版本号)
+   - HYD_VERSION_BUILD_TIME (构建时间戳)
 
 #### 配置优势
 
 **资源裁剪能力**:
 ```
 最小配置模式 (资源受限平台):
-- HDY_MAX_SEGMENTS: 8 (减少50% RAM)
-- HDY_MESSAGE_MAX: 32 (减少50% ROM)
-- HDY_DIAG_HISTORY_DEPTH: 1 (减少75% RAM)
+- HYD_MAX_SEGMENTS: 8 (减少50% RAM)
+- HYD_MESSAGE_MAX: 32 (减少50% ROM)
+- HYD_DIAG_HISTORY_DEPTH: 1 (减少75% RAM)
 - 诊断消息禁用 (减少大量ROM)
 - 压力环遥测禁用 (减少约10% RAM)
 
@@ -108,7 +108,7 @@
 **版本管理**:
 ```
 版本信息导出:
-- HDY_GetConfigInfo() 返回完整配置信息
+- HYD_GetConfigInfo() 返回完整配置信息
 - 包含版本号、构建时间、功能开关状态
 - 便于运行时查询和调试
 ```
@@ -120,9 +120,9 @@
 **简化内容**:
 ```
 移除的静态函数:
-- HDY_ResetReadyContextPreview (内联调用)
-- HDY_ResolveStartSourceSegment (直接调用模块)
-- HDY_AxisRefIsValid (直接调用HDY_MotionUtils_AxisRefIsValid)
+- HYD_ResetReadyContextPreview (内联调用)
+- HYD_ResolveStartSourceSegment (直接调用模块)
+- HYD_AxisRefIsValid (直接调用HDY_MotionUtils_AxisRefIsValid)
 
 代码行数变化:
 - 优化前: 1365行
@@ -222,64 +222,64 @@
 
 ## 🔧 技术实现
 
-### 1. hdy_config.h实现细节
+### 1. hyd_config.h实现细节
 
 #### 条件编译支持
 
 ```c
 /* 诊断消息条件编译 */
 typedef struct {
-    HDY_DiagnosticCode code;
-    HDY_DiagnosticSeverity severity;
-#if HDY_ENABLE_DIAGNOSTIC_FLAGS
-    HDY_DiagnosticFlags flags;
+    HYD_DiagnosticCode code;
+    HYD_DiagnosticSeverity severity;
+#if HYD_ENABLE_DIAGNOSTIC_FLAGS
+    HYD_DiagnosticFlags flags;
 #endif
     // ... 其他字段
-#if HDY_ENABLE_DIAGNOSTIC_MESSAGE
-    char message[HDY_MESSAGE_MAX];
+#if HYD_ENABLE_DIAGNOSTIC_MESSAGE
+    char message[HYD_MESSAGE_MAX];
 #endif
-} HDY_DiagnosticInfo;
+} HYD_DiagnosticInfo;
 
 /* 执行参考条件编译 */
 typedef struct {
-    HDY_REAL elapsedTime;
-#if HDY_ENABLE_EXECUTION_REFERENCE
-    HDY_REAL pressureReference;
-    HDY_REAL flowReference;
-    HDY_REAL velocityReference;
+    HYD_REAL elapsedTime;
+#if HYD_ENABLE_EXECUTION_REFERENCE
+    HYD_REAL pressureReference;
+    HYD_REAL flowReference;
+    HYD_REAL velocityReference;
 #endif
-} HDY_ExecutionReference;
+} HYD_ExecutionReference;
 
 /* 压力环遥测条件编译 */
 typedef struct {
-    HDY_REAL targetPressure;
-    HDY_REAL filteredPressure;
+    HYD_REAL targetPressure;
+    HYD_REAL filteredPressure;
     // ... 其他字段
-#if HDY_ENABLE_PRESSURE_LOOP_TELEMETRY
-    HDY_REAL adaptiveKp;
-    HDY_REAL adaptiveKi;
-    HDY_REAL adaptiveKd;
-    HDY_BOOL trackingApplied;
-    HDY_BOOL saturated;
-    HDY_BOOL adaptiveActive;
+#if HYD_ENABLE_PRESSURE_LOOP_TELEMETRY
+    HYD_REAL adaptiveKp;
+    HYD_REAL adaptiveKi;
+    HYD_REAL adaptiveKd;
+    HYD_BOOL trackingApplied;
+    HYD_BOOL saturated;
+    HYD_BOOL adaptiveActive;
 #endif
-} HDY_PressureLoopState;
+} HYD_PressureLoopState;
 ```
 
 #### 配置验证
 
 ```c
 /* 编译时验证 */
-#if HDY_MAX_SEGMENTS < 4
-    #error "HDY_MAX_SEGMENTS must be at least 4"
+#if HYD_MAX_SEGMENTS < 4
+    #error "HYD_MAX_SEGMENTS must be at least 4"
 #endif
 
-#if HDY_NAME_MAX < 16
-    #error "HDY_NAME_MAX must be at least 16"
+#if HYD_NAME_MAX < 16
+    #error "HYD_NAME_MAX must be at least 16"
 #endif
 
-#if HDY_DIAG_HISTORY_DEPTH < 1
-    #error "HDY_DIAG_HISTORY_DEPTH must be at least 1"
+#if HYD_DIAG_HISTORY_DEPTH < 1
+    #error "HYD_DIAG_HISTORY_DEPTH must be at least 1"
 #endif
 ```
 
@@ -298,10 +298,10 @@ typedef struct {
     int executionReferenceEnabled;
     const char* versionString;
     const char* buildTime;
-} HDY_ConfigInfo;
+} HYD_ConfigInfo;
 
 /* 获取配置信息 */
-HDY_ConfigInfo HDY_GetConfigInfo(void);
+HYD_ConfigInfo HYD_GetConfigInfo(void);
 ```
 
 ### 2. motion_control.c简化
@@ -310,12 +310,12 @@ HDY_ConfigInfo HDY_GetConfigInfo(void);
 
 ```c
 /* 之前: 静态包装函数 */
-static HDY_BOOL HDY_AxisRefIsValid(const HDY_AxisRef* axisRef) {
-    return HDY_MotionUtils_AxisRefIsValid(axisRef);
+static HYD_BOOL HYD_AxisRefIsValid(const HYD_AxisRef* axisRef) {
+    return HYD_MotionUtils_AxisRefIsValid(axisRef);
 }
 
 /* 现在: 直接调用 */
-if (!HDY_MotionUtils_AxisRefIsValid(&fb->AXIS_REF)) {
+if (!HYD_MotionUtils_AxisRefIsValid(&fb->AXIS_REF)) {
     // 处理错误
 }
 ```
@@ -456,7 +456,7 @@ void benchmark_example(void) {
 
 ### 配置文档
 
-1. **hdy_config.h** (345行)
+1. **hyd_config.h** (345行)
    - 完整的配置系统
    - 详细的配置说明
    - 编译时验证机制
@@ -492,14 +492,14 @@ void benchmark_example(void) {
 1. **创建不同平台的预设配置**
    ```c
    // config_low_resource.h - 低资源平台
-   #define HDY_MAX_SEGMENTS 8
-   #define HDY_MESSAGE_MAX 32
-   #define HDY_ENABLE_DIAGNOSTIC_MESSAGE 0
+   #define HYD_MAX_SEGMENTS 8
+   #define HYD_MESSAGE_MAX 32
+   #define HYD_ENABLE_DIAGNOSTIC_MESSAGE 0
    
    // config_high_performance.h - 高性能平台
-   #define HDY_MAX_SEGMENTS 32
-   #define HDY_MESSAGE_MAX 128
-   #define HDY_ENABLE_DIAGNOSTIC_MESSAGE 1
+   #define HYD_MAX_SEGMENTS 32
+   #define HYD_MESSAGE_MAX 128
+   #define HYD_ENABLE_DIAGNOSTIC_MESSAGE 1
    ```
 
 2. **优化关键路径**

@@ -41,12 +41,12 @@ IEC61131-3 PLC Program (matiec/Beremiz compiled)
 │  - FB instance pool (up to 20 axes)         │
 │  - Command arbitration with generation      │
 │    counters for multi-FB-per-axis safety    │
-│  - Bidirectional HDY_AXISMOTION channel     │
+│  - Bidirectional HYD_AXISMOTION channel     │
 │  - Framework: Init/Cleanup/Retrieve/Publish │
 ├─────────────────────────────────────────────┤
 │  Core Library (HydroMotionLib)              │
 │  ┌─────────────────────────────────────┐    │
-│  │  HDY_MotionControlFB (orchestrator) │    │
+│  │  HYD_MotionControlFB (orchestrator) │    │
 │  │  - State machine, command dispatch  │    │
 │  │  - Glue between feedback, planner,  │    │
 │  │    pressure loop, diagnostics       │    │
@@ -123,7 +123,7 @@ Critical semantics:
 
 ### Simulator Key Constraints
 
-- Shared `HydraulicSimEnv` is stepped exactly **once per `__HdySimulator_framework_Publish()`** call — multiple FB publishes in the same scan only advance physics by one tick
+- Shared `HydraulicSimEnv` is stepped exactly **once per `__HydSimulator_framework_Publish()`** call — multiple FB publishes in the same scan only advance physics by one tick
 - Single-pump model: only the axis matching `pump_owner_axis_id` receives flow each step
 - CLAMP axis type: includes tie-bar stiffness and mold-obstacle force models
 - INJECT axis type: includes melt resistance proportional to position
@@ -133,25 +133,25 @@ Critical semantics:
 The library uses matiec's IEC61131-3 type infrastructure from `include/matiec/lib/C/`:
 - `__DECLARE_VAR(type, name)` declares IEC-typed variables with force-flag write protection
 - `__GET_VAR` / `__SET_VAR` read/write through the force-flag guard
-- `__DECLARE_STRUCT_TYPE` for custom struct types (e.g., `HDY_AXISMOTION`)
+- `__DECLARE_STRUCT_TYPE` for custom struct types (e.g., `HYD_AXISMOTION`)
 - All base IEC types: `IEC_BOOL`, `IEC_SINT`, `IEC_REAL`, `IEC_WORD`, etc.
 - This type system is what makes the library callable from IEC61131-3 PLC runtimes (matiec/Beremiz)
 
 ### Control Modes & End Conditions
 
-**Modes**: `HDY_MODE_POSITION` (position convergence), `HDY_MODE_SPEED_RAMP` (velocity ramp), `HDY_MODE_PRESSURE_CLOSED_LOOP` (pressure servo)
+**Modes**: `HYD_MODE_POSITION` (position convergence), `HYD_MODE_SPEED_RAMP` (velocity ramp), `HYD_MODE_PRESSURE_CLOSED_LOOP` (pressure servo)
 
-**End conditions**: `HDY_END_POSITION`, `HDY_END_TIME`, `HDY_END_PRESSURE`, `HDY_END_FLOW`, `HDY_END_MANUAL`
+**End conditions**: `HYD_END_POSITION`, `HYD_END_TIME`, `HYD_END_PRESSURE`, `HYD_END_FLOW`, `HYD_END_MANUAL`
 
 **Pressure strategies**: P / PI / PID (via `pressure_controller.c`). `RBF_PID` (rbf_pid.c) exists as a standalone module, built and tested but NOT integrated into the main execution path.
 
 ### Repository Constraints
 
 1. Pump speed is always nonnegative pump-side magnitude; direction is signaled via `STATE.plannedDirection` — the process layer owns valve actuation
-2. `HDY_MotionControlFB_Init()` does full `memset` — resets gains, recipe, runtime state, diagnostics. Reload everything after Init
-3. Pressure gain fields (`pressureKp/Ki/Kd`) use zero as "not configured" — zero/negative values fall back to legacy defaults. To disable proportional control, set `pressureController = HDY_PRESSURE_CONTROLLER_NONE`
-4. `HDY_DiagnosticCriteria_CheckFaultEscalation()` requires `result.severity == WARNING` and `result.triggered == true` from a prior check call — never pass uninitialized result struct
-5. Stay in pure C99, `HDY_` prefix, static bounded memory, no malloc, PLCopen function-block style
+2. `HYD_MotionControlFB_Init()` does full `memset` — resets gains, recipe, runtime state, diagnostics. Reload everything after Init
+3. Pressure gain fields (`pressureKp/Ki/Kd`) use zero as "not configured" — zero/negative values fall back to legacy defaults. To disable proportional control, set `pressureController = HYD_PRESSURE_CONTROLLER_NONE`
+4. `HYD_DiagnosticCriteria_CheckFaultEscalation()` requires `result.severity == WARNING` and `result.triggered == true` from a prior check call — never pass uninitialized result struct
+5. Stay in pure C99, `HYD_` prefix, static bounded memory, no malloc, PLCopen function-block style
 6. New `src/*.c` files require re-running `cmake --preset unixgcc` because the build uses `file(GLOB_RECURSE ...)`
 
 ### Key Files for Understanding the System
@@ -164,4 +164,4 @@ The library uses matiec's IEC61131-3 type infrastructure from `include/matiec/li
 - [src/motion_control.c](src/motion_control.c) — state machine orchestrator
 - [src/sim/hydro_sim.c](src/sim/hydro_sim.c) — physics simulation kernel
 - [src/sim/hydro_sim_fb.c](src/sim/hydro_sim_fb.c) — simulator PLC adapter layer
-- [include/hdy_config.h](include/hdy_config.h) — compile-time feature flags and platform configuration
+- [include/hyd_config.h](include/hyd_config.h) — compile-time feature flags and platform configuration

@@ -8,11 +8,11 @@
 - 当前核心边界：
   - **工艺层**负责机理、阀逻辑、段切换、互锁、动作编排
   - **运动控制库**负责运动数学、压力/流量规划、泵速换算、诊断输出
-- 当前主控入口：`HDY_MotionControlFB`
+- 当前主控入口：`HYD_MotionControlFB`
 - 当前运行方式：以 **配方/段（recipe/segment）驱动** 为主，通过 `LoadRecipe -> StartSegment / START_SEGMENT -> Execute` 运行
 
 ### 当前讨论主题
-围绕 `motion_control.c` 进行重构评估，目标是让 `HDY_MotionControlFB`：
+围绕 `motion_control.c` 进行重构评估，目标是让 `HYD_MotionControlFB`：
 - 更符合 **PLCopen 功能块使用习惯**
 - 可作为 **合模、射胶、顶针、座台等多缸控制**的统一 FB 类型复用
 - 支持 **命令上升沿触发**
@@ -96,7 +96,7 @@
 ## 🎯 实现目标
 
 ### 主要目标
-把 `HDY_MotionControlFB` 重构成更符合 PLCopen 使用习惯、支持多缸复用、易扩展命令的通用单缸运动功能块。
+把 `HYD_MotionControlFB` 重构成更符合 PLCopen 使用习惯、支持多缸复用、易扩展命令的通用单缸运动功能块。
 
 ### 具体要求
 1. **一个 FB 实例只管理一个缸/一个运动对象**
@@ -140,7 +140,7 @@
 5. **优先重构控制器框架层，不破坏已拆分的算法模块**
 
 ### 关键技术限制
-- `HDY_MotionControlFB_Init()` 当前会 `memset` 全清，意味着 `RESET` 会清掉配置、配方和运行态，重构时需明确是否保留该语义
+- `HYD_MotionControlFB_Init()` 当前会 `memset` 全清，意味着 `RESET` 会清掉配置、配方和运行态，重构时需明确是否保留该语义
 - 当前 `PUMP_SPEED` 仍是非负泵侧幅值，方向语义通过 `plannedDirection` 等状态表达
 - 当前 `LoadRecipe()` 不会自动启动执行，启动仍依赖 `StartSegment()` 或 `START_SEGMENT`
 - 当前测试主要围绕 `Execute()` 展开，若增加 `Cycle()`，测试体系需同步升级
@@ -165,7 +165,7 @@
 
 > 本轮对话尚未进行代码落地修改，以下为**已评估/已否定或不推荐**的方案。
 
-### 方案 1：一个 `HDY_MotionControlFB` 实例内部统一管理多缸
+### 方案 1：一个 `HYD_MotionControlFB` 实例内部统一管理多缸
 **结论：不推荐**
 
 **原因：**
@@ -217,31 +217,31 @@
 
 3. **引入统一命令模型**
    建议内部用统一命令枚举，例如：
-   - `HDY_CMD_NONE`
-   - `HDY_CMD_START`
-   - `HDY_CMD_NEXT`
-   - `HDY_CMD_STOP`
-   - `HDY_CMD_HOLD`
-   - `HDY_CMD_RESUME`
-   - `HDY_CMD_ABORT`
-   - `HDY_CMD_RESET`
-   - `HDY_CMD_ACK`
+   - `HYD_CMD_NONE`
+   - `HYD_CMD_START`
+   - `HYD_CMD_NEXT`
+   - `HYD_CMD_STOP`
+   - `HYD_CMD_HOLD`
+   - `HYD_CMD_RESUME`
+   - `HYD_CMD_ABORT`
+   - `HYD_CMD_RESET`
+   - `HYD_CMD_ACK`
 
 4. **引入待处理命令锁存区**
    由 `Execute()` 在上升沿产生 `_pendingCommand`，由 `Cycle()` 消费。
 
 5. **建立显式状态机**
    建议内部执行状态包括：
-   - `HDY_FB_STATE_DISABLED`
-   - `HDY_FB_STATE_IDLE`
-   - `HDY_FB_STATE_READY`
-   - `HDY_FB_STATE_STARTING`
-   - `HDY_FB_STATE_RUNNING`
-   - `HDY_FB_STATE_SEGMENT_COMPLETE`
-   - `HDY_FB_STATE_HOLD`
-   - `HDY_FB_STATE_DONE`
-   - `HDY_FB_STATE_ABORTED`
-   - `HDY_FB_STATE_FAULT`
+   - `HYD_FB_STATE_DISABLED`
+   - `HYD_FB_STATE_IDLE`
+   - `HYD_FB_STATE_READY`
+   - `HYD_FB_STATE_STARTING`
+   - `HYD_FB_STATE_RUNNING`
+   - `HYD_FB_STATE_SEGMENT_COMPLETE`
+   - `HYD_FB_STATE_HOLD`
+   - `HYD_FB_STATE_DONE`
+   - `HYD_FB_STATE_ABORTED`
+   - `HYD_FB_STATE_FAULT`
 
 6. **支持两种参数来源**
    - `UseRecipe = true`：从 `RECIPE[index]` 锁存当前活动段
@@ -285,14 +285,14 @@
 ### 推荐的兼容策略
 为了避免一次性打碎现有接口，建议：
 - 保留原有：
-  - `HDY_MotionControlFB_LoadRecipe()`
-  - `HDY_MotionControlFB_StartSegment()`
-  - `HDY_MotionControlFB_NextSegment()`
-  - `HDY_MotionControlFB_Abort()`
-  - `HDY_MotionControlFB_AcknowledgeDiagnostics()`
+  - `HYD_MotionControlFB_LoadRecipe()`
+  - `HYD_MotionControlFB_StartSegment()`
+  - `HYD_MotionControlFB_NextSegment()`
+  - `HYD_MotionControlFB_Abort()`
+  - `HYD_MotionControlFB_AcknowledgeDiagnostics()`
 - 新增：
-  - `HDY_MotionControlFB_Cycle()`
-  - 可选 `HDY_MotionControlFB_Scan()` 作为 `Execute() + Cycle()` 的兼容入口
+  - `HYD_MotionControlFB_Cycle()`
+  - 可选 `HYD_MotionControlFB_Scan()` 作为 `Execute() + Cycle()` 的兼容入口
 - 旧 API 可改为“构造 pending command，再由 Cycle 消费”的包装方式
 
 ### 当前讨论中识别出的具体问题修正点

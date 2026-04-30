@@ -1,5 +1,5 @@
-#ifndef HDY_MOTION_UTILS_H
-#define HDY_MOTION_UTILS_H
+#ifndef HYD_MOTION_UTILS_H
+#define HYD_MOTION_UTILS_H
 
 #include "common_types.h"
 #include "motion_control.h"
@@ -24,51 +24,51 @@ extern "C" {
  * @param right Second value
  * @return Minimum value
  */
-HDY_REAL HDY_MotionUtils_MinReal(HDY_REAL left, HDY_REAL right);
+HYD_REAL HYD_MotionUtils_MinReal(HYD_REAL left, HYD_REAL right);
 
 /**
  * @brief Get absolute value of a real number
  * @param value Value
  * @return Absolute value
  */
-HDY_REAL HDY_MotionUtils_AbsReal(HDY_REAL value);
+HYD_REAL HYD_MotionUtils_AbsReal(HYD_REAL value);
 
 /**
  * @brief Check if a real value is finite (not NaN or infinity)
  * @param value Value to check
  * @return true if value is finite
  */
-HDY_BOOL HDY_MotionUtils_IsFiniteReal(HDY_REAL value);
+HYD_BOOL HYD_MotionUtils_IsFiniteReal(HYD_REAL value);
 
 /**
  * @brief Check if axis reference feedback is valid
  * @param axisRef Pointer to axis reference
  * @return true if all fields are finite and valid
  */
-HDY_BOOL HDY_MotionUtils_AxisRefIsValid(const HDY_AxisRef* axisRef);
+HYD_BOOL HYD_MotionUtils_AxisRefIsValid(const HYD_AxisRef* axisRef);
 
 /**
  * @brief Get command name as string (for diagnostics)
  * @param command Command enum value
  * @return Command name string
  */
-const char* HDY_MotionUtils_CommandToString(HDY_FbCommand command);
+const char* HYD_MotionUtils_CommandToString(HYD_FbCommand command);
 
 /**
  * @brief Get state name as string (for diagnostics)
  * @param state State enum value
  * @return State name string
  */
-const char* HDY_MotionUtils_StateToString(HDY_FbState state);
+const char* HYD_MotionUtils_StateToString(HYD_FbState state);
 
 /**
  * @brief Get library configuration information
  * @return Configuration info structure containing current settings
  */
-HDY_ConfigInfo HDY_GetConfigInfo(void);
+HYD_ConfigInfo HYD_GetConfigInfo(void);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif /* HDY_MOTION_UTILS_H */
+#endif /* HYD_MOTION_UTILS_H */

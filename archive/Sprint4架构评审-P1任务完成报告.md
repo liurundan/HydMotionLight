@@ -17,42 +17,42 @@
 #### 1.1 集成motion_utils模块
 
 **已替换的静态函数**:
-- `HDY_MinReal()` → `HDY_MotionUtils_MinReal()`
-- `HDY_AbsReal()` → `HDY_MotionUtils_AbsReal()`
-- `HDY_IsFiniteReal()` → `HDY_MotionUtils_IsFiniteReal()`
-- `HDY_AxisRefIsValid()` → `HDY_MotionUtils_AxisRefIsValid()`
-- `HDY_CommandToString()` → `HDY_MotionUtils_CommandToString()`
-- `HDY_FbStateToString()` → `HDY_MotionUtils_StateToString()`
+- `HYD_MinReal()` → `HYD_MotionUtils_MinReal()`
+- `HYD_AbsReal()` → `HYD_MotionUtils_AbsReal()`
+- `HYD_IsFiniteReal()` → `HYD_MotionUtils_IsFiniteReal()`
+- `HYD_AxisRefIsValid()` → `HYD_MotionUtils_AxisRefIsValid()`
+- `HYD_CommandToString()` → `HYD_MotionUtils_CommandToString()`
+- `HYD_FbStateToString()` → `HYD_MotionUtils_StateToString()`
 
 **修改文件**:
 - ✅ `src/motion_control.c` - 替换所有工具函数调用
 - ✅ `include/motion_utils.h` - 添加motion_control.h引用
 
 **替换次数统计**:
-- HDY_MotionUtils_MinReal: 1次
-- HDY_MotionUtils_AbsReal: 1次
-- HDY_MotionUtils_CommandToString: 5次
-- HDY_MotionUtils_StateToString: 3次
-- HDY_MotionUtils_AxisRefIsValid: 1次
+- HYD_MotionUtils_MinReal: 1次
+- HYD_MotionUtils_AbsReal: 1次
+- HYD_MotionUtils_CommandToString: 5次
+- HYD_MotionUtils_StateToString: 3次
+- HYD_MotionUtils_AxisRefIsValid: 1次
 
 #### 1.2 集成motion_validator模块
 
 **已替换的静态函数**:
-- `HDY_ResolveEffectiveFbState()` → `HDY_MotionValidator_ResolveEffectiveFbState()`
-- `HDY_UsesRecipeSource()` → `HDY_MotionValidator_UsesRecipeSource()`
-- `HDY_HasSelectedStartSource()` → `HDY_MotionValidator_HasSelectedStartSource()`
-- `HDY_ResolveStartSourceSegment()` → `HDY_MotionValidator_ResolveStartSourceSegment()`
-- `HDY_ValidateStartRequest()` → `HDY_MotionValidator_ValidateStartRequest()`
+- `HYD_ResolveEffectiveFbState()` → `HYD_MotionValidator_ResolveEffectiveFbState()`
+- `HYD_UsesRecipeSource()` → `HYD_MotionValidator_UsesRecipeSource()`
+- `HYD_HasSelectedStartSource()` → `HYD_MotionValidator_HasSelectedStartSource()`
+- `HYD_ResolveStartSourceSegment()` → `HYD_MotionValidator_ResolveStartSourceSegment()`
+- `HYD_ValidateStartRequest()` → `HYD_MotionValidator_ValidateStartRequest()`
 
 **简化实现**:
-- `HDY_ResolveStartSourceSegment()`: 完整实现 → 简化为调用motion_validator模块
-- `HDY_ValidateStartRequest()`: 完整实现 → 简化为调用motion_validator模块
+- `HYD_ResolveStartSourceSegment()`: 完整实现 → 简化为调用motion_validator模块
+- `HYD_ValidateStartRequest()`: 完整实现 → 简化为调用motion_validator模块
 
 **替换次数统计**:
-- HDY_MotionValidator_ResolveEffectiveFbState: 6次
-- HDY_MotionValidator_UsesRecipeSource: 5次
-- HDY_MotionValidator_ResolveStartSourceSegment: 2次
-- HDY_MotionValidator_ValidateStartRequest: 2次
+- HYD_MotionValidator_ResolveEffectiveFbState: 6次
+- HYD_MotionValidator_UsesRecipeSource: 5次
+- HYD_MotionValidator_ResolveStartSourceSegment: 2次
+- HYD_MotionValidator_ValidateStartRequest: 2次
 
 #### 1.3 代码行数变化
 
@@ -202,13 +202,13 @@ motion_validator.c/h - 验证逻辑模块
 #### motion_control.c
 
 **删除的静态函数实现**:
-1. `HDY_MinReal()` - 3行
-2. `HDY_AbsReal()` - 3行
-3. `HDY_IsFiniteReal()` - 3行
-4. `HDY_CommandToString()` - 23行
-5. `HDY_FbStateToString()` - 20行
-6. `HDY_ResolveStartSourceSegment()` - 完整实现 → 简化实现
-7. `HDY_ValidateStartRequest()` - 完整实现 → 简化实现
+1. `HYD_MinReal()` - 3行
+2. `HYD_AbsReal()` - 3行
+3. `HYD_IsFiniteReal()` - 3行
+4. `HYD_CommandToString()` - 23行
+5. `HYD_FbStateToString()` - 20行
+6. `HYD_ResolveStartSourceSegment()` - 完整实现 → 简化实现
+7. `HYD_ValidateStartRequest()` - 完整实现 → 简化实现
 
 **新增的头文件包含**:
 ```c
@@ -242,8 +242,8 @@ motion_validator.c/h - 验证逻辑模块
 **解决方案**: 在motion_utils.h中包含motion_control.h头文件。
 
 ```c
-#ifndef HDY_MOTION_UTILS_H
-#define HDY_MOTION_UTILS_H
+#ifndef HYD_MOTION_UTILS_H
+#define HYD_MOTION_UTILS_H
 
 #include "common_types.h"
 #include "motion_control.h"  // 新增:解决类型依赖
@@ -262,13 +262,13 @@ motion_validator.c/h - 验证逻辑模块
 **示例**:
 ```c
 // 优化前: 完整实现(50+行)
-static HDY_BOOL HDY_ValidateStartRequest(...) {
+static HYD_BOOL HYD_ValidateStartRequest(...) {
     // 完整的验证逻辑
 }
 
 // 优化后: 简化包装器(3行)
-static HDY_BOOL HDY_ValidateStartRequest(...) {
-    return HDY_MotionValidator_ValidateStartRequest(fb, segmentIndex, code, message, messageSize);
+static HYD_BOOL HYD_ValidateStartRequest(...) {
+    return HYD_MotionValidator_ValidateStartRequest(fb, segmentIndex, code, message, messageSize);
 }
 ```
 
@@ -324,7 +324,7 @@ static HDY_BOOL HDY_ValidateStartRequest(...) {
 ### P2优先级任务(可选)
 
 1. **引入统一平台配置头文件**
-   - 创建`hdy_config.h`
+   - 创建`hyd_config.h`
    - 统一管理配置项
    - 提升平台适配能力
 

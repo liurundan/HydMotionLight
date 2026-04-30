@@ -39,7 +39,7 @@ static void benchmark_end(const char* name, int iterations) {
 }
 
 /* Test data creation */
-static void create_test_axis_ref(HDY_AxisRef* axis_ref, HDY_TIME time_offset) {
+static void create_test_axis_ref(HYD_AxisRef* axis_ref, HYD_TIME time_offset) {
     axis_ref->position = 100.0 + time_offset * 10.0;
     axis_ref->velocity = 50.0;
     axis_ref->flow = 5.0;
@@ -47,13 +47,13 @@ static void create_test_axis_ref(HDY_AxisRef* axis_ref, HDY_TIME time_offset) {
     axis_ref->timestamp = time_offset;
 }
 
-static void create_test_segment(HDY_MotionSegment* segment, HDY_ControlMode mode) {
+static void create_test_segment(HYD_MotionSegment* segment, HYD_ControlMode mode) {
     segment->segmentTag = 1;
-    segment->segmentType = HDY_SEGMENT_TYPE_INJECTION;
-    segment->planner = HDY_PLANNER_TIME_BASED;
+    segment->segmentType = HYD_SEGMENT_TYPE_INJECTION;
+    segment->planner = HYD_PLANNER_TIME_BASED;
     segment->mode = mode;
-    segment->endCondition = HDY_END_POSITION;
-    segment->direction = HDY_DIRECTION_EXTEND;
+    segment->endCondition = HYD_END_POSITION;
+    segment->direction = HYD_DIRECTION_EXTEND;
     
     segment->targetPosition = 200.0;
     segment->targetFlow = 10.0;
@@ -73,7 +73,7 @@ static void create_test_segment(HDY_MotionSegment* segment, HDY_ControlMode mode
     segment->velocityToFlowGain = 0.02;
     segment->pressureRampRate = 10.0;
     
-    segment->pressureController = HDY_PRESSURE_CONTROLLER_PI;
+    segment->pressureController = HYD_PRESSURE_CONTROLLER_PI;
     segment->pressureKp = 2.0;
     segment->pressureKi = 0.5;
     segment->pressureKd = 0.1;
@@ -86,9 +86,9 @@ static void create_test_segment(HDY_MotionSegment* segment, HDY_ControlMode mode
 /* Benchmark functions */
 
 static void benchmark_motion_utils(void) {
-    HDY_REAL a = 123.456;
-    HDY_REAL b = 789.012;
-    HDY_AxisRef axis_ref;
+    HYD_REAL a = 123.456;
+    HYD_REAL b = 789.012;
+    HYD_AxisRef axis_ref;
     
     create_test_axis_ref(&axis_ref, 1.0);
     
@@ -96,49 +96,49 @@ static void benchmark_motion_utils(void) {
     
     /* Warmup */
     for (int i = 0; i < BENCHMARK_WARMUP; i++) {
-        HDY_MotionUtils_MinReal(a, b);
-        HDY_MotionUtils_AbsReal(-a);
-        HDY_MotionUtils_IsFiniteReal(a);
-        HDY_MotionUtils_AxisRefIsValid(&axis_ref);
+        HYD_MotionUtils_MinReal(a, b);
+        HYD_MotionUtils_AbsReal(-a);
+        HYD_MotionUtils_IsFiniteReal(a);
+        HYD_MotionUtils_AxisRefIsValid(&axis_ref);
     }
     
     /* Benchmark MinReal */
     benchmark_start();
     for (int i = 0; i < BENCHMARK_ITERATIONS; i++) {
-        HDY_MotionUtils_MinReal(a, b);
+        HYD_MotionUtils_MinReal(a, b);
     }
     benchmark_end("MinReal", BENCHMARK_ITERATIONS);
     
     /* Benchmark AbsReal */
     benchmark_start();
     for (int i = 0; i < BENCHMARK_ITERATIONS; i++) {
-        HDY_MotionUtils_AbsReal(-a);
+        HYD_MotionUtils_AbsReal(-a);
     }
     benchmark_end("AbsReal", BENCHMARK_ITERATIONS);
     
     /* Benchmark IsFiniteReal */
     benchmark_start();
     for (int i = 0; i < BENCHMARK_ITERATIONS; i++) {
-        HDY_MotionUtils_IsFiniteReal(a);
+        HYD_MotionUtils_IsFiniteReal(a);
     }
     benchmark_end("IsFiniteReal", BENCHMARK_ITERATIONS);
     
     /* Benchmark AxisRefIsValid */
     benchmark_start();
     for (int i = 0; i < BENCHMARK_ITERATIONS; i++) {
-        HDY_MotionUtils_AxisRefIsValid(&axis_ref);
+        HYD_MotionUtils_AxisRefIsValid(&axis_ref);
     }
     benchmark_end("AxisRefIsValid", BENCHMARK_ITERATIONS);
 }
 
 static void benchmark_motion_planner(void) {
-    HDY_MotionPlannerInput input;
-    HDY_MotionPlannerOutput output;
-    HDY_AxisRef axis_ref;
-    HDY_MotionSegment segment;
+    HYD_MotionPlannerInput input;
+    HYD_MotionPlannerOutput output;
+    HYD_AxisRef axis_ref;
+    HYD_MotionSegment segment;
     
     create_test_axis_ref(&axis_ref, 1.0);
-    create_test_segment(&segment, HDY_MODE_POSITION);
+    create_test_segment(&segment, HYD_MODE_POSITION);
     
     input.axisRef = &axis_ref;
     input.segment = &segment;
@@ -151,7 +151,7 @@ static void benchmark_motion_planner(void) {
     for (int i = 0; i < BENCHMARK_WARMUP; i++) {
         axis_ref.position += 0.01;
         axis_ref.timestamp += 0.001;
-        HDY_MotionPlanner_Execute(&input, &output);
+        HYD_MotionPlanner_Execute(&input, &output);
     }
     
     /* Benchmark Execute (POSITION mode) */
@@ -159,29 +159,29 @@ static void benchmark_motion_planner(void) {
     for (int i = 0; i < BENCHMARK_ITERATIONS; i++) {
         axis_ref.position += 0.01;
         axis_ref.timestamp += 0.001;
-        HDY_MotionPlanner_Execute(&input, &output);
+        HYD_MotionPlanner_Execute(&input, &output);
     }
     benchmark_end("Planner Execute (POSITION)", BENCHMARK_ITERATIONS);
     
     /* Benchmark Execute (SPEED_RAMP mode) */
-    segment.mode = HDY_MODE_SPEED_RAMP;
+    segment.mode = HYD_MODE_SPEED_RAMP;
     axis_ref.position = 100.0;
     benchmark_start();
     for (int i = 0; i < BENCHMARK_ITERATIONS; i++) {
         axis_ref.position += 0.01;
         axis_ref.timestamp += 0.001;
-        HDY_MotionPlanner_Execute(&input, &output);
+        HYD_MotionPlanner_Execute(&input, &output);
     }
     benchmark_end("Planner Execute (SPEED_RAMP)", BENCHMARK_ITERATIONS);
 }
 
 static void benchmark_pressure_controller(void) {
-    HDY_PressureControllerInput input;
-    HDY_PressureControllerOutput output;
-    HDY_MotionSegment segment;
-    HDY_PressureControllerState state;
+    HYD_PressureControllerInput input;
+    HYD_PressureControllerOutput output;
+    HYD_MotionSegment segment;
+    HYD_PressureControllerState state;
     
-    create_test_segment(&segment, HDY_MODE_PRESSURE_CLOSED_LOOP);
+    create_test_segment(&segment, HYD_MODE_PRESSURE_CLOSED_LOOP);
     
     input.targetPressure = 5.0;
     input.measuredPressure = 4.8;
@@ -190,7 +190,7 @@ static void benchmark_pressure_controller(void) {
     input.outputMax = segment.maxFlow;
     input.timestamp = 1.0;
     
-    HDY_PressureController_InitState(&state, 4.8, 2.0, 0.0);
+    HYD_PressureController_InitState(&state, 4.8, 2.0, 0.0);
     
     printf("\n=== Pressure Controller Performance ===\n");
     
@@ -198,7 +198,7 @@ static void benchmark_pressure_controller(void) {
     for (int i = 0; i < BENCHMARK_WARMUP; i++) {
         input.timestamp += 0.001;
         input.measuredPressure += 0.001;
-        HDY_PressureController_Execute(&segment, &state, &input, &output);
+        HYD_PressureController_Execute(&segment, &state, &input, &output);
     }
     
     /* Benchmark Execute (PI controller) */
@@ -206,52 +206,52 @@ static void benchmark_pressure_controller(void) {
     for (int i = 0; i < BENCHMARK_ITERATIONS; i++) {
         input.timestamp += 0.001;
         input.measuredPressure += 0.001;
-        HDY_PressureController_Execute(&segment, &state, &input, &output);
+        HYD_PressureController_Execute(&segment, &state, &input, &output);
     }
     benchmark_end("Pressure Controller Execute (PI)", BENCHMARK_ITERATIONS);
 }
 
 static void benchmark_pump_converter(void) {
-    HDY_PumpConverterInput input;
-    HDY_PumpConverterOutput output;
+    HYD_PumpConverterInput input;
+    HYD_PumpConverterOutput output;
     
     input.requestedFlow = 10.0;
     input.flowToPumpSpeedGain = 1500.0;
     input.pumpSpeedLimit = 3000.0;
-    input.direction = HDY_DIRECTION_EXTEND;
+    input.direction = HYD_DIRECTION_EXTEND;
     
     printf("\n=== Pump Converter Performance ===\n");
     
     /* Warmup */
     for (int i = 0; i < BENCHMARK_WARMUP; i++) {
         input.requestedFlow = 5.0 + (i % 100) / 10.0;
-        HDY_PumpConverter_Execute(&input, &output);
+        HYD_PumpConverter_Execute(&input, &output);
     }
     
     /* Benchmark Execute */
     benchmark_start();
     for (int i = 0; i < BENCHMARK_ITERATIONS; i++) {
         input.requestedFlow = 5.0 + (i % 100) / 10.0;
-        HDY_PumpConverter_Execute(&input, &output);
+        HYD_PumpConverter_Execute(&input, &output);
     }
     benchmark_end("Pump Converter Execute", BENCHMARK_ITERATIONS);
 }
 
 static void benchmark_motion_control_cycle(void) {
-    HDY_MotionControlFB fb;
-    HDY_MotionSegment segment;
-    HDY_AxisRef axis_ref;
+    HYD_MotionControlFB fb;
+    HYD_MotionSegment segment;
+    HYD_AxisRef axis_ref;
     
-    HDY_MotionControlFB_Init(&fb);
-    create_test_segment(&segment, HDY_MODE_POSITION);
+    HYD_MotionControlFB_Init(&fb);
+    create_test_segment(&segment, HYD_MODE_POSITION);
     
     fb.FLOW_TO_PUMP_SPEED_GAIN = 1500.0;
     fb.PUMP_SPEED_LIMIT = 3000.0;
     /* EN gate handled by IEC layer */
     fb.USE_RECIPE = true;
     
-    HDY_MotionControlFB_LoadRecipe(&fb, &segment, 1);
-    HDY_MotionControlFB_StartSegment(&fb, 0, 0.0);
+    HYD_MotionControlFB_LoadRecipe(&fb, &segment, 1);
+    HYD_MotionControlFB_StartSegment(&fb, 0, 0.0);
     
     create_test_axis_ref(&axis_ref, 0.001);
     fb.AXIS_REF = axis_ref;
@@ -263,11 +263,11 @@ static void benchmark_motion_control_cycle(void) {
         axis_ref.position += 0.1;
         axis_ref.timestamp += 0.001;
         fb.AXIS_REF = axis_ref;
-        HDY_MotionControlFB_Execute(&fb);
+        HYD_MotionControlFB_Execute(&fb);
         
         /* Reset if completed */
         if (fb.SEGMENT_COMPLETED) {
-            HDY_MotionControlFB_StartSegment(&fb, 0, axis_ref.timestamp);
+            HYD_MotionControlFB_StartSegment(&fb, 0, axis_ref.timestamp);
         }
     }
     
@@ -277,18 +277,18 @@ static void benchmark_motion_control_cycle(void) {
         axis_ref.position += 0.1;
         axis_ref.timestamp += 0.001;
         fb.AXIS_REF = axis_ref;
-        HDY_MotionControlFB_Execute(&fb);
+        HYD_MotionControlFB_Execute(&fb);
         
         /* Reset if completed */
         if (fb.SEGMENT_COMPLETED) {
-            HDY_MotionControlFB_StartSegment(&fb, 0, axis_ref.timestamp);
+            HYD_MotionControlFB_StartSegment(&fb, 0, axis_ref.timestamp);
         }
     }
     benchmark_end("Motion Control Cycle (full)", BENCHMARK_ITERATIONS);
 }
 
 static void print_system_info(void) {
-    HDY_ConfigInfo config = HDY_GetConfigInfo();
+    HYD_ConfigInfo config = HYD_GetConfigInfo();
     
     printf("╔════════════════════════════════════════════════════════════╗\n");
     printf("║   HydroMotion Library - Performance Benchmark               ║\n");

@@ -1,13 +1,13 @@
-#ifndef HDY_SEGMENT_LIMITS_H
-#define HDY_SEGMENT_LIMITS_H
+#ifndef HYD_SEGMENT_LIMITS_H
+#define HYD_SEGMENT_LIMITS_H
 
 #include "common_types.h"
 
-HDY_REAL HDY_Segment_GetPositionTolerance(const HDY_MotionSegment* segment);
-HDY_REAL HDY_Segment_GetPressureTolerance(const HDY_MotionSegment* segment);
-HDY_REAL HDY_Segment_GetFlowTolerance(const HDY_MotionSegment* segment);
-HDY_REAL HDY_Segment_GetVelocityTolerance(const HDY_MotionSegment* segment);
-HDY_TIME HDY_Segment_GetTimeoutLimit(const HDY_MotionSegment* segment);
+HYD_REAL HYD_Segment_GetPositionTolerance(const HYD_MotionSegment* segment);
+HYD_REAL HYD_Segment_GetPressureTolerance(const HYD_MotionSegment* segment);
+HYD_REAL HYD_Segment_GetFlowTolerance(const HYD_MotionSegment* segment);
+HYD_REAL HYD_Segment_GetVelocityTolerance(const HYD_MotionSegment* segment);
+HYD_TIME HYD_Segment_GetTimeoutLimit(const HYD_MotionSegment* segment);
 
 /**
  * @brief Resolve motion direction from segment configuration and axis position.
@@ -24,7 +24,7 @@ HDY_TIME HDY_Segment_GetTimeoutLimit(const HDY_MotionSegment* segment);
  * @param axisRef  Current axis feedback (must not be NULL)
  * @return Resolved direction: EXTEND, RETRACT, or HOLD
  */
-HDY_MotionDirection HDY_Segment_ResolveDirection(const HDY_MotionSegment* segment,
-                                                   const HDY_AxisRef* axisRef);
+HYD_MotionDirection HYD_Segment_ResolveDirection(const HYD_MotionSegment* segment,
+                                                   const HYD_AxisRef* axisRef);
 
-#endif /* HDY_SEGMENT_LIMITS_H */
+#endif /* HYD_SEGMENT_LIMITS_H */

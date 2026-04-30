@@ -4,224 +4,224 @@
 #include <string.h>
 
 typedef struct {
-    HDY_DiagnosticCode code;
-    HDY_DiagnosticSeverity severity;
-    HDY_DiagnosticSource source;
-    HDY_DiagnosticRecovery recovery;
-    HDY_ProtectionAction protectionAction;
+    HYD_DiagnosticCode code;
+    HYD_DiagnosticSeverity severity;
+    HYD_DiagnosticSource source;
+    HYD_DiagnosticRecovery recovery;
+    HYD_ProtectionAction protectionAction;
     const char* defaultMessage;
-} HDY_DiagnosticSpec;
+} HYD_DiagnosticSpec;
 
-static const HDY_DiagnosticSpec HDY_DIAGNOSTIC_SPECS[] = {
-    {HDY_DIAG_CODE_NONE,
-     HDY_DIAG_SEVERITY_NONE,
-     HDY_DIAG_SOURCE_NONE,
-     HDY_DIAG_RECOVERY_NONE,
-     HDY_PROTECTION_ACTION_NONE,
+static const HYD_DiagnosticSpec HYD_DIAGNOSTIC_SPECS[] = {
+    {HYD_DIAG_CODE_NONE,
+     HYD_DIAG_SEVERITY_NONE,
+     HYD_DIAG_SOURCE_NONE,
+     HYD_DIAG_RECOVERY_NONE,
+     HYD_PROTECTION_ACTION_NONE,
      ""},
-    {HDY_DIAG_CODE_RECIPE_EMPTY,
-     HDY_DIAG_SEVERITY_WARNING,
-     HDY_DIAG_SOURCE_RECIPE,
-     HDY_DIAG_RECOVERY_RELOAD_RECIPE,
-     HDY_PROTECTION_ACTION_WARNING,
+    {HYD_DIAG_CODE_RECIPE_EMPTY,
+     HYD_DIAG_SEVERITY_WARNING,
+     HYD_DIAG_SOURCE_RECIPE,
+     HYD_DIAG_RECOVERY_RELOAD_RECIPE,
+     HYD_PROTECTION_ACTION_WARNING,
      "Recipe is empty"},
-    {HDY_DIAG_CODE_RECIPE_TOO_LARGE,
-     HDY_DIAG_SEVERITY_WARNING,
-     HDY_DIAG_SOURCE_RECIPE,
-     HDY_DIAG_RECOVERY_RELOAD_RECIPE,
-     HDY_PROTECTION_ACTION_WARNING,
+    {HYD_DIAG_CODE_RECIPE_TOO_LARGE,
+     HYD_DIAG_SEVERITY_WARNING,
+     HYD_DIAG_SOURCE_RECIPE,
+     HYD_DIAG_RECOVERY_RELOAD_RECIPE,
+     HYD_PROTECTION_ACTION_WARNING,
      "Recipe exceeds maximum segment capacity"},
-    {HDY_DIAG_CODE_SEGMENT_INVALID,
-     HDY_DIAG_SEVERITY_WARNING,
-     HDY_DIAG_SOURCE_RECIPE,
-     HDY_DIAG_RECOVERY_RELOAD_RECIPE,
-     HDY_PROTECTION_ACTION_WARNING,
+    {HYD_DIAG_CODE_SEGMENT_INVALID,
+     HYD_DIAG_SEVERITY_WARNING,
+     HYD_DIAG_SOURCE_RECIPE,
+     HYD_DIAG_RECOVERY_RELOAD_RECIPE,
+     HYD_PROTECTION_ACTION_WARNING,
      "Recipe segment is invalid"},
-    {HDY_DIAG_CODE_RUNTIME_CONFIG_INVALID,
-     HDY_DIAG_SEVERITY_FAULT,
-     HDY_DIAG_SOURCE_RUNTIME,
-     HDY_DIAG_RECOVERY_RESET_CONTROLLER,
-     HDY_PROTECTION_ACTION_STOP,
+    {HYD_DIAG_CODE_RUNTIME_CONFIG_INVALID,
+     HYD_DIAG_SEVERITY_FAULT,
+     HYD_DIAG_SOURCE_RUNTIME,
+     HYD_DIAG_RECOVERY_RESET_CONTROLLER,
+     HYD_PROTECTION_ACTION_STOP,
      "Runtime configuration is invalid"},
-    {HDY_DIAG_CODE_START_CONTEXT_INVALID,
-     HDY_DIAG_SEVERITY_WARNING,
-     HDY_DIAG_SOURCE_COMMAND,
-     HDY_DIAG_RECOVERY_CHECK_COMMAND,
-     HDY_PROTECTION_ACTION_WARNING,
+    {HYD_DIAG_CODE_START_CONTEXT_INVALID,
+     HYD_DIAG_SEVERITY_WARNING,
+     HYD_DIAG_SOURCE_COMMAND,
+     HYD_DIAG_RECOVERY_CHECK_COMMAND,
+     HYD_PROTECTION_ACTION_WARNING,
      "Start context is invalid"},
-    {HDY_DIAG_CODE_COMMAND_NOT_ALLOWED,
-     HDY_DIAG_SEVERITY_WARNING,
-     HDY_DIAG_SOURCE_COMMAND,
-     HDY_DIAG_RECOVERY_CHECK_COMMAND,
-     HDY_PROTECTION_ACTION_WARNING,
+    {HYD_DIAG_CODE_COMMAND_NOT_ALLOWED,
+     HYD_DIAG_SEVERITY_WARNING,
+     HYD_DIAG_SOURCE_COMMAND,
+     HYD_DIAG_RECOVERY_CHECK_COMMAND,
+     HYD_PROTECTION_ACTION_WARNING,
      "Command is not allowed in the current state"},
-    {HDY_DIAG_CODE_NO_RECIPE,
-     HDY_DIAG_SEVERITY_WARNING,
-     HDY_DIAG_SOURCE_COMMAND,
-     HDY_DIAG_RECOVERY_RELOAD_RECIPE,
-     HDY_PROTECTION_ACTION_WARNING,
+    {HYD_DIAG_CODE_NO_RECIPE,
+     HYD_DIAG_SEVERITY_WARNING,
+     HYD_DIAG_SOURCE_COMMAND,
+     HYD_DIAG_RECOVERY_RELOAD_RECIPE,
+     HYD_PROTECTION_ACTION_WARNING,
      "No recipe loaded"},
-    {HDY_DIAG_CODE_NO_DIRECT_SEGMENT,
-     HDY_DIAG_SEVERITY_WARNING,
-     HDY_DIAG_SOURCE_COMMAND,
-     HDY_DIAG_RECOVERY_CHECK_COMMAND,
-     HDY_PROTECTION_ACTION_WARNING,
+    {HYD_DIAG_CODE_NO_DIRECT_SEGMENT,
+     HYD_DIAG_SEVERITY_WARNING,
+     HYD_DIAG_SOURCE_COMMAND,
+     HYD_DIAG_RECOVERY_CHECK_COMMAND,
+     HYD_PROTECTION_ACTION_WARNING,
      "No direct segment configured"},
-    {HDY_DIAG_CODE_SEGMENT_INDEX_OUT_OF_RANGE,
-     HDY_DIAG_SEVERITY_WARNING,
-     HDY_DIAG_SOURCE_COMMAND,
-     HDY_DIAG_RECOVERY_CHECK_COMMAND,
-     HDY_PROTECTION_ACTION_WARNING,
+    {HYD_DIAG_CODE_SEGMENT_INDEX_OUT_OF_RANGE,
+     HYD_DIAG_SEVERITY_WARNING,
+     HYD_DIAG_SOURCE_COMMAND,
+     HYD_DIAG_RECOVERY_CHECK_COMMAND,
+     HYD_PROTECTION_ACTION_WARNING,
      "Segment index is out of range"},
-    {HDY_DIAG_CODE_SEGMENT_NOT_COMPLETED,
-     HDY_DIAG_SEVERITY_WARNING,
-     HDY_DIAG_SOURCE_COMMAND,
-     HDY_DIAG_RECOVERY_CHECK_COMMAND,
-     HDY_PROTECTION_ACTION_WARNING,
+    {HYD_DIAG_CODE_SEGMENT_NOT_COMPLETED,
+     HYD_DIAG_SEVERITY_WARNING,
+     HYD_DIAG_SOURCE_COMMAND,
+     HYD_DIAG_RECOVERY_CHECK_COMMAND,
+     HYD_PROTECTION_ACTION_WARNING,
      "Segment has not completed"},
-    {HDY_DIAG_CODE_RECIPE_ALREADY_FINISHED,
-     HDY_DIAG_SEVERITY_INFO,
-     HDY_DIAG_SOURCE_COMMAND,
-     HDY_DIAG_RECOVERY_CHECK_COMMAND,
-     HDY_PROTECTION_ACTION_NONE,
+    {HYD_DIAG_CODE_RECIPE_ALREADY_FINISHED,
+     HYD_DIAG_SEVERITY_INFO,
+     HYD_DIAG_SOURCE_COMMAND,
+     HYD_DIAG_RECOVERY_CHECK_COMMAND,
+     HYD_PROTECTION_ACTION_NONE,
      "Recipe is already finished"},
-    {HDY_DIAG_CODE_ABORTED,
-     HDY_DIAG_SEVERITY_INFO,
-     HDY_DIAG_SOURCE_COMMAND,
-     HDY_DIAG_RECOVERY_NONE,
-     HDY_PROTECTION_ACTION_NONE,
+    {HYD_DIAG_CODE_ABORTED,
+     HYD_DIAG_SEVERITY_INFO,
+     HYD_DIAG_SOURCE_COMMAND,
+     HYD_DIAG_RECOVERY_NONE,
+     HYD_PROTECTION_ACTION_NONE,
      "Execution aborted by caller"},
-    {HDY_DIAG_CODE_TIMEOUT,
-     HDY_DIAG_SEVERITY_FAULT,
-     HDY_DIAG_SOURCE_EXECUTION,
-     HDY_DIAG_RECOVERY_RESTART_SEGMENT,
-     HDY_PROTECTION_ACTION_STOP,
+    {HYD_DIAG_CODE_TIMEOUT,
+     HYD_DIAG_SEVERITY_FAULT,
+     HYD_DIAG_SOURCE_EXECUTION,
+     HYD_DIAG_RECOVERY_RESTART_SEGMENT,
+     HYD_PROTECTION_ACTION_STOP,
      "Segment timeout limit exceeded"},
-    {HDY_DIAG_CODE_OVER_PRESSURE,
-     HDY_DIAG_SEVERITY_WARNING,
-     HDY_DIAG_SOURCE_EXECUTION,
-     HDY_DIAG_RECOVERY_CHECK_COMMAND,
-     HDY_PROTECTION_ACTION_DERATE,
+    {HYD_DIAG_CODE_OVER_PRESSURE,
+     HYD_DIAG_SEVERITY_WARNING,
+     HYD_DIAG_SOURCE_EXECUTION,
+     HYD_DIAG_RECOVERY_CHECK_COMMAND,
+     HYD_PROTECTION_ACTION_DERATE,
      "Measured pressure exceeds upper tolerance"},
-    {HDY_DIAG_CODE_UNDER_PRESSURE,
-     HDY_DIAG_SEVERITY_WARNING,
-     HDY_DIAG_SOURCE_EXECUTION,
-     HDY_DIAG_RECOVERY_CHECK_COMMAND,
-     HDY_PROTECTION_ACTION_WARNING,
+    {HYD_DIAG_CODE_UNDER_PRESSURE,
+     HYD_DIAG_SEVERITY_WARNING,
+     HYD_DIAG_SOURCE_EXECUTION,
+     HYD_DIAG_RECOVERY_CHECK_COMMAND,
+     HYD_PROTECTION_ACTION_WARNING,
      "Measured pressure is below lower tolerance"},
-    {HDY_DIAG_CODE_FLOW_DEVIATION,
-     HDY_DIAG_SEVERITY_WARNING,
-     HDY_DIAG_SOURCE_EXECUTION,
-     HDY_DIAG_RECOVERY_CHECK_COMMAND,
-     HDY_PROTECTION_ACTION_DERATE,
+    {HYD_DIAG_CODE_FLOW_DEVIATION,
+     HYD_DIAG_SEVERITY_WARNING,
+     HYD_DIAG_SOURCE_EXECUTION,
+     HYD_DIAG_RECOVERY_CHECK_COMMAND,
+     HYD_PROTECTION_ACTION_DERATE,
      "Measured flow deviates from reference"},
-    {HDY_DIAG_CODE_POSITION_DEVIATION,
-     HDY_DIAG_SEVERITY_WARNING,
-     HDY_DIAG_SOURCE_EXECUTION,
-     HDY_DIAG_RECOVERY_CHECK_COMMAND,
-     HDY_PROTECTION_ACTION_WARNING,
+    {HYD_DIAG_CODE_POSITION_DEVIATION,
+     HYD_DIAG_SEVERITY_WARNING,
+     HYD_DIAG_SOURCE_EXECUTION,
+     HYD_DIAG_RECOVERY_CHECK_COMMAND,
+     HYD_PROTECTION_ACTION_WARNING,
      "Measured position deviates from target"},
-    {HDY_DIAG_CODE_VELOCITY_DEVIATION,
-     HDY_DIAG_SEVERITY_WARNING,
-     HDY_DIAG_SOURCE_EXECUTION,
-     HDY_DIAG_RECOVERY_CHECK_COMMAND,
-     HDY_PROTECTION_ACTION_WARNING,
+    {HYD_DIAG_CODE_VELOCITY_DEVIATION,
+     HYD_DIAG_SEVERITY_WARNING,
+     HYD_DIAG_SOURCE_EXECUTION,
+     HYD_DIAG_RECOVERY_CHECK_COMMAND,
+     HYD_PROTECTION_ACTION_WARNING,
      "Measured velocity deviates from reference"},
-    {HDY_DIAG_CODE_SENSOR_FAULT,
-     HDY_DIAG_SEVERITY_FAULT,
-     HDY_DIAG_SOURCE_SENSOR,
-     HDY_DIAG_RECOVERY_CHECK_SENSOR,
-     HDY_PROTECTION_ACTION_STOP,
+    {HYD_DIAG_CODE_SENSOR_FAULT,
+     HYD_DIAG_SEVERITY_FAULT,
+     HYD_DIAG_SOURCE_SENSOR,
+     HYD_DIAG_RECOVERY_CHECK_SENSOR,
+     HYD_PROTECTION_ACTION_STOP,
      "Axis feedback is invalid"},
-    {HDY_DIAG_CODE_TIMESTAMP_ROLLBACK,
-     HDY_DIAG_SEVERITY_FAULT,
-     HDY_DIAG_SOURCE_SENSOR,
-     HDY_DIAG_RECOVERY_CHECK_SENSOR,
-     HDY_PROTECTION_ACTION_STOP,
+    {HYD_DIAG_CODE_TIMESTAMP_ROLLBACK,
+     HYD_DIAG_SEVERITY_FAULT,
+     HYD_DIAG_SOURCE_SENSOR,
+     HYD_DIAG_RECOVERY_CHECK_SENSOR,
+     HYD_PROTECTION_ACTION_STOP,
      "Axis timestamp moved backwards"},
-    {HDY_DIAG_CODE_INTERNAL_ERROR,
-     HDY_DIAG_SEVERITY_FAULT,
-     HDY_DIAG_SOURCE_INTERNAL,
-     HDY_DIAG_RECOVERY_RESET_CONTROLLER,
-     HDY_PROTECTION_ACTION_STOP,
+    {HYD_DIAG_CODE_INTERNAL_ERROR,
+     HYD_DIAG_SEVERITY_FAULT,
+     HYD_DIAG_SOURCE_INTERNAL,
+     HYD_DIAG_RECOVERY_RESET_CONTROLLER,
+     HYD_PROTECTION_ACTION_STOP,
      "Internal controller error"},
 };
 
-static HDY_DiagnosticFlags HDY_Diagnostics_BuildFlagMask(const HDY_DiagnosticInfo* diagnostic) {
-    HDY_DiagnosticFlags flags = HDY_DIAG_FLAG_NONE;
+static HYD_DiagnosticFlags HYD_Diagnostics_BuildFlagMask(const HYD_DiagnosticInfo* diagnostic) {
+    HYD_DiagnosticFlags flags = HYD_DIAG_FLAG_NONE;
 
     if (diagnostic == NULL) {
         return flags;
     }
 
     if (diagnostic->overPressure) {
-        flags |= HDY_DIAG_FLAG_OVER_PRESSURE;
+        flags |= HYD_DIAG_FLAG_OVER_PRESSURE;
     }
     if (diagnostic->underPressure) {
-        flags |= HDY_DIAG_FLAG_UNDER_PRESSURE;
+        flags |= HYD_DIAG_FLAG_UNDER_PRESSURE;
     }
     if (diagnostic->flowDeviation) {
-        flags |= HDY_DIAG_FLAG_FLOW_DEVIATION;
+        flags |= HYD_DIAG_FLAG_FLOW_DEVIATION;
     }
     if (diagnostic->positionDeviation) {
-        flags |= HDY_DIAG_FLAG_POSITION_DEVIATION;
+        flags |= HYD_DIAG_FLAG_POSITION_DEVIATION;
     }
     if (diagnostic->velocityDeviation) {
-        flags |= HDY_DIAG_FLAG_VELOCITY_DEVIATION;
+        flags |= HYD_DIAG_FLAG_VELOCITY_DEVIATION;
     }
     if (diagnostic->timeout) {
-        flags |= HDY_DIAG_FLAG_TIMEOUT;
+        flags |= HYD_DIAG_FLAG_TIMEOUT;
     }
     if (diagnostic->sensorFault) {
-        flags |= HDY_DIAG_FLAG_SENSOR_FAULT;
+        flags |= HYD_DIAG_FLAG_SENSOR_FAULT;
     }
     if (diagnostic->timestampRollback) {
-        flags |= HDY_DIAG_FLAG_TIMESTAMP_ROLLBACK;
+        flags |= HYD_DIAG_FLAG_TIMESTAMP_ROLLBACK;
     }
 
     return flags;
 }
 
-static void HDY_Diagnostics_RefreshFlags(HDY_DiagnosticInfo* diagnostic) {
+static void HYD_Diagnostics_RefreshFlags(HYD_DiagnosticInfo* diagnostic) {
     if (diagnostic == NULL) {
         return;
     }
 
-    diagnostic->flags = HDY_Diagnostics_BuildFlagMask(diagnostic);
+    diagnostic->flags = HYD_Diagnostics_BuildFlagMask(diagnostic);
 }
 
-static const HDY_DiagnosticSpec* HDY_Diagnostics_FindSpec(HDY_DiagnosticCode code) {
+static const HYD_DiagnosticSpec* HYD_Diagnostics_FindSpec(HYD_DiagnosticCode code) {
     size_t index;
 
-    for (index = 0U; index < (sizeof(HDY_DIAGNOSTIC_SPECS) / sizeof(HDY_DIAGNOSTIC_SPECS[0])); ++index) {
-        if (HDY_DIAGNOSTIC_SPECS[index].code == code) {
-            return &HDY_DIAGNOSTIC_SPECS[index];
+    for (index = 0U; index < (sizeof(HYD_DIAGNOSTIC_SPECS) / sizeof(HYD_DIAGNOSTIC_SPECS[0])); ++index) {
+        if (HYD_DIAGNOSTIC_SPECS[index].code == code) {
+            return &HYD_DIAGNOSTIC_SPECS[index];
         }
     }
 
-    return &HDY_DIAGNOSTIC_SPECS[0];
+    return &HYD_DIAGNOSTIC_SPECS[0];
 }
 
 /* Internal: returns the default human-readable description for a diagnostic code.
  * Intended for debug-printing only; upper layers should use code/severity/source
  * for programmatic decisions, not message strings. */
-HDY_UNUSED
-static const char* HDY_Diagnostics_GetDefaultMessage(HDY_DiagnosticCode code) {
-    return HDY_Diagnostics_FindSpec(code)->defaultMessage;
+HYD_UNUSED
+static const char* HYD_Diagnostics_GetDefaultMessage(HYD_DiagnosticCode code) {
+    return HYD_Diagnostics_FindSpec(code)->defaultMessage;
 }
 
-static void HDY_Diagnostics_ApplySpec(HDY_DiagnosticInfo* diagnostic,
-                                      HDY_DiagnosticCode code,
-                                      HDY_DiagnosticSeverity severityOverride) {
-    const HDY_DiagnosticSpec* spec;
+static void HYD_Diagnostics_ApplySpec(HYD_DiagnosticInfo* diagnostic,
+                                      HYD_DiagnosticCode code,
+                                      HYD_DiagnosticSeverity severityOverride) {
+    const HYD_DiagnosticSpec* spec;
 
     if (diagnostic == NULL) {
         return;
     }
 
-    spec = HDY_Diagnostics_FindSpec(code);
+    spec = HYD_Diagnostics_FindSpec(code);
     diagnostic->code = code;
-    diagnostic->severity = (severityOverride == HDY_DIAG_SEVERITY_NONE && code != HDY_DIAG_CODE_NONE)
+    diagnostic->severity = (severityOverride == HYD_DIAG_SEVERITY_NONE && code != HYD_DIAG_CODE_NONE)
         ? spec->severity
         : severityOverride;
     diagnostic->source = spec->source;
@@ -229,34 +229,34 @@ static void HDY_Diagnostics_ApplySpec(HDY_DiagnosticInfo* diagnostic,
     diagnostic->protectionAction = spec->protectionAction;
 }
 
-void HDY_Diagnostics_Clear(HDY_DiagnosticInfo* diagnostic) {
+void HYD_Diagnostics_Clear(HYD_DiagnosticInfo* diagnostic) {
     if (diagnostic == NULL) {
         return;
     }
 
     memset(diagnostic, 0, sizeof(*diagnostic));
-    diagnostic->code = HDY_DIAG_CODE_NONE;
-    diagnostic->severity = HDY_DIAG_SEVERITY_NONE;
-    diagnostic->source = HDY_DIAG_SOURCE_NONE;
-    diagnostic->recovery = HDY_DIAG_RECOVERY_NONE;
-    diagnostic->protectionAction = HDY_PROTECTION_ACTION_NONE;
-    diagnostic->flags = HDY_DIAG_FLAG_NONE;
+    diagnostic->code = HYD_DIAG_CODE_NONE;
+    diagnostic->severity = HYD_DIAG_SEVERITY_NONE;
+    diagnostic->source = HYD_DIAG_SOURCE_NONE;
+    diagnostic->recovery = HYD_DIAG_RECOVERY_NONE;
+    diagnostic->protectionAction = HYD_PROTECTION_ACTION_NONE;
+    diagnostic->flags = HYD_DIAG_FLAG_NONE;
 }
 
-void HDY_Diagnostics_SetEvent(HDY_DiagnosticInfo* diagnostic,
-                              HDY_DiagnosticCode code,
-                              HDY_DiagnosticSeverity severity) {
+void HYD_Diagnostics_SetEvent(HYD_DiagnosticInfo* diagnostic,
+                              HYD_DiagnosticCode code,
+                              HYD_DiagnosticSeverity severity) {
     if (diagnostic == NULL) {
         return;
     }
 
-    HDY_Diagnostics_Clear(diagnostic);
-    HDY_Diagnostics_ApplySpec(diagnostic, code, severity);
-    HDY_Diagnostics_RefreshFlags(diagnostic);
+    HYD_Diagnostics_Clear(diagnostic);
+    HYD_Diagnostics_ApplySpec(diagnostic, code, severity);
+    HYD_Diagnostics_RefreshFlags(diagnostic);
 }
 
 
-void HDY_Diagnostics_ClearSnapshot(HDY_DiagnosticSnapshot* snapshot) {
+void HYD_Diagnostics_ClearSnapshot(HYD_DiagnosticSnapshot* snapshot) {
     if (snapshot == NULL) {
         return;
     }
@@ -264,23 +264,23 @@ void HDY_Diagnostics_ClearSnapshot(HDY_DiagnosticSnapshot* snapshot) {
     memset(snapshot, 0, sizeof(*snapshot));
 }
 
-void HDY_Diagnostics_CaptureSnapshot(HDY_DiagnosticSnapshot* snapshot,
-                                     const HDY_DiagnosticInfo* diagnostic,
-                                     const HDY_AxisRef* axisRef,
-                                     const HDY_ExecutionReference* references,
-                                     HDY_TIME eventTimestamp,
-                                     HDY_UINT8 segmentIndex,
-                                     HDY_UINT8 segmentTag,
-                                     HDY_ControllerStatus status,
-                                     HDY_BOOL active,
-                                     HDY_BOOL finished,
-                                     HDY_BOOL fault) {
+void HYD_Diagnostics_CaptureSnapshot(HYD_DiagnosticSnapshot* snapshot,
+                                     const HYD_DiagnosticInfo* diagnostic,
+                                     const HYD_AxisRef* axisRef,
+                                     const HYD_ExecutionReference* references,
+                                     HYD_TIME eventTimestamp,
+                                     HYD_UINT8 segmentIndex,
+                                     HYD_UINT8 segmentTag,
+                                     HYD_ControllerStatus status,
+                                     HYD_BOOL active,
+                                     HYD_BOOL finished,
+                                     HYD_BOOL fault) {
     if (snapshot == NULL) {
         return;
     }
 
-    HDY_Diagnostics_ClearSnapshot(snapshot);
-    snapshot->valid = (diagnostic != NULL) && (diagnostic->code != HDY_DIAG_CODE_NONE);
+    HYD_Diagnostics_ClearSnapshot(snapshot);
+    snapshot->valid = (diagnostic != NULL) && (diagnostic->code != HYD_DIAG_CODE_NONE);
     snapshot->eventTimestamp = eventTimestamp;
     snapshot->segmentIndex = segmentIndex;
     snapshot->segmentTag = segmentTag;
@@ -292,7 +292,7 @@ void HDY_Diagnostics_CaptureSnapshot(HDY_DiagnosticSnapshot* snapshot,
     if (diagnostic != NULL) {
         snapshot->diagnostic = *diagnostic;
     } else {
-        HDY_Diagnostics_Clear(&snapshot->diagnostic);
+        HYD_Diagnostics_Clear(&snapshot->diagnostic);
     }
 
     if (axisRef != NULL) {
@@ -304,18 +304,18 @@ void HDY_Diagnostics_CaptureSnapshot(HDY_DiagnosticSnapshot* snapshot,
     }
 }
 
-void HDY_DiagnosticsHistory_Clear(HDY_DiagnosticHistory* history) {
+void HYD_DiagnosticsHistory_Clear(HYD_DiagnosticHistory* history) {
     if (history == NULL) {
         return;
     }
 
-    HDY_Diagnostics_ClearSnapshot(&history->lastSnapshot);
+    HYD_Diagnostics_ClearSnapshot(&history->lastSnapshot);
     history->totalRecorded = 0U;
     history->hasRecord = false;
 }
 
-void HDY_DiagnosticsHistory_Push(HDY_DiagnosticHistory* history,
-                                 const HDY_DiagnosticSnapshot* snapshot) {
+void HYD_DiagnosticsHistory_Push(HYD_DiagnosticHistory* history,
+                                 const HYD_DiagnosticSnapshot* snapshot) {
     if (history == NULL || snapshot == NULL || !snapshot->valid) {
         return;
     }
@@ -328,9 +328,9 @@ void HDY_DiagnosticsHistory_Push(HDY_DiagnosticHistory* history,
     }
 }
 
-HDY_BOOL HDY_DiagnosticsHistory_GetEntry(const HDY_DiagnosticHistory* history,
-                                         HDY_UINT8 chronologicalIndex,
-                                         HDY_DiagnosticSnapshot* snapshot) {
+HYD_BOOL HYD_DiagnosticsHistory_GetEntry(const HYD_DiagnosticHistory* history,
+                                         HYD_UINT8 chronologicalIndex,
+                                         HYD_DiagnosticSnapshot* snapshot) {
     if (history == NULL || snapshot == NULL) {
         return false;
     }
@@ -344,8 +344,8 @@ HDY_BOOL HDY_DiagnosticsHistory_GetEntry(const HDY_DiagnosticHistory* history,
     return snapshot->valid;
 }
 
-HDY_BOOL HDY_DiagnosticsHistory_GetLatest(const HDY_DiagnosticHistory* history,
-                                          HDY_DiagnosticSnapshot* snapshot) {
+HYD_BOOL HYD_DiagnosticsHistory_GetLatest(const HYD_DiagnosticHistory* history,
+                                          HYD_DiagnosticSnapshot* snapshot) {
     if (history == NULL || snapshot == NULL || !history->hasRecord) {
         return false;
     }
@@ -354,134 +354,134 @@ HDY_BOOL HDY_DiagnosticsHistory_GetLatest(const HDY_DiagnosticHistory* history,
     return snapshot->valid;
 }
 
-HDY_DiagnosticFlags HDY_Diagnostics_GetFlagMask(const HDY_DiagnosticInfo* diagnostic) {
-    return HDY_Diagnostics_BuildFlagMask(diagnostic);
+HYD_DiagnosticFlags HYD_Diagnostics_GetFlagMask(const HYD_DiagnosticInfo* diagnostic) {
+    return HYD_Diagnostics_BuildFlagMask(diagnostic);
 }
 
-HDY_BOOL HDY_Diagnostics_HasFlag(const HDY_DiagnosticInfo* diagnostic,
-                                 HDY_DiagnosticFlag flag) {
-    if (flag == HDY_DIAG_FLAG_NONE) {
+HYD_BOOL HYD_Diagnostics_HasFlag(const HYD_DiagnosticInfo* diagnostic,
+                                 HYD_DiagnosticFlag flag) {
+    if (flag == HYD_DIAG_FLAG_NONE) {
         return false;
     }
 
-    return (HDY_Diagnostics_GetFlagMask(diagnostic) & (HDY_DiagnosticFlags)flag) != 0U;
+    return (HYD_Diagnostics_GetFlagMask(diagnostic) & (HYD_DiagnosticFlags)flag) != 0U;
 }
 
-const char* HDY_Diagnostics_CodeToString(HDY_DiagnosticCode code) {
+const char* HYD_Diagnostics_CodeToString(HYD_DiagnosticCode code) {
     switch (code) {
-        case HDY_DIAG_CODE_NONE:
+        case HYD_DIAG_CODE_NONE:
             return "NONE";
-        case HDY_DIAG_CODE_RECIPE_EMPTY:
+        case HYD_DIAG_CODE_RECIPE_EMPTY:
             return "RECIPE_EMPTY";
-        case HDY_DIAG_CODE_RECIPE_TOO_LARGE:
+        case HYD_DIAG_CODE_RECIPE_TOO_LARGE:
             return "RECIPE_TOO_LARGE";
-        case HDY_DIAG_CODE_SEGMENT_INVALID:
+        case HYD_DIAG_CODE_SEGMENT_INVALID:
             return "SEGMENT_INVALID";
-        case HDY_DIAG_CODE_RUNTIME_CONFIG_INVALID:
+        case HYD_DIAG_CODE_RUNTIME_CONFIG_INVALID:
             return "RUNTIME_CONFIG_INVALID";
-        case HDY_DIAG_CODE_START_CONTEXT_INVALID:
+        case HYD_DIAG_CODE_START_CONTEXT_INVALID:
             return "START_CONTEXT_INVALID";
-        case HDY_DIAG_CODE_COMMAND_NOT_ALLOWED:
+        case HYD_DIAG_CODE_COMMAND_NOT_ALLOWED:
             return "COMMAND_NOT_ALLOWED";
-        case HDY_DIAG_CODE_NO_RECIPE:
+        case HYD_DIAG_CODE_NO_RECIPE:
             return "NO_RECIPE";
-        case HDY_DIAG_CODE_SEGMENT_INDEX_OUT_OF_RANGE:
+        case HYD_DIAG_CODE_SEGMENT_INDEX_OUT_OF_RANGE:
             return "SEGMENT_INDEX_OUT_OF_RANGE";
-        case HDY_DIAG_CODE_SEGMENT_NOT_COMPLETED:
+        case HYD_DIAG_CODE_SEGMENT_NOT_COMPLETED:
             return "SEGMENT_NOT_COMPLETED";
-        case HDY_DIAG_CODE_RECIPE_ALREADY_FINISHED:
+        case HYD_DIAG_CODE_RECIPE_ALREADY_FINISHED:
             return "RECIPE_ALREADY_FINISHED";
-        case HDY_DIAG_CODE_ABORTED:
+        case HYD_DIAG_CODE_ABORTED:
             return "ABORTED";
-        case HDY_DIAG_CODE_TIMEOUT:
+        case HYD_DIAG_CODE_TIMEOUT:
             return "TIMEOUT";
-        case HDY_DIAG_CODE_OVER_PRESSURE:
+        case HYD_DIAG_CODE_OVER_PRESSURE:
             return "OVER_PRESSURE";
-        case HDY_DIAG_CODE_UNDER_PRESSURE:
+        case HYD_DIAG_CODE_UNDER_PRESSURE:
             return "UNDER_PRESSURE";
-        case HDY_DIAG_CODE_FLOW_DEVIATION:
+        case HYD_DIAG_CODE_FLOW_DEVIATION:
             return "FLOW_DEVIATION";
-        case HDY_DIAG_CODE_POSITION_DEVIATION:
+        case HYD_DIAG_CODE_POSITION_DEVIATION:
             return "POSITION_DEVIATION";
-        case HDY_DIAG_CODE_VELOCITY_DEVIATION:
+        case HYD_DIAG_CODE_VELOCITY_DEVIATION:
             return "VELOCITY_DEVIATION";
-        case HDY_DIAG_CODE_SENSOR_FAULT:
+        case HYD_DIAG_CODE_SENSOR_FAULT:
             return "SENSOR_FAULT";
-        case HDY_DIAG_CODE_TIMESTAMP_ROLLBACK:
+        case HYD_DIAG_CODE_TIMESTAMP_ROLLBACK:
             return "TIMESTAMP_ROLLBACK";
-        case HDY_DIAG_CODE_INTERNAL_ERROR:
+        case HYD_DIAG_CODE_INTERNAL_ERROR:
             return "INTERNAL_ERROR";
         default:
             return "UNKNOWN";
     }
 }
 
-const char* HDY_Diagnostics_SeverityToString(HDY_DiagnosticSeverity severity) {
+const char* HYD_Diagnostics_SeverityToString(HYD_DiagnosticSeverity severity) {
     switch (severity) {
-        case HDY_DIAG_SEVERITY_NONE:
+        case HYD_DIAG_SEVERITY_NONE:
             return "NONE";
-        case HDY_DIAG_SEVERITY_INFO:
+        case HYD_DIAG_SEVERITY_INFO:
             return "INFO";
-        case HDY_DIAG_SEVERITY_WARNING:
+        case HYD_DIAG_SEVERITY_WARNING:
             return "WARNING";
-        case HDY_DIAG_SEVERITY_FAULT:
+        case HYD_DIAG_SEVERITY_FAULT:
             return "FAULT";
         default:
             return "UNKNOWN";
     }
 }
 
-const char* HDY_Diagnostics_SourceToString(HDY_DiagnosticSource source) {
+const char* HYD_Diagnostics_SourceToString(HYD_DiagnosticSource source) {
     switch (source) {
-        case HDY_DIAG_SOURCE_NONE:
+        case HYD_DIAG_SOURCE_NONE:
             return "NONE";
-        case HDY_DIAG_SOURCE_RECIPE:
+        case HYD_DIAG_SOURCE_RECIPE:
             return "RECIPE";
-        case HDY_DIAG_SOURCE_RUNTIME:
+        case HYD_DIAG_SOURCE_RUNTIME:
             return "RUNTIME";
-        case HDY_DIAG_SOURCE_COMMAND:
+        case HYD_DIAG_SOURCE_COMMAND:
             return "COMMAND";
-        case HDY_DIAG_SOURCE_EXECUTION:
+        case HYD_DIAG_SOURCE_EXECUTION:
             return "EXECUTION";
-        case HDY_DIAG_SOURCE_SENSOR:
+        case HYD_DIAG_SOURCE_SENSOR:
             return "SENSOR";
-        case HDY_DIAG_SOURCE_INTERNAL:
+        case HYD_DIAG_SOURCE_INTERNAL:
             return "INTERNAL";
         default:
             return "UNKNOWN";
     }
 }
 
-const char* HDY_Diagnostics_RecoveryToString(HDY_DiagnosticRecovery recovery) {
+const char* HYD_Diagnostics_RecoveryToString(HYD_DiagnosticRecovery recovery) {
     switch (recovery) {
-        case HDY_DIAG_RECOVERY_NONE:
+        case HYD_DIAG_RECOVERY_NONE:
             return "NONE";
-        case HDY_DIAG_RECOVERY_AUTO_CLEAR:
+        case HYD_DIAG_RECOVERY_AUTO_CLEAR:
             return "AUTO_CLEAR";
-        case HDY_DIAG_RECOVERY_CHECK_COMMAND:
+        case HYD_DIAG_RECOVERY_CHECK_COMMAND:
             return "CHECK_COMMAND";
-        case HDY_DIAG_RECOVERY_CHECK_SENSOR:
+        case HYD_DIAG_RECOVERY_CHECK_SENSOR:
             return "CHECK_SENSOR";
-        case HDY_DIAG_RECOVERY_RELOAD_RECIPE:
+        case HYD_DIAG_RECOVERY_RELOAD_RECIPE:
             return "RELOAD_RECIPE";
-        case HDY_DIAG_RECOVERY_RESTART_SEGMENT:
+        case HYD_DIAG_RECOVERY_RESTART_SEGMENT:
             return "RESTART_SEGMENT";
-        case HDY_DIAG_RECOVERY_RESET_CONTROLLER:
+        case HYD_DIAG_RECOVERY_RESET_CONTROLLER:
             return "RESET_CONTROLLER";
         default:
             return "UNKNOWN";
     }
 }
 
-const char* HDY_Diagnostics_ProtectionActionToString(HDY_ProtectionAction action) {
+const char* HYD_Diagnostics_ProtectionActionToString(HYD_ProtectionAction action) {
     switch (action) {
-        case HDY_PROTECTION_ACTION_NONE:
+        case HYD_PROTECTION_ACTION_NONE:
             return "NONE";
-        case HDY_PROTECTION_ACTION_WARNING:
+        case HYD_PROTECTION_ACTION_WARNING:
             return "WARNING";
-        case HDY_PROTECTION_ACTION_DERATE:
+        case HYD_PROTECTION_ACTION_DERATE:
             return "DERATE";
-        case HDY_PROTECTION_ACTION_STOP:
+        case HYD_PROTECTION_ACTION_STOP:
             return "STOP";
         default:
             return "UNKNOWN";

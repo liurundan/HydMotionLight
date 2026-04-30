@@ -1,47 +1,47 @@
-#ifndef HDY_DIAGNOSTICS_H
-#define HDY_DIAGNOSTICS_H
+#ifndef HYD_DIAGNOSTICS_H
+#define HYD_DIAGNOSTICS_H
 
 #include "common_types.h"
 
 typedef struct {
-    const HDY_AxisRef* axisRef;
-    const HDY_MotionSegment* segment;
-    const HDY_ExecutionReference* references;
-    HDY_BOOL enableVelocityDeviationCheck;  /* 默认false，设为true启用速度偏差诊断 */
-} HDY_DiagnosticsContext;
+    const HYD_AxisRef* axisRef;
+    const HYD_MotionSegment* segment;
+    const HYD_ExecutionReference* references;
+    HYD_BOOL enableVelocityDeviationCheck;  /* 默认false，设为true启用速度偏差诊断 */
+} HYD_DiagnosticsContext;
 
-void HDY_Diagnostics_Clear(HDY_DiagnosticInfo* diagnostic);
-void HDY_Diagnostics_SetEvent(HDY_DiagnosticInfo* diagnostic,
-                              HDY_DiagnosticCode code,
-                              HDY_DiagnosticSeverity severity);
+void HYD_Diagnostics_Clear(HYD_DiagnosticInfo* diagnostic);
+void HYD_Diagnostics_SetEvent(HYD_DiagnosticInfo* diagnostic,
+                              HYD_DiagnosticCode code,
+                              HYD_DiagnosticSeverity severity);
 
-void HDY_Diagnostics_ClearSnapshot(HDY_DiagnosticSnapshot* snapshot);
-void HDY_Diagnostics_CaptureSnapshot(HDY_DiagnosticSnapshot* snapshot,
-                                     const HDY_DiagnosticInfo* diagnostic,
-                                     const HDY_AxisRef* axisRef,
-                                     const HDY_ExecutionReference* references,
-                                     HDY_TIME eventTimestamp,
-                                     HDY_UINT8 segmentIndex,
-                                     HDY_UINT8 segmentTag,
-                                     HDY_ControllerStatus status,
-                                     HDY_BOOL active,
-                                     HDY_BOOL finished,
-                                     HDY_BOOL fault);
-void HDY_DiagnosticsHistory_Clear(HDY_DiagnosticHistory* history);
-void HDY_DiagnosticsHistory_Push(HDY_DiagnosticHistory* history,
-                                 const HDY_DiagnosticSnapshot* snapshot);
-HDY_BOOL HDY_DiagnosticsHistory_GetEntry(const HDY_DiagnosticHistory* history,
-                                         HDY_UINT8 chronologicalIndex,
-                                         HDY_DiagnosticSnapshot* snapshot);  /* Only index 0 is valid; returns the latest snapshot. */
-HDY_BOOL HDY_DiagnosticsHistory_GetLatest(const HDY_DiagnosticHistory* history,
-                                          HDY_DiagnosticSnapshot* snapshot);
-HDY_DiagnosticFlags HDY_Diagnostics_GetFlagMask(const HDY_DiagnosticInfo* diagnostic);
-HDY_BOOL HDY_Diagnostics_HasFlag(const HDY_DiagnosticInfo* diagnostic,
-                                 HDY_DiagnosticFlag flag);
-const char* HDY_Diagnostics_CodeToString(HDY_DiagnosticCode code);
-const char* HDY_Diagnostics_SeverityToString(HDY_DiagnosticSeverity severity);
-const char* HDY_Diagnostics_SourceToString(HDY_DiagnosticSource source);
-const char* HDY_Diagnostics_RecoveryToString(HDY_DiagnosticRecovery recovery);
-const char* HDY_Diagnostics_ProtectionActionToString(HDY_ProtectionAction action);
+void HYD_Diagnostics_ClearSnapshot(HYD_DiagnosticSnapshot* snapshot);
+void HYD_Diagnostics_CaptureSnapshot(HYD_DiagnosticSnapshot* snapshot,
+                                     const HYD_DiagnosticInfo* diagnostic,
+                                     const HYD_AxisRef* axisRef,
+                                     const HYD_ExecutionReference* references,
+                                     HYD_TIME eventTimestamp,
+                                     HYD_UINT8 segmentIndex,
+                                     HYD_UINT8 segmentTag,
+                                     HYD_ControllerStatus status,
+                                     HYD_BOOL active,
+                                     HYD_BOOL finished,
+                                     HYD_BOOL fault);
+void HYD_DiagnosticsHistory_Clear(HYD_DiagnosticHistory* history);
+void HYD_DiagnosticsHistory_Push(HYD_DiagnosticHistory* history,
+                                 const HYD_DiagnosticSnapshot* snapshot);
+HYD_BOOL HYD_DiagnosticsHistory_GetEntry(const HYD_DiagnosticHistory* history,
+                                         HYD_UINT8 chronologicalIndex,
+                                         HYD_DiagnosticSnapshot* snapshot);  /* Only index 0 is valid; returns the latest snapshot. */
+HYD_BOOL HYD_DiagnosticsHistory_GetLatest(const HYD_DiagnosticHistory* history,
+                                          HYD_DiagnosticSnapshot* snapshot);
+HYD_DiagnosticFlags HYD_Diagnostics_GetFlagMask(const HYD_DiagnosticInfo* diagnostic);
+HYD_BOOL HYD_Diagnostics_HasFlag(const HYD_DiagnosticInfo* diagnostic,
+                                 HYD_DiagnosticFlag flag);
+const char* HYD_Diagnostics_CodeToString(HYD_DiagnosticCode code);
+const char* HYD_Diagnostics_SeverityToString(HYD_DiagnosticSeverity severity);
+const char* HYD_Diagnostics_SourceToString(HYD_DiagnosticSource source);
+const char* HYD_Diagnostics_RecoveryToString(HYD_DiagnosticRecovery recovery);
+const char* HYD_Diagnostics_ProtectionActionToString(HYD_ProtectionAction action);
 
-#endif /* HDY_DIAGNOSTICS_H */
+#endif /* HYD_DIAGNOSTICS_H */

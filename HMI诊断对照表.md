@@ -33,7 +33,7 @@
 | --- | --- | --- | --- | --- | --- | --- |
 | `NONE` | 无活动诊断 | 当前无异常 | `NONE` | 无 | 无需处理 | 无 |
 | `RECIPE_EMPTY` | 配方为空 | 当前未装载有效配方 | `WARNING` | 提示 | 重新下载或装载配方后再启动 | 检查配方下发流程、配方文件是否为空 |
-| `RECIPE_TOO_LARGE` | 配方段数超限 | 配方段数超过控制器上限 | `WARNING` | 提示 | 精简段数后重新下发 | 检查段数是否超过 `HDY_MAX_SEGMENTS = 16` |
+| `RECIPE_TOO_LARGE` | 配方段数超限 | 配方段数超过控制器上限 | `WARNING` | 提示 | 精简段数后重新下发 | 检查段数是否超过 `HYD_MAX_SEGMENTS = 16` |
 | `SEGMENT_INVALID` | 配方参数无效 | 当前段参数不合法，无法执行 | `WARNING` | 提示 | 修改段参数并重新装载 | 检查模式、目标量、限幅、结束条件、压力策略组合是否合法 |
 | `RUNTIME_CONFIG_INVALID` | 运行配置错误 | 运行参数非法，控制器已拒绝执行 | `FAULT` | 停止 | 停机后检查参数，必要时复位控制器 | 重点检查泵速增益、泵速限幅、运行期配置是否被错误覆盖 |
 | `START_CONTEXT_INVALID` | 启动条件不满足 | 当前状态不允许启动该段 | `WARNING` | 提示 | 检查启动时机、段索引和当前状态 | 检查是否在故障态、未装载配方或上下文不完整时发起启动 |
@@ -58,14 +58,14 @@
 
 | 标志位 | 十六进制 | 推荐中文标签 | 说明 |
 | --- | --- | --- | --- |
-| `HDY_DIAG_FLAG_OVER_PRESSURE` | `0x01` | 超压 | 当前周期检测到压力偏高 |
-| `HDY_DIAG_FLAG_UNDER_PRESSURE` | `0x02` | 欠压 | 当前周期检测到压力偏低 |
-| `HDY_DIAG_FLAG_FLOW_DEVIATION` | `0x04` | 流量偏差 | 当前周期检测到流量偏差 |
-| `HDY_DIAG_FLAG_POSITION_DEVIATION` | `0x08` | 位置偏差 | 当前周期检测到位置偏差 |
-| `HDY_DIAG_FLAG_VELOCITY_DEVIATION` | `0x10` | 速度偏差 | 当前周期检测到速度偏差 |
-| `HDY_DIAG_FLAG_TIMEOUT` | `0x20` | 超时 | 当前周期检测到段执行超时 |
-| `HDY_DIAG_FLAG_SENSOR_FAULT` | `0x40` | 反馈异常 | 当前周期检测到采样异常 |
-| `HDY_DIAG_FLAG_TIMESTAMP_ROLLBACK` | `0x80` | 时间回退 | 当前周期检测到时间戳倒退 |
+| `HYD_DIAG_FLAG_OVER_PRESSURE` | `0x01` | 超压 | 当前周期检测到压力偏高 |
+| `HYD_DIAG_FLAG_UNDER_PRESSURE` | `0x02` | 欠压 | 当前周期检测到压力偏低 |
+| `HYD_DIAG_FLAG_FLOW_DEVIATION` | `0x04` | 流量偏差 | 当前周期检测到流量偏差 |
+| `HYD_DIAG_FLAG_POSITION_DEVIATION` | `0x08` | 位置偏差 | 当前周期检测到位置偏差 |
+| `HYD_DIAG_FLAG_VELOCITY_DEVIATION` | `0x10` | 速度偏差 | 当前周期检测到速度偏差 |
+| `HYD_DIAG_FLAG_TIMEOUT` | `0x20` | 超时 | 当前周期检测到段执行超时 |
+| `HYD_DIAG_FLAG_SENSOR_FAULT` | `0x40` | 反馈异常 | 当前周期检测到采样异常 |
+| `HYD_DIAG_FLAG_TIMESTAMP_ROLLBACK` | `0x80` | 时间回退 | 当前周期检测到时间戳倒退 |
 
 ## 5. HMI 主标题优先级建议
 
@@ -129,7 +129,7 @@
 
 - `DIAGNOSTIC` 是实时结果，在非故障保持态会自动清除；不要把它当作长期历史存储。
 - 需要保留最近事件时，应使用 `DIAGNOSTIC_LATCH`、`LAST_DIAGNOSTIC_SNAPSHOT`、`LAST_FAULT_SNAPSHOT` 和 `DIAGNOSTIC_HISTORY`。
-- 在实时故障已消除且控制器不处于故障态时，可调用 `HDY_MotionControlFB_AcknowledgeDiagnostics()` 清除保留诊断。
+- 在实时故障已消除且控制器不处于故障态时，可调用 `HYD_MotionControlFB_AcknowledgeDiagnostics()` 清除保留诊断。
 - 故障停机后的关键保留信息仍建议通过 `RESET` 后重新建立基线。
 
 ## 10. 告警到故障升级机制（Sprint 3 新增）
@@ -159,7 +159,7 @@
 
 3. **清除条件**：
    - 误差恢复到阈值以内
-   - 切换到新的段（触发 `HDY_DiagnosticCriteria_ResetState()`）
+   - 切换到新的段（触发 `HYD_DiagnosticCriteria_ResetState()`）
    - 手动复位控制器
 
 ### 10.3 HMI 显示建议
@@ -191,13 +191,13 @@
 
 ### 10.5 判据参数配置
 
-升级相关参数位于 `HDY_DiagnosticCriteria` 结构体：
+升级相关参数位于 `HYD_DiagnosticCriteria` 结构体：
 
 | 参数 | 类型 | 默认值 | 说明 |
 | --- | --- | --- | --- |
-| `enableFaultEscalation` | `HDY_BOOL` | `true` | 是否启用升级功能 |
-| `faultEscalationTime` | `HDY_TIME` | 2.0~3.0秒 | WARNING升级为FAULT的时间 |
-| `faultCode` | `HDY_DiagnosticCode` | 同初始诊断码 | 升级后的故障码（可配置不同） |
+| `enableFaultEscalation` | `HYD_BOOL` | `true` | 是否启用升级功能 |
+| `faultEscalationTime` | `HYD_TIME` | 2.0~3.0秒 | WARNING升级为FAULT的时间 |
+| `faultCode` | `HYD_DiagnosticCode` | 同初始诊断码 | 升级后的故障码（可配置不同） |
 
 ### 10.6 误报抑制与升级的关系
 

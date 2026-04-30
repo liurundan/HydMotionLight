@@ -26,26 +26,26 @@
 
 /* Test tracking variables */
 typedef struct {
-    HDY_REAL previousVelocity;
-    HDY_REAL previousAcceleration;
-    HDY_REAL previousPressure;
-    HDY_REAL maxVelocityJump;
-    HDY_REAL maxAccelerationJump;
-    HDY_REAL maxPressureJump;
-    HDY_UINT discontinuityCount;
-    HDY_BOOL continuityViolation;
+    HYD_REAL previousVelocity;
+    HYD_REAL previousAcceleration;
+    HYD_REAL previousPressure;
+    HYD_REAL maxVelocityJump;
+    HYD_REAL maxAccelerationJump;
+    HYD_REAL maxPressureJump;
+    HYD_UINT discontinuityCount;
+    HYD_BOOL continuityViolation;
 } ContinuityTracker;
 
 /* Simulation plant model */
 typedef struct {
-    HDY_REAL position;
-    HDY_REAL velocity;
-    HDY_REAL flow;
-    HDY_REAL pressure;
-    HDY_TIME timestamp;
-    HDY_REAL actuatorArea;      /* cm² */
-    HDY_REAL bulkModulus;       /* MPa */
-    HDY_REAL volume;            /* L */
+    HYD_REAL position;
+    HYD_REAL velocity;
+    HYD_REAL flow;
+    HYD_REAL pressure;
+    HYD_TIME timestamp;
+    HYD_REAL actuatorArea;      /* cm² */
+    HYD_REAL bulkModulus;       /* MPa */
+    HYD_REAL volume;            /* L */
 } PlantModel;
 
 void Plant_Init(PlantModel* plant) {
@@ -56,12 +56,12 @@ void Plant_Init(PlantModel* plant) {
     plant->timestamp = 0.0;
 }
 
-void Plant_Update(PlantModel* plant, HDY_REAL pumpSpeed, HDY_TIME deltaTime) {
+void Plant_Update(PlantModel* plant, HYD_REAL pumpSpeed, HYD_TIME deltaTime) {
     /* Simple integration model */
-    HDY_REAL pumpFlow = pumpSpeed / 60.0;  /* Convert rpm to L/s (simplified) */
+    HYD_REAL pumpFlow = pumpSpeed / 60.0;  /* Convert rpm to L/s (simplified) */
     
     /* Update position based on flow and actuator area */
-    HDY_REAL positionChange = (pumpFlow * 1000.0) / (plant->actuatorArea * deltaTime * 60.0);
+    HYD_REAL positionChange = (pumpFlow * 1000.0) / (plant->actuatorArea * deltaTime * 60.0);
     plant->position += positionChange;
     
     /* Update velocity (simplified) */
@@ -71,8 +71,8 @@ void Plant_Update(PlantModel* plant, HDY_REAL pumpSpeed, HDY_TIME deltaTime) {
     plant->flow = fabs(pumpFlow * 60.0);  /* L/min */
     
     /* Update pressure based on compression */
-    HDY_REAL volumeChange = pumpFlow * deltaTime;
-    HDY_REAL strain = volumeChange / plant->volume;
+    HYD_REAL volumeChange = pumpFlow * deltaTime;
+    HYD_REAL strain = volumeChange / plant->volume;
     plant->pressure += plant->bulkModulus * strain;
     
     /* Natural pressure decay */
@@ -98,11 +98,11 @@ void ContinuityTracker_Init(ContinuityTracker* tracker) {
 }
 
 void ContinuityTracker_Check(ContinuityTracker* tracker, 
-                           HDY_REAL currentVelocity,
-                           HDY_REAL currentAcceleration,
-                           HDY_REAL currentPressure,
-                           HDY_TIME deltaTime) {
-    HDY_REAL velocityJump, accelerationJump, pressureJump;
+                           HYD_REAL currentVelocity,
+                           HYD_REAL currentAcceleration,
+                           HYD_REAL currentPressure,
+                           HYD_TIME deltaTime) {
+    HYD_REAL velocityJump, accelerationJump, pressureJump;
     
     /* Calculate velocity jump */
     velocityJump = fabs(currentVelocity - tracker->previousVelocity);
@@ -147,17 +147,17 @@ void ContinuityTracker_Check(ContinuityTracker* tracker,
     tracker->previousPressure = currentPressure;
 }
 
-void PrintDiagnosticInfo(const HDY_MotionControlFB* fb) {
+void PrintDiagnosticInfo(const HYD_MotionControlFB* fb) {
     printf("  Diagnostic: Code=%d, Severity=%d, Source=%d\n",
            fb->DIAGNOSTIC.code, fb->DIAGNOSTIC.severity, fb->DIAGNOSTIC.source);
-    if (fb->DIAGNOSTIC.code != HDY_DIAG_CODE_NONE) {
+    if (fb->DIAGNOSTIC.code != HYD_DIAG_CODE_NONE) {
         printf("    PressureError=%.3f, FlowError=%.3f\n",
                fb->DIAGNOSTIC.pressureError, fb->DIAGNOSTIC.flowError);
     }
 }
 
-void PrintStateInfo(const HDY_MotionControlFB* fb) {
-    const HDY_MotionState* state = &fb->STATE;
+void PrintStateInfo(const HYD_MotionControlFB* fb) {
+    const HYD_MotionState* state = &fb->STATE;
     printf("  State: Active=%d, Finished=%d, Fault=%d\n",
            state->active, state->finished, state->faultActive);
     printf("  PlannedVelocity=%.3f mm/s, PlannedFlow=%.3f L/min\n",
@@ -167,7 +167,7 @@ void PrintStateInfo(const HDY_MotionControlFB* fb) {
     printf("  Segment: %s (Source=%d)\n",
            (state->currentSegmentTag == 0 ? "(none)" : "active"), state->segmentSource);
     
-    #if HDY_ENABLE_PRESSURE_LOOP_TELEMETRY
+    #if HYD_ENABLE_PRESSURE_LOOP_TELEMETRY
     printf("  PressureLoop: Target=%.3f, Filtered=%.3f, Error=%.3f\n",
            state->pressureLoop.targetPressure,
            state->pressureLoop.filteredPressure,
@@ -175,16 +175,16 @@ void PrintStateInfo(const HDY_MotionControlFB* fb) {
     #endif
 }
 
-HDY_MotionSegment CreateInjectionSegment(HDY_TIME startTime) {
-    HDY_MotionSegment segment;
+HYD_MotionSegment CreateInjectionSegment(HYD_TIME startTime) {
+    HYD_MotionSegment segment;
     memset(&segment, 0, sizeof(segment));
     
-    segment.segmentTag = HDY_SEGMENT_TYPE_INJECTION;
-    segment.segmentType = HDY_SEGMENT_TYPE_INJECTION;
-    segment.mode = HDY_MODE_SPEED_RAMP;
-    segment.endCondition = HDY_END_POSITION;
-    segment.direction = HDY_DIRECTION_EXTEND;
-    segment.planner = HDY_PLANNER_TIME_BASED;
+    segment.segmentTag = HYD_SEGMENT_TYPE_INJECTION;
+    segment.segmentType = HYD_SEGMENT_TYPE_INJECTION;
+    segment.mode = HYD_MODE_SPEED_RAMP;
+    segment.endCondition = HYD_END_POSITION;
+    segment.direction = HYD_DIRECTION_EXTEND;
+    segment.planner = HYD_PLANNER_TIME_BASED;
     
     segment.targetPosition = 100.0;  /* mm */
     segment.maxVelocity = 200.0;     /* mm/s */
@@ -203,22 +203,22 @@ HDY_MotionSegment CreateInjectionSegment(HDY_TIME startTime) {
     return segment;
 }
 
-HDY_MotionSegment CreateHoldingSegment(HDY_TIME startTime) {
-    HDY_MotionSegment segment;
+HYD_MotionSegment CreateHoldingSegment(HYD_TIME startTime) {
+    HYD_MotionSegment segment;
     memset(&segment, 0, sizeof(segment));
     
-    segment.segmentTag = HDY_SEGMENT_TYPE_HOLDING;
-    segment.segmentType = HDY_SEGMENT_TYPE_HOLDING;
-    segment.mode = HDY_MODE_PRESSURE_CLOSED_LOOP;
-    segment.endCondition = HDY_END_TIME;
-    segment.direction = HDY_DIRECTION_HOLD;
+    segment.segmentTag = HYD_SEGMENT_TYPE_HOLDING;
+    segment.segmentType = HYD_SEGMENT_TYPE_HOLDING;
+    segment.mode = HYD_MODE_PRESSURE_CLOSED_LOOP;
+    segment.endCondition = HYD_END_TIME;
+    segment.direction = HYD_DIRECTION_HOLD;
     
     segment.targetPressure = 80.0;   /* MPa */
     segment.targetFlow = 5.0;       /* L/min (holding flow) */
     segment.maxFlow = 20.0;         /* L/min */
     segment.duration = 2.0;         /* s */
     
-    segment.pressureController = HDY_PRESSURE_CONTROLLER_PI;
+    segment.pressureController = HYD_PRESSURE_CONTROLLER_PI;
     segment.pressureKp = 0.5;       /* L/min per MPa */
     segment.pressureKi = 0.1;       /* L/min per (MPa*s) */
     segment.pressureIntegralLimit = 10.0; /* L/min */
@@ -231,16 +231,16 @@ HDY_MotionSegment CreateHoldingSegment(HDY_TIME startTime) {
     return segment;
 }
 
-HDY_MotionSegment CreateRetractionSegment(HDY_TIME startTime) {
-    HDY_MotionSegment segment;
+HYD_MotionSegment CreateRetractionSegment(HYD_TIME startTime) {
+    HYD_MotionSegment segment;
     memset(&segment, 0, sizeof(segment));
     
-    segment.segmentTag = HDY_SEGMENT_TYPE_OPENING;
-    segment.segmentType = HDY_SEGMENT_TYPE_OPENING;
-    segment.mode = HDY_MODE_SPEED_RAMP;
-    segment.endCondition = HDY_END_POSITION;
-    segment.direction = HDY_DIRECTION_RETRACT;
-    segment.planner = HDY_PLANNER_TIME_BASED;
+    segment.segmentTag = HYD_SEGMENT_TYPE_OPENING;
+    segment.segmentType = HYD_SEGMENT_TYPE_OPENING;
+    segment.mode = HYD_MODE_SPEED_RAMP;
+    segment.endCondition = HYD_END_POSITION;
+    segment.direction = HYD_DIRECTION_RETRACT;
+    segment.planner = HYD_PLANNER_TIME_BASED;
     
     segment.targetPosition = 0.0;    /* mm */
     segment.maxVelocity = 150.0;     /* mm/s */
@@ -256,17 +256,17 @@ HDY_MotionSegment CreateRetractionSegment(HDY_TIME startTime) {
 }
 
 int main(void) {
-    HDY_MotionControlFB fb;
+    HYD_MotionControlFB fb;
     PlantModel plant;
     ContinuityTracker tracker;
-    HDY_TIME currentTime = 0.0;
-    HDY_UINT step = 0;
+    HYD_TIME currentTime = 0.0;
+    HYD_UINT step = 0;
     bool testPassed = true;
     
     printf("=== Direct Mode Usage Example ===\n\n");
     
     /* Initialize function block */
-    HDY_MotionControlFB_Init(&fb);
+    HYD_MotionControlFB_Init(&fb);
     
     /* Configure function block for direct mode */
     /* EN gate handled by IEC layer */
@@ -281,13 +281,13 @@ int main(void) {
     printf("=== Phase 1: Injection Phase ===\n");
     
     /* Load and start injection segment */
-    HDY_MotionSegment injectionSeg = CreateInjectionSegment(currentTime);
-    if (!HDY_MotionControlFB_LoadDirectSegment(&fb, &injectionSeg)) {
+    HYD_MotionSegment injectionSeg = CreateInjectionSegment(currentTime);
+    if (!HYD_MotionControlFB_LoadDirectSegment(&fb, &injectionSeg)) {
         printf("ERROR: Failed to load injection segment\n");
         return 1;
     }
     
-    if (!HDY_MotionControlFB_StartSegment(&fb, 0, currentTime)) {
+    if (!HYD_MotionControlFB_StartSegment(&fb, 0, currentTime)) {
         printf("ERROR: Failed to start injection segment\n");
         return 1;
     }
@@ -310,10 +310,10 @@ int main(void) {
         fb.AXIS_REF.timestamp = currentTime;
         
         /* Execute control cycle */
-        HDY_MotionControlFB_Execute(&fb);
+        HYD_MotionControlFB_Execute(&fb);
         
         /* Check continuity */
-        HDY_REAL currentAcceleration = 0.0;
+        HYD_REAL currentAcceleration = 0.0;
         if (step > 0) {
             currentAcceleration = (fb.STATE.plannedVelocity - tracker.previousVelocity) / CYCLE_PERIOD;
         }
@@ -327,7 +327,7 @@ int main(void) {
                    (unsigned long)step, currentTime, plant.position, plant.velocity, plant.flow, plant.pressure);
             PrintStateInfo(&fb);
             
-            if (fb.DIAGNOSTIC.code != HDY_DIAG_CODE_NONE) {
+            if (fb.DIAGNOSTIC.code != HYD_DIAG_CODE_NONE) {
                 PrintDiagnosticInfo(&fb);
             }
         }
@@ -350,14 +350,14 @@ int main(void) {
     printf("\n=== Phase 2: Holding Phase ===\n");
     
     /* Process layer switches to holding segment */
-    HDY_MotionSegment holdingSeg = CreateHoldingSegment(currentTime);
-    if (!HDY_MotionControlFB_LoadDirectSegment(&fb, &holdingSeg)) {
+    HYD_MotionSegment holdingSeg = CreateHoldingSegment(currentTime);
+    if (!HYD_MotionControlFB_LoadDirectSegment(&fb, &holdingSeg)) {
         printf("ERROR: Failed to load holding segment\n");
         return 1;
     }
     
     /* Start holding segment - this is process-layer controlled */
-    if (!HDY_MotionControlFB_StartSegment(&fb, 0, currentTime)) {
+    if (!HYD_MotionControlFB_StartSegment(&fb, 0, currentTime)) {
         printf("ERROR: Failed to start holding segment\n");
         return 1;
     }
@@ -365,11 +365,11 @@ int main(void) {
     printf("Started holding segment at t=%.3f s\n", currentTime);
     
     /* Execute holding phase */
-    HDY_UINT holdingStep = 0;
+    HYD_UINT holdingStep = 0;
     while (holdingStep < 3000) {
         /* Update plant feedback with pressure response */
         /* Simulate pressure buildup towards target */
-        HDY_REAL pressureError = holdingSeg.targetPressure - plant.pressure;
+        HYD_REAL pressureError = holdingSeg.targetPressure - plant.pressure;
         plant.pressure += pressureError * 0.5 * CYCLE_PERIOD;  /* Faster pressure response */
         
         /* Update position/velocity based on pump flow */
@@ -386,7 +386,7 @@ int main(void) {
         fb.AXIS_REF.timestamp = currentTime;
         
         /* Execute control cycle */
-        HDY_MotionControlFB_Execute(&fb);
+        HYD_MotionControlFB_Execute(&fb);
         
         /* Check if segment completed AFTER executing */
         if (fb.SEGMENT_COMPLETED) {
@@ -394,7 +394,7 @@ int main(void) {
         }
         
         /* Check continuity */
-        HDY_REAL currentAcceleration = 0.0;
+        HYD_REAL currentAcceleration = 0.0;
         if (step > 0) {
             currentAcceleration = (fb.STATE.plannedVelocity - tracker.previousVelocity) / CYCLE_PERIOD;
         }
@@ -408,14 +408,14 @@ int main(void) {
                    (unsigned long)holdingStep, currentTime, plant.pressure, holdingSeg.targetPressure, plant.flow);
             PrintStateInfo(&fb);
             
-            #if HDY_ENABLE_PRESSURE_LOOP_TELEMETRY
+            #if HYD_ENABLE_PRESSURE_LOOP_TELEMETRY
             printf("  PressureLoop: Target=%.3f, Error=%.3f, Output=%.3f\n",
                    fb.STATE.pressureLoop.targetPressure,
                    fb.STATE.pressureLoop.controlError,
                    fb.STATE.pressureLoop.outputFlow);
             #endif
             
-            if (fb.DIAGNOSTIC.code != HDY_DIAG_CODE_NONE) {
+            if (fb.DIAGNOSTIC.code != HYD_DIAG_CODE_NONE) {
                 PrintDiagnosticInfo(&fb);
             }
         }
@@ -439,14 +439,14 @@ int main(void) {
     printf("\n=== Phase 3: Retraction Phase ===\n");
     
     /* Process layer switches to retraction segment */
-    HDY_MotionSegment retractionSeg = CreateRetractionSegment(currentTime);
-    if (!HDY_MotionControlFB_LoadDirectSegment(&fb, &retractionSeg)) {
+    HYD_MotionSegment retractionSeg = CreateRetractionSegment(currentTime);
+    if (!HYD_MotionControlFB_LoadDirectSegment(&fb, &retractionSeg)) {
         printf("ERROR: Failed to load retraction segment\n");
         return 1;
     }
     
     /* Start retraction segment - process-layer controlled */
-    if (!HDY_MotionControlFB_StartSegment(&fb, 0, currentTime)) {
+    if (!HYD_MotionControlFB_StartSegment(&fb, 0, currentTime)) {
         printf("ERROR: Failed to start retraction segment\n");
         return 1;
     }
@@ -454,7 +454,7 @@ int main(void) {
     printf("Started retraction segment at t=%.3f s\n", currentTime);
     
     /* Execute retraction phase */
-    HDY_UINT retractionStep = 0;
+    HYD_UINT retractionStep = 0;
     while (retractionStep < 3000) {
         /* Update plant feedback */
         plant.position += fb.STATE.plannedVelocity * CYCLE_PERIOD;
@@ -471,7 +471,7 @@ int main(void) {
         fb.AXIS_REF.timestamp = currentTime;
         
         /* Execute control cycle */
-        HDY_MotionControlFB_Execute(&fb);
+        HYD_MotionControlFB_Execute(&fb);
         
         /* Check if segment completed AFTER executing */
         if (fb.SEGMENT_COMPLETED) {
@@ -479,7 +479,7 @@ int main(void) {
         }
         
         /* Check continuity */
-        HDY_REAL currentAcceleration = 0.0;
+        HYD_REAL currentAcceleration = 0.0;
         if (step > 0) {
             currentAcceleration = (fb.STATE.plannedVelocity - tracker.previousVelocity) / CYCLE_PERIOD;
         }
@@ -493,7 +493,7 @@ int main(void) {
                    (unsigned long)retractionStep, currentTime, plant.position, plant.velocity, plant.flow);
             PrintStateInfo(&fb);
             
-            if (fb.DIAGNOSTIC.code != HDY_DIAG_CODE_NONE) {
+            if (fb.DIAGNOSTIC.code != HYD_DIAG_CODE_NONE) {
                 PrintDiagnosticInfo(&fb);
             }
         }
@@ -527,21 +527,21 @@ int main(void) {
     printf("Function block state: %d\n", fb.FB_STATE);
     printf("Finished: %d\n", fb.STATE.finished);
     printf("FAULT: %d\n", fb.STATE.faultActive);
-    printf("ERROR: %d\n", HDY_MotionControlFB_IsError(&fb));
+    printf("ERROR: %d\n", HYD_MotionControlFB_IsError(&fb));
     
-    if (fb.DIAGNOSTIC.code != HDY_DIAG_CODE_NONE) {
+    if (fb.DIAGNOSTIC.code != HYD_DIAG_CODE_NONE) {
         printf("\n=== Final Diagnostic ===\n");
         PrintDiagnosticInfo(&fb);
     }
     
     printf("\n=== API Usage Summary ===\n");
     printf("Direct mode workflow:\n");
-    printf("1. HDY_MotionControlFB_Init() - Initialize function block\n");
+    printf("1. HYD_MotionControlFB_Init() - Initialize function block\n");
     printf("2. fb.USE_RECIPE = false - Enable direct mode\n");
-    printf("3. HDY_MotionControlFB_LoadDirectSegment() - Load segment parameters\n");
-    printf("4. HDY_MotionControlFB_StartSegment() - Start execution\n");
+    printf("3. HYD_MotionControlFB_LoadDirectSegment() - Load segment parameters\n");
+    printf("4. HYD_MotionControlFB_StartSegment() - Start execution\n");
     printf("5. Update fb.AXIS_REF each cycle - Provide sensor feedback\n");
-    printf("6. HDY_MotionControlFB_Execute() - Run control cycle\n");
+    printf("6. HYD_MotionControlFB_Execute() - Run control cycle\n");
     printf("7. Read fb.STATE and fb.PUMP_SPEED - Get control outputs\n");
     printf("8. Check fb.SEGMENT_COMPLETED - Monitor completion\n");
     printf("9. Process layer decides when to switch segments\n");

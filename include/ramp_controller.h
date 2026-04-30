@@ -1,24 +1,24 @@
-#ifndef HDY_RAMP_CONTROLLER_H
-#define HDY_RAMP_CONTROLLER_H
+#ifndef HYD_RAMP_CONTROLLER_H
+#define HYD_RAMP_CONTROLLER_H
 
 #include "common_types.h"
 
 typedef struct {
-    HDY_REAL rampedPressure;
-    HDY_TIME lastTimestamp;
-} HDY_RampController;
+    HYD_REAL rampedPressure;
+    HYD_TIME lastTimestamp;
+} HYD_RampController;
 
 typedef struct {
-    HDY_REAL targetPressure;
-    HDY_REAL rampRate;
-    HDY_TIME currentTime;
-} HDY_RampControllerInput;
+    HYD_REAL targetPressure;
+    HYD_REAL rampRate;
+    HYD_TIME currentTime;
+} HYD_RampControllerInput;
 
 typedef struct {
-    HDY_REAL rampedPressure;
-} HDY_RampControllerOutput;
+    HYD_REAL rampedPressure;
+} HYD_RampControllerOutput;
 
-void HDY_RampController_Init(HDY_RampController* controller, HDY_REAL initialPressure, HDY_TIME initialTime);
-void HDY_RampController_Execute(HDY_RampController* controller, const HDY_RampControllerInput* input, HDY_RampControllerOutput* output);
+void HYD_RampController_Init(HYD_RampController* controller, HYD_REAL initialPressure, HYD_TIME initialTime);
+void HYD_RampController_Execute(HYD_RampController* controller, const HYD_RampControllerInput* input, HYD_RampControllerOutput* output);
 
-#endif /* HDY_RAMP_CONTROLLER_H */
+#endif /* HYD_RAMP_CONTROLLER_H */

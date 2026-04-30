@@ -11,132 +11,132 @@
 #include "motion_utils.h"
 #include "motion_validator.h"
 #include "segment_limits.h"
-#include "hdy_config.h"
+#include "hyd_config.h"
 #include <math.h>
 #include <string.h>
 
 
 
 /* Internal function declarations */
-static HDY_BOOL HDY_QueuePendingCommand(HDY_MotionControlFB* fb,
-                                        HDY_FbCommand command,
-                                        HDY_UINT segmentIndex,
-                                        HDY_TIME timestamp);
-static void HDY_MotionControlFB_RunRunningState(HDY_MotionControlFB* fb);
-static void HDY_PrimeSegmentControllers(HDY_MotionControlFB* fb,
-                                        const HDY_MotionSegment* segment,
-                                        HDY_TIME timestamp,
-                                        HDY_BOOL allowFlowCarryover);
-static void HDY_ExecuteActiveSegmentControl(HDY_MotionControlFB* fb,
-                                            const HDY_MotionSegment* segment,
-                                            HDY_REAL elapsed,
-                                            HDY_RampControllerOutput* rampOutput,
-                                            HDY_MotionPlannerOutput* plannerOutput,
-                                            HDY_PressureControllerOutput* pressureOutput,
-                                            HDY_PumpConverterOutput* pumpOutput,
-                                            HDY_ExecutionReference* executionReference);
-static void HDY_UpdateExecutionDiagnostics(HDY_MotionControlFB* fb,
-                                           const HDY_MotionSegment* segment,
-                                           const HDY_ExecutionReference* executionReference,
-                                           HDY_REAL elapsed);
-static void HDY_ConfigureSegmentCriteria(HDY_DiagnosticCriteria* criteria,
-                                          HDY_REAL baseThreshold,
-                                          HDY_DiagnosticCode code,
-                                          HDY_ProtectionAction action);
+static HYD_BOOL HYD_QueuePendingCommand(HYD_MotionControlFB* fb,
+                                        HYD_FbCommand command,
+                                        HYD_UINT segmentIndex,
+                                        HYD_TIME timestamp);
+static void HYD_MotionControlFB_RunRunningState(HYD_MotionControlFB* fb);
+static void HYD_PrimeSegmentControllers(HYD_MotionControlFB* fb,
+                                        const HYD_MotionSegment* segment,
+                                        HYD_TIME timestamp,
+                                        HYD_BOOL allowFlowCarryover);
+static void HYD_ExecuteActiveSegmentControl(HYD_MotionControlFB* fb,
+                                            const HYD_MotionSegment* segment,
+                                            HYD_REAL elapsed,
+                                            HYD_RampControllerOutput* rampOutput,
+                                            HYD_MotionPlannerOutput* plannerOutput,
+                                            HYD_PressureControllerOutput* pressureOutput,
+                                            HYD_PumpConverterOutput* pumpOutput,
+                                            HYD_ExecutionReference* executionReference);
+static void HYD_UpdateExecutionDiagnostics(HYD_MotionControlFB* fb,
+                                           const HYD_MotionSegment* segment,
+                                           const HYD_ExecutionReference* executionReference,
+                                           HYD_REAL elapsed);
+static void HYD_ConfigureSegmentCriteria(HYD_DiagnosticCriteria* criteria,
+                                          HYD_REAL baseThreshold,
+                                          HYD_DiagnosticCode code,
+                                          HYD_ProtectionAction action);
 
 /* Diagnostic reporting moved to StateReporter: use
- * HDY_StateReporter_ReportDiagnostic / HDY_StateReporter_ReportFault
+ * HYD_StateReporter_ReportDiagnostic / HYD_StateReporter_ReportFault
  * directly from motion_control to centralize behavior.
  */
 
-typedef HDY_UINT16 HDY_FbStateMask;
+typedef HYD_UINT16 HYD_FbStateMask;
 
-#define HDY_FB_STATE_MASK_BIT(state) ((HDY_FbStateMask)(1U << (state)))
+#define HYD_FB_STATE_MASK_BIT(state) ((HYD_FbStateMask)(1U << (state)))
 
-static const HDY_FbStateMask HDY_COMMAND_ALLOWED_STATE_MASKS[HDY_CMD_ACK + 1U] = {
-    [HDY_CMD_NONE] = (HDY_FbStateMask)0U,
-    [HDY_CMD_START] = HDY_FB_STATE_MASK_BIT(HDY_FB_STATE_IDLE) |
-        HDY_FB_STATE_MASK_BIT(HDY_FB_STATE_READY) |
-        HDY_FB_STATE_MASK_BIT(HDY_FB_STATE_SEGMENT_COMPLETE) |
-        HDY_FB_STATE_MASK_BIT(HDY_FB_STATE_DONE) |
-        HDY_FB_STATE_MASK_BIT(HDY_FB_STATE_ABORTED),
-    [HDY_CMD_NEXT] = HDY_FB_STATE_MASK_BIT(HDY_FB_STATE_SEGMENT_COMPLETE),
-    [HDY_CMD_STOP] = (HDY_FbStateMask)0U,
-    [HDY_CMD_HOLD] = HDY_FB_STATE_MASK_BIT(HDY_FB_STATE_STARTING) |
-        HDY_FB_STATE_MASK_BIT(HDY_FB_STATE_RUNNING),
-    [HDY_CMD_RESUME] = HDY_FB_STATE_MASK_BIT(HDY_FB_STATE_HOLD),
-    [HDY_CMD_ABORT] = HDY_FB_STATE_MASK_BIT(HDY_FB_STATE_IDLE) |
-        HDY_FB_STATE_MASK_BIT(HDY_FB_STATE_READY) |
-        HDY_FB_STATE_MASK_BIT(HDY_FB_STATE_STARTING) |
-        HDY_FB_STATE_MASK_BIT(HDY_FB_STATE_RUNNING) |
-        HDY_FB_STATE_MASK_BIT(HDY_FB_STATE_SEGMENT_COMPLETE) |
-        HDY_FB_STATE_MASK_BIT(HDY_FB_STATE_DONE) |
-        HDY_FB_STATE_MASK_BIT(HDY_FB_STATE_ABORTED) |
-        HDY_FB_STATE_MASK_BIT(HDY_FB_STATE_HOLD),
-    [HDY_CMD_RESET] = (HDY_FbStateMask)0U,
-    [HDY_CMD_ACK] = HDY_FB_STATE_MASK_BIT(HDY_FB_STATE_DISABLED) |
-        HDY_FB_STATE_MASK_BIT(HDY_FB_STATE_IDLE) |
-        HDY_FB_STATE_MASK_BIT(HDY_FB_STATE_READY) |
-        HDY_FB_STATE_MASK_BIT(HDY_FB_STATE_SEGMENT_COMPLETE) |
-        HDY_FB_STATE_MASK_BIT(HDY_FB_STATE_HOLD) |
-        HDY_FB_STATE_MASK_BIT(HDY_FB_STATE_DONE) |
-        HDY_FB_STATE_MASK_BIT(HDY_FB_STATE_ABORTED)
+static const HYD_FbStateMask HYD_COMMAND_ALLOWED_STATE_MASKS[HYD_CMD_ACK + 1U] = {
+    [HYD_CMD_NONE] = (HYD_FbStateMask)0U,
+    [HYD_CMD_START] = HYD_FB_STATE_MASK_BIT(HYD_FB_STATE_IDLE) |
+        HYD_FB_STATE_MASK_BIT(HYD_FB_STATE_READY) |
+        HYD_FB_STATE_MASK_BIT(HYD_FB_STATE_SEGMENT_COMPLETE) |
+        HYD_FB_STATE_MASK_BIT(HYD_FB_STATE_DONE) |
+        HYD_FB_STATE_MASK_BIT(HYD_FB_STATE_ABORTED),
+    [HYD_CMD_NEXT] = HYD_FB_STATE_MASK_BIT(HYD_FB_STATE_SEGMENT_COMPLETE),
+    [HYD_CMD_STOP] = (HYD_FbStateMask)0U,
+    [HYD_CMD_HOLD] = HYD_FB_STATE_MASK_BIT(HYD_FB_STATE_STARTING) |
+        HYD_FB_STATE_MASK_BIT(HYD_FB_STATE_RUNNING),
+    [HYD_CMD_RESUME] = HYD_FB_STATE_MASK_BIT(HYD_FB_STATE_HOLD),
+    [HYD_CMD_ABORT] = HYD_FB_STATE_MASK_BIT(HYD_FB_STATE_IDLE) |
+        HYD_FB_STATE_MASK_BIT(HYD_FB_STATE_READY) |
+        HYD_FB_STATE_MASK_BIT(HYD_FB_STATE_STARTING) |
+        HYD_FB_STATE_MASK_BIT(HYD_FB_STATE_RUNNING) |
+        HYD_FB_STATE_MASK_BIT(HYD_FB_STATE_SEGMENT_COMPLETE) |
+        HYD_FB_STATE_MASK_BIT(HYD_FB_STATE_DONE) |
+        HYD_FB_STATE_MASK_BIT(HYD_FB_STATE_ABORTED) |
+        HYD_FB_STATE_MASK_BIT(HYD_FB_STATE_HOLD),
+    [HYD_CMD_RESET] = (HYD_FbStateMask)0U,
+    [HYD_CMD_ACK] = HYD_FB_STATE_MASK_BIT(HYD_FB_STATE_DISABLED) |
+        HYD_FB_STATE_MASK_BIT(HYD_FB_STATE_IDLE) |
+        HYD_FB_STATE_MASK_BIT(HYD_FB_STATE_READY) |
+        HYD_FB_STATE_MASK_BIT(HYD_FB_STATE_SEGMENT_COMPLETE) |
+        HYD_FB_STATE_MASK_BIT(HYD_FB_STATE_HOLD) |
+        HYD_FB_STATE_MASK_BIT(HYD_FB_STATE_DONE) |
+        HYD_FB_STATE_MASK_BIT(HYD_FB_STATE_ABORTED)
 };
 
 /* String conversion functions moved to motion_utils module
- * Use HDY_MotionUtils_CommandToString and HDY_MotionUtils_StateToString
+ * Use HYD_MotionUtils_CommandToString and HYD_MotionUtils_StateToString
  */
 
 /* Helper functions moved to motion_validator module
- * Use HDY_MotionValidator_ResolveEffectiveFbState,
- * HDY_MotionValidator_UsesRecipeSource, and
- * HDY_MotionValidator_HasSelectedStartSource
+ * Use HYD_MotionValidator_ResolveEffectiveFbState,
+ * HYD_MotionValidator_UsesRecipeSource, and
+ * HYD_MotionValidator_HasSelectedStartSource
  */
 
-static void HDY_ResetReadyContextPreview(HDY_MotionControlFB* fb) {
+static void HYD_ResetReadyContextPreview(HYD_MotionControlFB* fb) {
     if (fb == NULL) {
         return;
     }
 
-    if (HDY_MotionValidator_UsesRecipeSource(fb) && fb->RECIPE_SIZE > 0U) {
+    if (HYD_MotionValidator_UsesRecipeSource(fb) && fb->RECIPE_SIZE > 0U) {
         fb->STATE.currentSegmentIndex = 0U;
     } else {
-        fb->STATE.currentSegmentIndex = HDY_MAX_SEGMENTS;
+        fb->STATE.currentSegmentIndex = HYD_MAX_SEGMENTS;
     }
 }
 
-static const HDY_MotionSegment* HDY_ResolveStartSourceSegment(const HDY_MotionControlFB* fb,
+static const HYD_MotionSegment* HYD_ResolveStartSourceSegment(const HYD_MotionControlFB* fb,
                                                               size_t requestedSegmentIndex,
                                                               size_t* resolvedSegmentIndex,
-                                                              HDY_SegmentSource* resolvedSource) {
-    return HDY_MotionValidator_ResolveStartSourceSegment(fb, requestedSegmentIndex,
+                                                              HYD_SegmentSource* resolvedSource) {
+    return HYD_MotionValidator_ResolveStartSourceSegment(fb, requestedSegmentIndex,
                                                           resolvedSegmentIndex, resolvedSource);
 }
 
-static HDY_BOOL HDY_IsCommandAllowedInState(HDY_FbCommand command, HDY_FbState state) {
-    HDY_FbStateMask mask;
+static HYD_BOOL HYD_IsCommandAllowedInState(HYD_FbCommand command, HYD_FbState state) {
+    HYD_FbStateMask mask;
 
-    if ((HDY_UINT)state >= (sizeof(HDY_FbStateMask) * 8U)) {
+    if ((HYD_UINT)state >= (sizeof(HYD_FbStateMask) * 8U)) {
         return false;
     }
 
-    if ((HDY_UINT)command >= (sizeof(HDY_COMMAND_ALLOWED_STATE_MASKS) / sizeof(HDY_COMMAND_ALLOWED_STATE_MASKS[0]))) {
+    if ((HYD_UINT)command >= (sizeof(HYD_COMMAND_ALLOWED_STATE_MASKS) / sizeof(HYD_COMMAND_ALLOWED_STATE_MASKS[0]))) {
         return false;
     }
 
-    mask = HDY_COMMAND_ALLOWED_STATE_MASKS[(HDY_UINT)command];
-    return (mask & HDY_FB_STATE_MASK_BIT(state)) != 0U;
+    mask = HYD_COMMAND_ALLOWED_STATE_MASKS[(HYD_UINT)command];
+    return (mask & HYD_FB_STATE_MASK_BIT(state)) != 0U;
 }
 
-static const HDY_MotionSegment* HDY_ResolveCommandDiagnosticSegment(const HDY_MotionControlFB* fb,
-                                                                    HDY_FbCommand command,
-                                                                    HDY_UINT requestedSegmentIndex) {
+static const HYD_MotionSegment* HYD_ResolveCommandDiagnosticSegment(const HYD_MotionControlFB* fb,
+                                                                    HYD_FbCommand command,
+                                                                    HYD_UINT requestedSegmentIndex) {
     if (fb == NULL) {
         return NULL;
     }
 
-    if (command == HDY_CMD_START) {
-        return HDY_ResolveStartSourceSegment(fb, requestedSegmentIndex, NULL, NULL);
+    if (command == HYD_CMD_START) {
+        return HYD_ResolveStartSourceSegment(fb, requestedSegmentIndex, NULL, NULL);
     }
 
     if (fb->_activeSegmentValid) {
@@ -150,39 +150,39 @@ static const HDY_MotionSegment* HDY_ResolveCommandDiagnosticSegment(const HDY_Mo
     return NULL;
 }
 
-static void HDY_ReportCommandNotAllowed(HDY_MotionControlFB* fb,
-                                        HDY_FbCommand command,
-                                        HDY_FbState state,
-                                        HDY_TIME eventTimestamp,
-                                        HDY_UINT requestedSegmentIndex,
-                                        const HDY_ExecutionReference* references) {
+static void HYD_ReportCommandNotAllowed(HYD_MotionControlFB* fb,
+                                        HYD_FbCommand command,
+                                        HYD_FbState state,
+                                        HYD_TIME eventTimestamp,
+                                        HYD_UINT requestedSegmentIndex,
+                                        const HYD_ExecutionReference* references) {
     if (fb == NULL) {
         return;
     }
 
-    HDY_StateReporter_ReportDiagnostic(fb,
-                                       HDY_DIAG_CODE_COMMAND_NOT_ALLOWED,
-                                       HDY_DIAG_SEVERITY_WARNING,
+    HYD_StateReporter_ReportDiagnostic(fb,
+                                       HYD_DIAG_CODE_COMMAND_NOT_ALLOWED,
+                                       HYD_DIAG_SEVERITY_WARNING,
                                        eventTimestamp,
-                                       HDY_ResolveCommandDiagnosticSegment(fb, command, requestedSegmentIndex),
+                                       HYD_ResolveCommandDiagnosticSegment(fb, command, requestedSegmentIndex),
                                        references);
 }
 
-static HDY_BOOL HDY_RequestCommandQueue(HDY_MotionControlFB* fb,
-                                        HDY_FbCommand command,
-                                        HDY_UINT segmentIndex,
-                                        HDY_TIME timestamp,
-                                        const HDY_ExecutionReference* references) {
-    HDY_FbState effectiveState;
+static HYD_BOOL HYD_RequestCommandQueue(HYD_MotionControlFB* fb,
+                                        HYD_FbCommand command,
+                                        HYD_UINT segmentIndex,
+                                        HYD_TIME timestamp,
+                                        const HYD_ExecutionReference* references) {
+    HYD_FbState effectiveState;
 
     if (fb == NULL) {
         return false;
     }
 
-    effectiveState = HDY_MotionValidator_ResolveEffectiveFbState(fb);
-    if (!HDY_IsCommandAllowedInState(command, effectiveState)) {
-        if (effectiveState != HDY_FB_STATE_FAULT) {
-            HDY_ReportCommandNotAllowed(fb,
+    effectiveState = HYD_MotionValidator_ResolveEffectiveFbState(fb);
+    if (!HYD_IsCommandAllowedInState(command, effectiveState)) {
+        if (effectiveState != HYD_FB_STATE_FAULT) {
+            HYD_ReportCommandNotAllowed(fb,
                                         command,
                                         effectiveState,
                                         timestamp,
@@ -192,22 +192,22 @@ static HDY_BOOL HDY_RequestCommandQueue(HDY_MotionControlFB* fb,
         return false;
     }
 
-    if (command != HDY_CMD_ABORT && fb->_pendingCommand != HDY_CMD_NONE) {
-        HDY_StateReporter_ReportDiagnostic(fb,
-                                           HDY_DIAG_CODE_COMMAND_NOT_ALLOWED,
-                                           HDY_DIAG_SEVERITY_WARNING,
+    if (command != HYD_CMD_ABORT && fb->_pendingCommand != HYD_CMD_NONE) {
+        HYD_StateReporter_ReportDiagnostic(fb,
+                                           HYD_DIAG_CODE_COMMAND_NOT_ALLOWED,
+                                           HYD_DIAG_SEVERITY_WARNING,
                                            timestamp,
-                                           HDY_ResolveCommandDiagnosticSegment(fb, command, segmentIndex),
+                                           HYD_ResolveCommandDiagnosticSegment(fb, command, segmentIndex),
                                            references);
         return false;
     }
 
-    return HDY_QueuePendingCommand(fb, command, segmentIndex, timestamp);
+    return HYD_QueuePendingCommand(fb, command, segmentIndex, timestamp);
 }
 
-/* Removed HDY_AxisRefIsValid - now using HDY_MotionUtils_AxisRefIsValid directly */
+/* Removed HYD_AxisRefIsValid - now using HYD_MotionUtils_AxisRefIsValid directly */
 
-static void HDY_ClearStartCommandInput(HDY_MotionControlFB* fb) {
+static void HYD_ClearStartCommandInput(HYD_MotionControlFB* fb) {
     if (fb == NULL) {
         return;
     }
@@ -216,32 +216,32 @@ static void HDY_ClearStartCommandInput(HDY_MotionControlFB* fb) {
     fb->START_SEGMENT_INDEX = 0U;
 }
 
-static void HDY_ClearPendingCommand(HDY_MotionControlFB* fb) {
+static void HYD_ClearPendingCommand(HYD_MotionControlFB* fb) {
     if (fb == NULL) {
         return;
     }
 
-    fb->_pendingCommand = HDY_CMD_NONE;
+    fb->_pendingCommand = HYD_CMD_NONE;
     fb->_pendingCommandSegmentIndex = 0U;
     fb->_pendingCommandTimestamp = 0.0;
 }
 
-static HDY_BOOL HDY_QueuePendingCommand(HDY_MotionControlFB* fb,
-                                        HDY_FbCommand command,
-                                        HDY_UINT segmentIndex,
-                                        HDY_TIME timestamp) {
+static HYD_BOOL HYD_QueuePendingCommand(HYD_MotionControlFB* fb,
+                                        HYD_FbCommand command,
+                                        HYD_UINT segmentIndex,
+                                        HYD_TIME timestamp) {
     if (fb == NULL) {
         return false;
     }
 
-    if (command == HDY_CMD_ABORT) {
+    if (command == HYD_CMD_ABORT) {
         fb->_pendingCommand = command;
         fb->_pendingCommandSegmentIndex = segmentIndex;
         fb->_pendingCommandTimestamp = timestamp;
         return true;
     }
 
-    if (fb->_pendingCommand != HDY_CMD_NONE) {
+    if (fb->_pendingCommand != HYD_CMD_NONE) {
         return false;
     }
 
@@ -252,74 +252,74 @@ static HDY_BOOL HDY_QueuePendingCommand(HDY_MotionControlFB* fb,
 }
 
 
-static void HDY_PrepareRecipeLoadState(HDY_MotionControlFB* fb) {
+static void HYD_PrepareRecipeLoadState(HYD_MotionControlFB* fb) {
     if (fb == NULL) {
         return;
     }
 
-    HDY_ResetReadyContextPreview(fb);
+    HYD_ResetReadyContextPreview(fb);
     fb->_segmentStartTime = 0.0;
     fb->_holdStateTime = 0.0;
     fb->_lastCommandedFlow = 0.0;
     fb->_activeSegmentValid = false;
     fb->_startSegmentSignalPrev = false;
-    HDY_ProtectionManager_ResetRuntimeActuation(fb);
-    HDY_ClearPendingCommand(fb);
-    HDY_ClearStartCommandInput(fb);
-    HDY_StateReporter_SetIdleState(fb, false, false);
-    HDY_StateReporter_SetSegmentSource(fb, HDY_SEGMENT_SOURCE_NONE);
-    HDY_StateReporter_ClearSegmentTag(fb);
+    HYD_ProtectionManager_ResetRuntimeActuation(fb);
+    HYD_ClearPendingCommand(fb);
+    HYD_ClearStartCommandInput(fb);
+    HYD_StateReporter_SetIdleState(fb, false, false);
+    HYD_StateReporter_SetSegmentSource(fb, HYD_SEGMENT_SOURCE_NONE);
+    HYD_StateReporter_ClearSegmentTag(fb);
 }
 
 /* Diagnostic reporting moved into StateReporter (see state_reporter.c). */
 
-static HDY_BOOL HDY_ValidateNextRequest(const HDY_MotionControlFB* fb,
-                                        HDY_DiagnosticCode* code) {
-    HDY_FbState effectiveState;
+static HYD_BOOL HYD_ValidateNextRequest(const HYD_MotionControlFB* fb,
+                                        HYD_DiagnosticCode* code) {
+    HYD_FbState effectiveState;
 
     if (fb == NULL) {
         return false;
     }
 
-    effectiveState = HDY_MotionValidator_ResolveEffectiveFbState(fb);
-    if (!HDY_MotionValidator_UsesRecipeSource(fb)) {
+    effectiveState = HYD_MotionValidator_ResolveEffectiveFbState(fb);
+    if (!HYD_MotionValidator_UsesRecipeSource(fb)) {
         if (code != NULL) {
-            *code = HDY_DIAG_CODE_COMMAND_NOT_ALLOWED;
+            *code = HYD_DIAG_CODE_COMMAND_NOT_ALLOWED;
         }
         return false;
     }
 
     if (fb->RECIPE_SIZE == 0U) {
         if (code != NULL) {
-            *code = HDY_DIAG_CODE_NO_RECIPE;
+            *code = HYD_DIAG_CODE_NO_RECIPE;
         }
         return false;
     }
 
-    if (effectiveState == HDY_FB_STATE_DONE) {
+    if (effectiveState == HYD_FB_STATE_DONE) {
         if (code != NULL) {
-            *code = HDY_DIAG_CODE_RECIPE_ALREADY_FINISHED;
+            *code = HYD_DIAG_CODE_RECIPE_ALREADY_FINISHED;
         }
         return false;
     }
 
-    if (effectiveState == HDY_FB_STATE_STARTING || effectiveState == HDY_FB_STATE_RUNNING) {
+    if (effectiveState == HYD_FB_STATE_STARTING || effectiveState == HYD_FB_STATE_RUNNING) {
         if (code != NULL) {
-            *code = HDY_DIAG_CODE_SEGMENT_NOT_COMPLETED;
+            *code = HYD_DIAG_CODE_SEGMENT_NOT_COMPLETED;
         }
         return false;
     }
 
-    if (!HDY_IsCommandAllowedInState(HDY_CMD_NEXT, effectiveState)) {
+    if (!HYD_IsCommandAllowedInState(HYD_CMD_NEXT, effectiveState)) {
         if (code != NULL) {
-            *code = HDY_DIAG_CODE_COMMAND_NOT_ALLOWED;
+            *code = HYD_DIAG_CODE_COMMAND_NOT_ALLOWED;
         }
         return false;
     }
 
     if (!fb->SEGMENT_COMPLETED) {
         if (code != NULL) {
-            *code = HDY_DIAG_CODE_SEGMENT_NOT_COMPLETED;
+            *code = HYD_DIAG_CODE_SEGMENT_NOT_COMPLETED;
         }
         return false;
     }
@@ -327,85 +327,85 @@ static HDY_BOOL HDY_ValidateNextRequest(const HDY_MotionControlFB* fb,
     return true;
 }
 
-static void HDY_PrimeSegmentControllers(HDY_MotionControlFB* fb,
-                                        const HDY_MotionSegment* segment,
-                                        HDY_TIME timestamp,
-                                        HDY_BOOL allowFlowCarryover) {
-    HDY_REAL initialPressureControlOutput;
-    HDY_REAL trackingFlowReference;
+static void HYD_PrimeSegmentControllers(HYD_MotionControlFB* fb,
+                                        const HYD_MotionSegment* segment,
+                                        HYD_TIME timestamp,
+                                        HYD_BOOL allowFlowCarryover) {
+    HYD_REAL initialPressureControlOutput;
+    HYD_REAL trackingFlowReference;
 
     if (fb == NULL || segment == NULL) {
         return;
     }
 
     fb->_lastFeedbackTimestamp = timestamp;
-    HDY_RampController_Init(&fb->_rampController, fb->AXIS_REF.pressure, timestamp);
+    HYD_RampController_Init(&fb->_rampController, fb->AXIS_REF.pressure, timestamp);
 
-    trackingFlowReference = HDY_MotionUtils_AbsReal(fb->AXIS_REF.flow);
+    trackingFlowReference = HYD_MotionUtils_AbsReal(fb->AXIS_REF.flow);
     if (trackingFlowReference <= 0.0 && allowFlowCarryover) {
         trackingFlowReference = fb->_lastCommandedFlow;
     }
 
     initialPressureControlOutput = segment->targetFlow;
-    if (segment->mode == HDY_MODE_PRESSURE_CLOSED_LOOP && trackingFlowReference > 0.0) {
+    if (segment->mode == HYD_MODE_PRESSURE_CLOSED_LOOP && trackingFlowReference > 0.0) {
         initialPressureControlOutput = trackingFlowReference;
     }
-    initialPressureControlOutput = HDY_MotionUtils_MinReal(initialPressureControlOutput, segment->maxFlow);
+    initialPressureControlOutput = HYD_MotionUtils_MinReal(initialPressureControlOutput, segment->maxFlow);
     if (initialPressureControlOutput < 0.0) {
         initialPressureControlOutput = 0.0;
     }
 
-    HDY_PressureController_InitState(&fb->_pressureController,
+    HYD_PressureController_InitState(&fb->_pressureController,
                                      fb->AXIS_REF.pressure,
                                      initialPressureControlOutput,
                                      timestamp);
-    if (segment->mode == HDY_MODE_PRESSURE_CLOSED_LOOP && trackingFlowReference > 0.0) {
-        HDY_PressureController_RequestTracking(&fb->_pressureController, initialPressureControlOutput);
+    if (segment->mode == HYD_MODE_PRESSURE_CLOSED_LOOP && trackingFlowReference > 0.0) {
+        HYD_PressureController_RequestTracking(&fb->_pressureController, initialPressureControlOutput);
     }
 }
 
-static HDY_BOOL HDY_BeginSegment(HDY_MotionControlFB* fb,
+static HYD_BOOL HYD_BeginSegment(HYD_MotionControlFB* fb,
                                  size_t segmentIndex,
-                                 HDY_TIME timestamp) {
-    HDY_DiagnosticCode code = HDY_DIAG_CODE_NONE;
-    HDY_BOOL preserveFlowCarryover;
-    const HDY_MotionSegment* sourceSegment;
+                                 HYD_TIME timestamp) {
+    HYD_DiagnosticCode code = HYD_DIAG_CODE_NONE;
+    HYD_BOOL preserveFlowCarryover;
+    const HYD_MotionSegment* sourceSegment;
     size_t resolvedSegmentIndex;
-    HDY_SegmentSource resolvedSource;
+    HYD_SegmentSource resolvedSource;
 
     if (fb == NULL) {
         return false;
     }
 
-    if (!HDY_MotionValidator_ValidateStartRequest(fb, segmentIndex, &code)) {
-        HDY_ProtectionManager_ApplyIdleState(fb, false, false);
-        HDY_ResetReadyContextPreview(fb);
-        HDY_StateReporter_ReportDiagnostic(fb,
+    if (!HYD_MotionValidator_ValidateStartRequest(fb, segmentIndex, &code)) {
+        HYD_ProtectionManager_ApplyIdleState(fb, false, false);
+        HYD_ResetReadyContextPreview(fb);
+        HYD_StateReporter_ReportDiagnostic(fb,
                            code,
-                           HDY_DIAG_SEVERITY_WARNING,
+                           HYD_DIAG_SEVERITY_WARNING,
                            timestamp,
-                           HDY_ResolveStartSourceSegment(fb, segmentIndex, NULL, NULL),
+                           HYD_ResolveStartSourceSegment(fb, segmentIndex, NULL, NULL),
                            NULL);
         return false;
     }
 
     preserveFlowCarryover = fb->SEGMENT_COMPLETED;
-    sourceSegment = HDY_ResolveStartSourceSegment(fb,
+    sourceSegment = HYD_ResolveStartSourceSegment(fb,
                                                   segmentIndex,
                                                   &resolvedSegmentIndex,
                                                   &resolvedSource);
     if (sourceSegment == NULL) {
-        HDY_StateReporter_ReportFault(fb,
-                          HDY_DIAG_CODE_INTERNAL_ERROR,
+        HYD_StateReporter_ReportFault(fb,
+                          HYD_DIAG_CODE_INTERNAL_ERROR,
                           timestamp,
                           NULL,
                           &fb->STATE.references);
         return false;
     }
 
-    HDY_ProtectionManager_ResetRuntimeActuation(fb);
-    HDY_StateReporter_ApplySafeOutputs(fb);
-    HDY_StateReporter_ResetTransitionFlags(fb);
+    HYD_ProtectionManager_ResetRuntimeActuation(fb);
+    HYD_StateReporter_ApplySafeOutputs(fb);
+    HYD_StateReporter_ResetTransitionFlags(fb);
 
     fb->_activeSegment = *sourceSegment;
     fb->_activeSegmentValid = true;
@@ -417,12 +417,12 @@ static HDY_BOOL HDY_BeginSegment(HDY_MotionControlFB* fb,
     fb->SEGMENT_COMPLETED = false;
 
     /* Reset diagnostic criteria layer for new segment */
-    HDY_ErrorMonitor_Reset(&fb->_errorMonitor);
-    HDY_DiagnosticCriteria_ResetState(&fb->_pressureCriteriaState);
-    HDY_DiagnosticCriteria_ResetState(&fb->_flowCriteriaState);
-    HDY_DiagnosticCriteria_ResetState(&fb->_velocityCriteriaState);
-    HDY_DiagnosticCriteria_ResetState(&fb->_positionCriteriaState);
-    HDY_DiagnosticCriteria_ResetState(&fb->_timeoutCriteriaState);
+    HYD_ErrorMonitor_Reset(&fb->_errorMonitor);
+    HYD_DiagnosticCriteria_ResetState(&fb->_pressureCriteriaState);
+    HYD_DiagnosticCriteria_ResetState(&fb->_flowCriteriaState);
+    HYD_DiagnosticCriteria_ResetState(&fb->_velocityCriteriaState);
+    HYD_DiagnosticCriteria_ResetState(&fb->_positionCriteriaState);
+    HYD_DiagnosticCriteria_ResetState(&fb->_timeoutCriteriaState);
     fb->_isSwitchPhase = true;
 
     /* Configure criteria thresholds for this segment (once per segment, not every cycle).
@@ -430,37 +430,37 @@ static HDY_BOOL HDY_BeginSegment(HDY_MotionControlFB* fb,
      * CreateDefaultXxxCriteria (Init) are preserved; only the threshold and
      * diagnostic code are overridden based on segment tolerances. */
     {
-        HDY_REAL pTol = HDY_Segment_GetPressureTolerance(sourceSegment);
-        HDY_REAL fTol = HDY_Segment_GetFlowTolerance(sourceSegment);
-        HDY_REAL vTol = HDY_Segment_GetVelocityTolerance(sourceSegment);
-        HDY_REAL posTol = HDY_Segment_GetPositionTolerance(sourceSegment);
-        HDY_TIME tLim = HDY_Segment_GetTimeoutLimit(sourceSegment);
+        HYD_REAL pTol = HYD_Segment_GetPressureTolerance(sourceSegment);
+        HYD_REAL fTol = HYD_Segment_GetFlowTolerance(sourceSegment);
+        HYD_REAL vTol = HYD_Segment_GetVelocityTolerance(sourceSegment);
+        HYD_REAL posTol = HYD_Segment_GetPositionTolerance(sourceSegment);
+        HYD_TIME tLim = HYD_Segment_GetTimeoutLimit(sourceSegment);
 
-        if (sourceSegment->mode == HDY_MODE_PRESSURE_CLOSED_LOOP && pTol > 0.0) {
-            HDY_ConfigureSegmentCriteria(&fb->_pressureCriteria, pTol,
-                                          HDY_DIAG_CODE_OVER_PRESSURE,
-                                          HDY_PROTECTION_ACTION_DERATE);
+        if (sourceSegment->mode == HYD_MODE_PRESSURE_CLOSED_LOOP && pTol > 0.0) {
+            HYD_ConfigureSegmentCriteria(&fb->_pressureCriteria, pTol,
+                                          HYD_DIAG_CODE_OVER_PRESSURE,
+                                          HYD_PROTECTION_ACTION_DERATE);
         }
         if (fTol > 0.0) {
-            HDY_ConfigureSegmentCriteria(&fb->_flowCriteria, fTol,
-                                          HDY_DIAG_CODE_FLOW_DEVIATION,
-                                          HDY_PROTECTION_ACTION_DERATE);
+            HYD_ConfigureSegmentCriteria(&fb->_flowCriteria, fTol,
+                                          HYD_DIAG_CODE_FLOW_DEVIATION,
+                                          HYD_PROTECTION_ACTION_DERATE);
         }
         if (vTol > 0.0) {
-            HDY_ConfigureSegmentCriteria(&fb->_velocityCriteria, vTol,
-                                          HDY_DIAG_CODE_VELOCITY_DEVIATION,
-                                          HDY_PROTECTION_ACTION_WARNING);
+            HYD_ConfigureSegmentCriteria(&fb->_velocityCriteria, vTol,
+                                          HYD_DIAG_CODE_VELOCITY_DEVIATION,
+                                          HYD_PROTECTION_ACTION_WARNING);
         }
         if (posTol > 0.0) {
-            HDY_ConfigureSegmentCriteria(&fb->_positionCriteria, posTol,
-                                          HDY_DIAG_CODE_POSITION_DEVIATION,
-                                          HDY_PROTECTION_ACTION_WARNING);
+            HYD_ConfigureSegmentCriteria(&fb->_positionCriteria, posTol,
+                                          HYD_DIAG_CODE_POSITION_DEVIATION,
+                                          HYD_PROTECTION_ACTION_WARNING);
         }
         if (tLim > 0.0) {
-            HDY_ConfigureSegmentCriteria(&fb->_timeoutCriteria, tLim,
-                                          HDY_DIAG_CODE_TIMEOUT,
-                                          HDY_PROTECTION_ACTION_STOP);
-            fb->_timeoutCriteria.severity = HDY_DIAG_SEVERITY_FAULT;
+            HYD_ConfigureSegmentCriteria(&fb->_timeoutCriteria, tLim,
+                                          HYD_DIAG_CODE_TIMEOUT,
+                                          HYD_PROTECTION_ACTION_STOP);
+            fb->_timeoutCriteria.severity = HYD_DIAG_SEVERITY_FAULT;
             /* Clamp startup/switch suppress times so they never exceed the
              * timeout limit itself — a timeout that is fully suppressed by
              * its own startup window would be undetectable. */
@@ -476,36 +476,36 @@ static HDY_BOOL HDY_BeginSegment(HDY_MotionControlFB* fb,
     /* Enable startup suppress for first 500ms, then switch suppress for next 300ms.
      * _switchSuppressEndTime uses the pressure criteria's startup+switch window
      * as a unified transition period; all criteria share this end time.
-     * Must be computed AFTER HDY_ConfigureSegmentCriteria so that it reflects
+     * Must be computed AFTER HYD_ConfigureSegmentCriteria so that it reflects
      * the current segment's criteria, not the previous segment's. */
     fb->_switchSuppressEndTime = fb->_pressureCriteria.startupSuppressTime +
                                   fb->_pressureCriteria.switchSuppressTime;
 
-    HDY_PrimeSegmentControllers(fb, &fb->_activeSegment, timestamp, preserveFlowCarryover);
+    HYD_PrimeSegmentControllers(fb, &fb->_activeSegment, timestamp, preserveFlowCarryover);
 
-    HDY_StateReporter_SetSegmentTag(fb, fb->_activeSegment.segmentTag);
-    HDY_StateReporter_SetSegmentSource(fb, resolvedSource);
-    HDY_StateReporter_ClearCurrentDiagnostic(fb);
-    HDY_StateReporter_SetActive(fb, true);
-    HDY_StateReporter_SetFinished(fb, false);
-    HDY_StateReporter_SetFault(fb, false);
-    HDY_StateReporter_SetStatus(fb, HDY_STATUS_RUNNING);
-    HDY_StateReporter_SetPlannedDirection(fb, fb->_activeSegment.direction);
-    HDY_StateReporter_SetFbState(fb, HDY_FB_STATE_STARTING);
+    HYD_StateReporter_SetSegmentTag(fb, fb->_activeSegment.segmentTag);
+    HYD_StateReporter_SetSegmentSource(fb, resolvedSource);
+    HYD_StateReporter_ClearCurrentDiagnostic(fb);
+    HYD_StateReporter_SetActive(fb, true);
+    HYD_StateReporter_SetFinished(fb, false);
+    HYD_StateReporter_SetFault(fb, false);
+    HYD_StateReporter_SetStatus(fb, HYD_STATUS_RUNNING);
+    HYD_StateReporter_SetPlannedDirection(fb, fb->_activeSegment.direction);
+    HYD_StateReporter_SetFbState(fb, HYD_FB_STATE_STARTING);
     fb->_executionId++;
     return true;
 }
 
-static HDY_BOOL HDY_AdvanceToNextSegment(HDY_MotionControlFB* fb,
-                                         HDY_TIME timestamp) {
+static HYD_BOOL HYD_AdvanceToNextSegment(HYD_MotionControlFB* fb,
+                                         HYD_TIME timestamp) {
     if (fb == NULL) {
         return false;
     }
 
-    if (!HDY_MotionValidator_UsesRecipeSource(fb)) {
-        HDY_StateReporter_ReportDiagnostic(fb,
-                                           HDY_DIAG_CODE_COMMAND_NOT_ALLOWED,
-                                           HDY_DIAG_SEVERITY_WARNING,
+    if (!HYD_MotionValidator_UsesRecipeSource(fb)) {
+        HYD_StateReporter_ReportDiagnostic(fb,
+                                           HYD_DIAG_CODE_COMMAND_NOT_ALLOWED,
+                                           HYD_DIAG_SEVERITY_WARNING,
                                            timestamp,
                                            &fb->_activeSegment,
                                            &fb->STATE.references);
@@ -513,26 +513,26 @@ static HDY_BOOL HDY_AdvanceToNextSegment(HDY_MotionControlFB* fb,
     }
 
     if (fb->STATE.currentSegmentIndex + 1U < fb->RECIPE_SIZE) {
-        return HDY_BeginSegment(fb, fb->STATE.currentSegmentIndex + 1U, timestamp);
+        return HYD_BeginSegment(fb, fb->STATE.currentSegmentIndex + 1U, timestamp);
     }
 
-    HDY_ProtectionManager_ApplyIdleState(fb, true, true);
-    HDY_StateReporter_ClearSegmentTag(fb);
-    HDY_StateReporter_SetSegmentSource(fb, HDY_SEGMENT_SOURCE_NONE);
-    HDY_ResetReadyContextPreview(fb);
-    HDY_StateReporter_ClearCurrentDiagnostic(fb);
+    HYD_ProtectionManager_ApplyIdleState(fb, true, true);
+    HYD_StateReporter_ClearSegmentTag(fb);
+    HYD_StateReporter_SetSegmentSource(fb, HYD_SEGMENT_SOURCE_NONE);
+    HYD_ResetReadyContextPreview(fb);
+    HYD_StateReporter_ClearCurrentDiagnostic(fb);
     return true;
 }
 
-static void HDY_EnterHoldNow(HDY_MotionControlFB* fb,
-                             HDY_TIME timestamp) {
+static void HYD_EnterHoldNow(HYD_MotionControlFB* fb,
+                             HYD_TIME timestamp) {
     if (fb == NULL) {
         return;
     }
 
     if (!fb->_activeSegmentValid) {
-        HDY_StateReporter_ReportFault(fb,
-                        HDY_DIAG_CODE_INTERNAL_ERROR,
+        HYD_StateReporter_ReportFault(fb,
+                        HYD_DIAG_CODE_INTERNAL_ERROR,
                         timestamp,
                         NULL,
                         &fb->STATE.references);
@@ -541,31 +541,31 @@ static void HDY_EnterHoldNow(HDY_MotionControlFB* fb,
 
     fb->_holdStateTime = timestamp;
     fb->_lastFeedbackTimestamp = timestamp;
-    HDY_StateReporter_SetSegmentTag(fb, fb->_activeSegment.segmentTag);
-    HDY_StateReporter_SetSegmentSource(fb, fb->_activeSegmentSource);
-    HDY_StateReporter_SetHoldState(fb);
+    HYD_StateReporter_SetSegmentTag(fb, fb->_activeSegment.segmentTag);
+    HYD_StateReporter_SetSegmentSource(fb, fb->_activeSegmentSource);
+    HYD_StateReporter_SetHoldState(fb);
 }
 
-static HDY_BOOL HDY_ResumeHeldSegment(HDY_MotionControlFB* fb,
-                                      HDY_TIME timestamp) {
-    HDY_TIME holdDuration;
+static HYD_BOOL HYD_ResumeHeldSegment(HYD_MotionControlFB* fb,
+                                      HYD_TIME timestamp) {
+    HYD_TIME holdDuration;
 
     if (fb == NULL) {
         return false;
     }
 
     if (!fb->_activeSegmentValid) {
-        HDY_StateReporter_ReportFault(fb,
-                        HDY_DIAG_CODE_INTERNAL_ERROR,
+        HYD_StateReporter_ReportFault(fb,
+                        HYD_DIAG_CODE_INTERNAL_ERROR,
                         timestamp,
                         NULL,
                         &fb->STATE.references);
         return false;
     }
 
-    if (!HDY_MotionUtils_AxisRefIsValid(&fb->AXIS_REF)) {
-        HDY_StateReporter_ReportFault(fb,
-                        HDY_DIAG_CODE_SENSOR_FAULT,
+    if (!HYD_MotionUtils_AxisRefIsValid(&fb->AXIS_REF)) {
+        HYD_StateReporter_ReportFault(fb,
+                        HYD_DIAG_CODE_SENSOR_FAULT,
                         fb->AXIS_REF.timestamp,
                         &fb->_activeSegment,
                         &fb->STATE.references);
@@ -573,8 +573,8 @@ static HDY_BOOL HDY_ResumeHeldSegment(HDY_MotionControlFB* fb,
     }
 
     if (fb->_lastFeedbackTimestamp >= 0.0 && fb->AXIS_REF.timestamp < fb->_lastFeedbackTimestamp) {
-        HDY_StateReporter_ReportFault(fb,
-                        HDY_DIAG_CODE_TIMESTAMP_ROLLBACK,
+        HYD_StateReporter_ReportFault(fb,
+                        HYD_DIAG_CODE_TIMESTAMP_ROLLBACK,
                         fb->AXIS_REF.timestamp,
                         &fb->_activeSegment,
                         &fb->STATE.references);
@@ -589,46 +589,46 @@ static HDY_BOOL HDY_ResumeHeldSegment(HDY_MotionControlFB* fb,
     fb->_segmentStartTime += holdDuration;
     fb->_holdStateTime = 0.0;
     fb->SEGMENT_COMPLETED = false;
-    HDY_PrimeSegmentControllers(fb, &fb->_activeSegment, timestamp, true);
-    HDY_StateReporter_SetSegmentTag(fb, fb->_activeSegment.segmentTag);
-    HDY_StateReporter_SetSegmentSource(fb, fb->_activeSegmentSource);
-    HDY_StateReporter_SetActive(fb, true);
-    HDY_StateReporter_SetFinished(fb, false);
-    HDY_StateReporter_SetFault(fb, false);
-    HDY_StateReporter_SetStatus(fb, HDY_STATUS_RUNNING);
-    HDY_StateReporter_SetPlannedDirection(fb, fb->_activeSegment.direction);
-    HDY_StateReporter_SetFbState(fb, HDY_FB_STATE_STARTING);
+    HYD_PrimeSegmentControllers(fb, &fb->_activeSegment, timestamp, true);
+    HYD_StateReporter_SetSegmentTag(fb, fb->_activeSegment.segmentTag);
+    HYD_StateReporter_SetSegmentSource(fb, fb->_activeSegmentSource);
+    HYD_StateReporter_SetActive(fb, true);
+    HYD_StateReporter_SetFinished(fb, false);
+    HYD_StateReporter_SetFault(fb, false);
+    HYD_StateReporter_SetStatus(fb, HYD_STATUS_RUNNING);
+    HYD_StateReporter_SetPlannedDirection(fb, fb->_activeSegment.direction);
+    HYD_StateReporter_SetFbState(fb, HYD_FB_STATE_STARTING);
     return true;
 }
 
-static void HDY_AbortNow(HDY_MotionControlFB* fb,
-                         HDY_TIME timestamp) {
+static void HYD_AbortNow(HYD_MotionControlFB* fb,
+                         HYD_TIME timestamp) {
     if (fb == NULL) {
         return;
     }
 
-    HDY_ClearStartCommandInput(fb);
-    HDY_ProtectionManager_ApplyIdleState(fb, true, false);
+    HYD_ClearStartCommandInput(fb);
+    HYD_ProtectionManager_ApplyIdleState(fb, true, false);
     /* Ensure outputs are forced to a safe state immediately on abort */
-    HDY_StateReporter_ApplySafeOutputs(fb);
+    HYD_StateReporter_ApplySafeOutputs(fb);
     fb->_holdStateTime = 0.0;
     fb->_lastCommandedFlow = 0.0;
-    HDY_ResetReadyContextPreview(fb);
-    HDY_StateReporter_ClearSegmentTag(fb);
-    HDY_StateReporter_SetSegmentSource(fb, HDY_SEGMENT_SOURCE_NONE);
-    HDY_StateReporter_SetFbState(fb, HDY_FB_STATE_ABORTED);
-    HDY_StateReporter_ReportDiagnostic(fb,
-                                       HDY_DIAG_CODE_ABORTED,
-                                       HDY_DIAG_SEVERITY_INFO,
+    HYD_ResetReadyContextPreview(fb);
+    HYD_StateReporter_ClearSegmentTag(fb);
+    HYD_StateReporter_SetSegmentSource(fb, HYD_SEGMENT_SOURCE_NONE);
+    HYD_StateReporter_SetFbState(fb, HYD_FB_STATE_ABORTED);
+    HYD_StateReporter_ReportDiagnostic(fb,
+                                       HYD_DIAG_CODE_ABORTED,
+                                       HYD_DIAG_SEVERITY_INFO,
                                        timestamp,
                                        NULL,
                                        &fb->STATE.references);
     fb->_executionId++;
 }
 
-static void HDY_MaintainNonExecutingState(HDY_MotionControlFB* fb,
-                                          HDY_BOOL autoClearLiveDiagnostic) {
-    HDY_FbState preservedState;
+static void HYD_MaintainNonExecutingState(HYD_MotionControlFB* fb,
+                                          HYD_BOOL autoClearLiveDiagnostic) {
+    HYD_FbState preservedState;
 
     if (fb == NULL) {
         return;
@@ -636,82 +636,82 @@ static void HDY_MaintainNonExecutingState(HDY_MotionControlFB* fb,
 
     if (fb->STATE.finished) {
         preservedState = fb->FB_STATE;
-        HDY_ProtectionManager_ApplyIdleState(fb, true, fb->SEGMENT_COMPLETED);
-        if (preservedState == HDY_FB_STATE_ABORTED) {
-            HDY_StateReporter_SetFbState(fb, HDY_FB_STATE_ABORTED);
+        HYD_ProtectionManager_ApplyIdleState(fb, true, fb->SEGMENT_COMPLETED);
+        if (preservedState == HYD_FB_STATE_ABORTED) {
+            HYD_StateReporter_SetFbState(fb, HYD_FB_STATE_ABORTED);
         }
         if (autoClearLiveDiagnostic) {
-            HDY_StateReporter_ClearLiveDiagnosticInNonFaultHold(fb);
+            HYD_StateReporter_ClearLiveDiagnosticInNonFaultHold(fb);
         }
         return;
     }
 
     if (fb->SEGMENT_COMPLETED) {
-        HDY_ProtectionManager_ApplyIdleState(fb, false, true);
+        HYD_ProtectionManager_ApplyIdleState(fb, false, true);
         if (autoClearLiveDiagnostic) {
-            HDY_StateReporter_ClearLiveDiagnosticInNonFaultHold(fb);
+            HYD_StateReporter_ClearLiveDiagnosticInNonFaultHold(fb);
         }
         return;
     }
 
-    HDY_ProtectionManager_ApplyIdleState(fb, false, false);
-    HDY_ResetReadyContextPreview(fb);
+    HYD_ProtectionManager_ApplyIdleState(fb, false, false);
+    HYD_ResetReadyContextPreview(fb);
     if (autoClearLiveDiagnostic) {
-        HDY_StateReporter_ClearLiveDiagnosticInNonFaultHold(fb);
+        HYD_StateReporter_ClearLiveDiagnosticInNonFaultHold(fb);
     }
 }
 
-static void HDY_MaintainPausedHoldState(HDY_MotionControlFB* fb,
-                                        HDY_BOOL autoClearLiveDiagnostic) {
+static void HYD_MaintainPausedHoldState(HYD_MotionControlFB* fb,
+                                        HYD_BOOL autoClearLiveDiagnostic) {
     if (fb == NULL) {
         return;
     }
 
     if (!fb->_activeSegmentValid) {
-        HDY_StateReporter_ReportFault(fb,
-                        HDY_DIAG_CODE_INTERNAL_ERROR,
+        HYD_StateReporter_ReportFault(fb,
+                        HYD_DIAG_CODE_INTERNAL_ERROR,
                         fb->AXIS_REF.timestamp,
                         NULL,
                         &fb->STATE.references);
         return;
     }
 
-    HDY_StateReporter_SetSegmentTag(fb, fb->_activeSegment.segmentTag);
-    HDY_StateReporter_SetSegmentSource(fb, fb->_activeSegmentSource);
-    HDY_StateReporter_SetHoldState(fb);
+    HYD_StateReporter_SetSegmentTag(fb, fb->_activeSegment.segmentTag);
+    HYD_StateReporter_SetSegmentSource(fb, fb->_activeSegmentSource);
+    HYD_StateReporter_SetHoldState(fb);
     if (autoClearLiveDiagnostic) {
-        HDY_StateReporter_ClearLiveDiagnosticInNonFaultHold(fb);
+        HYD_StateReporter_ClearLiveDiagnosticInNonFaultHold(fb);
     }
 }
 
-static HDY_BOOL HDY_MotionControlFB_ConsumePendingCommand(HDY_MotionControlFB* fb,
-                                                          HDY_FbCommand* processedCommand) {
-    HDY_FbCommand command;
-    HDY_UINT segmentIndex;
-    HDY_TIME timestamp;
-    HDY_FbState effectiveState;
+static HYD_BOOL HYD_MotionControlFB_ConsumePendingCommand(HYD_MotionControlFB* fb,
+                                                          HYD_FbCommand* processedCommand) {
+    HYD_FbCommand command;
+    HYD_UINT segmentIndex;
+    HYD_TIME timestamp;
+    HYD_FbState effectiveState;
 
     if (processedCommand != NULL) {
-        *processedCommand = HDY_CMD_NONE;
+        *processedCommand = HYD_CMD_NONE;
     }
 
-    if (fb == NULL || fb->_pendingCommand == HDY_CMD_NONE) {
+    if (fb == NULL || fb->_pendingCommand == HYD_CMD_NONE) {
         return true;
     }
 
     command = fb->_pendingCommand;
     segmentIndex = fb->_pendingCommandSegmentIndex;
     timestamp = fb->_pendingCommandTimestamp;
-    HDY_ClearPendingCommand(fb);
+    HYD_ClearPendingCommand(fb);
 
     if (processedCommand != NULL) {
         *processedCommand = command;
     }
 
-    effectiveState = HDY_MotionValidator_ResolveEffectiveFbState(fb);
-    if (!HDY_IsCommandAllowedInState(command, effectiveState)) {
-        if (effectiveState != HDY_FB_STATE_FAULT) {
-            HDY_ReportCommandNotAllowed(fb,
+    effectiveState = HYD_MotionValidator_ResolveEffectiveFbState(fb);
+    if (!HYD_IsCommandAllowedInState(command, effectiveState)) {
+        if (effectiveState != HYD_FB_STATE_FAULT) {
+            HYD_ReportCommandNotAllowed(fb,
                                         command,
                                         effectiveState,
                                         timestamp,
@@ -722,78 +722,78 @@ static HDY_BOOL HDY_MotionControlFB_ConsumePendingCommand(HDY_MotionControlFB* f
     }
 
     switch (command) {
-        case HDY_CMD_START:
-            (void)HDY_BeginSegment(fb, segmentIndex, timestamp);
+        case HYD_CMD_START:
+            (void)HYD_BeginSegment(fb, segmentIndex, timestamp);
             return true;
-        case HDY_CMD_NEXT:
-            (void)HDY_AdvanceToNextSegment(fb, timestamp);
+        case HYD_CMD_NEXT:
+            (void)HYD_AdvanceToNextSegment(fb, timestamp);
             return true;
-        case HDY_CMD_HOLD:
-            HDY_EnterHoldNow(fb, timestamp);
+        case HYD_CMD_HOLD:
+            HYD_EnterHoldNow(fb, timestamp);
             return false;
-        case HDY_CMD_RESUME:
-            return HDY_ResumeHeldSegment(fb, timestamp);
-        case HDY_CMD_ABORT:
-            HDY_AbortNow(fb, timestamp);
+        case HYD_CMD_RESUME:
+            return HYD_ResumeHeldSegment(fb, timestamp);
+        case HYD_CMD_ABORT:
+            HYD_AbortNow(fb, timestamp);
             return false;
         default:
             return true;
     }
 }
 
-static void HDY_MotionControlFB_RunStateMachine(HDY_MotionControlFB* fb,
-                                                HDY_BOOL allowRunningExecution) {
+static void HYD_MotionControlFB_RunStateMachine(HYD_MotionControlFB* fb,
+                                                HYD_BOOL allowRunningExecution) {
     if (fb == NULL || !allowRunningExecution) {
         return;
     }
 
     switch (fb->FB_STATE) {
-        case HDY_FB_STATE_STARTING:
-        case HDY_FB_STATE_RUNNING:
-            HDY_MotionControlFB_RunRunningState(fb);
+        case HYD_FB_STATE_STARTING:
+        case HYD_FB_STATE_RUNNING:
+            HYD_MotionControlFB_RunRunningState(fb);
             break;
-        case HDY_FB_STATE_DISABLED:
-        case HDY_FB_STATE_IDLE:
-        case HDY_FB_STATE_READY:
-        case HDY_FB_STATE_SEGMENT_COMPLETE:
-        case HDY_FB_STATE_HOLD:
-        case HDY_FB_STATE_DONE:
-        case HDY_FB_STATE_ABORTED:
-        case HDY_FB_STATE_FAULT:
+        case HYD_FB_STATE_DISABLED:
+        case HYD_FB_STATE_IDLE:
+        case HYD_FB_STATE_READY:
+        case HYD_FB_STATE_SEGMENT_COMPLETE:
+        case HYD_FB_STATE_HOLD:
+        case HYD_FB_STATE_DONE:
+        case HYD_FB_STATE_ABORTED:
+        case HYD_FB_STATE_FAULT:
         default:
             break;
     }
 }
 
-static void HDY_MotionControlFB_PublishOutputs(HDY_MotionControlFB* fb,
-                                                HDY_BOOL autoClearLiveDiagnostic) {
+static void HYD_MotionControlFB_PublishOutputs(HYD_MotionControlFB* fb,
+                                                HYD_BOOL autoClearLiveDiagnostic) {
     if (fb == NULL) {
         return;
     }
 
     if (fb->STATE.faultActive) {
-        HDY_ProtectionManager_ApplyFaultHold(fb);
+        HYD_ProtectionManager_ApplyFaultHold(fb);
         fb->SEGMENT_CHANGED = fb->_segmentChangedFlag;
         fb->_segmentChangedFlag = false;
         return;
     }
 
     switch (fb->FB_STATE) {
-        case HDY_FB_STATE_STARTING:
-        case HDY_FB_STATE_RUNNING:
+        case HYD_FB_STATE_STARTING:
+        case HYD_FB_STATE_RUNNING:
             break;
-        case HDY_FB_STATE_HOLD:
-            HDY_MaintainPausedHoldState(fb, autoClearLiveDiagnostic);
+        case HYD_FB_STATE_HOLD:
+            HYD_MaintainPausedHoldState(fb, autoClearLiveDiagnostic);
             break;
-        case HDY_FB_STATE_DISABLED:
-        case HDY_FB_STATE_IDLE:
-        case HDY_FB_STATE_READY:
-        case HDY_FB_STATE_SEGMENT_COMPLETE:
-        case HDY_FB_STATE_DONE:
-        case HDY_FB_STATE_ABORTED:
-        case HDY_FB_STATE_FAULT:
+        case HYD_FB_STATE_DISABLED:
+        case HYD_FB_STATE_IDLE:
+        case HYD_FB_STATE_READY:
+        case HYD_FB_STATE_SEGMENT_COMPLETE:
+        case HYD_FB_STATE_DONE:
+        case HYD_FB_STATE_ABORTED:
+        case HYD_FB_STATE_FAULT:
         default:
-            HDY_MaintainNonExecutingState(fb, autoClearLiveDiagnostic);
+            HYD_MaintainNonExecutingState(fb, autoClearLiveDiagnostic);
             break;
     }
 
@@ -802,15 +802,15 @@ static void HDY_MotionControlFB_PublishOutputs(HDY_MotionControlFB* fb,
 }
 
 /*
- * Configure a single HDY_DiagnosticCriteria from segment tolerances.
- * Called once per segment start (HDY_BeginSegment), not every cycle.
+ * Configure a single HYD_DiagnosticCriteria from segment tolerances.
+ * Called once per segment start (HYD_BeginSegment), not every cycle.
  * This preserves debounce/hysteresis/fault-escalation state across cycles
  * while keeping the criteria configuration stable for the segment lifetime.
  */
-static void HDY_ConfigureSegmentCriteria(HDY_DiagnosticCriteria* criteria,
-                                          HDY_REAL baseThreshold,
-                                          HDY_DiagnosticCode code,
-                                          HDY_ProtectionAction action) {
+static void HYD_ConfigureSegmentCriteria(HYD_DiagnosticCriteria* criteria,
+                                          HYD_REAL baseThreshold,
+                                          HYD_DiagnosticCode code,
+                                          HYD_ProtectionAction action) {
     if (criteria == NULL) {
         return;
     }
@@ -820,22 +820,22 @@ static void HDY_ConfigureSegmentCriteria(HDY_DiagnosticCriteria* criteria,
      * fields that must adapt to the current segment's tolerances. */
     criteria->baseThreshold = baseThreshold;
     criteria->diagnosticCode = code;
-    criteria->severity = HDY_DIAG_SEVERITY_WARNING;
+    criteria->severity = HYD_DIAG_SEVERITY_WARNING;
     criteria->protectionAction = action;
 }
 
-static void HDY_UpdateMonitorPositionError(HDY_ErrorMonitor* monitor,
-                                           const HDY_MotionSegment* segment,
-                                           const HDY_AxisRef* axisRef,
-                                           HDY_TIME currentTime) {
-    HDY_BOOL wasActive;
-    HDY_REAL positionTolerance;
+static void HYD_UpdateMonitorPositionError(HYD_ErrorMonitor* monitor,
+                                           const HYD_MotionSegment* segment,
+                                           const HYD_AxisRef* axisRef,
+                                           HYD_TIME currentTime) {
+    HYD_BOOL wasActive;
+    HYD_REAL positionTolerance;
 
     if (monitor == NULL || segment == NULL || axisRef == NULL) {
         return;
     }
 
-    positionTolerance = HDY_Segment_GetPositionTolerance(segment);
+    positionTolerance = HYD_Segment_GetPositionTolerance(segment);
     wasActive = monitor->positionErrorActive;
     monitor->positionError = segment->targetPosition - axisRef->position;
 
@@ -859,18 +859,18 @@ static void HDY_UpdateMonitorPositionError(HDY_ErrorMonitor* monitor,
     monitor->positionErrorDuration = currentTime - monitor->positionErrorStartTime;
 }
 
-static void HDY_ExecuteActiveSegmentControl(HDY_MotionControlFB* fb,
-                                            const HDY_MotionSegment* segment,
-                                            HDY_REAL elapsed,
-                                            HDY_RampControllerOutput* rampOutput,
-                                            HDY_MotionPlannerOutput* plannerOutput,
-                                            HDY_PressureControllerOutput* pressureOutput,
-                                            HDY_PumpConverterOutput* pumpOutput,
-                                            HDY_ExecutionReference* executionReference) {
-    HDY_RampControllerInput rampInput;
-    HDY_MotionPlannerInput plannerInput;
-    HDY_PressureControllerInput pressureInput;
-    HDY_PumpConverterInput pumpInput;
+static void HYD_ExecuteActiveSegmentControl(HYD_MotionControlFB* fb,
+                                            const HYD_MotionSegment* segment,
+                                            HYD_REAL elapsed,
+                                            HYD_RampControllerOutput* rampOutput,
+                                            HYD_MotionPlannerOutput* plannerOutput,
+                                            HYD_PressureControllerOutput* pressureOutput,
+                                            HYD_PumpConverterOutput* pumpOutput,
+                                            HYD_ExecutionReference* executionReference) {
+    HYD_RampControllerInput rampInput;
+    HYD_MotionPlannerInput plannerInput;
+    HYD_PressureControllerInput pressureInput;
+    HYD_PumpConverterInput pumpInput;
 
     if (fb == NULL || segment == NULL || rampOutput == NULL || plannerOutput == NULL ||
         pressureOutput == NULL || pumpOutput == NULL || executionReference == NULL) {
@@ -880,21 +880,21 @@ static void HDY_ExecuteActiveSegmentControl(HDY_MotionControlFB* fb,
     rampInput.targetPressure = segment->targetPressure;
     rampInput.rampRate = segment->pressureRampRate;
     rampInput.currentTime = fb->AXIS_REF.timestamp;
-    HDY_RampController_Execute(&fb->_rampController, &rampInput, rampOutput);
+    HYD_RampController_Execute(&fb->_rampController, &rampInput, rampOutput);
 
     memset(plannerOutput, 0, sizeof(*plannerOutput));
     memset(pressureOutput, 0, sizeof(*pressureOutput));
-    plannerOutput->direction = HDY_DIRECTION_HOLD;
-    pressureOutput->appliedStrategy = HDY_PRESSURE_CONTROLLER_NONE;
+    plannerOutput->direction = HYD_DIRECTION_HOLD;
+    pressureOutput->appliedStrategy = HYD_PRESSURE_CONTROLLER_NONE;
 
-    if (segment->mode == HDY_MODE_PRESSURE_CLOSED_LOOP) {
+    if (segment->mode == HYD_MODE_PRESSURE_CLOSED_LOOP) {
         pressureInput.targetPressure = rampOutput->rampedPressure;
         pressureInput.measuredPressure = fb->AXIS_REF.pressure;
         pressureInput.feedforwardFlow = segment->targetFlow;
         pressureInput.outputMin = 0.0;
         pressureInput.outputMax = segment->maxFlow;
         pressureInput.timestamp = fb->AXIS_REF.timestamp;
-        HDY_PressureController_Execute(segment,
+        HYD_PressureController_Execute(segment,
                                        &fb->_pressureController,
                                        &pressureInput,
                                        pressureOutput);
@@ -905,74 +905,74 @@ static void HDY_ExecuteActiveSegmentControl(HDY_MotionControlFB* fb,
         plannerInput.segment = segment;
         plannerInput.elapsedTime = elapsed;
         plannerInput.rampedPressure = rampOutput->rampedPressure;
-        HDY_MotionPlanner_Execute(&plannerInput, plannerOutput);
+        HYD_MotionPlanner_Execute(&plannerInput, plannerOutput);
     }
 
     pumpInput.requestedFlow = plannerOutput->targetFlow;
     pumpInput.flowToPumpSpeedGain = fb->FLOW_TO_PUMP_SPEED_GAIN;
     pumpInput.pumpSpeedLimit = fb->PUMP_SPEED_LIMIT;
     pumpInput.direction = plannerOutput->direction;
-    HDY_PumpConverter_Execute(&pumpInput, pumpOutput);
+    HYD_PumpConverter_Execute(&pumpInput, pumpOutput);
 
     executionReference->elapsedTime = elapsed;
-    executionReference->pressureReference = (segment->mode == HDY_MODE_PRESSURE_CLOSED_LOOP)
+    executionReference->pressureReference = (segment->mode == HYD_MODE_PRESSURE_CLOSED_LOOP)
         ? rampOutput->rampedPressure
         : segment->targetPressure;
     executionReference->flowReference = pumpOutput->commandFlow;
     executionReference->velocityReference = plannerOutput->targetVelocity;
 }
 
-static void HDY_UpdateExecutionDiagnostics(HDY_MotionControlFB* fb,
-                                           const HDY_MotionSegment* segment,
-                                           const HDY_ExecutionReference* executionReference,
-                                           HDY_REAL elapsed) {
-    HDY_REAL pressureTolerance;
-    HDY_REAL flowTolerance;
-    HDY_REAL positionTolerance;
-    HDY_REAL velocityTolerance;
-    HDY_REAL velocityReferenceAbs;
-    HDY_REAL actualVelocityAbs;
-    HDY_DiagnosticResult pressureResult;
-    HDY_DiagnosticResult flowResult;
-    HDY_DiagnosticResult velocityResult;
-    HDY_DiagnosticResult positionResult;
-    HDY_DiagnosticCode priorityCode = HDY_DIAG_CODE_NONE;
-    HDY_DiagnosticSeverity prioritySeverity = HDY_DIAG_SEVERITY_NONE;
-    HDY_BOOL overPressure = false;
-    HDY_BOOL underPressure = false;
-    HDY_BOOL flowDeviation = false;
-    HDY_BOOL positionDeviation = false;
-    HDY_BOOL velocityDeviation = false;
-    HDY_BOOL timeout = false;
-    HDY_REAL pressureError = 0.0;
-    HDY_REAL flowError = 0.0;
-    HDY_REAL velocityError = 0.0;
+static void HYD_UpdateExecutionDiagnostics(HYD_MotionControlFB* fb,
+                                           const HYD_MotionSegment* segment,
+                                           const HYD_ExecutionReference* executionReference,
+                                           HYD_REAL elapsed) {
+    HYD_REAL pressureTolerance;
+    HYD_REAL flowTolerance;
+    HYD_REAL positionTolerance;
+    HYD_REAL velocityTolerance;
+    HYD_REAL velocityReferenceAbs;
+    HYD_REAL actualVelocityAbs;
+    HYD_DiagnosticResult pressureResult;
+    HYD_DiagnosticResult flowResult;
+    HYD_DiagnosticResult velocityResult;
+    HYD_DiagnosticResult positionResult;
+    HYD_DiagnosticCode priorityCode = HYD_DIAG_CODE_NONE;
+    HYD_DiagnosticSeverity prioritySeverity = HYD_DIAG_SEVERITY_NONE;
+    HYD_BOOL overPressure = false;
+    HYD_BOOL underPressure = false;
+    HYD_BOOL flowDeviation = false;
+    HYD_BOOL positionDeviation = false;
+    HYD_BOOL velocityDeviation = false;
+    HYD_BOOL timeout = false;
+    HYD_REAL pressureError = 0.0;
+    HYD_REAL flowError = 0.0;
+    HYD_REAL velocityError = 0.0;
 
     /* Derive suppress flags from segment elapsed time and criteria configuration.
      * isStartupPhase: determined per-criteria from its own startupSuppressTime.
      * isSwitchPhase: shared flag cleared after startup suppress window elapses. */
-    HDY_BOOL isStartupPhase = false;  /* Computed per-criteria below */
-    HDY_BOOL isSwitchPhase = false;
+    HYD_BOOL isStartupPhase = false;  /* Computed per-criteria below */
+    HYD_BOOL isSwitchPhase = false;
 
     if (fb == NULL || segment == NULL || executionReference == NULL) {
         return;
     }
 
-    pressureTolerance = HDY_Segment_GetPressureTolerance(segment);
-    flowTolerance = HDY_Segment_GetFlowTolerance(segment);
-    positionTolerance = HDY_Segment_GetPositionTolerance(segment);
-    velocityTolerance = HDY_Segment_GetVelocityTolerance(segment);
+    pressureTolerance = HYD_Segment_GetPressureTolerance(segment);
+    flowTolerance = HYD_Segment_GetFlowTolerance(segment);
+    positionTolerance = HYD_Segment_GetPositionTolerance(segment);
+    velocityTolerance = HYD_Segment_GetVelocityTolerance(segment);
 
     /* Determine suppress phases from each criteria's own configuration and elapsed time.
      * Each diagnostic channel independently determines its startup phase based on
      * its own startupSuppressTime. Switch phase is shared across all channels. */
     isSwitchPhase = fb->_isSwitchPhase;
 
-    HDY_ErrorMonitor_Update(&fb->_errorMonitor,
+    HYD_ErrorMonitor_Update(&fb->_errorMonitor,
                             &fb->AXIS_REF,
                             executionReference,
                             fb->AXIS_REF.timestamp);
-    HDY_UpdateMonitorPositionError(&fb->_errorMonitor,
+    HYD_UpdateMonitorPositionError(&fb->_errorMonitor,
                                    segment,
                                    &fb->AXIS_REF,
                                    fb->AXIS_REF.timestamp);
@@ -981,10 +981,10 @@ static void HDY_UpdateExecutionDiagnostics(HDY_MotionControlFB* fb,
     velocityError = fb->_errorMonitor.velocityError;
 
     /* --- Pressure diagnostics --- */
-    /* Criteria was configured once in HDY_BeginSegment; only check here. */
-    if (segment->mode == HDY_MODE_PRESSURE_CLOSED_LOOP && pressureTolerance > 0.0) {
-        isStartupPhase = HDY_IsStartupSuppressActive(elapsed, fb->_pressureCriteria.startupSuppressTime);
-        if (HDY_DiagnosticCriteria_CheckPressure(&pressureResult,
+    /* Criteria was configured once in HYD_BeginSegment; only check here. */
+    if (segment->mode == HYD_MODE_PRESSURE_CLOSED_LOOP && pressureTolerance > 0.0) {
+        isStartupPhase = HYD_IsStartupSuppressActive(elapsed, fb->_pressureCriteria.startupSuppressTime);
+        if (HYD_DiagnosticCriteria_CheckPressure(&pressureResult,
                                                  &fb->_errorMonitor,
                                                  &fb->_pressureCriteria,
                                                  &fb->_pressureCriteriaState,
@@ -999,24 +999,24 @@ static void HDY_UpdateExecutionDiagnostics(HDY_MotionControlFB* fb,
                 underPressure = true;
             }
             /* Check fault escalation: WARNING -> FAULT after sustained duration */
-            HDY_DiagnosticCriteria_CheckFaultEscalation(&pressureResult,
+            HYD_DiagnosticCriteria_CheckFaultEscalation(&pressureResult,
                                                          &fb->_pressureCriteria,
                                                          &fb->_pressureCriteriaState,
                                                          fb->AXIS_REF.timestamp);
-            if (pressureResult.severity == HDY_DIAG_SEVERITY_FAULT) {
+            if (pressureResult.severity == HYD_DIAG_SEVERITY_FAULT) {
                 overPressure = true;  /* Ensure fault is propagated */
             }
         }
     } else {
-        HDY_DiagnosticCriteria_ResetState(&fb->_pressureCriteriaState);
+        HYD_DiagnosticCriteria_ResetState(&fb->_pressureCriteriaState);
     }
 
     /* --- Flow diagnostics --- */
     /* Removed hardcoded elapsed > 0.1 gate; the criteria layer's
      * startup/switch suppress mechanism handles transient suppression. */
     if (flowTolerance > 0.0 && executionReference->flowReference > 0.0) {
-        isStartupPhase = HDY_IsStartupSuppressActive(elapsed, fb->_flowCriteria.startupSuppressTime);
-        if (HDY_DiagnosticCriteria_CheckFlow(&flowResult,
+        isStartupPhase = HYD_IsStartupSuppressActive(elapsed, fb->_flowCriteria.startupSuppressTime);
+        if (HYD_DiagnosticCriteria_CheckFlow(&flowResult,
                                              &fb->_errorMonitor,
                                              &fb->_flowCriteria,
                                              &fb->_flowCriteriaState,
@@ -1027,23 +1027,23 @@ static void HDY_UpdateExecutionDiagnostics(HDY_MotionControlFB* fb,
             flowDeviation = true;
             flowError = fb->_errorMonitor.flowError;
             /* Check fault escalation: WARNING -> FAULT after sustained duration */
-            HDY_DiagnosticCriteria_CheckFaultEscalation(&flowResult,
+            HYD_DiagnosticCriteria_CheckFaultEscalation(&flowResult,
                                                          &fb->_flowCriteria,
                                                          &fb->_flowCriteriaState,
                                                          fb->AXIS_REF.timestamp);
-            if (flowResult.severity == HDY_DIAG_SEVERITY_FAULT) {
+            if (flowResult.severity == HYD_DIAG_SEVERITY_FAULT) {
                 flowDeviation = true;
             }
         }
     } else {
-        HDY_DiagnosticCriteria_ResetState(&fb->_flowCriteriaState);
+        HYD_DiagnosticCriteria_ResetState(&fb->_flowCriteriaState);
     }
 
     /* --- Velocity diagnostics --- */
     /* No longer unconditionally reset; check when velocity tolerance is configured. */
     if (velocityTolerance > 0.0) {
-        isStartupPhase = HDY_IsStartupSuppressActive(elapsed, fb->_velocityCriteria.startupSuppressTime);
-        if (HDY_DiagnosticCriteria_CheckVelocity(&velocityResult,
+        isStartupPhase = HYD_IsStartupSuppressActive(elapsed, fb->_velocityCriteria.startupSuppressTime);
+        if (HYD_DiagnosticCriteria_CheckVelocity(&velocityResult,
                                                    &fb->_errorMonitor,
                                                    &fb->_velocityCriteria,
                                                    &fb->_velocityCriteriaState,
@@ -1054,16 +1054,16 @@ static void HDY_UpdateExecutionDiagnostics(HDY_MotionControlFB* fb,
             velocityDeviation = true;
             velocityError = fb->_errorMonitor.velocityError;
             /* Check fault escalation */
-            HDY_DiagnosticCriteria_CheckFaultEscalation(&velocityResult,
+            HYD_DiagnosticCriteria_CheckFaultEscalation(&velocityResult,
                                                          &fb->_velocityCriteria,
                                                          &fb->_velocityCriteriaState,
                                                          fb->AXIS_REF.timestamp);
-            if (velocityResult.severity == HDY_DIAG_SEVERITY_FAULT) {
+            if (velocityResult.severity == HYD_DIAG_SEVERITY_FAULT) {
                 velocityDeviation = true;
             }
         }
     } else {
-        HDY_DiagnosticCriteria_ResetState(&fb->_velocityCriteriaState);
+        HYD_DiagnosticCriteria_ResetState(&fb->_velocityCriteriaState);
     }
 
     /* --- Position diagnostics --- */
@@ -1077,15 +1077,15 @@ static void HDY_UpdateExecutionDiagnostics(HDY_MotionControlFB* fb,
      * The velocityTolerance > 0 requirement was removed - if no velocity
      * tolerance is configured, the check is still gated by actual velocity
      * being below the reference velocity threshold.
-     * Apply to all HDY_MODE_POSITION segments (not just HDY_END_POSITION),
+     * Apply to all HYD_MODE_POSITION segments (not just HYD_END_POSITION),
      * because position tracking deviation is relevant whenever the planner
      * is driving toward a target position, regardless of end condition. */
-    if (segment->mode == HDY_MODE_POSITION &&
+    if (segment->mode == HYD_MODE_POSITION &&
         positionTolerance > 0.0 &&
         velocityReferenceAbs < (velocityTolerance > 0.0 ? velocityTolerance : 1.0) &&
         actualVelocityAbs < (velocityTolerance > 0.0 ? velocityTolerance : 1.0)) {
-        isStartupPhase = HDY_IsStartupSuppressActive(elapsed, fb->_positionCriteria.startupSuppressTime);
-        if (HDY_DiagnosticCriteria_CheckPosition(&positionResult,
+        isStartupPhase = HYD_IsStartupSuppressActive(elapsed, fb->_positionCriteria.startupSuppressTime);
+        if (HYD_DiagnosticCriteria_CheckPosition(&positionResult,
                                                  &fb->_errorMonitor,
                                                  &fb->_positionCriteria,
                                                  &fb->_positionCriteriaState,
@@ -1095,25 +1095,25 @@ static void HDY_UpdateExecutionDiagnostics(HDY_MotionControlFB* fb,
                                                  isSwitchPhase)) {
             positionDeviation = true;
             /* Check fault escalation */
-            HDY_DiagnosticCriteria_CheckFaultEscalation(&positionResult,
+            HYD_DiagnosticCriteria_CheckFaultEscalation(&positionResult,
                                                          &fb->_positionCriteria,
                                                          &fb->_positionCriteriaState,
                                                          fb->AXIS_REF.timestamp);
-            if (positionResult.severity == HDY_DIAG_SEVERITY_FAULT) {
+            if (positionResult.severity == HYD_DIAG_SEVERITY_FAULT) {
                 positionDeviation = true;
             }
         }
     } else {
-        HDY_DiagnosticCriteria_ResetState(&fb->_positionCriteriaState);
+        HYD_DiagnosticCriteria_ResetState(&fb->_positionCriteriaState);
     }
 
     /* --- Timeout diagnostics ---
      * Uses criteria layer for consistency with startup/switch suppress,
      * debounce, and unified diagnostic channel semantics. */
     {
-        HDY_DiagnosticResult timeoutResult;
-        HDY_BOOL isStartupPhaseTimeout = HDY_IsStartupSuppressActive(elapsed, fb->_timeoutCriteria.startupSuppressTime);
-        if (HDY_DiagnosticCriteria_CheckTimeout(&timeoutResult,
+        HYD_DiagnosticResult timeoutResult;
+        HYD_BOOL isStartupPhaseTimeout = HYD_IsStartupSuppressActive(elapsed, fb->_timeoutCriteria.startupSuppressTime);
+        if (HYD_DiagnosticCriteria_CheckTimeout(&timeoutResult,
                                                   &fb->_timeoutCriteria,
                                                   &fb->_timeoutCriteriaState,
                                                   fb->AXIS_REF.timestamp,
@@ -1127,34 +1127,34 @@ static void HDY_UpdateExecutionDiagnostics(HDY_MotionControlFB* fb,
     /* Build priority diagnostic from active conditions.
      * Fault-escalated results upgrade the severity from WARNING to FAULT. */
     if (timeout) {
-        priorityCode = HDY_DIAG_CODE_TIMEOUT;
-        prioritySeverity = HDY_DIAG_SEVERITY_FAULT;
+        priorityCode = HYD_DIAG_CODE_TIMEOUT;
+        prioritySeverity = HYD_DIAG_SEVERITY_FAULT;
     } else if (overPressure) {
-        priorityCode = HDY_DIAG_CODE_OVER_PRESSURE;
-        prioritySeverity = (pressureResult.severity == HDY_DIAG_SEVERITY_FAULT)
-            ? HDY_DIAG_SEVERITY_FAULT : HDY_DIAG_SEVERITY_WARNING;
+        priorityCode = HYD_DIAG_CODE_OVER_PRESSURE;
+        prioritySeverity = (pressureResult.severity == HYD_DIAG_SEVERITY_FAULT)
+            ? HYD_DIAG_SEVERITY_FAULT : HYD_DIAG_SEVERITY_WARNING;
     } else if (underPressure) {
-        priorityCode = HDY_DIAG_CODE_UNDER_PRESSURE;
-        prioritySeverity = (pressureResult.severity == HDY_DIAG_SEVERITY_FAULT)
-            ? HDY_DIAG_SEVERITY_FAULT : HDY_DIAG_SEVERITY_WARNING;
+        priorityCode = HYD_DIAG_CODE_UNDER_PRESSURE;
+        prioritySeverity = (pressureResult.severity == HYD_DIAG_SEVERITY_FAULT)
+            ? HYD_DIAG_SEVERITY_FAULT : HYD_DIAG_SEVERITY_WARNING;
     } else if (flowDeviation) {
-        priorityCode = HDY_DIAG_CODE_FLOW_DEVIATION;
-        prioritySeverity = (flowResult.severity == HDY_DIAG_SEVERITY_FAULT)
-            ? HDY_DIAG_SEVERITY_FAULT : HDY_DIAG_SEVERITY_WARNING;
+        priorityCode = HYD_DIAG_CODE_FLOW_DEVIATION;
+        prioritySeverity = (flowResult.severity == HYD_DIAG_SEVERITY_FAULT)
+            ? HYD_DIAG_SEVERITY_FAULT : HYD_DIAG_SEVERITY_WARNING;
     } else if (positionDeviation) {
-        priorityCode = HDY_DIAG_CODE_POSITION_DEVIATION;
-        prioritySeverity = (positionResult.severity == HDY_DIAG_SEVERITY_FAULT)
-            ? HDY_DIAG_SEVERITY_FAULT : HDY_DIAG_SEVERITY_WARNING;
+        priorityCode = HYD_DIAG_CODE_POSITION_DEVIATION;
+        prioritySeverity = (positionResult.severity == HYD_DIAG_SEVERITY_FAULT)
+            ? HYD_DIAG_SEVERITY_FAULT : HYD_DIAG_SEVERITY_WARNING;
     } else if (velocityDeviation) {
-        priorityCode = HDY_DIAG_CODE_VELOCITY_DEVIATION;
-        prioritySeverity = (velocityResult.severity == HDY_DIAG_SEVERITY_FAULT)
-            ? HDY_DIAG_SEVERITY_FAULT : HDY_DIAG_SEVERITY_WARNING;
+        priorityCode = HYD_DIAG_CODE_VELOCITY_DEVIATION;
+        prioritySeverity = (velocityResult.severity == HYD_DIAG_SEVERITY_FAULT)
+            ? HYD_DIAG_SEVERITY_FAULT : HYD_DIAG_SEVERITY_WARNING;
     }
 
-    if (priorityCode != HDY_DIAG_CODE_NONE) {
-        HDY_Diagnostics_SetEvent(&fb->DIAGNOSTIC, priorityCode, prioritySeverity);
+    if (priorityCode != HYD_DIAG_CODE_NONE) {
+        HYD_Diagnostics_SetEvent(&fb->DIAGNOSTIC, priorityCode, prioritySeverity);
     } else {
-        HDY_Diagnostics_Clear(&fb->DIAGNOSTIC);
+        HYD_Diagnostics_Clear(&fb->DIAGNOSTIC);
     }
 
     fb->DIAGNOSTIC.overPressure = overPressure;
@@ -1166,7 +1166,7 @@ static void HDY_UpdateExecutionDiagnostics(HDY_MotionControlFB* fb,
     fb->DIAGNOSTIC.pressureError = pressureError;
     fb->DIAGNOSTIC.flowError = flowError;
     fb->DIAGNOSTIC.velocityError = velocityError;
-    fb->DIAGNOSTIC.flags = HDY_Diagnostics_GetFlagMask(&fb->DIAGNOSTIC);
+    fb->DIAGNOSTIC.flags = HYD_Diagnostics_GetFlagMask(&fb->DIAGNOSTIC);
 
     /* Clear switch phase using the unified transition window end time,
      * not tied to any single criteria's startup suppress time. */
@@ -1175,27 +1175,27 @@ static void HDY_UpdateExecutionDiagnostics(HDY_MotionControlFB* fb,
     }
 }
 
-static void HDY_MotionControlFB_RunRunningState(HDY_MotionControlFB* fb) {
-    HDY_DiagnosticCode code = HDY_DIAG_CODE_NONE;
-    const HDY_MotionSegment* segment;
-    HDY_REAL elapsed;
-    HDY_RampControllerOutput rampOutput;
-    HDY_MotionPlannerOutput plannerOutput;
-    HDY_PressureControllerOutput pressureOutput;
-    HDY_PumpConverterOutput pumpOutput;
-    HDY_ExecutionReference executionReference;
-    HDY_SegmentCompletionContext completionContext;
-    HDY_BOOL segmentCompleted;
-    HDY_BOOL recipeFinished;
-    HDY_SegmentSource completedSegmentSource;
+static void HYD_MotionControlFB_RunRunningState(HYD_MotionControlFB* fb) {
+    HYD_DiagnosticCode code = HYD_DIAG_CODE_NONE;
+    const HYD_MotionSegment* segment;
+    HYD_REAL elapsed;
+    HYD_RampControllerOutput rampOutput;
+    HYD_MotionPlannerOutput plannerOutput;
+    HYD_PressureControllerOutput pressureOutput;
+    HYD_PumpConverterOutput pumpOutput;
+    HYD_ExecutionReference executionReference;
+    HYD_SegmentCompletionContext completionContext;
+    HYD_BOOL segmentCompleted;
+    HYD_BOOL recipeFinished;
+    HYD_SegmentSource completedSegmentSource;
 
     if (fb == NULL) {
         return;
     }
 
     if (!fb->_activeSegmentValid) {
-        HDY_StateReporter_ReportFault(fb,
-                        HDY_DIAG_CODE_INTERNAL_ERROR,
+        HYD_StateReporter_ReportFault(fb,
+                        HYD_DIAG_CODE_INTERNAL_ERROR,
                         fb->AXIS_REF.timestamp,
                         NULL,
                         &fb->STATE.references);
@@ -1204,22 +1204,22 @@ static void HDY_MotionControlFB_RunRunningState(HDY_MotionControlFB* fb) {
 
     segment = &fb->_activeSegment;
 
-    if ((fb->_activeSegmentSource == HDY_SEGMENT_SOURCE_RECIPE &&
+    if ((fb->_activeSegmentSource == HYD_SEGMENT_SOURCE_RECIPE &&
          fb->STATE.currentSegmentIndex >= fb->RECIPE_SIZE) ||
-        (fb->_activeSegmentSource == HDY_SEGMENT_SOURCE_DIRECT &&
-         fb->STATE.currentSegmentIndex != HDY_MAX_SEGMENTS) ||
-        (fb->_activeSegmentSource == HDY_SEGMENT_SOURCE_NONE)) {
-        HDY_StateReporter_ReportFault(fb,
-                        HDY_DIAG_CODE_INTERNAL_ERROR,
+        (fb->_activeSegmentSource == HYD_SEGMENT_SOURCE_DIRECT &&
+         fb->STATE.currentSegmentIndex != HYD_MAX_SEGMENTS) ||
+        (fb->_activeSegmentSource == HYD_SEGMENT_SOURCE_NONE)) {
+        HYD_StateReporter_ReportFault(fb,
+                        HYD_DIAG_CODE_INTERNAL_ERROR,
                         fb->AXIS_REF.timestamp,
                         NULL,
                         &fb->STATE.references);
         return;
     }
 
-    if (!HDY_MotionUtils_AxisRefIsValid(&fb->AXIS_REF)) {
-        HDY_StateReporter_ReportFault(fb,
-                        HDY_DIAG_CODE_SENSOR_FAULT,
+    if (!HYD_MotionUtils_AxisRefIsValid(&fb->AXIS_REF)) {
+        HYD_StateReporter_ReportFault(fb,
+                        HYD_DIAG_CODE_SENSOR_FAULT,
                         fb->AXIS_REF.timestamp,
                         segment,
                         &fb->STATE.references);
@@ -1227,8 +1227,8 @@ static void HDY_MotionControlFB_RunRunningState(HDY_MotionControlFB* fb) {
     }
 
     if (fb->_lastFeedbackTimestamp >= 0.0 && fb->AXIS_REF.timestamp < fb->_lastFeedbackTimestamp) {
-        HDY_StateReporter_ReportFault(fb,
-                        HDY_DIAG_CODE_TIMESTAMP_ROLLBACK,
+        HYD_StateReporter_ReportFault(fb,
+                        HYD_DIAG_CODE_TIMESTAMP_ROLLBACK,
                         fb->AXIS_REF.timestamp,
                         segment,
                         &fb->STATE.references);
@@ -1236,13 +1236,13 @@ static void HDY_MotionControlFB_RunRunningState(HDY_MotionControlFB* fb) {
     }
     fb->_lastFeedbackTimestamp = fb->AXIS_REF.timestamp;
 
-    if (!HDY_PumpConverter_ValidateConfig(fb->FLOW_TO_PUMP_SPEED_GAIN,
+    if (!HYD_PumpConverter_ValidateConfig(fb->FLOW_TO_PUMP_SPEED_GAIN,
                                           fb->PUMP_SPEED_LIMIT,
                                           &code) ||
-        !HDY_RecipeValidator_ValidateSegment(segment,
+        !HYD_RecipeValidator_ValidateSegment(segment,
                                              fb->STATE.currentSegmentIndex,
                                              &code)) {
-        HDY_StateReporter_ReportFault(fb,
+        HYD_StateReporter_ReportFault(fb,
                         code,
                         fb->AXIS_REF.timestamp,
                         segment,
@@ -1255,7 +1255,7 @@ static void HDY_MotionControlFB_RunRunningState(HDY_MotionControlFB* fb) {
         elapsed = 0.0;
     }
 
-    HDY_ExecuteActiveSegmentControl(fb,
+    HYD_ExecuteActiveSegmentControl(fb,
                                     segment,
                                     elapsed,
                                     &rampOutput,
@@ -1263,39 +1263,39 @@ static void HDY_MotionControlFB_RunRunningState(HDY_MotionControlFB* fb) {
                                     &pressureOutput,
                                     &pumpOutput,
                                     &executionReference);
-    HDY_UpdateExecutionDiagnostics(fb, segment, &executionReference, elapsed);
+    HYD_UpdateExecutionDiagnostics(fb, segment, &executionReference, elapsed);
 
     fb->_lastCommandedFlow = pumpOutput.commandFlow;
 
-    if (fb->DIAGNOSTIC.protectionAction == HDY_PROTECTION_ACTION_STOP) {
-        HDY_ProtectionManager_EnterFaultStop(fb);
-        HDY_StateReporter_RecordDiagnosticEvent(fb, fb->AXIS_REF.timestamp, segment, &executionReference);
+    if (fb->DIAGNOSTIC.protectionAction == HYD_PROTECTION_ACTION_STOP) {
+        HYD_ProtectionManager_EnterFaultStop(fb);
+        HYD_StateReporter_RecordDiagnosticEvent(fb, fb->AXIS_REF.timestamp, segment, &executionReference);
         return;
     }
 
     completionContext.segment = segment;
     completionContext.axisRef = &fb->AXIS_REF;
     completionContext.references = &executionReference;
-    segmentCompleted = HDY_SegmentCompletion_CheckWithContext(&completionContext);
+    segmentCompleted = HYD_SegmentCompletion_CheckWithContext(&completionContext);
     if (segmentCompleted) {
         completedSegmentSource = fb->_activeSegmentSource;
-        recipeFinished = (completedSegmentSource == HDY_SEGMENT_SOURCE_DIRECT) ||
+        recipeFinished = (completedSegmentSource == HYD_SEGMENT_SOURCE_DIRECT) ||
             (fb->STATE.currentSegmentIndex + 1U >= fb->RECIPE_SIZE);
-        HDY_ProtectionManager_ApplyIdleState(fb, recipeFinished, true);
-        HDY_StateReporter_SetSegmentSource(fb, completedSegmentSource);
-        HDY_StateReporter_RecordDiagnosticEvent(fb, fb->AXIS_REF.timestamp, segment, &executionReference);
+        HYD_ProtectionManager_ApplyIdleState(fb, recipeFinished, true);
+        HYD_StateReporter_SetSegmentSource(fb, completedSegmentSource);
+        HYD_StateReporter_RecordDiagnosticEvent(fb, fb->AXIS_REF.timestamp, segment, &executionReference);
         return;
     }
 
-    HDY_StateReporter_ReportExecution(fb,
+    HYD_StateReporter_ReportExecution(fb,
                                       &plannerOutput,
                                       &pumpOutput,
                                       &executionReference,
                                       pressureOutput.appliedStrategy,
                                       &pressureOutput,
                                       &fb->DIAGNOSTIC);
-    HDY_StateReporter_SetSegmentSource(fb, fb->_activeSegmentSource);
-    HDY_StateReporter_RecordDiagnosticEvent(fb, fb->AXIS_REF.timestamp, segment, &executionReference);
+    HYD_StateReporter_SetSegmentSource(fb, fb->_activeSegmentSource);
+    HYD_StateReporter_RecordDiagnosticEvent(fb, fb->AXIS_REF.timestamp, segment, &executionReference);
 
     fb->_simFeedback.targetPosition = segment->targetPosition;
     fb->_simFeedback.targetVelocity = plannerOutput.targetVelocity;
@@ -1306,11 +1306,11 @@ static void HDY_MotionControlFB_RunRunningState(HDY_MotionControlFB* fb) {
     fb->SEGMENT_COMPLETED = false;
 }
 
-static HDY_BOOL HDY_RequestStartCommand(HDY_MotionControlFB* fb,
+static HYD_BOOL HYD_RequestStartCommand(HYD_MotionControlFB* fb,
                                         size_t segmentIndex,
-                                        HDY_TIME timestamp) {
-    HDY_DiagnosticCode code = HDY_DIAG_CODE_NONE;
-    HDY_FbState effectiveState;
+                                        HYD_TIME timestamp) {
+    HYD_DiagnosticCode code = HYD_DIAG_CODE_NONE;
+    HYD_FbState effectiveState;
 
     if (fb == NULL) {
         return false;
@@ -1320,72 +1320,72 @@ static HDY_BOOL HDY_RequestStartCommand(HDY_MotionControlFB* fb,
         return false;
     }
 
-    effectiveState = HDY_MotionValidator_ResolveEffectiveFbState(fb);
-    if (!HDY_IsCommandAllowedInState(HDY_CMD_START, effectiveState)) {
-        HDY_ReportCommandNotAllowed(fb,
-                                    HDY_CMD_START,
+    effectiveState = HYD_MotionValidator_ResolveEffectiveFbState(fb);
+    if (!HYD_IsCommandAllowedInState(HYD_CMD_START, effectiveState)) {
+        HYD_ReportCommandNotAllowed(fb,
+                                    HYD_CMD_START,
                                     effectiveState,
                                     timestamp,
-                                    (HDY_UINT)segmentIndex,
+                                    (HYD_UINT)segmentIndex,
                                     &fb->STATE.references);
         return false;
     }
 
-    if (!HDY_MotionValidator_ValidateStartRequest(fb, segmentIndex, &code)) {
-        HDY_StateReporter_ReportDiagnostic(fb,
+    if (!HYD_MotionValidator_ValidateStartRequest(fb, segmentIndex, &code)) {
+        HYD_StateReporter_ReportDiagnostic(fb,
                            code,
-                           HDY_DIAG_SEVERITY_WARNING,
+                           HYD_DIAG_SEVERITY_WARNING,
                            timestamp,
-                           HDY_ResolveStartSourceSegment(fb, segmentIndex, NULL, NULL),
+                           HYD_ResolveStartSourceSegment(fb, segmentIndex, NULL, NULL),
                            NULL);
         return false;
     }
 
-    return HDY_RequestCommandQueue(fb,
-                                   HDY_CMD_START,
-                                   (HDY_UINT)segmentIndex,
+    return HYD_RequestCommandQueue(fb,
+                                   HYD_CMD_START,
+                                   (HYD_UINT)segmentIndex,
                                    timestamp,
                                    &fb->STATE.references);
 }
 
-static HDY_BOOL HDY_RequestHoldCommand(HDY_MotionControlFB* fb,
-                                       HDY_TIME timestamp) {
+static HYD_BOOL HYD_RequestHoldCommand(HYD_MotionControlFB* fb,
+                                       HYD_TIME timestamp) {
     if (fb == NULL || fb->STATE.faultActive) {
         return false;
     }
 
-    return HDY_RequestCommandQueue(fb,
-                                   HDY_CMD_HOLD,
+    return HYD_RequestCommandQueue(fb,
+                                   HYD_CMD_HOLD,
                                    0U,
                                    timestamp,
                                    &fb->STATE.references);
 }
 
-static HDY_BOOL HDY_RequestResumeCommand(HDY_MotionControlFB* fb,
-                                         HDY_TIME timestamp) {
+static HYD_BOOL HYD_RequestResumeCommand(HYD_MotionControlFB* fb,
+                                         HYD_TIME timestamp) {
     if (fb == NULL || fb->STATE.faultActive) {
         return false;
     }
 
-    return HDY_RequestCommandQueue(fb,
-                                   HDY_CMD_RESUME,
+    return HYD_RequestCommandQueue(fb,
+                                   HYD_CMD_RESUME,
                                    0U,
                                    timestamp,
                                    &fb->STATE.references);
 }
 
-static HDY_BOOL HDY_RequestAbortCommand(HDY_MotionControlFB* fb,
-                                        HDY_TIME timestamp) {
-    HDY_FbState effectiveState;
+static HYD_BOOL HYD_RequestAbortCommand(HYD_MotionControlFB* fb,
+                                        HYD_TIME timestamp) {
+    HYD_FbState effectiveState;
 
     if (fb == NULL || fb->STATE.faultActive) {
         return false;
     }
 
-    effectiveState = HDY_MotionValidator_ResolveEffectiveFbState(fb);
-    if (!HDY_IsCommandAllowedInState(HDY_CMD_ABORT, effectiveState)) {
-        HDY_ReportCommandNotAllowed(fb,
-                                    HDY_CMD_ABORT,
+    effectiveState = HYD_MotionValidator_ResolveEffectiveFbState(fb);
+    if (!HYD_IsCommandAllowedInState(HYD_CMD_ABORT, effectiveState)) {
+        HYD_ReportCommandNotAllowed(fb,
+                                    HYD_CMD_ABORT,
                                     effectiveState,
                                     timestamp,
                                     0U,
@@ -1393,18 +1393,18 @@ static HDY_BOOL HDY_RequestAbortCommand(HDY_MotionControlFB* fb,
         return false;
     }
 
-    HDY_ClearStartCommandInput(fb);
-    return HDY_RequestCommandQueue(fb,
-                                   HDY_CMD_ABORT,
+    HYD_ClearStartCommandInput(fb);
+    return HYD_RequestCommandQueue(fb,
+                                   HYD_CMD_ABORT,
                                    0U,
                                    timestamp,
                                    &fb->STATE.references);
 }
 
-static void HDY_MotionControlFB_SampleCommands(HDY_MotionControlFB* fb) {
-    HDY_BOOL startSignal;
-    HDY_BOOL startEdge;
-    HDY_UINT startSegmentIndex;
+static void HYD_MotionControlFB_SampleCommands(HYD_MotionControlFB* fb) {
+    HYD_BOOL startSignal;
+    HYD_BOOL startEdge;
+    HYD_UINT startSegmentIndex;
 
     if (fb == NULL) {
         return;
@@ -1414,14 +1414,14 @@ static void HDY_MotionControlFB_SampleCommands(HDY_MotionControlFB* fb) {
     startSegmentIndex = fb->START_SEGMENT_INDEX;
     startEdge = startSignal && !fb->_startSegmentSignalPrev;
     fb->_startSegmentSignalPrev = startSignal;
-    HDY_ClearStartCommandInput(fb);
+    HYD_ClearStartCommandInput(fb);
 
     if (startEdge) {
-        (void)HDY_RequestStartCommand(fb, startSegmentIndex, fb->AXIS_REF.timestamp);
+        (void)HYD_RequestStartCommand(fb, startSegmentIndex, fb->AXIS_REF.timestamp);
     }
 }
 
-void HDY_MotionControlFB_Init(HDY_MotionControlFB* fb) {
+void HYD_MotionControlFB_Init(HYD_MotionControlFB* fb) {
     if (fb == NULL) {
         return;
     }
@@ -1429,49 +1429,49 @@ void HDY_MotionControlFB_Init(HDY_MotionControlFB* fb) {
     memset(fb, 0, sizeof(*fb));
     fb->_lastFeedbackTimestamp = -1.0;  /* sentinel: not yet valid */
     fb->USE_RECIPE = false;
-    fb->FB_STATE = HDY_FB_STATE_IDLE;
-    fb->STATE.currentSegmentIndex = HDY_MAX_SEGMENTS;
-    fb->_activeSegmentSource = HDY_SEGMENT_SOURCE_NONE;
-    HDY_StateReporter_SetPlannedDirection(fb, HDY_DIRECTION_HOLD);
-    HDY_StateReporter_SetSegmentSource(fb, HDY_SEGMENT_SOURCE_NONE);
-    HDY_StateReporter_SetStatus(fb, HDY_STATUS_IDLE);
-    HDY_StateReporter_SetFault(fb, false);
-    HDY_StateReporter_ClearSegmentTag(fb);
-    HDY_StateReporter_ResetDiagnosticRetention(fb);
-    HDY_RampController_Init(&fb->_rampController, 0.0, 0.0);
-    HDY_PressureController_ClearState(&fb->_pressureController);
-    HDY_ClearPendingCommand(fb);
-    HDY_StateReporter_RefreshStandardOutputs(fb);
+    fb->FB_STATE = HYD_FB_STATE_IDLE;
+    fb->STATE.currentSegmentIndex = HYD_MAX_SEGMENTS;
+    fb->_activeSegmentSource = HYD_SEGMENT_SOURCE_NONE;
+    HYD_StateReporter_SetPlannedDirection(fb, HYD_DIRECTION_HOLD);
+    HYD_StateReporter_SetSegmentSource(fb, HYD_SEGMENT_SOURCE_NONE);
+    HYD_StateReporter_SetStatus(fb, HYD_STATUS_IDLE);
+    HYD_StateReporter_SetFault(fb, false);
+    HYD_StateReporter_ClearSegmentTag(fb);
+    HYD_StateReporter_ResetDiagnosticRetention(fb);
+    HYD_RampController_Init(&fb->_rampController, 0.0, 0.0);
+    HYD_PressureController_ClearState(&fb->_pressureController);
+    HYD_ClearPendingCommand(fb);
+    HYD_StateReporter_RefreshStandardOutputs(fb);
 
     /* Initialize diagnostic criteria layer */
-    HDY_ErrorMonitor_Init(&fb->_errorMonitor);
-    HDY_DiagnosticCriteria_CreateDefaultPressureCriteria(&fb->_pressureCriteria);
-    HDY_DiagnosticCriteria_InitState(&fb->_pressureCriteriaState);
-    HDY_DiagnosticCriteria_CreateDefaultFlowCriteria(&fb->_flowCriteria);
-    HDY_DiagnosticCriteria_InitState(&fb->_flowCriteriaState);
-    HDY_DiagnosticCriteria_CreateDefaultVelocityCriteria(&fb->_velocityCriteria);
-    HDY_DiagnosticCriteria_InitState(&fb->_velocityCriteriaState);
-    HDY_DiagnosticCriteria_CreateDefaultPositionCriteria(&fb->_positionCriteria);
-    HDY_DiagnosticCriteria_InitState(&fb->_positionCriteriaState);
-    HDY_DiagnosticCriteria_CreateDefaultTimeoutCriteria(&fb->_timeoutCriteria);
-    HDY_DiagnosticCriteria_InitState(&fb->_timeoutCriteriaState);
+    HYD_ErrorMonitor_Init(&fb->_errorMonitor);
+    HYD_DiagnosticCriteria_CreateDefaultPressureCriteria(&fb->_pressureCriteria);
+    HYD_DiagnosticCriteria_InitState(&fb->_pressureCriteriaState);
+    HYD_DiagnosticCriteria_CreateDefaultFlowCriteria(&fb->_flowCriteria);
+    HYD_DiagnosticCriteria_InitState(&fb->_flowCriteriaState);
+    HYD_DiagnosticCriteria_CreateDefaultVelocityCriteria(&fb->_velocityCriteria);
+    HYD_DiagnosticCriteria_InitState(&fb->_velocityCriteriaState);
+    HYD_DiagnosticCriteria_CreateDefaultPositionCriteria(&fb->_positionCriteria);
+    HYD_DiagnosticCriteria_InitState(&fb->_positionCriteriaState);
+    HYD_DiagnosticCriteria_CreateDefaultTimeoutCriteria(&fb->_timeoutCriteria);
+    HYD_DiagnosticCriteria_InitState(&fb->_timeoutCriteriaState);
     fb->_isSwitchPhase = false;
     fb->_switchSuppressEndTime = 0.0;
 }
 
-void HDY_MotionControlFB_SoftReset(HDY_MotionControlFB* fb) {
+void HYD_MotionControlFB_SoftReset(HYD_MotionControlFB* fb) {
     /* Persistent fields saved across soft reset */
-    HDY_MotionSegment savedRecipe[HDY_MAX_SEGMENTS];
-    HDY_UINT savedRecipeSize;
-    HDY_MotionSegment savedDirectSegment;
-    HDY_BOOL savedDirectSegmentValid;
-    HDY_REAL savedFlowToPumpSpeedGain;
-    HDY_REAL savedPumpSpeedLimit;
-    HDY_BOOL savedUseRecipe;
-    HDY_DiagnosticCriteria savedPressureCriteria;
-    HDY_DiagnosticCriteria savedFlowCriteria;
-    HDY_DiagnosticCriteria savedVelocityCriteria;
-    HDY_DiagnosticCriteria savedPositionCriteria;
+    HYD_MotionSegment savedRecipe[HYD_MAX_SEGMENTS];
+    HYD_UINT savedRecipeSize;
+    HYD_MotionSegment savedDirectSegment;
+    HYD_BOOL savedDirectSegmentValid;
+    HYD_REAL savedFlowToPumpSpeedGain;
+    HYD_REAL savedPumpSpeedLimit;
+    HYD_BOOL savedUseRecipe;
+    HYD_DiagnosticCriteria savedPressureCriteria;
+    HYD_DiagnosticCriteria savedFlowCriteria;
+    HYD_DiagnosticCriteria savedVelocityCriteria;
+    HYD_DiagnosticCriteria savedPositionCriteria;
 
     if (fb == NULL) {
         return;
@@ -1508,48 +1508,48 @@ void HDY_MotionControlFB_SoftReset(HDY_MotionControlFB* fb) {
     fb->_positionCriteria = savedPositionCriteria;
 
     /* 4. Reinitialize framework-level state (same as Init) */
-    fb->_activeSegmentSource = HDY_SEGMENT_SOURCE_NONE;
-    HDY_StateReporter_SetPlannedDirection(fb, HDY_DIRECTION_HOLD);
-    HDY_StateReporter_SetSegmentSource(fb, HDY_SEGMENT_SOURCE_NONE);
-    HDY_StateReporter_SetFault(fb, false);
-    HDY_StateReporter_ClearSegmentTag(fb);
-    HDY_StateReporter_ResetDiagnosticRetention(fb);
-    HDY_RampController_Init(&fb->_rampController, 0.0, 0.0);
-    HDY_PressureController_ClearState(&fb->_pressureController);
-    HDY_ClearPendingCommand(fb);
+    fb->_activeSegmentSource = HYD_SEGMENT_SOURCE_NONE;
+    HYD_StateReporter_SetPlannedDirection(fb, HYD_DIRECTION_HOLD);
+    HYD_StateReporter_SetSegmentSource(fb, HYD_SEGMENT_SOURCE_NONE);
+    HYD_StateReporter_SetFault(fb, false);
+    HYD_StateReporter_ClearSegmentTag(fb);
+    HYD_StateReporter_ResetDiagnosticRetention(fb);
+    HYD_RampController_Init(&fb->_rampController, 0.0, 0.0);
+    HYD_PressureController_ClearState(&fb->_pressureController);
+    HYD_ClearPendingCommand(fb);
 
     /* 5. Reinitialize diagnostic criteria states (but keep the criteria configs) */
-    HDY_ErrorMonitor_Init(&fb->_errorMonitor);
-    HDY_DiagnosticCriteria_InitState(&fb->_pressureCriteriaState);
-    HDY_DiagnosticCriteria_InitState(&fb->_flowCriteriaState);
-    HDY_DiagnosticCriteria_InitState(&fb->_velocityCriteriaState);
-    HDY_DiagnosticCriteria_InitState(&fb->_positionCriteriaState);
-    HDY_DiagnosticCriteria_InitState(&fb->_timeoutCriteriaState);
+    HYD_ErrorMonitor_Init(&fb->_errorMonitor);
+    HYD_DiagnosticCriteria_InitState(&fb->_pressureCriteriaState);
+    HYD_DiagnosticCriteria_InitState(&fb->_flowCriteriaState);
+    HYD_DiagnosticCriteria_InitState(&fb->_velocityCriteriaState);
+    HYD_DiagnosticCriteria_InitState(&fb->_positionCriteriaState);
+    HYD_DiagnosticCriteria_InitState(&fb->_timeoutCriteriaState);
     fb->_isSwitchPhase = false;
     fb->_switchSuppressEndTime = 0.0;
 
     /* 6. Set state to READY (if recipe or direct segment is loaded) or IDLE */
-    HDY_ResetReadyContextPreview(fb);
-    HDY_StateReporter_SetIdleState(fb, false, false);
-    HDY_StateReporter_RefreshStandardOutputs(fb);
+    HYD_ResetReadyContextPreview(fb);
+    HYD_StateReporter_SetIdleState(fb, false, false);
+    HYD_StateReporter_RefreshStandardOutputs(fb);
 }
 
-HDY_BOOL HDY_MotionControlFB_LoadRecipe(HDY_MotionControlFB* fb,
-                                        const HDY_MotionSegment* recipe,
+HYD_BOOL HYD_MotionControlFB_LoadRecipe(HYD_MotionControlFB* fb,
+                                        const HYD_MotionSegment* recipe,
                                         size_t recipeSize) {
-    HDY_DiagnosticCode code = HDY_DIAG_CODE_NONE;
+    HYD_DiagnosticCode code = HYD_DIAG_CODE_NONE;
 
     if (fb == NULL) {
         return false;
     }
 
-    if (!HDY_RecipeValidator_ValidateRecipe(recipe, recipeSize, &code)) {
+    if (!HYD_RecipeValidator_ValidateRecipe(recipe, recipeSize, &code)) {
         memset(fb->RECIPE, 0, sizeof(fb->RECIPE));
         fb->RECIPE_SIZE = 0U;
-        HDY_PrepareRecipeLoadState(fb);
-        HDY_StateReporter_ReportDiagnostic(fb,
+        HYD_PrepareRecipeLoadState(fb);
+        HYD_StateReporter_ReportDiagnostic(fb,
                            code,
-                           HDY_DIAG_SEVERITY_WARNING,
+                           HYD_DIAG_SEVERITY_WARNING,
                            fb->AXIS_REF.timestamp,
                            NULL,
                            NULL);
@@ -1557,35 +1557,35 @@ HDY_BOOL HDY_MotionControlFB_LoadRecipe(HDY_MotionControlFB* fb,
     }
 
     memset(fb->RECIPE, 0, sizeof(fb->RECIPE));
-    memcpy(fb->RECIPE, recipe, recipeSize * sizeof(HDY_MotionSegment));
+    memcpy(fb->RECIPE, recipe, recipeSize * sizeof(HYD_MotionSegment));
     fb->RECIPE_SIZE = recipeSize;
-    HDY_PrepareRecipeLoadState(fb);
-    HDY_StateReporter_ClearCurrentDiagnostic(fb);
+    HYD_PrepareRecipeLoadState(fb);
+    HYD_StateReporter_ClearCurrentDiagnostic(fb);
     return true;
 }
 
-HDY_BOOL HDY_MotionControlFB_LoadDirectSegment(HDY_MotionControlFB* fb,
-                                              const HDY_MotionSegment* segment) {
-    HDY_DiagnosticCode code = HDY_DIAG_CODE_NONE;
+HYD_BOOL HYD_MotionControlFB_LoadDirectSegment(HYD_MotionControlFB* fb,
+                                              const HYD_MotionSegment* segment) {
+    HYD_DiagnosticCode code = HYD_DIAG_CODE_NONE;
 
     if (fb == NULL) {
         return false;
     }
 
-    if (!HDY_RecipeValidator_ValidateSegment(segment,
-                                             HDY_MAX_SEGMENTS,
+    if (!HYD_RecipeValidator_ValidateSegment(segment,
+                                             HYD_MAX_SEGMENTS,
                                              &code)) {
         memset(&fb->DIRECT_SEGMENT, 0, sizeof(fb->DIRECT_SEGMENT));
         fb->DIRECT_SEGMENT_VALID = false;
-        if (!fb->STATE.active && fb->FB_STATE != HDY_FB_STATE_HOLD && !fb->STATE.finished && !fb->SEGMENT_COMPLETED) {
-            HDY_ResetReadyContextPreview(fb);
-            HDY_StateReporter_SetIdleState(fb, false, false);
-            HDY_StateReporter_SetSegmentSource(fb, HDY_SEGMENT_SOURCE_NONE);
-            HDY_StateReporter_ClearSegmentTag(fb);
+        if (!fb->STATE.active && fb->FB_STATE != HYD_FB_STATE_HOLD && !fb->STATE.finished && !fb->SEGMENT_COMPLETED) {
+            HYD_ResetReadyContextPreview(fb);
+            HYD_StateReporter_SetIdleState(fb, false, false);
+            HYD_StateReporter_SetSegmentSource(fb, HYD_SEGMENT_SOURCE_NONE);
+            HYD_StateReporter_ClearSegmentTag(fb);
         }
-        HDY_StateReporter_ReportDiagnostic(fb,
+        HYD_StateReporter_ReportDiagnostic(fb,
                            code,
-                           HDY_DIAG_SEVERITY_WARNING,
+                           HYD_DIAG_SEVERITY_WARNING,
                            fb->AXIS_REF.timestamp,
                            NULL,
                            NULL);
@@ -1594,37 +1594,37 @@ HDY_BOOL HDY_MotionControlFB_LoadDirectSegment(HDY_MotionControlFB* fb,
 
     fb->DIRECT_SEGMENT = *segment;
     fb->DIRECT_SEGMENT_VALID = true;
-    if (!fb->STATE.active && fb->FB_STATE != HDY_FB_STATE_HOLD && !fb->STATE.finished && !fb->SEGMENT_COMPLETED) {
-        HDY_ResetReadyContextPreview(fb);
-        HDY_StateReporter_SetIdleState(fb, false, false);
+    if (!fb->STATE.active && fb->FB_STATE != HYD_FB_STATE_HOLD && !fb->STATE.finished && !fb->SEGMENT_COMPLETED) {
+        HYD_ResetReadyContextPreview(fb);
+        HYD_StateReporter_SetIdleState(fb, false, false);
     }
-    HDY_StateReporter_ClearCurrentDiagnostic(fb);
+    HYD_StateReporter_ClearCurrentDiagnostic(fb);
     return true;
 }
 
-void HDY_MotionControlFB_ClearDirectSegment(HDY_MotionControlFB* fb) {
+void HYD_MotionControlFB_ClearDirectSegment(HYD_MotionControlFB* fb) {
     if (fb == NULL) {
         return;
     }
 
     memset(&fb->DIRECT_SEGMENT, 0, sizeof(fb->DIRECT_SEGMENT));
     fb->DIRECT_SEGMENT_VALID = false;
-    if (!fb->STATE.active && fb->FB_STATE != HDY_FB_STATE_HOLD && !fb->STATE.finished && !fb->SEGMENT_COMPLETED) {
-        HDY_ResetReadyContextPreview(fb);
-        HDY_StateReporter_SetIdleState(fb, false, false);
-        HDY_StateReporter_SetSegmentSource(fb, HDY_SEGMENT_SOURCE_NONE);
-        HDY_StateReporter_ClearSegmentTag(fb);
+    if (!fb->STATE.active && fb->FB_STATE != HYD_FB_STATE_HOLD && !fb->STATE.finished && !fb->SEGMENT_COMPLETED) {
+        HYD_ResetReadyContextPreview(fb);
+        HYD_StateReporter_SetIdleState(fb, false, false);
+        HYD_StateReporter_SetSegmentSource(fb, HYD_SEGMENT_SOURCE_NONE);
+        HYD_StateReporter_ClearSegmentTag(fb);
     }
 }
 
-HDY_BOOL HDY_MotionControlFB_StartSegment(HDY_MotionControlFB* fb,
+HYD_BOOL HYD_MotionControlFB_StartSegment(HYD_MotionControlFB* fb,
                                           size_t segmentIndex,
-                                          HDY_TIME timestamp) {
-    return HDY_RequestStartCommand(fb, segmentIndex, timestamp);
+                                          HYD_TIME timestamp) {
+    return HYD_RequestStartCommand(fb, segmentIndex, timestamp);
 }
 
-HDY_BOOL HDY_MotionControlFB_NextSegment(HDY_MotionControlFB* fb, HDY_TIME timestamp) {
-    HDY_DiagnosticCode code = HDY_DIAG_CODE_NONE;
+HYD_BOOL HYD_MotionControlFB_NextSegment(HYD_MotionControlFB* fb, HYD_TIME timestamp) {
+    HYD_DiagnosticCode code = HYD_DIAG_CODE_NONE;
 
     if (fb == NULL) {
         return false;
@@ -1634,12 +1634,12 @@ HDY_BOOL HDY_MotionControlFB_NextSegment(HDY_MotionControlFB* fb, HDY_TIME times
         return false;
     }
 
-    if (!HDY_ValidateNextRequest(fb, &code)) {
-        HDY_StateReporter_ReportDiagnostic(fb,
+    if (!HYD_ValidateNextRequest(fb, &code)) {
+        HYD_StateReporter_ReportDiagnostic(fb,
                                            code,
-                                           (code == HDY_DIAG_CODE_RECIPE_ALREADY_FINISHED)
-                                               ? HDY_DIAG_SEVERITY_INFO
-                                               : HDY_DIAG_SEVERITY_WARNING,
+                                           (code == HYD_DIAG_CODE_RECIPE_ALREADY_FINISHED)
+                                               ? HYD_DIAG_SEVERITY_INFO
+                                               : HYD_DIAG_SEVERITY_WARNING,
                                            timestamp,
                                            (fb->STATE.currentSegmentIndex < fb->RECIPE_SIZE)
                                                ? &fb->RECIPE[fb->STATE.currentSegmentIndex]
@@ -1648,34 +1648,34 @@ HDY_BOOL HDY_MotionControlFB_NextSegment(HDY_MotionControlFB* fb, HDY_TIME times
         return false;
     }
 
-    return HDY_RequestCommandQueue(fb,
-                                   HDY_CMD_NEXT,
+    return HYD_RequestCommandQueue(fb,
+                                   HYD_CMD_NEXT,
                                    0U,
                                    timestamp,
                                    &fb->STATE.references);
 }
 
-HDY_BOOL HDY_MotionControlFB_Hold(HDY_MotionControlFB* fb) {
-    return HDY_RequestHoldCommand(fb, (fb != NULL) ? fb->AXIS_REF.timestamp : 0.0);
+HYD_BOOL HYD_MotionControlFB_Hold(HYD_MotionControlFB* fb) {
+    return HYD_RequestHoldCommand(fb, (fb != NULL) ? fb->AXIS_REF.timestamp : 0.0);
 }
 
-HDY_BOOL HDY_MotionControlFB_Resume(HDY_MotionControlFB* fb) {
-    return HDY_RequestResumeCommand(fb, (fb != NULL) ? fb->AXIS_REF.timestamp : 0.0);
+HYD_BOOL HYD_MotionControlFB_Resume(HYD_MotionControlFB* fb) {
+    return HYD_RequestResumeCommand(fb, (fb != NULL) ? fb->AXIS_REF.timestamp : 0.0);
 }
 
-HDY_BOOL HDY_MotionControlFB_Abort(HDY_MotionControlFB* fb) {
-    return HDY_RequestAbortCommand(fb, (fb != NULL) ? fb->AXIS_REF.timestamp : 0.0);
+HYD_BOOL HYD_MotionControlFB_Abort(HYD_MotionControlFB* fb) {
+    return HYD_RequestAbortCommand(fb, (fb != NULL) ? fb->AXIS_REF.timestamp : 0.0);
 }
 
-HDY_BOOL HDY_MotionControlFB_AcknowledgeDiagnostics(HDY_MotionControlFB* fb) {
-    HDY_FbState effectiveState;
+HYD_BOOL HYD_MotionControlFB_AcknowledgeDiagnostics(HYD_MotionControlFB* fb) {
+    HYD_FbState effectiveState;
 
     if (fb == NULL) {
         return false;
     }
 
-    effectiveState = HDY_MotionValidator_ResolveEffectiveFbState(fb);
-    if (!HDY_IsCommandAllowedInState(HDY_CMD_ACK, effectiveState)) {
+    effectiveState = HYD_MotionValidator_ResolveEffectiveFbState(fb);
+    if (!HYD_IsCommandAllowedInState(HYD_CMD_ACK, effectiveState)) {
         return false;
     }
 
@@ -1689,14 +1689,14 @@ HDY_BOOL HDY_MotionControlFB_AcknowledgeDiagnostics(HDY_MotionControlFB* fb) {
     /* Clear both current live diagnostic and retained history only when
      * we're in a safe state (no active faults). The diagnostic code
      * field is cleared as part of this operation. */
-    HDY_StateReporter_ClearCurrentDiagnostic(fb);
-    HDY_StateReporter_ClearDiagnosticRetentionOnly(fb);
+    HYD_StateReporter_ClearCurrentDiagnostic(fb);
+    HYD_StateReporter_ClearDiagnosticRetentionOnly(fb);
     return true;
 }
 
-void HDY_MotionControlFB_Cycle(HDY_MotionControlFB* fb) {
-    HDY_FbCommand processedCommand;
-    HDY_BOOL allowRunningExecution;
+void HYD_MotionControlFB_Cycle(HYD_MotionControlFB* fb) {
+    HYD_FbCommand processedCommand;
+    HYD_BOOL allowRunningExecution;
 
     if (fb == NULL) {
         return;
@@ -1705,20 +1705,20 @@ void HDY_MotionControlFB_Cycle(HDY_MotionControlFB* fb) {
     fb->SEGMENT_CHANGED = false;
 
     if (fb->RESET) {
-        HDY_MotionControlFB_SoftReset(fb);
+        HYD_MotionControlFB_SoftReset(fb);
         return;
     }
 
-    allowRunningExecution = HDY_MotionControlFB_ConsumePendingCommand(fb, &processedCommand);
-    HDY_MotionControlFB_RunStateMachine(fb, allowRunningExecution);
-    HDY_MotionControlFB_PublishOutputs(fb, processedCommand == HDY_CMD_NONE);
+    allowRunningExecution = HYD_MotionControlFB_ConsumePendingCommand(fb, &processedCommand);
+    HYD_MotionControlFB_RunStateMachine(fb, allowRunningExecution);
+    HYD_MotionControlFB_PublishOutputs(fb, processedCommand == HYD_CMD_NONE);
 }
 
-void HDY_MotionControlFB_Scan(HDY_MotionControlFB* fb) {
-    HDY_MotionControlFB_SampleCommands(fb);
-    HDY_MotionControlFB_Cycle(fb);
+void HYD_MotionControlFB_Scan(HYD_MotionControlFB* fb) {
+    HYD_MotionControlFB_SampleCommands(fb);
+    HYD_MotionControlFB_Cycle(fb);
 }
 
-void HDY_MotionControlFB_Execute(HDY_MotionControlFB* fb) {
-    HDY_MotionControlFB_Scan(fb);
+void HYD_MotionControlFB_Execute(HYD_MotionControlFB* fb) {
+    HYD_MotionControlFB_Scan(fb);
 }

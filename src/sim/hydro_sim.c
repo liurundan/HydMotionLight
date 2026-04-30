@@ -160,7 +160,7 @@ static SimAxisState* Sim_FindFreeAxisSlot(HydraulicSimEnv* env) {
 
     if (env == NULL) return NULL;
 
-    for (i = 0; i < HDY_MAX_HYDRAULIC_SIM_FB; ++i) {
+    for (i = 0; i < HYD_MAX_HYDRAULIC_SIM_FB; ++i) {
         if (!env->axes[i].allocated) {
             return &env->axes[i];
         }
@@ -253,7 +253,7 @@ void HydraulicSim_Init(HydraulicSimEnv* env) {
     env->obstacle_stiffness_N_mm = 80000.0f;
     env->pump_owner_axis_id = -1;
 
-    for (i = 0; i < HDY_MAX_HYDRAULIC_SIM_FB; ++i) {
+    for (i = 0; i < HYD_MAX_HYDRAULIC_SIM_FB; ++i) {
         env->axes[i].axis_id = -1;
         env->axes[i].axis_type = SIM_AXIS_NONE;
     }
@@ -266,7 +266,7 @@ int HydraulicSim_RegisterAxis(HydraulicSimEnv* env, int axis_id, SimAxisKind axi
     SimAxisState* axis;
 
     if (env == NULL || !env->_initialized) return 0;
-    if (axis_id < 0 || axis_id >= HDY_MAX_HYDRAULIC_SIM_FB) return 0;
+    if (axis_id < 0 || axis_id >= HYD_MAX_HYDRAULIC_SIM_FB) return 0;
     if (axis_kind != SIM_AXIS_CLAMP && axis_kind != SIM_AXIS_INJECT) return 0;
     if (HydraulicSim_FindAxisById(env, axis_id) != NULL) return 0;
     if (HydraulicSim_FindAxisByKind(env, axis_kind) != NULL) return 0;
@@ -309,7 +309,7 @@ SimAxisState* HydraulicSim_FindAxisById(HydraulicSimEnv* env, int axis_id) {
 
     if (env == NULL) return NULL;
 
-    for (i = 0; i < HDY_MAX_HYDRAULIC_SIM_FB; ++i) {
+    for (i = 0; i < HYD_MAX_HYDRAULIC_SIM_FB; ++i) {
         if (env->axes[i].allocated && env->axes[i].axis_id == axis_id) {
             return &env->axes[i];
         }
@@ -323,7 +323,7 @@ const SimAxisState* HydraulicSim_FindAxisByIdConst(const HydraulicSimEnv* env, i
 
     if (env == NULL) return NULL;
 
-    for (i = 0; i < HDY_MAX_HYDRAULIC_SIM_FB; ++i) {
+    for (i = 0; i < HYD_MAX_HYDRAULIC_SIM_FB; ++i) {
         if (env->axes[i].allocated && env->axes[i].axis_id == axis_id) {
             return &env->axes[i];
         }
@@ -337,7 +337,7 @@ SimAxisState* HydraulicSim_FindAxisByKind(HydraulicSimEnv* env, SimAxisKind axis
 
     if (env == NULL) return NULL;
 
-    for (i = 0; i < HDY_MAX_HYDRAULIC_SIM_FB; ++i) {
+    for (i = 0; i < HYD_MAX_HYDRAULIC_SIM_FB; ++i) {
         if (env->axes[i].allocated && env->axes[i].axis_type == axis_kind) {
             return &env->axes[i];
         }
@@ -351,7 +351,7 @@ const SimAxisState* HydraulicSim_FindAxisByKindConst(const HydraulicSimEnv* env,
 
     if (env == NULL) return NULL;
 
-    for (i = 0; i < HDY_MAX_HYDRAULIC_SIM_FB; ++i) {
+    for (i = 0; i < HYD_MAX_HYDRAULIC_SIM_FB; ++i) {
         if (env->axes[i].allocated && env->axes[i].axis_type == axis_kind) {
             return &env->axes[i];
         }
@@ -483,7 +483,7 @@ void HydraulicSim_Step(HydraulicSimEnv* env, float dt_s) {
 
     env->sim_system_pressure_bar = 0.0f;
 
-    for (i = 0; i < HDY_MAX_HYDRAULIC_SIM_FB; ++i) {
+    for (i = 0; i < HYD_MAX_HYDRAULIC_SIM_FB; ++i) {
         if (!env->axes[i].allocated) continue;
 
         env->axes[i].cylinder.current_vel_mm_s = 0.0f;
@@ -520,7 +520,7 @@ void HydraulicSim_Step(HydraulicSimEnv* env, float dt_s) {
         }
     }
 
-    for (i = 0; i < HDY_MAX_HYDRAULIC_SIM_FB; ++i) {
+    for (i = 0; i < HYD_MAX_HYDRAULIC_SIM_FB; ++i) {
         if (!env->axes[i].allocated) continue;
         Sim_UpdateAxisFeedback(&env->axes[i]);
     }

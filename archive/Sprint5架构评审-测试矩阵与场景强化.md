@@ -26,8 +26,8 @@
 | Bug | 根因 | 修复 |
 |-----|------|------|
 | loopBuild抑制失效 | `CalculateEffectiveThreshold`缺少`errorActive`参数 | 添加参数，errorActive=false时跳过loopBuild抑制 |
-| switchSuppressEndTime使用上段参数 | 在`HDY_ConfigureSegmentCriteria`前计算 | 移到配置之后计算 |
-| 位置偏差诊断仅限END_POSITION | 用endCondition判断而非mode | 改为`segment->mode == HDY_MODE_POSITION` |
+| switchSuppressEndTime使用上段参数 | 在`HYD_ConfigureSegmentCriteria`前计算 | 移到配置之后计算 |
+| 位置偏差诊断仅限END_POSITION | 用endCondition判断而非mode | 改为`segment->mode == HYD_MODE_POSITION` |
 
 ### 2.2 测试增强
 
@@ -37,7 +37,7 @@
 
 ### 2.3 代码重构
 
-- **方向解析统一**：`HDY_Segment_ResolveDirection()`合并了两处重复逻辑
+- **方向解析统一**：`HYD_Segment_ResolveDirection()`合并了两处重复逻辑
 - **仿真器源文件独立**：`src/hydro_sim.c`和`src/hydro_sim_fb.c`移入`src/sim/`
 
 ### 2.4 API契约确认

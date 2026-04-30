@@ -45,7 +45,7 @@
    - 状态迁移路径可追踪
 
 2. ✅ **故障路径统一**
-   - 统一到 `HDY_StateReporter_ReportFault`
+   - 统一到 `HYD_StateReporter_ReportFault`
    - 故障状态落点明确
    - 诊断保留机制完整
 
@@ -80,29 +80,29 @@
 **数据结构**：
 ```c
 typedef struct {
-    HDY_REAL positionError;
-    HDY_REAL velocityError;
-    HDY_REAL flowError;
-    HDY_REAL pressureError;
+    HYD_REAL positionError;
+    HYD_REAL velocityError;
+    HYD_REAL flowError;
+    HYD_REAL pressureError;
     
-    HDY_TIME errorStartTime;
-    HDY_TIME errorDuration;
-    HDY_BOOL errorActive;
+    HYD_TIME errorStartTime;
+    HYD_TIME errorDuration;
+    HYD_BOOL errorActive;
     
-    HDY_REAL maxError;
-    HDY_REAL minError;
-    HDY_REAL avgError;
-    HDY_UINT sampleCount;
-} HDY_ErrorMonitor;
+    HYD_REAL maxError;
+    HYD_REAL minError;
+    HYD_REAL avgError;
+    HYD_UINT sampleCount;
+} HYD_ErrorMonitor;
 ```
 
 **接口**：
 ```c
-void HDY_ErrorMonitor_Init(HDY_ErrorMonitor* monitor);
-void HDY_ErrorMonitor_Update(HDY_ErrorMonitor* monitor,
-                             const HDY_AxisRef* axisRef,
-                             const HDY_ExecutionReference* references,
-                             HDY_TIME currentTime);
+void HYD_ErrorMonitor_Init(HYD_ErrorMonitor* monitor);
+void HYD_ErrorMonitor_Update(HYD_ErrorMonitor* monitor,
+                             const HYD_AxisRef* axisRef,
+                             const HYD_ExecutionReference* references,
+                             HYD_TIME currentTime);
 ```
 
 #### 1.2 判据层设计
@@ -121,35 +121,35 @@ void HDY_ErrorMonitor_Update(HDY_ErrorMonitor* monitor,
 ```c
 typedef struct {
     // 基础阈值
-    HDY_REAL baseThreshold;
+    HYD_REAL baseThreshold;
     
     // 判据参数
-    HDY_TIME debounceTime;          // 持续时间阈值
-    HDY_REAL hysteresisRatio;       // 滞回比例(0~1)
+    HYD_TIME debounceTime;          // 持续时间阈值
+    HYD_REAL hysteresisRatio;       // 滞回比例(0~1)
     
     // 抑制条件
-    HDY_BOOL enableStartupSuppress;  // 启动阶段抑制
-    HDY_TIME startupSuppressTime;    // 启动抑制时长
-    HDY_BOOL enableSwitchSuppress;   // 切段阶段抑制
-    HDY_TIME switchSuppressTime;     // 切段抑制时长
-    HDY_BOOL enableLoopBuildSuppress; // 闭环建立抑制
-    HDY_TIME loopBuildSuppressTime;  // 闭环建立时长
+    HYD_BOOL enableStartupSuppress;  // 启动阶段抑制
+    HYD_TIME startupSuppressTime;    // 启动抑制时长
+    HYD_BOOL enableSwitchSuppress;   // 切段阶段抑制
+    HYD_TIME switchSuppressTime;     // 切段抑制时长
+    HYD_BOOL enableLoopBuildSuppress; // 闭环建立抑制
+    HYD_TIME loopBuildSuppressTime;  // 闭环建立时长
     
     // 诊断配置
-    HDY_DiagnosticCode diagnosticCode;
-    HDY_DiagnosticSeverity severity;
-    HDY_ProtectionAction protectionAction;
-} HDY_DiagnosticCriteria;
+    HYD_DiagnosticCode diagnosticCode;
+    HYD_DiagnosticSeverity severity;
+    HYD_ProtectionAction protectionAction;
+} HYD_DiagnosticCriteria;
 ```
 
 **接口**：
 ```c
-HDY_BOOL HDY_DiagnosticCriteria_Check(HDY_DiagnosticInfo* diagnostic,
-                                     const HDY_ErrorMonitor* monitor,
-                                     const HDY_DiagnosticCriteria* criteria,
-                                     HDY_BOOL isStartupPhase,
-                                     HDY_BOOL isSwitchPhase,
-                                     HDY_TIME segmentElapsedTime);
+HYD_BOOL HYD_DiagnosticCriteria_Check(HYD_DiagnosticInfo* diagnostic,
+                                     const HYD_ErrorMonitor* monitor,
+                                     const HYD_DiagnosticCriteria* criteria,
+                                     HYD_BOOL isStartupPhase,
+                                     HYD_BOOL isSwitchPhase,
+                                     HYD_TIME segmentElapsedTime);
 ```
 
 ### 任务2：误报抑制逻辑实现（预计2天）
@@ -163,7 +163,7 @@ HDY_BOOL HDY_DiagnosticCriteria_Check(HDY_DiagnosticInfo* diagnostic,
 **代码位置**：`diagnostics_criteria.c`
 
 ```c
-HDY_BOOL HDY_IsStartupSuppressActive(HDY_TIME segmentElapsedTime, HDY_TIME suppressTime) {
+HYD_BOOL HYD_IsStartupSuppressActive(HYD_TIME segmentElapsedTime, HYD_TIME suppressTime) {
     return (segmentElapsedTime < suppressTime) ? true : false;
 }
 ```
@@ -177,7 +177,7 @@ HDY_BOOL HDY_IsStartupSuppressActive(HDY_TIME segmentElapsedTime, HDY_TIME suppr
 **代码位置**：`diagnostics_criteria.c`
 
 ```c
-HDY_BOOL HDY_IsSwitchSuppressActive(HDY_BOOL segmentChanged, HDY_TIME segmentElapsedTime, HDY_TIME suppressTime) {
+HYD_BOOL HYD_IsSwitchSuppressActive(HYD_BOOL segmentChanged, HYD_TIME segmentElapsedTime, HYD_TIME suppressTime) {
     if (!segmentChanged) return false;
     return (segmentElapsedTime < suppressTime) ? true : false;
 }
@@ -192,7 +192,7 @@ HDY_BOOL HDY_IsSwitchSuppressActive(HDY_BOOL segmentChanged, HDY_TIME segmentEla
 **代码位置**：`diagnostics_criteria.c`
 
 ```c
-HDY_REAL HDY_CalculateLoopBuildFactor(HDY_TIME loopBuildTime, HDY_TIME suppressTime) {
+HYD_REAL HYD_CalculateLoopBuildFactor(HYD_TIME loopBuildTime, HYD_TIME suppressTime) {
     if (loopBuildTime >= suppressTime) return 1.0;
     return loopBuildTime / suppressTime;  // 线性递增
 }
@@ -212,13 +212,13 @@ HDY_REAL HDY_CalculateLoopBuildFactor(HDY_TIME loopBuildTime, HDY_TIME suppressT
 
 **FAULT级别**：
 - 严重偏差，需要立即停机
-- 触发 `HDY_PROTECTION_ACTION_STOP`
+- 触发 `HYD_PROTECTION_ACTION_STOP`
 
 #### 3.2 告警到故障升级
 
 **升级逻辑**：
 - WARNING 持续超过 `faultEscalationTime` → 升级为 FAULT
-- FAULT 触发后进入 `HDY_FB_STATE_FAULT`
+- FAULT 触发后进入 `HYD_FB_STATE_FAULT`
 
 **代码位置**：`state_reporter.c`
 

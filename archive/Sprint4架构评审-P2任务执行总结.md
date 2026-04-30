@@ -11,7 +11,7 @@
 
 ## 🎯 执行过程
 
-### 阶段1: 统一平台配置头文件 (hdy_config.h)
+### 阶段1: 统一平台配置头文件 (hyd_config.h)
 
 #### 设计思路
 
@@ -30,47 +30,47 @@
 
 1. **精度配置**
    ```c
-   #define HDY_REAL_PRECISION_DOUBLE 1
-   #if HDY_REAL_PRECISION_FLOAT
-       typedef float HDY_REAL;
+   #define HYD_REAL_PRECISION_DOUBLE 1
+   #if HYD_REAL_PRECISION_FLOAT
+       typedef float HYD_REAL;
    #else
-       typedef double HDY_REAL;
+       typedef double HYD_REAL;
    #endif
    ```
 
 2. **数组大小限制**
    ```c
-   #define HDY_MAX_SEGMENTS 16
-   #define HDY_NAME_MAX 32
-   #define HDY_MESSAGE_MAX 64
-   #define HDY_DIAG_HISTORY_DEPTH 4
+   #define HYD_MAX_SEGMENTS 16
+   #define HYD_NAME_MAX 32
+   #define HYD_MESSAGE_MAX 64
+   #define HYD_DIAG_HISTORY_DEPTH 4
    ```
 
 3. **功能开关**
    ```c
-   #define HDY_ENABLE_DIAGNOSTIC_MESSAGE 1
-   #define HDY_ENABLE_DIAGNOSTIC_HISTORY 1
-   #define HDY_ENABLE_PRESSURE_LOOP_TELEMETRY 1
-   #define HDY_ENABLE_EXECUTION_REFERENCE 1
+   #define HYD_ENABLE_DIAGNOSTIC_MESSAGE 1
+   #define HYD_ENABLE_DIAGNOSTIC_HISTORY 1
+   #define HYD_ENABLE_PRESSURE_LOOP_TELEMETRY 1
+   #define HYD_ENABLE_EXECUTION_REFERENCE 1
    ```
 
 4. **验证与保护**
    ```c
-   #define HDY_ENABLE_RECIPE_VALIDATION 1
-   #define HDY_ENABLE_SENSOR_DATA_VALIDATION 1
-   #define HDY_ENABLE_PROTECTION 1
+   #define HYD_ENABLE_RECIPE_VALIDATION 1
+   #define HYD_ENABLE_SENSOR_DATA_VALIDATION 1
+   #define HYD_ENABLE_PROTECTION 1
    ```
 
 5. **性能优化**
    ```c
-   #define HDY_ENABLE_INLINE_FUNCTIONS 1
-   #define HDY_ENABLE_FAST_MATH 0
+   #define HYD_ENABLE_INLINE_FUNCTIONS 1
+   #define HYD_ENABLE_FAST_MATH 0
    ```
 
 #### 集成过程
 
 **1. 创建配置文件**
-- 文件: `include/hdy_config.h`
+- 文件: `include/hyd_config.h`
 - 行数: 345行
 - 配置项: 30+个宏定义
 
@@ -108,12 +108,12 @@
 **移除的包装函数**:
 ```c
 /* 移除前 */
-static HDY_BOOL HDY_AxisRefIsValid(const HDY_AxisRef* axisRef) {
-    return HDY_MotionUtils_AxisRefIsValid(axisRef);
+static HYD_BOOL HYD_AxisRefIsValid(const HYD_AxisRef* axisRef) {
+    return HYD_MotionUtils_AxisRefIsValid(axisRef);
 }
 
 /* 移除后 */
-if (!HDY_MotionUtils_AxisRefIsValid(&fb->AXIS_REF)) {
+if (!HYD_MotionUtils_AxisRefIsValid(&fb->AXIS_REF)) {
     // 直接使用
 }
 ```

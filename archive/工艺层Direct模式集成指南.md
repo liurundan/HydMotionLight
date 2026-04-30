@@ -5,27 +5,27 @@
 ### Direct模式核心API
 ```c
 // 1. 初始化
-HDY_MotionControlFB_Init(&fb);
+HYD_MotionControlFB_Init(&fb);
 
 // 2. 配置Direct模式
 fb.EN = true;
 fb.USE_RECIPE = false;  // 关键：使用Direct模式
 
 // 3. 加载段参数
-HDY_MotionControlFB_LoadDirectSegment(&fb, &segment);
+HYD_MotionControlFB_LoadDirectSegment(&fb, &segment);
 
 // 4. 启动执行
-HDY_MotionControlFB_StartSegment(&fb, 0, timestamp);
+HYD_MotionControlFB_StartSegment(&fb, 0, timestamp);
 
 // 5. 周期循环（每个PLC周期）
 fb.AXIS_REF = GetCurrentFeedback();  // 更新传感器反馈
-HDY_MotionControlFB_Execute(&fb);     // 执行控制
+HYD_MotionControlFB_Execute(&fb);     // 执行控制
 SetPumpSpeed(fb.PUMP_SPEED);           // 输出泵速命令
 
 // 6. 段切换（工艺层决策）
 if (fb.SEGMENT_COMPLETED) {
-    HDY_MotionControlFB_LoadDirectSegment(&fb, &nextSegment);
-    HDY_MotionControlFB_StartSegment(&fb, 0, timestamp);
+    HYD_MotionControlFB_LoadDirectSegment(&fb, &nextSegment);
+    HYD_MotionControlFB_StartSegment(&fb, 0, timestamp);
 }
 ```
 
@@ -56,16 +56,16 @@ if (fb.SEGMENT_COMPLETED) {
 ### 初始化与配置
 
 ```c
-void HDY_MotionControlFB_Init(HDY_MotionControlFB* fb);
+void HYD_MotionControlFB_Init(HYD_MotionControlFB* fb);
 ```
 **功能**: 完全初始化功能块，清除所有状态
 **调用时机**: 系统启动或复位后
 **注意**: 会清除所有配置，需要重新设置参数
 
 ```c
-HDY_BOOL HDY_MotionControlFB_LoadDirectSegment(
-    HDY_MotionControlFB* fb, 
-    const HDY_MotionSegment* segment
+HYD_BOOL HYD_MotionControlFB_LoadDirectSegment(
+    HYD_MotionControlFB* fb, 
+    const HYD_MotionSegment* segment
 );
 ```
 **功能**: 加载Direct模式的段参数
@@ -76,10 +76,10 @@ HDY_BOOL HDY_MotionControlFB_LoadDirectSegment(
 ### 执行控制
 
 ```c
-HDY_BOOL HDY_MotionControlFB_StartSegment(
-    HDY_MotionControlFB* fb, 
+HYD_BOOL HYD_MotionControlFB_StartSegment(
+    HYD_MotionControlFB* fb, 
     size_t segmentIndex,    // Direct模式下忽略
-    HDY_TIME timestamp
+    HYD_TIME timestamp
 );
 ```
 **功能**: 启动段执行
@@ -88,7 +88,7 @@ HDY_BOOL HDY_MotionControlFB_StartSegment(
 **注意**: 实际状态转换在下一个Execute()周期生效
 
 ```c
-void HDY_MotionControlFB_Execute(HDY_MotionControlFB* fb);
+void HYD_MotionControlFB_Execute(HYD_MotionControlFB* fb);
 ```
 **功能**: 执行一个控制周期
 **调用时机**: 每个PLC周期调用一次
@@ -127,13 +127,13 @@ fb.STATE.plannedDirection         // enum: 规划方向
 ### 速度斜坡模式
 
 ```c
-HDY_MotionSegment segment;
+HYD_MotionSegment segment;
 memset(&segment, 0, sizeof(segment));
 
 segment.segmentTag = 1;  // 段标签（替代原name字段）
-segment.mode = HDY_MODE_SPEED_RAMP;
-segment.endCondition = HDY_END_POSITION;  // 或 HDY_END_TIME
-segment.direction = HDY_DIRECTION_EXTEND; // 或 RETRACT
+segment.mode = HYD_MODE_SPEED_RAMP;
+segment.endCondition = HYD_END_POSITION;  // 或 HYD_END_TIME
+segment.direction = HYD_DIRECTION_EXTEND; // 或 RETRACT
 
 segment.targetPosition = 100.0;    // mm (位置结束时使用)
 segment.duration = 2.0;            // s (时间结束时使用)
@@ -150,13 +150,13 @@ segment.timeoutLimit = 5.0;        // s
 ### 压力闭环模式
 
 ```c
-HDY_MotionSegment segment;
+HYD_MotionSegment segment;
 memset(&segment, 0, sizeof(segment));
 
 segment.segmentTag = 2;  // 段标签（替代原name字段）
-segment.mode = HDY_MODE_PRESSURE_CLOSED_LOOP;
-segment.endCondition = HDY_END_TIME;  // 或 HDY_END_PRESSURE
-segment.direction = HDY_DIRECTION_HOLD;
+segment.mode = HYD_MODE_PRESSURE_CLOSED_LOOP;
+segment.endCondition = HYD_END_TIME;  // 或 HYD_END_PRESSURE
+segment.direction = HYD_DIRECTION_HOLD;
 
 segment.targetPressure = 80.0;    // MPa
 segment.targetFlow = 5.0;         // L/min (前馈流量)
@@ -164,7 +164,7 @@ segment.maxFlow = 20.0;          // L/min
 segment.duration = 2.0;          // s (时间结束时使用)
 
 // 压力控制器参数
-segment.pressureController = HDY_PRESSURE_CONTROLLER_PI;
+segment.pressureController = HYD_PRESSURE_CONTROLLER_PI;
 segment.pressureKp = 0.5;         // L/min per MPa
 segment.pressureKi = 0.1;         // L/min per (MPa·s)
 segment.pressureKd = 0.0;         // L/min per (MPa/s)
@@ -188,41 +188,41 @@ segment.timeoutLimit = 5.0;       // s
 
 ```
 1. 合模阶段
-   └─> HDY_MODE_SPEED_RAMP
-       └─> HDY_END_POSITION
+   └─> HYD_MODE_SPEED_RAMP
+       └─> HYD_END_POSITION
 
 2. 注射阶段  
-   └─> HDY_MODE_SPEED_RAMP
-       └─> HDY_END_POSITION
+   └─> HYD_MODE_SPEED_RAMP
+       └─> HYD_END_POSITION
 
 3. 保压阶段
-   └─> HDY_MODE_PRESSURE_CLOSED_LOOP
-       └─> HDY_END_TIME
+   └─> HYD_MODE_PRESSURE_CLOSED_LOOP
+       └─> HYD_END_TIME
 
 4. 冷却阶段
-   └─> HDY_MODE_PRESSURE_CLOSED_LOOP
-       └─> HDY_END_TIME
+   └─> HYD_MODE_PRESSURE_CLOSED_LOOP
+       └─> HYD_END_TIME
 
 5. 开模阶段
-   └─> HDY_MODE_SPEED_RAMP
-       └─> HDY_END_POSITION
+   └─> HYD_MODE_SPEED_RAMP
+       └─> HYD_END_POSITION
 
 6. 顶出阶段
-   └─> HDY_MODE_SPEED_RAMP
-       └─> HDY_END_POSITION
+   └─> HYD_MODE_SPEED_RAMP
+       └─> HYD_END_POSITION
 ```
 
 ### 工艺层控制流程
 
 ```c
 // 全局变量
-HDY_MotionControlFB fb;
-HDY_TIME currentTime = 0.0;
+HYD_MotionControlFB fb;
+HYD_TIME currentTime = 0.0;
 int currentPhase = 0;
 
 // 初始化
 void InitSystem() {
-    HDY_MotionControlFB_Init(&fb);
+    HYD_MotionControlFB_Init(&fb);
     fb.EN = true;
     fb.USE_RECIPE = false;
     fb.FLOW_TO_PUMP_SPEED_GAIN = 1.2;
@@ -241,7 +241,7 @@ void CyclicTask() {
     fb.AXIS_REF.timestamp = currentTime;
     
     // 2. 执行控制
-    HDY_MotionControlFB_Execute(&fb);
+    HYD_MotionControlFB_Execute(&fb);
     
     // 3. 输出控制命令
     SetPumpSpeed(fb.PUMP_SPEED);
@@ -262,7 +262,7 @@ void CyclicTask() {
 
 // 启动特定阶段
 void StartPhase(int phase) {
-    HDY_MotionSegment segment;
+    HYD_MotionSegment segment;
     
     switch (phase) {
         case 0:  // 合模
@@ -290,8 +290,8 @@ void StartPhase(int phase) {
             break;
     }
     
-    HDY_MotionControlFB_LoadDirectSegment(&fb, &segment);
-    HDY_MotionControlFB_StartSegment(&fb, 0, currentTime);
+    HYD_MotionControlFB_LoadDirectSegment(&fb, &segment);
+    HYD_MotionControlFB_StartSegment(&fb, 0, currentTime);
 }
 ```
 
@@ -385,19 +385,19 @@ segment.pressureFilterAlpha = 0.8;  // 0<alpha<=1
 
 | 故障代码 | 含义 | 可能原因 | 处理方法 |
 |---------|------|---------|---------|
-| HDY_DIAG_CODE_TIMEOUT | 超时 | 段执行时间过长 | 检查maxVelocity、增加timeoutLimit |
-| HDY_DIAG_CODE_OVER_PRESSURE | 超压 | 压力超过安全限值 | 检查压力传感器、调整控制参数 |
-| HDY_DIAG_CODE_UNDER_PRESSURE | 欠压 | 压力无法达到目标 | 检查液压系统、增加Kp |
-| HDY_DIAG_CODE_POSITION_DEVIATION | 位置偏差 | 无法到达目标位置 | 检查机械系统、增加maxVelocity |
-| HDY_DIAG_CODE_SEGMENT_INVALID | 段参数无效 | 参数验证失败 | 检查段参数配置 |
+| HYD_DIAG_CODE_TIMEOUT | 超时 | 段执行时间过长 | 检查maxVelocity、增加timeoutLimit |
+| HYD_DIAG_CODE_OVER_PRESSURE | 超压 | 压力超过安全限值 | 检查压力传感器、调整控制参数 |
+| HYD_DIAG_CODE_UNDER_PRESSURE | 欠压 | 压力无法达到目标 | 检查液压系统、增加Kp |
+| HYD_DIAG_CODE_POSITION_DEVIATION | 位置偏差 | 无法到达目标位置 | 检查机械系统、增加maxVelocity |
+| HYD_DIAG_CODE_SEGMENT_INVALID | 段参数无效 | 参数验证失败 | 检查段参数配置 |
 
 ### 诊断信息读取
 
 ```c
 if (fb.FAULT || fb.ERROR) {
-    HDY_DiagnosticCode code = fb.DIAGNOSTIC.code;
-    HDY_DiagnosticSeverity severity = fb.DIAGNOSTIC.severity;
-    HDY_DiagnosticSource source = fb.DIAGNOSTIC.source;
+    HYD_DiagnosticCode code = fb.DIAGNOSTIC.code;
+    HYD_DiagnosticSeverity severity = fb.DIAGNOSTIC.severity;
+    HYD_DiagnosticSource source = fb.DIAGNOSTIC.source;
     
     printf("Diagnostic: Code=%d, Severity=%d, Source=%d\n", 
            code, severity, source);
@@ -405,15 +405,15 @@ if (fb.FAULT || fb.ERROR) {
     printf("Flow Error: %.3f L/min\n", fb.DIAGNOSTIC.flowError);
     
     // 处理故障后确认并清除
-    HDY_MotionControlFB_AcknowledgeDiagnostics(&fb);
+    HYD_MotionControlFB_AcknowledgeDiagnostics(&fb);
 }
 ```
 
 ### 性能监控
 
 ```c
-#if HDY_ENABLE_PRESSURE_LOOP_TELEMETRY
-HDY_PressureLoopState* loop = &fb.STATE.pressureLoop;
+#if HYD_ENABLE_PRESSURE_LOOP_TELEMETRY
+HYD_PressureLoopState* loop = &fb.STATE.pressureLoop;
 
 printf("Pressure Control Telemetry:\n");
 printf("  Target Pressure: %.3f MPa\n", loop->targetPressure);
@@ -422,7 +422,7 @@ printf("  Control Error: %.3f MPa\n", loop->controlError);
 printf("  Output Flow: %.3f L/min\n", loop->outputFlow);
 printf("  Saturated: %s\n", loop->saturated ? "YES" : "NO");
 
-if (fb.STATE.pressureControllerApplied == HDY_PRESSURE_CONTROLLER_RBF_PID) {
+if (fb.STATE.pressureControllerApplied == HYD_PRESSURE_CONTROLLER_RBF_PID) {
     printf("  Adaptive Kp: %.3f\n", loop->adaptiveKp);
     printf("  Adaptive Ki: %.3f\n", loop->adaptiveKi);
     printf("  Adaptive Kd: %.3f\n", loop->adaptiveKd);
@@ -518,7 +518,7 @@ if (fb.STATE.pressureControllerApplied == HDY_PRESSURE_CONTROLLER_RBF_PID) {
 - 项目根目录: `/home/dan/project/hdy-motion-light`
 - API头文件: `include/motion_control.h`
 - 类型定义: `include/common_types.h`
-- 配置文件: `include/hdy_config.h`
+- 配置文件: `include/hyd_config.h`
 
 ---
 

@@ -2,14 +2,14 @@
 #include <stdio.h>
 #include "recipe_validator.h"
 
-static HDY_MotionSegment make_valid_segment(void) {
-    HDY_MotionSegment segment = {0};
+static HYD_MotionSegment make_valid_segment(void) {
+    HYD_MotionSegment segment = {0};
     segment.segmentTag = 1;
-    segment.segmentType = HDY_SEGMENT_TYPE_INJECTION;
-    segment.planner = HDY_PLANNER_TIME_BASED;
-    segment.mode = HDY_MODE_SPEED_RAMP;
-    segment.endCondition = HDY_END_TIME;
-    segment.direction = HDY_DIRECTION_EXTEND;
+    segment.segmentType = HYD_SEGMENT_TYPE_INJECTION;
+    segment.planner = HYD_PLANNER_TIME_BASED;
+    segment.mode = HYD_MODE_SPEED_RAMP;
+    segment.endCondition = HYD_END_TIME;
+    segment.direction = HYD_DIRECTION_EXTEND;
     segment.targetPosition = 10.0;
     segment.targetFlow = 8.0;
     segment.targetPressure = 12.0;
@@ -28,80 +28,80 @@ static HDY_MotionSegment make_valid_segment(void) {
 }
 
 static void test_validate_recipe_success(void) {
-    HDY_MotionSegment recipe[2];
-    HDY_DiagnosticCode code = HDY_DIAG_CODE_INTERNAL_ERROR;
+    HYD_MotionSegment recipe[2];
+    HYD_DiagnosticCode code = HYD_DIAG_CODE_INTERNAL_ERROR;
 
     printf("Testing recipe validator success path...\n");
     recipe[0] = make_valid_segment();
     recipe[1] = make_valid_segment();
-    recipe[1].direction = HDY_DIRECTION_RETRACT;
+    recipe[1].direction = HYD_DIRECTION_RETRACT;
 
-    assert(HDY_RecipeValidator_ValidateRecipe(recipe, 2, &code));
-    assert(code == HDY_DIAG_CODE_NONE);
+    assert(HYD_RecipeValidator_ValidateRecipe(recipe, 2, &code));
+    assert(code == HYD_DIAG_CODE_NONE);
     printf("✓ Recipe validator success path test passed\n");
 }
 
 static void test_validate_recipe_rejects_speed_ramp_non_time_planner(void) {
-    HDY_MotionSegment recipe[1];
-    HDY_DiagnosticCode code = HDY_DIAG_CODE_NONE;
+    HYD_MotionSegment recipe[1];
+    HYD_DiagnosticCode code = HYD_DIAG_CODE_NONE;
 
     printf("Testing speed-ramp/time-planner contract validation...\n");
     recipe[0] = make_valid_segment();
-    recipe[0].planner = HDY_PLANNER_POSITION_BASED;
+    recipe[0].planner = HYD_PLANNER_POSITION_BASED;
 
-    assert(!HDY_RecipeValidator_ValidateRecipe(recipe, 1, &code));
-    assert(code == HDY_DIAG_CODE_SEGMENT_INVALID);
+    assert(!HYD_RecipeValidator_ValidateRecipe(recipe, 1, &code));
+    assert(code == HYD_DIAG_CODE_SEGMENT_INVALID);
     printf("✓ Speed-ramp/time-planner contract test passed\n");
 }
 
 static void test_validate_runtime_config(void) {
-    HDY_DiagnosticCode code = HDY_DIAG_CODE_NONE;
+    HYD_DiagnosticCode code = HYD_DIAG_CODE_NONE;
 
     printf("Testing runtime config validation...\n");
-    assert(!HDY_RecipeValidator_ValidateRuntimeConfig(0.0, 3000.0, &code));
-    assert(code == HDY_DIAG_CODE_RUNTIME_CONFIG_INVALID);
+    assert(!HYD_RecipeValidator_ValidateRuntimeConfig(0.0, 3000.0, &code));
+    assert(code == HYD_DIAG_CODE_RUNTIME_CONFIG_INVALID);
 
-    assert(HDY_RecipeValidator_ValidateRuntimeConfig(100.0, 3000.0, &code));
-    assert(code == HDY_DIAG_CODE_NONE);
+    assert(HYD_RecipeValidator_ValidateRuntimeConfig(100.0, 3000.0, &code));
+    assert(code == HYD_DIAG_CODE_NONE);
     printf("✓ Runtime config validation test passed\n");
 }
 
 static void test_validate_pressure_derivative_filter_alpha(void) {
-    HDY_MotionSegment segment;
-    HDY_DiagnosticCode code = HDY_DIAG_CODE_NONE;
+    HYD_MotionSegment segment;
+    HYD_DiagnosticCode code = HYD_DIAG_CODE_NONE;
 
     printf("Testing pressure derivative filter alpha validation...\n");
     segment = make_valid_segment();
-    segment.mode = HDY_MODE_PRESSURE_CLOSED_LOOP;
-    segment.direction = HDY_DIRECTION_HOLD;
+    segment.mode = HYD_MODE_PRESSURE_CLOSED_LOOP;
+    segment.direction = HYD_DIRECTION_HOLD;
     segment.velocityToFlowGain = 0.0;
-    segment.pressureController = HDY_PRESSURE_CONTROLLER_PID;
+    segment.pressureController = HYD_PRESSURE_CONTROLLER_PID;
     segment.pressureKp = 0.5;
     segment.pressureKi = 0.5;
     segment.pressureKd = 0.1;
     segment.pressureDerivativeFilterAlpha = 1.5;
 
-    assert(!HDY_RecipeValidator_ValidateSegment(&segment, 0, &code));
-    assert(code == HDY_DIAG_CODE_SEGMENT_INVALID);
+    assert(!HYD_RecipeValidator_ValidateSegment(&segment, 0, &code));
+    assert(code == HYD_DIAG_CODE_SEGMENT_INVALID);
     printf("✓ Pressure derivative filter alpha validation test passed\n");
 }
 
 static void test_validate_start_context_direction_conflict(void) {
-    HDY_MotionSegment segment;
-    HDY_AxisRef axisRef = {0};
-    HDY_DiagnosticCode code = HDY_DIAG_CODE_NONE;
+    HYD_MotionSegment segment;
+    HYD_AxisRef axisRef = {0};
+    HYD_DiagnosticCode code = HYD_DIAG_CODE_NONE;
 
     printf("Testing start context directional conflict validation...\n");
     segment = make_valid_segment();
-    segment.mode = HDY_MODE_POSITION;
-    segment.planner = HDY_PLANNER_POSITION_BASED;
-    segment.endCondition = HDY_END_POSITION;
+    segment.mode = HYD_MODE_POSITION;
+    segment.planner = HYD_PLANNER_POSITION_BASED;
+    segment.endCondition = HYD_END_POSITION;
     segment.targetPosition = 5.0;
-    segment.direction = HDY_DIRECTION_EXTEND;
+    segment.direction = HYD_DIRECTION_EXTEND;
     axisRef.position = 10.0;
 
-    assert(!HDY_RecipeValidator_ValidateStartContext(&segment, 0, &axisRef, &code));
-    assert(code == HDY_DIAG_CODE_START_CONTEXT_INVALID);
+    assert(!HYD_RecipeValidator_ValidateStartContext(&segment, 0, &axisRef, &code));
+    assert(code == HYD_DIAG_CODE_START_CONTEXT_INVALID);
     printf("✓ Start context directional conflict test passed\n");
 }
 

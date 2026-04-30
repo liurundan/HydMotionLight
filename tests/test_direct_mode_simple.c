@@ -13,10 +13,10 @@
 #define TEST_STEPS 3000
 
 typedef struct {
-    HDY_REAL maxVelocityJump;
-    HDY_REAL maxPressureJump;
-    HDY_UINT discontinuityCount;
-    HDY_BOOL testPassed;
+    HYD_REAL maxVelocityJump;
+    HYD_REAL maxPressureJump;
+    HYD_UINT discontinuityCount;
+    HYD_BOOL testPassed;
 } TestResults;
 
 void TestResults_Init(TestResults* results) {
@@ -24,8 +24,8 @@ void TestResults_Init(TestResults* results) {
     results->testPassed = true;
 }
 
-void TestResults_CheckVelocity(TestResults* results, HDY_REAL currentVel, HDY_REAL prevVel) {
-    HDY_REAL jump = fabs(currentVel - prevVel);
+void TestResults_CheckVelocity(TestResults* results, HYD_REAL currentVel, HYD_REAL prevVel) {
+    HYD_REAL jump = fabs(currentVel - prevVel);
     if (jump > results->maxVelocityJump) {
         results->maxVelocityJump = jump;
     }
@@ -37,8 +37,8 @@ void TestResults_CheckVelocity(TestResults* results, HDY_REAL currentVel, HDY_RE
     }
 }
 
-void TestResults_CheckPressure(TestResults* results, HDY_REAL currentPress, HDY_REAL prevPress) {
-    HDY_REAL jump = fabs(currentPress - prevPress);
+void TestResults_CheckPressure(TestResults* results, HYD_REAL currentPress, HYD_REAL prevPress) {
+    HYD_REAL jump = fabs(currentPress - prevPress);
     if (jump > results->maxPressureJump) {
         results->maxPressureJump = jump;
     }
@@ -51,19 +51,19 @@ void TestResults_CheckPressure(TestResults* results, HDY_REAL currentPress, HDY_
 }
 
 int main(void) {
-    HDY_MotionControlFB fb;
-    HDY_TIME currentTime = 0.0;
-    HDY_REAL position = 0.0, velocity = 0.0, pressure = 0.0;
-    HDY_REAL prevVelocity = 0.0, prevPressure = 0.0;
+    HYD_MotionControlFB fb;
+    HYD_TIME currentTime = 0.0;
+    HYD_REAL position = 0.0, velocity = 0.0, pressure = 0.0;
+    HYD_REAL prevVelocity = 0.0, prevPressure = 0.0;
     TestResults results;
-    HDY_UINT step = 0;
+    HYD_UINT step = 0;
     
     printf("=== Direct Mode Continuity Test ===\n\n");
     
     TestResults_Init(&results);
     
     /* 初始化 */
-    HDY_MotionControlFB_Init(&fb);
+    HYD_MotionControlFB_Init(&fb);
     /* EN gate handled by IEC layer */
     fb.USE_RECIPE = false;
     fb.FLOW_TO_PUMP_SPEED_GAIN = 1.2;
@@ -72,12 +72,12 @@ int main(void) {
     /* 阶段1: 注射段 (速度斜坡模式) */
     printf("=== Phase 1: Injection (Speed Ramp) ===\n");
     
-    HDY_MotionSegment injection;
+    HYD_MotionSegment injection;
     memset(&injection, 0, sizeof(injection));
-    injection.segmentTag = HDY_SEGMENT_TYPE_INJECTION;
-    injection.mode = HDY_MODE_SPEED_RAMP;
-    injection.endCondition = HDY_END_POSITION;
-    injection.direction = HDY_DIRECTION_EXTEND;
+    injection.segmentTag = HYD_SEGMENT_TYPE_INJECTION;
+    injection.mode = HYD_MODE_SPEED_RAMP;
+    injection.endCondition = HYD_END_POSITION;
+    injection.direction = HYD_DIRECTION_EXTEND;
     injection.targetPosition = 50.0;
     injection.maxVelocity = 100.0;
     injection.maxAcceleration = 200.0;
@@ -86,10 +86,10 @@ int main(void) {
     injection.velocityToFlowGain = 0.25;
     injection.positionTolerance = 0.1;
     
-    HDY_MotionControlFB_LoadDirectSegment(&fb, &injection);
-    HDY_MotionControlFB_StartSegment(&fb, 0, currentTime);
+    HYD_MotionControlFB_LoadDirectSegment(&fb, &injection);
+    HYD_MotionControlFB_StartSegment(&fb, 0, currentTime);
     
-    HDY_UINT phase1Step = 0;
+    HYD_UINT phase1Step = 0;
     prevVelocity = 0.0;
     prevPressure = 0.0;
     
@@ -107,7 +107,7 @@ int main(void) {
         fb.AXIS_REF.timestamp = currentTime;
         
         /* 执行控制 */
-        HDY_MotionControlFB_Execute(&fb);
+        HYD_MotionControlFB_Execute(&fb);
         
         /* 检查连续性 */
         TestResults_CheckVelocity(&results, velocity, prevVelocity);
@@ -137,12 +137,12 @@ int main(void) {
     /* 阶段2: 继续注射 (时间结束) */
     printf("\n=== Phase 2: Continue Injection (Time-based) ===\n");
     
-    HDY_MotionSegment injection2;
+    HYD_MotionSegment injection2;
     memset(&injection2, 0, sizeof(injection2));
-    injection2.segmentTag = HDY_SEGMENT_TYPE_INJECTION + 1;
-    injection2.mode = HDY_MODE_SPEED_RAMP;
-    injection2.endCondition = HDY_END_TIME;
-    injection2.direction = HDY_DIRECTION_EXTEND;
+    injection2.segmentTag = HYD_SEGMENT_TYPE_INJECTION + 1;
+    injection2.mode = HYD_MODE_SPEED_RAMP;
+    injection2.endCondition = HYD_END_TIME;
+    injection2.direction = HYD_DIRECTION_EXTEND;
     injection2.targetPosition = 100.0;
     injection2.maxVelocity = 100.0;
     injection2.maxAcceleration = 200.0;
@@ -151,10 +151,10 @@ int main(void) {
     injection2.velocityToFlowGain = 0.25;
     injection2.duration = 1.0;  /* 1秒 */
     
-    HDY_MotionControlFB_LoadDirectSegment(&fb, &injection2);
-    HDY_MotionControlFB_StartSegment(&fb, 0, currentTime);
+    HYD_MotionControlFB_LoadDirectSegment(&fb, &injection2);
+    HYD_MotionControlFB_StartSegment(&fb, 0, currentTime);
     
-    HDY_UINT phase2Step = 0;
+    HYD_UINT phase2Step = 0;
     
     while (phase2Step < 1500 && !fb.SEGMENT_COMPLETED) {
         velocity = fb.STATE.plannedVelocity;
@@ -167,7 +167,7 @@ int main(void) {
         fb.AXIS_REF.pressure = pressure;
         fb.AXIS_REF.timestamp = currentTime;
         
-        HDY_MotionControlFB_Execute(&fb);
+        HYD_MotionControlFB_Execute(&fb);
         
         TestResults_CheckVelocity(&results, velocity, prevVelocity);
         TestResults_CheckPressure(&results, pressure, prevPressure);
@@ -196,29 +196,29 @@ int main(void) {
     /* 阶段3: 保压段 (压力控制) */
     printf("\n=== Phase 3: Holding (Pressure Control) ===\n");
     
-    HDY_MotionSegment holding;
+    HYD_MotionSegment holding;
     memset(&holding, 0, sizeof(holding));
-    holding.segmentTag = HDY_SEGMENT_TYPE_HOLDING;
-    holding.mode = HDY_MODE_PRESSURE_CLOSED_LOOP;
-    holding.endCondition = HDY_END_TIME;
-    holding.direction = HDY_DIRECTION_HOLD;
+    holding.segmentTag = HYD_SEGMENT_TYPE_HOLDING;
+    holding.mode = HYD_MODE_PRESSURE_CLOSED_LOOP;
+    holding.endCondition = HYD_END_TIME;
+    holding.direction = HYD_DIRECTION_HOLD;
     holding.targetPressure = 5.0;
     holding.targetFlow = 2.0;
     holding.maxFlow = 10.0;
     holding.duration = 0.5;
-    holding.pressureController = HDY_PRESSURE_CONTROLLER_P;
+    holding.pressureController = HYD_PRESSURE_CONTROLLER_P;
     holding.pressureKp = 0.5;
     holding.pressureRampRate = 2.0;
     holding.pressureTolerance = 0.5;
     
-    HDY_MotionControlFB_LoadDirectSegment(&fb, &holding);
-    HDY_MotionControlFB_StartSegment(&fb, 0, currentTime);
+    HYD_MotionControlFB_LoadDirectSegment(&fb, &holding);
+    HYD_MotionControlFB_StartSegment(&fb, 0, currentTime);
     
-    HDY_UINT phase3Step = 0;
+    HYD_UINT phase3Step = 0;
     
     while (phase3Step < 800 && !fb.SEGMENT_COMPLETED) {
         /* 压力响应仿真 */
-        HDY_REAL pressureError = holding.targetPressure - pressure;
+        HYD_REAL pressureError = holding.targetPressure - pressure;
         pressure += pressureError * 0.3 * CYCLE_PERIOD;
         
         velocity = fb.STATE.plannedVelocity;
@@ -230,7 +230,7 @@ int main(void) {
         fb.AXIS_REF.pressure = pressure;
         fb.AXIS_REF.timestamp = currentTime;
         
-        HDY_MotionControlFB_Execute(&fb);
+        HYD_MotionControlFB_Execute(&fb);
         
         TestResults_CheckVelocity(&results, velocity, prevVelocity);
         TestResults_CheckPressure(&results, pressure, prevPressure);

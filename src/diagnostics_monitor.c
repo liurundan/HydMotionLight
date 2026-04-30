@@ -2,26 +2,26 @@
 #include <math.h>
 #include <string.h>
 
-void HDY_ErrorMonitor_Init(HDY_ErrorMonitor* monitor) {
+void HYD_ErrorMonitor_Init(HYD_ErrorMonitor* monitor) {
     if (monitor == NULL) {
         return;
     }
 
-    HDY_ErrorMonitor_Reset(monitor);
+    HYD_ErrorMonitor_Reset(monitor);
 }
 
-static HDY_BOOL HDY_ErrorMonitor_IsFiniteReal(HDY_REAL value) {
+static HYD_BOOL HYD_ErrorMonitor_IsFiniteReal(HYD_REAL value) {
     return isfinite(value) ? true : false;
 }
 
-void HDY_ErrorMonitor_Update(HDY_ErrorMonitor* monitor,
-                             const HDY_AxisRef* axisRef,
-                             const HDY_ExecutionReference* references,
-                             HDY_TIME currentTime) {
-    HDY_REAL newPositionError;
-    HDY_REAL newVelocityError;
-    HDY_REAL newFlowError;
-    HDY_REAL newPressureError;
+void HYD_ErrorMonitor_Update(HYD_ErrorMonitor* monitor,
+                             const HYD_AxisRef* axisRef,
+                             const HYD_ExecutionReference* references,
+                             HYD_TIME currentTime) {
+    HYD_REAL newPositionError;
+    HYD_REAL newVelocityError;
+    HYD_REAL newFlowError;
+    HYD_REAL newPressureError;
 
     if (monitor == NULL || axisRef == NULL || references == NULL) {
         return;
@@ -34,22 +34,22 @@ void HDY_ErrorMonitor_Update(HDY_ErrorMonitor* monitor,
     newPressureError = 0.0;
 
     /* 压力误差 = 参考压力 - 实测压力 */
-    if (HDY_ErrorMonitor_IsFiniteReal(references->pressureReference) &&
-        HDY_ErrorMonitor_IsFiniteReal(axisRef->pressure)) {
+    if (HYD_ErrorMonitor_IsFiniteReal(references->pressureReference) &&
+        HYD_ErrorMonitor_IsFiniteReal(axisRef->pressure)) {
         newPressureError = references->pressureReference - axisRef->pressure;
         monitor->pressureError = newPressureError;
     }
 
     /* 流量误差 = 参考流量 - |实测流量|（流量为幅值） */
-    if (HDY_ErrorMonitor_IsFiniteReal(references->flowReference) &&
-        HDY_ErrorMonitor_IsFiniteReal(axisRef->flow)) {
+    if (HYD_ErrorMonitor_IsFiniteReal(references->flowReference) &&
+        HYD_ErrorMonitor_IsFiniteReal(axisRef->flow)) {
         newFlowError = references->flowReference - fabs(axisRef->flow);
         monitor->flowError = newFlowError;
     }
 
     /* 速度误差 = 参考速度 - 实测速度（速度有符号） */
-    if (HDY_ErrorMonitor_IsFiniteReal(references->velocityReference) &&
-        HDY_ErrorMonitor_IsFiniteReal(axisRef->velocity)) {
+    if (HYD_ErrorMonitor_IsFiniteReal(references->velocityReference) &&
+        HYD_ErrorMonitor_IsFiniteReal(axisRef->velocity)) {
         newVelocityError = references->velocityReference - axisRef->velocity;
         monitor->velocityError = newVelocityError;
     }
@@ -111,7 +111,7 @@ void HDY_ErrorMonitor_Update(HDY_ErrorMonitor* monitor,
     }
 
     /* 更新统计信息（仅在有效值时更新） */
-    if (HDY_ErrorMonitor_IsFiniteReal(newPressureError)) {
+    if (HYD_ErrorMonitor_IsFiniteReal(newPressureError)) {
         if (monitor->sampleCount == 0) {
             monitor->maxPressureError = newPressureError;
             monitor->minPressureError = newPressureError;
@@ -125,11 +125,11 @@ void HDY_ErrorMonitor_Update(HDY_ErrorMonitor* monitor,
             }
             /* 累积平均值：avg = old_avg + (new - old_avg) / (n + 1) */
             monitor->avgPressureError = monitor->avgPressureError +
-                (newPressureError - monitor->avgPressureError) / (HDY_REAL)(monitor->sampleCount + 1);
+                (newPressureError - monitor->avgPressureError) / (HYD_REAL)(monitor->sampleCount + 1);
         }
     }
 
-    if (HDY_ErrorMonitor_IsFiniteReal(newFlowError)) {
+    if (HYD_ErrorMonitor_IsFiniteReal(newFlowError)) {
         if (monitor->sampleCount == 0) {
             monitor->maxFlowError = newFlowError;
             monitor->minFlowError = newFlowError;
@@ -142,11 +142,11 @@ void HDY_ErrorMonitor_Update(HDY_ErrorMonitor* monitor,
                 monitor->minFlowError = newFlowError;
             }
             monitor->avgFlowError = monitor->avgFlowError +
-                (newFlowError - monitor->avgFlowError) / (HDY_REAL)(monitor->sampleCount + 1);
+                (newFlowError - monitor->avgFlowError) / (HYD_REAL)(monitor->sampleCount + 1);
         }
     }
 
-    if (HDY_ErrorMonitor_IsFiniteReal(newVelocityError)) {
+    if (HYD_ErrorMonitor_IsFiniteReal(newVelocityError)) {
         if (monitor->sampleCount == 0) {
             monitor->maxVelocityError = newVelocityError;
             monitor->minVelocityError = newVelocityError;
@@ -159,11 +159,11 @@ void HDY_ErrorMonitor_Update(HDY_ErrorMonitor* monitor,
                 monitor->minVelocityError = newVelocityError;
             }
             monitor->avgVelocityError = monitor->avgVelocityError +
-                (newVelocityError - monitor->avgVelocityError) / (HDY_REAL)(monitor->sampleCount + 1);
+                (newVelocityError - monitor->avgVelocityError) / (HYD_REAL)(monitor->sampleCount + 1);
         }
     }
 
-    if (HDY_ErrorMonitor_IsFiniteReal(newPositionError)) {
+    if (HYD_ErrorMonitor_IsFiniteReal(newPositionError)) {
         if (monitor->sampleCount == 0) {
             monitor->maxPositionError = newPositionError;
             monitor->minPositionError = newPositionError;
@@ -176,14 +176,14 @@ void HDY_ErrorMonitor_Update(HDY_ErrorMonitor* monitor,
                 monitor->minPositionError = newPositionError;
             }
             monitor->avgPositionError = monitor->avgPositionError +
-                (newPositionError - monitor->avgPositionError) / (HDY_REAL)(monitor->sampleCount + 1);
+                (newPositionError - monitor->avgPositionError) / (HYD_REAL)(monitor->sampleCount + 1);
         }
     }
 
     monitor->sampleCount++;
 }
 
-void HDY_ErrorMonitor_ResetStatistics(HDY_ErrorMonitor* monitor) {
+void HYD_ErrorMonitor_ResetStatistics(HYD_ErrorMonitor* monitor) {
     if (monitor == NULL) {
         return;
     }
@@ -204,7 +204,7 @@ void HDY_ErrorMonitor_ResetStatistics(HDY_ErrorMonitor* monitor) {
     monitor->sampleCount = 0;
 }
 
-void HDY_ErrorMonitor_Reset(HDY_ErrorMonitor* monitor) {
+void HYD_ErrorMonitor_Reset(HYD_ErrorMonitor* monitor) {
     if (monitor == NULL) {
         return;
     }

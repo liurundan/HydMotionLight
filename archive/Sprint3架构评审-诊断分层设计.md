@@ -33,7 +33,7 @@
 
 ## 🏗️ 架构设计评审
 
-### 1. 监视层架构（`HDY_ErrorMonitor`）
+### 1. 监视层架构（`HYD_ErrorMonitor`）
 
 #### 1.1 职责分离
 
@@ -53,27 +53,27 @@
 ```c
 typedef struct {
     // 实时误差值
-    HDY_REAL positionError;
-    HDY_REAL velocityError;
-    HDY_REAL flowError;
-    HDY_REAL pressureError;
+    HYD_REAL positionError;
+    HYD_REAL velocityError;
+    HYD_REAL flowError;
+    HYD_REAL pressureError;
 
     // 误差激活状态
-    HDY_BOOL positionErrorActive;
+    HYD_BOOL positionErrorActive;
     // ...
 
     // 误差持续时间
-    HDY_TIME positionErrorDuration;
+    HYD_TIME positionErrorDuration;
     // ...
 
     // 误差统计
-    HDY_REAL maxPositionError;
-    HDY_REAL minPositionError;
-    HDY_REAL avgPositionError;
+    HYD_REAL maxPositionError;
+    HYD_REAL minPositionError;
+    HYD_REAL avgPositionError;
     // ...
 
-    HDY_UINT sampleCount;
-} HDY_ErrorMonitor;
+    HYD_UINT sampleCount;
+} HYD_ErrorMonitor;
 ```
 
 **评价**：
@@ -87,13 +87,13 @@ typedef struct {
 
 **评审**：
 ```c
-void HDY_ErrorMonitor_Init(HDY_ErrorMonitor* monitor);
-void HDY_ErrorMonitor_Update(HDY_ErrorMonitor* monitor,
-                             const HDY_AxisRef* axisRef,
-                             const HDY_ExecutionReference* references,
-                             HDY_TIME currentTime);
-void HDY_ErrorMonitor_ResetStatistics(HDY_ErrorMonitor* monitor);
-void HDY_ErrorMonitor_Reset(HDY_ErrorMonitor* monitor);
+void HYD_ErrorMonitor_Init(HYD_ErrorMonitor* monitor);
+void HYD_ErrorMonitor_Update(HYD_ErrorMonitor* monitor,
+                             const HYD_AxisRef* axisRef,
+                             const HYD_ExecutionReference* references,
+                             HYD_TIME currentTime);
+void HYD_ErrorMonitor_ResetStatistics(HYD_ErrorMonitor* monitor);
+void HYD_ErrorMonitor_Reset(HYD_ErrorMonitor* monitor);
 ```
 
 **评价**：
@@ -123,7 +123,7 @@ void HDY_ErrorMonitor_Reset(HDY_ErrorMonitor* monitor);
 
 ---
 
-### 2. 判据层架构（`HDY_DiagnosticCriteria`）
+### 2. 判据层架构（`HYD_DiagnosticCriteria`）
 
 #### 2.1 职责分离
 
@@ -144,25 +144,25 @@ void HDY_ErrorMonitor_Reset(HDY_ErrorMonitor* monitor);
 ```c
 typedef struct {
     // 基础阈值
-    HDY_REAL baseThreshold;
+    HYD_REAL baseThreshold;
 
     // 判据参数
-    HDY_TIME debounceTime;
-    HDY_REAL hysteresisRatio;
+    HYD_TIME debounceTime;
+    HYD_REAL hysteresisRatio;
 
     // 误报抑制参数
-    HDY_BOOL enableStartupSuppress;
-    HDY_TIME startupSuppressTime;
-    HDY_BOOL enableSwitchSuppress;
-    HDY_TIME switchSuppressTime;
-    HDY_BOOL enableLoopBuildSuppress;
-    HDY_TIME loopBuildSuppressTime;
+    HYD_BOOL enableStartupSuppress;
+    HYD_TIME startupSuppressTime;
+    HYD_BOOL enableSwitchSuppress;
+    HYD_TIME switchSuppressTime;
+    HYD_BOOL enableLoopBuildSuppress;
+    HYD_TIME loopBuildSuppressTime;
 
     // 诊断配置
-    HDY_DiagnosticCode diagnosticCode;
-    HDY_DiagnosticSeverity severity;
-    HDY_ProtectionAction protectionAction;
-} HDY_DiagnosticCriteria;
+    HYD_DiagnosticCode diagnosticCode;
+    HYD_DiagnosticSeverity severity;
+    HYD_ProtectionAction protectionAction;
+} HYD_DiagnosticCriteria;
 ```
 
 **评价**：
@@ -177,11 +177,11 @@ typedef struct {
 **评审**：
 ```c
 typedef struct {
-    HDY_BOOL lastTriggered;
-    HDY_TIME triggerStartTime;
-    HDY_BOOL hysteresisActive;
-    HDY_UINT8 debounceCount;
-} HDY_DiagnosticCriteriaState;
+    HYD_BOOL lastTriggered;
+    HYD_TIME triggerStartTime;
+    HYD_BOOL hysteresisActive;
+    HYD_UINT8 debounceCount;
+} HYD_DiagnosticCriteriaState;
 ```
 
 **评价**：
@@ -198,15 +198,15 @@ typedef struct {
 **评审**：
 ```c
 typedef struct {
-    HDY_BOOL triggered;
-    HDY_DiagnosticCode code;
-    HDY_DiagnosticSeverity severity;
-    HDY_ProtectionAction action;
-    HDY_TIME triggerTime;
-    HDY_TIME suppressTime;
-    HDY_SuppressType suppressType;
-    HDY_REAL effectiveThreshold;
-} HDY_DiagnosticResult;
+    HYD_BOOL triggered;
+    HYD_DiagnosticCode code;
+    HYD_DiagnosticSeverity severity;
+    HYD_ProtectionAction action;
+    HYD_TIME triggerTime;
+    HYD_TIME suppressTime;
+    HYD_SuppressType suppressType;
+    HYD_REAL effectiveThreshold;
+} HYD_DiagnosticResult;
 ```
 
 **评价**：
@@ -219,10 +219,10 @@ typedef struct {
 
 **评审**：
 ```c
-HDY_BOOL HDY_DiagnosticCriteria_CheckPressure(...);
-HDY_BOOL HDY_DiagnosticCriteria_CheckFlow(...);
-HDY_BOOL HDY_DiagnosticCriteria_CheckVelocity(...);
-HDY_BOOL HDY_DiagnosticCriteria_CheckPosition(...);
+HYD_BOOL HYD_DiagnosticCriteria_CheckPressure(...);
+HYD_BOOL HYD_DiagnosticCriteria_CheckFlow(...);
+HYD_BOOL HYD_DiagnosticCriteria_CheckVelocity(...);
+HYD_BOOL HYD_DiagnosticCriteria_CheckPosition(...);
 ```
 
 **评价**：
@@ -236,12 +236,12 @@ HDY_BOOL HDY_DiagnosticCriteria_CheckPosition(...);
 - 💡 考虑引入上下文结构体减少参数数量：
   ```c
   typedef struct {
-      HDY_TIME currentTime;
-      HDY_TIME segmentElapsedTime;
-      HDY_BOOL isStartupPhase;
-      HDY_BOOL isSwitchPhase;
+      HYD_TIME currentTime;
+      HYD_TIME segmentElapsedTime;
+      HYD_BOOL isStartupPhase;
+      HYD_BOOL isSwitchPhase;
       // ...
-  } HDY_DiagnosticContext;
+  } HYD_DiagnosticContext;
   ```
 
 #### 2.6 误报抑制逻辑
@@ -250,7 +250,7 @@ HDY_BOOL HDY_DiagnosticCriteria_CheckPosition(...);
 
 1. **启动阶段抑制**
    ```c
-   HDY_BOOL HDY_IsStartupSuppressActive(HDY_TIME segmentElapsedTime, HDY_TIME suppressTime) {
+   HYD_BOOL HYD_IsStartupSuppressActive(HYD_TIME segmentElapsedTime, HYD_TIME suppressTime) {
        return (segmentElapsedTime < suppressTime) ? true : false;
    }
    ```
@@ -260,7 +260,7 @@ HDY_BOOL HDY_DiagnosticCriteria_CheckPosition(...);
 
 2. **切段阶段抑制**
    ```c
-   HDY_BOOL HDY_IsSwitchSuppressActive(HDY_BOOL isSwitchPhase, HDY_TIME segmentElapsedTime, HDY_TIME suppressTime) {
+   HYD_BOOL HYD_IsSwitchSuppressActive(HYD_BOOL isSwitchPhase, HYD_TIME segmentElapsedTime, HYD_TIME suppressTime) {
        if (!isSwitchPhase) return false;
        return (segmentElapsedTime < suppressTime) ? true : false;
    }
@@ -271,7 +271,7 @@ HDY_BOOL HDY_DiagnosticCriteria_CheckPosition(...);
 
 3. **闭环建立抑制**
    ```c
-   HDY_REAL HDY_CalculateLoopBuildFactor(HDY_TIME loopBuildTime, HDY_TIME suppressTime) {
+   HYD_REAL HYD_CalculateLoopBuildFactor(HYD_TIME loopBuildTime, HYD_TIME suppressTime) {
        if (loopBuildTime >= suppressTime) return 1.0;
        return loopBuildTime / suppressTime;
    }
@@ -338,8 +338,8 @@ if (errorExceedsThreshold) {
 ### 3.1 与现有架构的兼容性
 
 **评审**：
-- ✅ 不影响现有的 `HDY_Diagnostics` 接口
-- ✅ 不影响现有的 `HDY_StateReporter` 接口
+- ✅ 不影响现有的 `HYD_Diagnostics` 接口
+- ✅ 不影响现有的 `HYD_StateReporter` 接口
 - ✅ 新增模块独立，不影响现有功能
 - ✅ 回归测试100%通过，无破坏性修改
 
@@ -367,10 +367,10 @@ if (errorExceedsThreshold) {
 
 | 模块 | 实例数 | 单实例大小 | 总大小 |
 |------|--------|-----------|--------|
-| `HDY_ErrorMonitor` | 1 | 192 B | 192 B |
-| `HDY_DiagnosticCriteria` | 4 | 64 B | 256 B |
-| `HDY_DiagnosticCriteriaState` | 4 | 16 B | 64 B |
-| `HDY_DiagnosticResult` | 4 | 40 B | 160 B |
+| `HYD_ErrorMonitor` | 1 | 192 B | 192 B |
+| `HYD_DiagnosticCriteria` | 4 | 64 B | 256 B |
+| `HYD_DiagnosticCriteriaState` | 4 | 16 B | 64 B |
+| `HYD_DiagnosticResult` | 4 | 40 B | 160 B |
 | **总计** | - | - | **672 B** |
 
 **评价**：
@@ -381,8 +381,8 @@ if (errorExceedsThreshold) {
 
 | 函数 | 时间复杂度 | 说明 |
 |------|-----------|------|
-| `HDY_ErrorMonitor_Update` | O(1) | 固定计算 |
-| `HDY_DiagnosticCriteria_Check*` | O(1) | 固定计算 |
+| `HYD_ErrorMonitor_Update` | O(1) | 固定计算 |
+| `HYD_DiagnosticCriteria_Check*` | O(1) | 固定计算 |
 | 总计 | O(1) | 恒定时间 |
 
 **评价**：

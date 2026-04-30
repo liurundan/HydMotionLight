@@ -49,10 +49,10 @@ Sprint 3 第一阶段任务 **"诊断分层架构设计"** 已成功完成，包
    - 采样计数：`sampleCount`
 
 4. **控制接口**
-   - `HDY_ErrorMonitor_Init()` - 初始化
-   - `HDY_ErrorMonitor_Update()` - 更新
-   - `HDY_ErrorMonitor_ResetStatistics()` - 重置统计
-   - `HDY_ErrorMonitor_Reset()` - 完全重置
+   - `HYD_ErrorMonitor_Init()` - 初始化
+   - `HYD_ErrorMonitor_Update()` - 更新
+   - `HYD_ErrorMonitor_ResetStatistics()` - 重置统计
+   - `HYD_ErrorMonitor_Reset()` - 完全重置
 
 **测试覆盖**：
 - ✅ 初始化测试
@@ -71,7 +71,7 @@ Sprint 3 第一阶段任务 **"诊断分层架构设计"** 已成功完成，包
 - `src/diagnostics_criteria.c` - 判据层实现
 
 **核心功能**：
-1. **诊断判据配置**（`HDY_DiagnosticCriteria`）
+1. **诊断判据配置**（`HYD_DiagnosticCriteria`）
    - 基础阈值：`baseThreshold`
    - 去抖动时间：`debounceTime`
    - 滞回比例：`hysteresisRatio`
@@ -82,9 +82,9 @@ Sprint 3 第一阶段任务 **"诊断分层架构设计"** 已成功完成，包
    - 诊断配置：`diagnosticCode` / `severity` / `protectionAction`
 
 2. **误报抑制逻辑**
-   - `HDY_IsStartupSuppressActive()` - 启动阶段抑制
-   - `HDY_IsSwitchSuppressActive()` - 切段阶段抑制
-   - `HDY_CalculateLoopBuildFactor()` - 闭环建立因子（0.0~1.0线性递增）
+   - `HYD_IsStartupSuppressActive()` - 启动阶段抑制
+   - `HYD_IsSwitchSuppressActive()` - 切段阶段抑制
+   - `HYD_CalculateLoopBuildFactor()` - 闭环建立因子（0.0~1.0线性递增）
 
 3. **滞回逻辑**
    - 滞回激活：`state->hysteresisActive`
@@ -95,16 +95,16 @@ Sprint 3 第一阶段任务 **"诊断分层架构设计"** 已成功完成，包
    - 状态跟踪：`lastTriggered` / `triggerStartTime`
 
 5. **诊断检查接口**
-   - `HDY_DiagnosticCriteria_CheckPressure()` - 压力诊断
-   - `HDY_DiagnosticCriteria_CheckFlow()` - 流量诊断
-   - `HDY_DiagnosticCriteria_CheckVelocity()` - 速度诊断
-   - `HDY_DiagnosticCriteria_CheckPosition()` - 位置诊断
+   - `HYD_DiagnosticCriteria_CheckPressure()` - 压力诊断
+   - `HYD_DiagnosticCriteria_CheckFlow()` - 流量诊断
+   - `HYD_DiagnosticCriteria_CheckVelocity()` - 速度诊断
+   - `HYD_DiagnosticCriteria_CheckPosition()` - 位置诊断
 
 6. **默认判据配置**
-   - `HDY_DiagnosticCriteria_CreateDefaultPressureCriteria()`
-   - `HDY_DiagnosticCriteria_CreateDefaultFlowCriteria()`
-   - `HDY_DiagnosticCriteria_CreateDefaultVelocityCriteria()`
-   - `HDY_DiagnosticCriteria_CreateDefaultPositionCriteria()`
+   - `HYD_DiagnosticCriteria_CreateDefaultPressureCriteria()`
+   - `HYD_DiagnosticCriteria_CreateDefaultFlowCriteria()`
+   - `HYD_DiagnosticCriteria_CreateDefaultVelocityCriteria()`
+   - `HYD_DiagnosticCriteria_CreateDefaultPositionCriteria()`
 
 **测试覆盖**：
 - ✅ 状态初始化测试
@@ -180,15 +180,15 @@ Sprint 3 第一阶段任务 **"诊断分层架构设计"** 已成功完成，包
 ### 任务2：误报抑制逻辑实现（预计2天）⏳ 待开始
 
 #### 2.1 启动阶段抑制 ✅ 已实现
-- `HDY_IsStartupSuppressActive()` 已实现
+- `HYD_IsStartupSuppressActive()` 已实现
 - 默认配置：500ms启动抑制时间
 
 #### 2.2 切段阶段抑制 ✅ 已实现
-- `HDY_IsSwitchSuppressActive()` 已实现
+- `HYD_IsSwitchSuppressActive()` 已实现
 - 默认配置：300ms切段抑制时间
 
 #### 2.3 闭环建立抑制 ✅ 已实现
-- `HDY_CalculateLoopBuildFactor()` 已实现
+- `HYD_CalculateLoopBuildFactor()` 已实现
 - 默认配置：200ms闭环建立时间，线性递增因子
 
 **任务2状态**: **已完成**（集成在任务1中）

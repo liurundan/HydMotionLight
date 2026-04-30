@@ -1,5 +1,5 @@
-#ifndef HDY_MOTION_CONTROL_H
-#define HDY_MOTION_CONTROL_H
+#ifndef HYD_MOTION_CONTROL_H
+#define HYD_MOTION_CONTROL_H
 
 #include "common_types.h"
 #include "pressure_controller.h"
@@ -35,7 +35,7 @@
  * - IsError() / ERROR_ID:
  *   IsError() is derived from STATE.faultActive, FB_STATE, and DIAGNOSTIC.severity.
  *   ERROR_ID mirrors the active fault diagnostic code when IsError() is true,
- *   otherwise HDY_DIAG_CODE_NONE.
+ *   otherwise HYD_DIAG_CODE_NONE.
  * - STATE.finished:
  *   True after the last segment reaches its end condition or after Abort().
  * - STATE.faultActive:
@@ -66,13 +66,13 @@
  *   Captures the most recent fault-state transition with axis feedback,
  *   references, segment index/name, and controller status for root-cause review.
  *
- * Direction semantics for HDY_MODE_POSITION / HDY_MODE_SPEED_RAMP:
+ * Direction semantics for HYD_MODE_POSITION / HYD_MODE_SPEED_RAMP:
  * - Each segment must declare EXTEND or RETRACT direction explicitly.
  * - The process layer still owns valve actions.
  * - This library therefore plans signed velocity internally, while PUMP_SPEED
  *   remains a nonnegative pump-side magnitude command.
  *
- * Pressure-control semantics for HDY_MODE_PRESSURE_CLOSED_LOOP:
+ * Pressure-control semantics for HYD_MODE_PRESSURE_CLOSED_LOOP:
  * - targetPressure is first smoothed by RampController.
  * - targetFlow acts as the feedforward bias / nominal holding flow.
  * - pressureController selects P / PI / PID / RBF-PID strategy; PI/PID keep
@@ -83,9 +83,9 @@
  *   so HMI / commissioning code can inspect closed-loop behavior uniformly.
  *
  * Mode contract:
- * - HDY_MODE_POSITION accepts POSITION_BASED or TIME_BASED planner selection.
- * - HDY_MODE_SPEED_RAMP always uses TIME_BASED velocity ramping; when combined
- *   with HDY_END_POSITION it only adds braking protection near targetPosition.
+ * - HYD_MODE_POSITION accepts POSITION_BASED or TIME_BASED planner selection.
+ * - HYD_MODE_SPEED_RAMP always uses TIME_BASED velocity ramping; when combined
+ *   with HYD_END_POSITION it only adds braking protection near targetPosition.
  * - Typed tolerances (position/pressure/flow/velocity) should be configured in
  *   new recipes; the legacy generic tolerance field is kept only as fallback.
  *
@@ -119,125 +119,125 @@
  * - HOLD / RESUME are currently exposed through API calls, not dedicated BOOL inputs.
  */
 typedef enum {
-    HDY_CMD_NONE,
-    HDY_CMD_START,
-    HDY_CMD_NEXT,
-    HDY_CMD_STOP,
-    HDY_CMD_HOLD,
-    HDY_CMD_RESUME,
-    HDY_CMD_ABORT,
-    HDY_CMD_RESET,
-    HDY_CMD_ACK
-} HDY_FbCommand;
+    HYD_CMD_NONE,
+    HYD_CMD_START,
+    HYD_CMD_NEXT,
+    HYD_CMD_STOP,
+    HYD_CMD_HOLD,
+    HYD_CMD_RESUME,
+    HYD_CMD_ABORT,
+    HYD_CMD_RESET,
+    HYD_CMD_ACK
+} HYD_FbCommand;
 
 typedef enum {
-    HDY_FB_STATE_DISABLED,
-    HDY_FB_STATE_IDLE,
-    HDY_FB_STATE_READY,
-    HDY_FB_STATE_STARTING,
-    HDY_FB_STATE_RUNNING,
-    HDY_FB_STATE_SEGMENT_COMPLETE,
-    HDY_FB_STATE_HOLD,
-    HDY_FB_STATE_DONE,
-    HDY_FB_STATE_ABORTED,
-    HDY_FB_STATE_FAULT
-} HDY_FbState;
+    HYD_FB_STATE_DISABLED,
+    HYD_FB_STATE_IDLE,
+    HYD_FB_STATE_READY,
+    HYD_FB_STATE_STARTING,
+    HYD_FB_STATE_RUNNING,
+    HYD_FB_STATE_SEGMENT_COMPLETE,
+    HYD_FB_STATE_HOLD,
+    HYD_FB_STATE_DONE,
+    HYD_FB_STATE_ABORTED,
+    HYD_FB_STATE_FAULT
+} HYD_FbState;
 
 typedef struct {
-    HDY_BOOL RESET;
-    HDY_BOOL START_SEGMENT;
-    HDY_UINT START_SEGMENT_INDEX;
-    HDY_BOOL USE_RECIPE; /* true: start from RECIPE[index], false: start from DIRECT_SEGMENT */
-    HDY_REAL FLOW_TO_PUMP_SPEED_GAIN;
-    HDY_REAL PUMP_SPEED_LIMIT;
-    HDY_UINT RECIPE_SIZE;
-    HDY_AxisRef AXIS_REF;
-    HDY_MotionSegment RECIPE[HDY_MAX_SEGMENTS];
-    HDY_MotionSegment DIRECT_SEGMENT;
+    HYD_BOOL RESET;
+    HYD_BOOL START_SEGMENT;
+    HYD_UINT START_SEGMENT_INDEX;
+    HYD_BOOL USE_RECIPE; /* true: start from RECIPE[index], false: start from DIRECT_SEGMENT */
+    HYD_REAL FLOW_TO_PUMP_SPEED_GAIN;
+    HYD_REAL PUMP_SPEED_LIMIT;
+    HYD_UINT RECIPE_SIZE;
+    HYD_AxisRef AXIS_REF;
+    HYD_MotionSegment RECIPE[HYD_MAX_SEGMENTS];
+    HYD_MotionSegment DIRECT_SEGMENT;
 
-    HDY_DiagnosticCode ERROR_ID;
-    HDY_FbState FB_STATE;
-    HDY_REAL PUMP_SPEED;
-    HDY_BOOL SEGMENT_COMPLETED;
-    HDY_BOOL SEGMENT_CHANGED;
-    HDY_MotionState STATE;      /* Unified runtime state: active, finished, faultActive, status, segmentTag, pressure-loop telemetry. */
-    HDY_DiagnosticInfo DIAGNOSTIC;         /* Live current-cycle / current-command diagnostic. */
-    HDY_DiagnosticSnapshot LAST_FAULT_SNAPSHOT;
-    HDY_DiagnosticHistory DIAGNOSTIC_HISTORY;
-    HDY_BOOL DIRECT_SEGMENT_VALID;
+    HYD_DiagnosticCode ERROR_ID;
+    HYD_FbState FB_STATE;
+    HYD_REAL PUMP_SPEED;
+    HYD_BOOL SEGMENT_COMPLETED;
+    HYD_BOOL SEGMENT_CHANGED;
+    HYD_MotionState STATE;      /* Unified runtime state: active, finished, faultActive, status, segmentTag, pressure-loop telemetry. */
+    HYD_DiagnosticInfo DIAGNOSTIC;         /* Live current-cycle / current-command diagnostic. */
+    HYD_DiagnosticSnapshot LAST_FAULT_SNAPSHOT;
+    HYD_DiagnosticHistory DIAGNOSTIC_HISTORY;
+    HYD_BOOL DIRECT_SEGMENT_VALID;
 
     /* Internal */
-    HDY_REAL _segmentStartTime;
-    HDY_BOOL _segmentChangedFlag;
-    HDY_REAL _lastCommandedFlow;
-    HDY_TIME _lastFeedbackTimestamp;       /* < 0.0 means invalid / never set */
-    HDY_BOOL _startSegmentSignalPrev;
-    HDY_FbCommand _pendingCommand;
-    HDY_UINT _pendingCommandSegmentIndex;
-    HDY_TIME _pendingCommandTimestamp;
-    HDY_MotionSegment _activeSegment;
-    HDY_BOOL _activeSegmentValid;
-    HDY_SegmentSource _activeSegmentSource;
-    HDY_TIME _holdStateTime;
-    HDY_RampController _rampController;
-    HDY_PressureControllerState _pressureController;
+    HYD_REAL _segmentStartTime;
+    HYD_BOOL _segmentChangedFlag;
+    HYD_REAL _lastCommandedFlow;
+    HYD_TIME _lastFeedbackTimestamp;       /* < 0.0 means invalid / never set */
+    HYD_BOOL _startSegmentSignalPrev;
+    HYD_FbCommand _pendingCommand;
+    HYD_UINT _pendingCommandSegmentIndex;
+    HYD_TIME _pendingCommandTimestamp;
+    HYD_MotionSegment _activeSegment;
+    HYD_BOOL _activeSegmentValid;
+    HYD_SegmentSource _activeSegmentSource;
+    HYD_TIME _holdStateTime;
+    HYD_RampController _rampController;
+    HYD_PressureControllerState _pressureController;
 
     /* Diagnostic criteria layer - unified through diagnostics_monitor + diagnostics_criteria
      * Supports: startup suppress, switch suppress, debounce, hysteresis, fault escalation. */
-    HDY_ErrorMonitor _errorMonitor;
-    HDY_DiagnosticCriteria _pressureCriteria;
-    HDY_DiagnosticCriteriaState _pressureCriteriaState;
-    HDY_DiagnosticCriteria _flowCriteria;
-    HDY_DiagnosticCriteriaState _flowCriteriaState;
-    HDY_DiagnosticCriteria _velocityCriteria;
-    HDY_DiagnosticCriteriaState _velocityCriteriaState;
-    HDY_DiagnosticCriteria _positionCriteria;
-    HDY_DiagnosticCriteriaState _positionCriteriaState;
-    HDY_DiagnosticCriteria _timeoutCriteria;
-    HDY_DiagnosticCriteriaState _timeoutCriteriaState;
-    HDY_BOOL _isSwitchPhase;            /* True during segment transition window for switch suppress */
-    HDY_TIME _switchSuppressEndTime;    /* Elapsed time at which switch suppress phase expires */
-    HDY_UINT8 _index;
+    HYD_ErrorMonitor _errorMonitor;
+    HYD_DiagnosticCriteria _pressureCriteria;
+    HYD_DiagnosticCriteriaState _pressureCriteriaState;
+    HYD_DiagnosticCriteria _flowCriteria;
+    HYD_DiagnosticCriteriaState _flowCriteriaState;
+    HYD_DiagnosticCriteria _velocityCriteria;
+    HYD_DiagnosticCriteriaState _velocityCriteriaState;
+    HYD_DiagnosticCriteria _positionCriteria;
+    HYD_DiagnosticCriteriaState _positionCriteriaState;
+    HYD_DiagnosticCriteria _timeoutCriteria;
+    HYD_DiagnosticCriteriaState _timeoutCriteriaState;
+    HYD_BOOL _isSwitchPhase;            /* True during segment transition window for switch suppress */
+    HYD_TIME _switchSuppressEndTime;    /* Elapsed time at which switch suppress phase expires */
+    HYD_UINT8 _index;
     uint16_t _executionId;   /* incremented on BeginSegment success; IEC layer uses for ownership tracking */
-    HDY_BOOL _useSimulation;           /* If true, the FB simulates motion without real hardware interaction for testing purposes. */
+    HYD_BOOL _useSimulation;           /* If true, the FB simulates motion without real hardware interaction for testing purposes. */
     struct {
-        HDY_REAL targetPosition;
-        HDY_REAL targetVelocity;
-        HDY_REAL targetFlow;
-        HDY_REAL targetPressure;
-        HDY_BOOL valid;
+        HYD_REAL targetPosition;
+        HYD_REAL targetVelocity;
+        HYD_REAL targetFlow;
+        HYD_REAL targetPressure;
+        HYD_BOOL valid;
     } _simFeedback;
-} HDY_MotionControlFB;
+} HYD_MotionControlFB;
 
 /* Derived PLCopen-standard outputs — computed from FB_STATE / STATE / DIAGNOSTIC.
  * These replace the former stored BOOL fields (ACTIVE, BUSY, DONE, ERROR).
  * ACTIVE is read directly from STATE.active. */
-static inline HDY_BOOL HDY_MotionControlFB_IsBusy(const HDY_MotionControlFB* fb) {
+static inline HYD_BOOL HYD_MotionControlFB_IsBusy(const HYD_MotionControlFB* fb) {
     if (fb == NULL) { return false; }
     switch (fb->FB_STATE) {
-        case HDY_FB_STATE_STARTING:
-        case HDY_FB_STATE_RUNNING:
-        case HDY_FB_STATE_SEGMENT_COMPLETE:
-        case HDY_FB_STATE_HOLD:
+        case HYD_FB_STATE_STARTING:
+        case HYD_FB_STATE_RUNNING:
+        case HYD_FB_STATE_SEGMENT_COMPLETE:
+        case HYD_FB_STATE_HOLD:
             return true;
         default:
             return false;
     }
 }
 
-static inline HDY_BOOL HDY_MotionControlFB_IsDone(const HDY_MotionControlFB* fb) {
-    return (fb != NULL) && (fb->FB_STATE == HDY_FB_STATE_DONE);
+static inline HYD_BOOL HYD_MotionControlFB_IsDone(const HYD_MotionControlFB* fb) {
+    return (fb != NULL) && (fb->FB_STATE == HYD_FB_STATE_DONE);
 }
 
-static inline HDY_BOOL HDY_MotionControlFB_IsError(const HDY_MotionControlFB* fb) {
+static inline HYD_BOOL HYD_MotionControlFB_IsError(const HYD_MotionControlFB* fb) {
     if (fb == NULL) { return false; }
     return fb->STATE.faultActive ||
-           fb->FB_STATE == HDY_FB_STATE_FAULT ||
-           fb->DIAGNOSTIC.severity == HDY_DIAG_SEVERITY_FAULT;
+           fb->FB_STATE == HYD_FB_STATE_FAULT ||
+           fb->DIAGNOSTIC.severity == HYD_DIAG_SEVERITY_FAULT;
 }
 
 /* Full reset of configuration, recipe, runtime state, and internal helpers. */
-void HDY_MotionControlFB_Init(HDY_MotionControlFB* fb);
+void HYD_MotionControlFB_Init(HYD_MotionControlFB* fb);
 
 /*
  * Soft reset: clears runtime execution state, active segment, fault status,
@@ -247,23 +247,23 @@ void HDY_MotionControlFB_Init(HDY_MotionControlFB* fb);
  * enters READY (if a recipe/direct segment is loaded) or IDLE.
  * This is what RESET=true triggers in the cyclic entry points.
  */
-void HDY_MotionControlFB_SoftReset(HDY_MotionControlFB* fb);
+void HYD_MotionControlFB_SoftReset(HYD_MotionControlFB* fb);
 
 /*
  * Validates and loads a recipe into the function block.
  * This call only prepares the controller; it does not start execution and keeps
  * ACTIVE=false until StartSegment() / START_SEGMENT is consumed in Cycle()/Scan().
  */
-HDY_BOOL HDY_MotionControlFB_LoadRecipe(HDY_MotionControlFB* fb, const HDY_MotionSegment* recipe, size_t recipeSize);
+HYD_BOOL HYD_MotionControlFB_LoadRecipe(HYD_MotionControlFB* fb, const HYD_MotionSegment* recipe, size_t recipeSize);
 
 /*
  * Validates and stores the single direct-mode segment buffer.
  * This does not start execution and can coexist with an already loaded recipe.
  */
-HDY_BOOL HDY_MotionControlFB_LoadDirectSegment(HDY_MotionControlFB* fb, const HDY_MotionSegment* segment);
+HYD_BOOL HYD_MotionControlFB_LoadDirectSegment(HYD_MotionControlFB* fb, const HYD_MotionSegment* segment);
 
 /* Clears the stored direct-mode segment buffer without affecting recipe memory. */
-void HDY_MotionControlFB_ClearDirectSegment(HDY_MotionControlFB* fb);
+void HYD_MotionControlFB_ClearDirectSegment(HYD_MotionControlFB* fb);
 
 /*
  * Validates and queues a segment-start command.
@@ -271,37 +271,37 @@ void HDY_MotionControlFB_ClearDirectSegment(HDY_MotionControlFB* fb);
  * When USE_RECIPE=false, segmentIndex is ignored and DIRECT_SEGMENT is used.
  * The actual state transition occurs on the next Cycle()/Scan()/Execute().
  */
-HDY_BOOL HDY_MotionControlFB_StartSegment(HDY_MotionControlFB* fb, size_t segmentIndex, HDY_TIME timestamp);
+HYD_BOOL HYD_MotionControlFB_StartSegment(HYD_MotionControlFB* fb, size_t segmentIndex, HYD_TIME timestamp);
 
 /*
  * Validates and queues an advance-to-next-segment command.
  * The actual transition occurs on the next Cycle()/Scan()/Execute().
  */
-HDY_BOOL HDY_MotionControlFB_NextSegment(HDY_MotionControlFB* fb, HDY_TIME timestamp);
+HYD_BOOL HYD_MotionControlFB_NextSegment(HYD_MotionControlFB* fb, HYD_TIME timestamp);
 
 /* Queues a hold command for the current active segment. Safe zero outputs are applied on the next Cycle()/Scan()/Execute(). */
-HDY_BOOL HDY_MotionControlFB_Hold(HDY_MotionControlFB* fb);
+HYD_BOOL HYD_MotionControlFB_Hold(HYD_MotionControlFB* fb);
 
 /* Queues a resume command for the currently held segment. Execution continues on the next Cycle()/Scan()/Execute(). */
-HDY_BOOL HDY_MotionControlFB_Resume(HDY_MotionControlFB* fb);
+HYD_BOOL HYD_MotionControlFB_Resume(HYD_MotionControlFB* fb);
 
 /* Queues an abort command. Safe outputs are applied on the next Cycle()/Scan()/Execute(). */
-HDY_BOOL HDY_MotionControlFB_Abort(HDY_MotionControlFB* fb);
+HYD_BOOL HYD_MotionControlFB_Abort(HYD_MotionControlFB* fb);
 
 /*
  * Clears retained diagnostic latch/snapshot/history after the live event has
  * cleared (typically on the next non-fault Cycle()/Scan()/Execute() in a hold
  * state). Fault-state retention is intentionally not clearable without RESET.
  */
-HDY_BOOL HDY_MotionControlFB_AcknowledgeDiagnostics(HDY_MotionControlFB* fb);
+HYD_BOOL HYD_MotionControlFB_AcknowledgeDiagnostics(HYD_MotionControlFB* fb);
 
 /* Executes the already-sampled pending command and the explicit state machine. */
-void HDY_MotionControlFB_Cycle(HDY_MotionControlFB* fb);
+void HYD_MotionControlFB_Cycle(HYD_MotionControlFB* fb);
 
 /* Samples edge-triggered command inputs (for example START_SEGMENT) then calls Cycle(). */
-void HDY_MotionControlFB_Scan(HDY_MotionControlFB* fb);
+void HYD_MotionControlFB_Scan(HYD_MotionControlFB* fb);
 
 /* Compatibility cyclic entry; currently equivalent to Scan(). */
-void HDY_MotionControlFB_Execute(HDY_MotionControlFB* fb);
+void HYD_MotionControlFB_Execute(HYD_MotionControlFB* fb);
 
-#endif /* HDY_MOTION_CONTROL_H */
+#endif /* HYD_MOTION_CONTROL_H */

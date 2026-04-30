@@ -14,7 +14,7 @@
 #include "hydro_sim_fb.h"
 #include "hydro_sim.h"
 
-extern HDY_HydraulicSimFB* __MK_GetPublic_HydraulicSimFB(int index);
+extern HYD_HydraulicSimFB* __MK_GetPublic_HydraulicSimFB(int index);
 
 #define CYCLE_PERIOD 0.001
 #define TOLERANCE    1e-6
@@ -35,7 +35,7 @@ static int tests_passed = 0;
     else { printf("  FAIL: %s (got %g, expected %g)\n", msg, (double)(a), (double)(b)); } \
 } while (0)
 
-static void reset_create_cmd(HDY_CREATESIMAXIS* cmd,
+static void reset_create_cmd(HYD_CREATESIMAXIS* cmd,
                              unsigned char axis_type,
                              double max_vel,
                              double max_acc,
@@ -51,14 +51,14 @@ static int create_axis(unsigned char axis_type,
                        double max_vel,
                        double max_acc,
                        double max_dec) {
-    HDY_CREATESIMAXIS cmd;
+    HYD_CREATESIMAXIS cmd;
     reset_create_cmd(&cmd, axis_type, max_vel, max_acc, max_dec);
     __mcl_cmd_createSimAxis(&cmd);
     return cmd.AXISID.value;
 }
 
 static void move_axis(int axis_id, bool enable, double cmd_rpm, int direction) {
-    HDY_MOVESIMAXIS cmd;
+    HYD_MOVESIMAXIS cmd;
     memset(&cmd, 0, sizeof(cmd));
     cmd.ENABLE.value = enable;
     cmd.AXISID.value = axis_id;
@@ -67,7 +67,7 @@ static void move_axis(int axis_id, bool enable, double cmd_rpm, int direction) {
     __mcl_cmd_moveSimAxis(&cmd);
 }
 
-static void read_axis(HDY_READSIMAXIS* cmd, int axis_id, bool enable) {
+static void read_axis(HYD_READSIMAXIS* cmd, int axis_id, bool enable) {
     memset(cmd, 0, sizeof(*cmd));
     cmd->ENABLE.value = enable;
     cmd->AXISID.value = axis_id;
@@ -78,10 +78,10 @@ static void read_axis(HDY_READSIMAXIS* cmd, int axis_id, bool enable) {
  * Test 1: framework init/reset 归零分配器与共享 env
  * ================================================================== */
 static void test_framework_init_resets_allocator_and_env(void) {
-    HDY_HydraulicSimFB* fb;
+    HYD_HydraulicSimFB* fb;
     int axis_id;
 
-    __HdySimulator_framework_Init();
+    __HydSimulator_framework_Init();
     ASSERT_TRUE(__MK_GetPublic_HydraulicSimFB(0) == NULL,
                 "No public axis handle should exist immediately after framework init");
 
@@ -95,11 +95,11 @@ static void test_framework_init_resets_allocator_and_env(void) {
                 "Shared env time should start from zero after init");
 
     move_axis(axis_id, true, 1500.0, 1);
-    __HdySimulator_framework_Publish();
+    __HydSimulator_framework_Publish();
     ASSERT_NEAR(fb->_env->sim_time_s, CYCLE_PERIOD, TOLERANCE,
                 "Publish should advance shared env time by one scan period");
 
-    __HdySimulator_framework_Init();
+    __HydSimulator_framework_Init();
     axis_id = create_axis((unsigned char)SIM_AXIS_CLAMP, 80.0, 90.0, 70.0);
     fb = __MK_GetPublic_HydraulicSimFB(axis_id);
 
@@ -114,12 +114,12 @@ static void test_framework_init_resets_allocator_and_env(void) {
  * Test 2: create 两个轴，分配唯一 ID，绑定类型并保存配置
  * ================================================================== */
 static void test_create_two_axes_assigns_unique_ids_and_keeps_config(void) {
-    HDY_HydraulicSimFB* clamp_fb;
-    HDY_HydraulicSimFB* inject_fb;
+    HYD_HydraulicSimFB* clamp_fb;
+    HYD_HydraulicSimFB* inject_fb;
     int clamp_id;
     int inject_id;
 
-    __HdySimulator_framework_Init();
+    __HydSimulator_framework_Init();
 
     clamp_id = create_axis((unsigned char)SIM_AXIS_CLAMP, 111.0, 222.0, 333.0);
     inject_id = create_axis((unsigned char)SIM_AXIS_INJECT, 444.0, 555.0, 666.0);
@@ -132,9 +132,9 @@ static void test_create_two_axes_assigns_unique_ids_and_keeps_config(void) {
                 "Both created axis handles should be retrievable");
     ASSERT_TRUE(clamp_fb->_env == inject_fb->_env,
                 "All PLC-created axis handles should share one HydraulicSimEnv");
-    ASSERT_TRUE(clamp_fb->axis_type == (HDY_UINT8)SIM_AXIS_CLAMP,
+    ASSERT_TRUE(clamp_fb->axis_type == (HYD_UINT8)SIM_AXIS_CLAMP,
                 "Clamp handle should keep clamp axis type");
-    ASSERT_TRUE(inject_fb->axis_type == (HDY_UINT8)SIM_AXIS_INJECT,
+    ASSERT_TRUE(inject_fb->axis_type == (HYD_UINT8)SIM_AXIS_INJECT,
                 "Inject handle should keep inject axis type");
     ASSERT_NEAR(clamp_fb->maxVel, 111.0, TOLERANCE, "Clamp MAXVEL should be stored in handle config");
     ASSERT_NEAR(clamp_fb->maxAcc, 222.0, TOLERANCE, "Clamp MAXACC should be stored in handle config");
@@ -150,9 +150,9 @@ static void test_create_two_axes_assigns_unique_ids_and_keeps_config(void) {
  * Test 3: create 必须校验非法轴类型
  * ================================================================== */
 static void test_create_rejects_invalid_axis_type(void) {
-    HDY_CREATESIMAXIS cmd;
+    HYD_CREATESIMAXIS cmd;
 
-    __HdySimulator_framework_Init();
+    __HydSimulator_framework_Init();
 
     reset_create_cmd(&cmd, 7U, 10.0, 20.0, 30.0);
     cmd.AXISID.value = -1;
@@ -168,19 +168,19 @@ static void test_create_rejects_invalid_axis_type(void) {
  * Test 4: move 指定轴后，只允许该轴在单泵下运动
  * ================================================================== */
 static void test_move_only_target_axis_under_single_pump_owner(void) {
-    HDY_READSIMAXIS clamp_read;
-    HDY_READSIMAXIS inject_read;
+    HYD_READSIMAXIS clamp_read;
+    HYD_READSIMAXIS inject_read;
     int clamp_id;
     int inject_id;
     double clamp_pos_after_first_publish;
 
-    __HdySimulator_framework_Init();
+    __HydSimulator_framework_Init();
 
     clamp_id = create_axis((unsigned char)SIM_AXIS_CLAMP, 120.0, 0.0, 0.0);
     inject_id = create_axis((unsigned char)SIM_AXIS_INJECT, 140.0, 0.0, 0.0);
 
     move_axis(clamp_id, true, 1500.0, 1);
-    __HdySimulator_framework_Publish();
+    __HydSimulator_framework_Publish();
 
     read_axis(&clamp_read, clamp_id, true);
     read_axis(&inject_read, inject_id, true);
@@ -194,7 +194,7 @@ static void test_move_only_target_axis_under_single_pump_owner(void) {
     clamp_pos_after_first_publish = clamp_read.POS_MM.value;
 
     move_axis(inject_id, true, 1500.0, 1);
-    __HdySimulator_framework_Publish();
+    __HydSimulator_framework_Publish();
 
     read_axis(&clamp_read, clamp_id, true);
     read_axis(&inject_read, inject_id, true);
@@ -209,24 +209,24 @@ static void test_move_only_target_axis_under_single_pump_owner(void) {
  * Test 5: read 必须严格按 AXISID 返回各自反馈
  * ================================================================== */
 static void test_read_uses_axisid_not_current_pump_owner(void) {
-    HDY_READSIMAXIS clamp_read;
-    HDY_READSIMAXIS inject_read;
+    HYD_READSIMAXIS clamp_read;
+    HYD_READSIMAXIS inject_read;
     int clamp_id;
     int inject_id;
     double clamp_pos_before_switch;
 
-    __HdySimulator_framework_Init();
+    __HydSimulator_framework_Init();
 
     clamp_id = create_axis((unsigned char)SIM_AXIS_CLAMP, 120.0, 0.0, 0.0);
     inject_id = create_axis((unsigned char)SIM_AXIS_INJECT, 120.0, 0.0, 0.0);
 
     move_axis(clamp_id, true, 1500.0, 1);
-    __HdySimulator_framework_Publish();
+    __HydSimulator_framework_Publish();
     read_axis(&clamp_read, clamp_id, true);
     clamp_pos_before_switch = clamp_read.POS_MM.value;
 
     move_axis(inject_id, true, 1500.0, 1);
-    __HdySimulator_framework_Publish();
+    __HydSimulator_framework_Publish();
     read_axis(&clamp_read, clamp_id, true);
     read_axis(&inject_read, inject_id, true);
 
@@ -242,12 +242,12 @@ static void test_read_uses_axisid_not_current_pump_owner(void) {
  * Test 6: 多轴存在时，每次 publish 只能步进共享 env 一次
  * ================================================================== */
 static void test_publish_steps_shared_env_once_per_scan(void) {
-    HDY_HydraulicSimFB* clamp_fb;
-    HDY_HydraulicSimFB* inject_fb;
+    HYD_HydraulicSimFB* clamp_fb;
+    HYD_HydraulicSimFB* inject_fb;
     int clamp_id;
     int inject_id;
 
-    __HdySimulator_framework_Init();
+    __HydSimulator_framework_Init();
 
     clamp_id = create_axis((unsigned char)SIM_AXIS_CLAMP, 120.0, 0.0, 0.0);
     inject_id = create_axis((unsigned char)SIM_AXIS_INJECT, 120.0, 0.0, 0.0);
@@ -258,11 +258,11 @@ static void test_publish_steps_shared_env_once_per_scan(void) {
                 "Shared env pointer should be identical across PLC-created axis handles");
 
     move_axis(clamp_id, true, 1500.0, 1);
-    __HdySimulator_framework_Publish();
+    __HydSimulator_framework_Publish();
     ASSERT_NEAR(clamp_fb->_env->sim_time_s, CYCLE_PERIOD, TOLERANCE,
                 "First publish should advance shared env by exactly one cycle");
 
-    __HdySimulator_framework_Publish();
+    __HydSimulator_framework_Publish();
     ASSERT_NEAR(clamp_fb->_env->sim_time_s, 2.0 * CYCLE_PERIOD, TOLERANCE,
                 "Second publish should advance shared env by exactly one more cycle");
 }
@@ -271,13 +271,13 @@ static void test_publish_steps_shared_env_once_per_scan(void) {
  * Test 7: 每轴故障注入必须独立
  * ================================================================== */
 static void test_fault_injection_is_isolated_per_axis(void) {
-    HDY_HydraulicSimFB* clamp_fb;
-    HDY_READSIMAXIS clamp_read;
-    HDY_READSIMAXIS inject_read;
+    HYD_HydraulicSimFB* clamp_fb;
+    HYD_READSIMAXIS clamp_read;
+    HYD_READSIMAXIS inject_read;
     int clamp_id;
     int inject_id;
 
-    __HdySimulator_framework_Init();
+    __HydSimulator_framework_Init();
 
     clamp_id = create_axis((unsigned char)SIM_AXIS_CLAMP, 120.0, 0.0, 0.0);
     inject_id = create_axis((unsigned char)SIM_AXIS_INJECT, 120.0, 0.0, 0.0);
@@ -288,14 +288,14 @@ static void test_fault_injection_is_isolated_per_axis(void) {
     HydraulicSim_SetAxisMotionStall(clamp_fb->_env, clamp_id, true);
 
     move_axis(clamp_id, true, 1500.0, 1);
-    __HdySimulator_framework_Publish();
+    __HydSimulator_framework_Publish();
     read_axis(&clamp_read, clamp_id, true);
 
     ASSERT_NEAR(clamp_read.VEL_MM_S.value, 0.0, TOLERANCE,
                 "Clamp motion stall should stop only the clamp axis velocity");
 
     move_axis(inject_id, true, 1500.0, 1);
-    __HdySimulator_framework_Publish();
+    __HydSimulator_framework_Publish();
     read_axis(&inject_read, inject_id, true);
 
     ASSERT_TRUE(inject_read.POS_MM.value > 0.0,
@@ -306,21 +306,21 @@ static void test_fault_injection_is_isolated_per_axis(void) {
  * Test 8: 非法 AXISID 调用必须安全且不污染其他轴
  * ================================================================== */
 static void test_invalid_axisid_is_safe_and_does_not_pollute_other_axes(void) {
-    HDY_READSIMAXIS clamp_read;
+    HYD_READSIMAXIS clamp_read;
     double clamp_pos_before_invalid_ops;
     int clamp_id;
 
-    __HdySimulator_framework_Init();
+    __HydSimulator_framework_Init();
 
     clamp_id = create_axis((unsigned char)SIM_AXIS_CLAMP, 120.0, 0.0, 0.0);
     move_axis(clamp_id, true, 1500.0, 1);
-    __HdySimulator_framework_Publish();
+    __HydSimulator_framework_Publish();
     read_axis(&clamp_read, clamp_id, true);
     clamp_pos_before_invalid_ops = clamp_read.POS_MM.value;
 
     move_axis(INVALID_AXIS_ID, true, 2000.0, -1);
     read_axis(&clamp_read, INVALID_AXIS_ID, true);
-    __HdySimulator_framework_Publish();
+    __HydSimulator_framework_Publish();
     read_axis(&clamp_read, clamp_id, true);
 
     ASSERT_TRUE(clamp_read.POS_MM.value > clamp_pos_before_invalid_ops,
