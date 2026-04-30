@@ -1,0 +1,159 @@
+<?xml version="1.0"?>
+<project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns:xhtml="http://www.w3.org/1999/xhtml"
+	xmlns="http://www.plcopen.org/xml/tc6.xsd"
+	xsi:schemaLocation="http://www.plcopen.org/xml/tc6.xsd">
+	<fileHeader companyName="Porcheson"
+		creationDateTime="2023-02-10T00:00:00" productVersion="0.0"
+		productName="AuxBAse Framework" />
+	<contentHeader name="HdySimulator Functions library"
+		modificationDateTime="2026-02-10T00:00:00">
+		<coordinateInfo>
+			<fbd>
+				<scaling y="0" x="0" />
+			</fbd>
+			<ld>
+				<scaling y="0" x="0" />
+			</ld>
+			<sfc>
+				<scaling y="0" x="0" />
+			</sfc>
+		</coordinateInfo>
+	</contentHeader>
+	<types>
+		<pous>
+			<pou name="HDY_CreateSimAxis" pouType="functionBlock">
+				<interface>
+					<inputVars>
+						<variable name="AXISTYPE">
+							<type>
+								<USINT />
+							</type>
+						</variable>
+						<variable name="MAXVEL">
+							<type>
+								<REAL />
+							</type>
+						</variable>
+						<variable name="MAXACC">
+							<type>
+								<REAL />
+							</type>
+						</variable>
+						<variable name="MAXDEC">
+							<type>
+								<REAL />
+							</type>
+						</variable>
+					</inputVars>
+					<outputVars>
+						<variable name="AXISID">
+							<type>
+								<SINT />
+							</type>
+						</variable>
+						<variable name="DONE">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+					</outputVars>
+				</interface>
+				<body>
+					<ST>
+						<xhtml:p><![CDATA[{{ extern void __mcl_cmd_createSimAxis(HDY_CREATESIMAXIS *data__);	__mcl_cmd_createSimAxis(data__);	 }}	]]></xhtml:p>
+					</ST>
+				</body>
+			</pou>
+			<pou name="HDY_MoveSimAxis" pouType="functionBlock">
+				<interface>
+					<inputVars>
+						<variable name="ENABLE">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="AXISID">
+							<type>
+								<SINT />
+							</type>
+						</variable>
+						<variable name="CMD_RPM">
+							<type>
+								<REAL />
+							</type>
+						</variable>
+						<variable name="DIRECTION">
+							<type>
+								<SINT />
+							</type>
+						</variable>
+					</inputVars>
+					<outputVars>
+						<variable name="BUSY">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+					</outputVars>
+				</interface>
+				<body>
+					<ST>
+						<xhtml:p><![CDATA[{{ extern void __mcl_cmd_moveSimAxis(HDY_MOVESIMAXIS *data__);	__mcl_cmd_moveSimAxis(data__);	 }}	]]></xhtml:p>
+					</ST>
+				</body>
+			</pou>
+			<pou name="HDY_ReadSimAxis" pouType="functionBlock">
+				<interface>
+					<inputVars>
+						<variable name="ENABLE">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="AXISID">
+							<type>
+								<SINT />
+							</type>
+						</variable>
+					</inputVars>
+					<outputVars>
+						<variable name="ACTIVE">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="POS_MM">
+							<type>
+								<REAL />
+							</type>
+						</variable>
+						<variable name="VEL_MM_S">
+							<type>
+								<REAL />
+							</type>
+						</variable>
+						<variable name="PRESSURE_BAR">
+							<type>
+								<REAL />
+							</type>
+						</variable>
+						<variable name="BUSY">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+					</outputVars>
+				</interface>
+				<body>
+					<ST>
+						<xhtml:p><![CDATA[{{ extern void __mcl_cmd_readSimAxis(HDY_READSIMAXIS *data__);	__mcl_cmd_readSimAxis(data__);	 }}	]]></xhtml:p>
+					</ST>
+				</body>
+			</pou>
+		</pous>
+	</types>
+	<instances>
+		<configurations />
+	</instances>
+</project>
