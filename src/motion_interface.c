@@ -1018,10 +1018,10 @@ void __mcl_cmd_ReadSimFeedback(HYD_READSIMFEEDBACK* data__)
 
     if (enable)
     {
-        __SET_VAR(data__->, POSITION,, fb->_simFeedback.targetPosition);
-        __SET_VAR(data__->, VELOCITY,, fb->_simFeedback.targetVelocity);
-        __SET_VAR(data__->, FLOW,, fb->_simFeedback.targetFlow);
-        __SET_VAR(data__->, PRESSURE,, fb->_simFeedback.targetPressure);
+        __SET_VAR(data__->, POSITION,, fb->AXIS_REF.position);
+        __SET_VAR(data__->, VELOCITY,, fb->AXIS_REF.velocity);
+        __SET_VAR(data__->, FLOW,, fb->AXIS_REF.flow);
+        __SET_VAR(data__->, PRESSURE,, fb->AXIS_REF.pressure);
         __SET_VAR(data__->, BUSY,, HYD_MotionControlFB_IsBusy(fb) ? true : false);
     }
     else
