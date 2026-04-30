@@ -333,6 +333,30 @@ typedef struct
 
 } HYD_READERROR;
 
+// FUNCTION_BLOCK HYD_READSIMFEEDBACK
+// Data part
+typedef struct
+{
+   // FB Interface - IN, OUT, IN_OUT variables
+   __DECLARE_VAR(BOOL, EN)
+   __DECLARE_VAR(BOOL, ENO)
+   __DECLARE_VAR(BOOL, ENABLE)
+   __DECLARE_VAR(SINT, AXISID)
+
+   __DECLARE_VAR(BOOL, VALID)
+   __DECLARE_VAR(BOOL, BUSY)
+   __DECLARE_VAR(BOOL, ERROR)
+   __DECLARE_VAR(WORD, ERRORID)
+   __DECLARE_VAR(REAL, POSITION)
+   __DECLARE_VAR(REAL, VELOCITY)
+   __DECLARE_VAR(REAL, FLOW)
+   __DECLARE_VAR(REAL, PRESSURE)
+
+   // FB private variables - TEMP, private and located variables
+
+
+} HYD_READSIMFEEDBACK;
+
 extern int  __HydMotion_framework_Init();
 extern void __HydMotion_framework_Cleanup();
 extern void __HydMotion_framework_Retrieve();
@@ -351,5 +375,6 @@ extern void __mcl_cmd_GetPumpRequest(HYD_GETPUMPREQUEST *data__);
 
 extern void __mcl_cmd_ReadStatus(HYD_READSTATUS* data__);
 extern void __mcl_cmd_ReadError(HYD_READERROR* data__);
+extern void __mcl_cmd_ReadSimFeedback(HYD_READSIMFEEDBACK* data__);
 
 #endif

@@ -5,6 +5,7 @@
 /* ======================================================================
  * FB实例池管理
  * ====================================================================== */
+static HYD_REAL dfCycleTime = 0.001f;  /* 默认周期时间，单位秒；可通过外部接口调整以适配不同PLC扫描周期 */
 
 static HYD_MotionControlFB HYD_MotionControlFB_inst[HYD_MAX_AXIS_MOTION];
 
@@ -240,7 +241,9 @@ void __HydMotion_framework_Retrieve()
 void __HydMotion_framework_Publish()
 {
     static HYD_TIME _lastPublishTime = 0.0;
+
     HYD_TIME currentTime = HYD_MotionControlFB_inst[0].AXIS_REF.timestamp;
+
     HYD_TIME deltaTime;
 
     /* Use the first allocated FB's timestamp as the master clock.
@@ -266,6 +269,14 @@ void __HydMotion_framework_Publish()
         }
     }
 
+    if( nextAllocatedFB > 0 )
+    {
+    	HYD_MotionControlFB* fb = &HYD_MotionControlFB_inst[0];
+		if( fb && fb->_useSimulation) {
+			fb->AXIS_REF.timestamp = fb->AXIS_REF.timestamp + dfCycleTime;
+		}
+    }
+
     _lastPublishTime = currentTime;
 }
 
@@ -273,7 +284,7 @@ void __mcl_cmd_CreateMotion(HYD_CREATEMOTION *data__)
 {
 	/* CreateMotion命令仅负责FB实例的创建与初始化, 不直接加载或启动配方 */
 	IEC_BOOL bDone = __GET_VAR(data__->DONE);
-	if (bDone == false)
+	if ( !bDone )
 	{
 		int index = allocMotionControlFB();
 		if (index >= 0)
@@ -315,7 +326,6 @@ void __mcl_cmd_MoveProfile(HYD_MOVEPROFILE *data__)
     if (fb == NULL) {
         __SET_VAR(data__->, ERROR,, true);
         __SET_VAR(data__->, ERRORID,, (IEC_WORD)HYD_DIAG_CODE_INTERNAL_ERROR);
-        __SET_VAR(data__->, ENO,, false);
         return;
     }
 
@@ -903,7 +913,6 @@ void __mcl_cmd_SetAxisFeedback(HYD_SETAXISFEEDBACK *data__)
         fb->AXIS_REF.timestamp = __GET_VAR(data__->TIMESTAMP);
     }
 
-    __SET_VAR(data__->, ENO,, true);
     __SET_VAR(data__->, DONE, , true);
 
 }
@@ -915,7 +924,6 @@ void __mcl_cmd_GetPumpRequest(HYD_GETPUMPREQUEST *data__)
     if (!enable)
     {
         __SET_VAR(data__->, PUMPSPEED, , (IEC_REAL)0.0);
-        __SET_VAR(data__->, ENO, , true);
         __SET_VAR(data__->, DONE, , true);
         return;
     }
@@ -931,7 +939,6 @@ void __mcl_cmd_GetPumpRequest(HYD_GETPUMPREQUEST *data__)
     }
 
     __SET_VAR(data__->, PUMPSPEED, , (IEC_REAL)maxSpeed);
-    __SET_VAR(data__->, ENO, , true);
     __SET_VAR(data__->, DONE, , true);
 }
 
@@ -944,7 +951,6 @@ void __mcl_cmd_ReadStatus(HYD_READSTATUS* data__)
     {
         __SET_VAR(data__->, STATE,, 0);
         __SET_VAR(data__->, BUSY,, false);
-        __SET_VAR(data__->, ENO,, false);
         return;
     }
 
@@ -961,7 +967,7 @@ void __mcl_cmd_ReadStatus(HYD_READSTATUS* data__)
         __SET_VAR(data__->, BUSY,, false);
     }
 
-    __SET_VAR(data__->, ENO,, true);
+
 }
 
 void __mcl_cmd_ReadError(HYD_READERROR* data__)
@@ -974,7 +980,6 @@ void __mcl_cmd_ReadError(HYD_READERROR* data__)
         __SET_VAR(data__->, ERROR,, false);
         __SET_VAR(data__->, ERRORID,, (IEC_WORD)0);
         __SET_VAR(data__->, BUSY,, false);
-        __SET_VAR(data__->, ENO,, false);
         return;
     }
 
@@ -993,5 +998,37 @@ void __mcl_cmd_ReadError(HYD_READERROR* data__)
         __SET_VAR(data__->, BUSY,, false);
     }
 
-    __SET_VAR(data__->, ENO,, true);
+
+}
+
+void __mcl_cmd_ReadSimFeedback(HYD_READSIMFEEDBACK* data__)
+{
+    IEC_BOOL enable = __GET_VAR(data__->ENABLE);
+    IEC_SINT axisIndex = __GET_VAR(data__->AXISID);
+
+    if (axisIndex < 0 || axisIndex >= (IEC_SINT)nextAllocatedFB)
+    {
+        __SET_VAR(data__->, ERROR,, false);
+        __SET_VAR(data__->, ERRORID,, (IEC_WORD)0);
+        __SET_VAR(data__->, BUSY,, false);
+        return;
+    }
+
+    HYD_MotionControlFB* fb = &HYD_MotionControlFB_inst[axisIndex];
+
+    if (enable)
+    {
+        __SET_VAR(data__->, POSITION,, fb->_simFeedback.targetPosition);
+        __SET_VAR(data__->, VELOCITY,, fb->_simFeedback.targetVelocity);
+        __SET_VAR(data__->, FLOW,, fb->_simFeedback.targetFlow);
+        __SET_VAR(data__->, PRESSURE,, fb->_simFeedback.targetPressure);
+        __SET_VAR(data__->, BUSY,, HYD_MotionControlFB_IsBusy(fb) ? true : false);
+    }
+    else
+    {
+        __SET_VAR(data__->, ERROR,, false);
+        __SET_VAR(data__->, ERRORID,, (IEC_WORD)0);
+        __SET_VAR(data__->, BUSY,, false);
+    }
+
 }

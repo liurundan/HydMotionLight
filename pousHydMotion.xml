@@ -1035,6 +1035,70 @@
 				</body>
 				<documentation><![CDATA[get axis error from motion.]]></documentation>
 			</pou>
+			<pou name="HYD_ReadSimFeedback" pouType="functionBlock">
+				<interface>
+					<inputVars>
+						<variable name="ENABLE">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="AXISID">
+							<type>
+								<SINT />
+							</type>
+						</variable>
+					</inputVars>
+					<outputVars>
+						<variable name="VALID">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="BUSY">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="ERROR">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="ERRORID">
+							<type>
+								<WORD />
+							</type>
+						</variable>
+						<variable name="POSITION">
+							<type>
+								<REAL />
+							</type>
+						</variable>
+						<variable name="VELOCITY">
+							<type>
+								<REAL />
+							</type>
+						</variable>
+						<variable name="FLOW">
+							<type>
+								<REAL />
+							</type>
+						</variable>
+						<variable name="PRESSURE">
+							<type>
+								<REAL />
+							</type>
+						</variable>																			
+					</outputVars>
+				</interface>
+				<body>
+					<ST>
+						<xhtml:p><![CDATA[{{ extern void __mcl_cmd_ReadSimFeedback(HYD_READSIMFEEDBACK*); __mcl_cmd_ReadSimFeedback(data__); }} ]]></xhtml:p>
+					</ST>
+				</body>
+				<documentation><![CDATA[get axis simfeedback from motion.]]></documentation>
+			</pou>
 		</pous>
 	</types>
 	<instances>
