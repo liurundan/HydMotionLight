@@ -86,8 +86,8 @@ static HYD_MotionSegment buildPositionSegment(
     seg.maxFlow = (velocity > 0.0f) ? velocity * 0.2f : 50.0f;
     seg.velocityToFlowGain = 0.2f;
 
-    seg.positionTolerance = 0.1f;   /* mm */
-    seg.timeoutLimit = 10.0f;       /* s */
+    seg.positionTolerance = 1.1f;   /* mm 0.1*/
+    seg.timeoutLimit = 30.0f;       /* s 10*/
 
     return seg;
 }
