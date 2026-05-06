@@ -280,6 +280,13 @@ void HYD_StateReporter_ApplySafeOutputs(HYD_MotionControlFB* fb) {
     fb->STATE.plannedVelocity = 0.0;
     fb->STATE.plannedFlow = 0.0;
     fb->STATE.commandedPumpSpeed = 0.0;
+    /* Clear simulation feedback to prevent stale velocity from driving
+     * the simulated axis after segment completion, abort, fault, or hold.
+     * Keep valid=true so Publish() updates AXIS_REF with zeroed values,
+     * giving correct velocity=0 readback in simulation mode. */
+    fb->_simFeedback.targetVelocity = 0.0;
+    fb->_simFeedback.targetFlow = 0.0;
+    fb->_simFeedback.targetPressure = 0.0;
     HYD_StateReporter_ClearExecutionReferences(fb);
     HYD_StateReporter_SetProtectionAction(fb, HYD_PROTECTION_ACTION_NONE);
     HYD_StateReporter_SetPlannedDirection(fb, HYD_DIRECTION_HOLD);

@@ -993,6 +993,238 @@ static void test_movevelocity_preempted_by_another_movevelocity(void) {
                "Second MoveVelocity should be active");
 }
 
+/* ==================================================================
+ * Test 13: MoveAbsolute Done后速度输出应为0
+ *
+ * 验证: 当FB从RUNNING过渡到DONE时，规划器输出的速度应归零，
+ *       仿真反馈回路的速度也应归零，不应出现DONE后仍有非零速度输出。
+ *
+ * 背景: 在仿真模式下，_simFeedback在段完成时未被清除，
+ *       导致Publish()使用陈旧的速度值更新AXIS_REF，
+ *       使仿真轴在DONE后继续运动。
+ * ================================================================== */
+static void test_moveabsolute_done_velocity_zero(void) {
+    HYD_MOVEABSOLUTE ma;
+    HYD_READSIMFEEDBACK rfb;
+    int axisId, steps, postStep;
+
+    printf("--- Test: MoveAbsolute DONE → velocity must be zero ---\n");
+
+    __HydMotion_framework_Init();
+    axisId = create_sim_axis(false);
+    ASSERT_TRUE(axisId >= 0, "CreateMotion should succeed");
+
+    /* 伸出到 100mm */
+    memset(&ma, 0, sizeof(ma));
+    IEC_VAL(ma.EN) = true;
+    IEC_VAL(ma.AXISID) = axisId;
+    IEC_VAL(ma.POSITION) = 100.0f;
+    IEC_VAL(ma.VELOCITY) = 50.0f;
+    IEC_VAL(ma.ACCELERATION) = 200.0f;
+    IEC_VAL(ma.DIRECTION) = 1;  /* EXTEND */
+
+    steps = run_moveabsolute_to_done(&ma, MAX_SIM_STEPS);
+    ASSERT_TRUE(steps > 0, "MoveAbsolute should reach DONE within max steps");
+    ASSERT_TRUE(IEC_VAL(ma.DONE) == true, "MoveAbsolute should be DONE");
+    ASSERT_TRUE(IEC_VAL(ma.BUSY) == false, "BUSY should be false after DONE");
+    ASSERT_TRUE(IEC_VAL(ma.ACTIVE) == false, "ACTIVE should be false after DONE");
+
+    printf("  DONE after %d sim steps\n", steps);
+
+    /* 读取核心FB内部状态验证 */
+    {
+        HYD_MotionControlFB* fb = __MK_GetPublic_MotionControlFB(axisId);
+        ASSERT_TRUE(fb != NULL, "Should get FB by index");
+        ASSERT_FNEAR(fb->STATE.plannedVelocity, 0.0, 0.01,
+                     "plannedVelocity should be 0 after DONE");
+        ASSERT_FNEAR(fb->PUMP_SPEED, 0.0, 0.01,
+                     "PUMP_SPEED should be 0 after DONE");
+        ASSERT_FNEAR(fb->_simFeedback.targetVelocity, 0.0, 0.01,
+                     "_simFeedback.targetVelocity should be 0 after DONE");
+        ASSERT_FNEAR(fb->_simFeedback.targetFlow, 0.0, 0.01,
+                     "_simFeedback.targetFlow should be 0 after DONE");
+        printf("  After DONE: plannedVelocity=%.4f, pumpSpeed=%.4f, simVel=%.4f\n",
+               (double)fb->STATE.plannedVelocity,
+               (double)fb->PUMP_SPEED,
+               (double)fb->_simFeedback.targetVelocity);
+    }
+
+    /* 再推进若干仿真周期，验证速度持续为0 */
+    HYD_REAL positionAtDone = 0.0;
+    {
+        HYD_MotionControlFB* fb = __MK_GetPublic_MotionControlFB(axisId);
+        positionAtDone = fb->AXIS_REF.position;
+        printf("  Position at DONE: %.4f mm\n", (double)positionAtDone);
+    }
+
+    for (postStep = 0; postStep < 20; postStep++) {
+        __HydMotion_framework_Publish();
+        IEC_VAL(ma.EXECUTE) = true;
+        ma.EXECUTE0.value = true;
+        __mcl_cmd_MoveAbsolute(&ma);
+    }
+
+    /* 验证: 多周期后速度仍为0，位置不再偏移 */
+    {
+        HYD_MotionControlFB* fb = __MK_GetPublic_MotionControlFB(axisId);
+        ASSERT_FNEAR(fb->_simFeedback.targetVelocity, 0.0, 0.01,
+                     "simFeedback velocity should stay 0 after multiple cycles");
+        ASSERT_FNEAR(fb->AXIS_REF.velocity, 0.0, 0.01,
+                     "AXIS_REF velocity should be 0 after multiple cycles");
+        ASSERT_FNEAR(fb->AXIS_REF.position, positionAtDone, 0.1,
+                     "Position should not drift after DONE");
+        printf("  After 20 more cycles: velocity=%.4f, position=%.4f (drift=%.4f)\n",
+               (double)fb->AXIS_REF.velocity,
+               (double)fb->AXIS_REF.position,
+               (double)(fb->AXIS_REF.position - positionAtDone));
+    }
+
+    /* 通过ReadSimFeedback验证外部接口 */
+    memset(&rfb, 0, sizeof(rfb));
+    IEC_VAL(rfb.ENABLE) = true;
+    IEC_VAL(rfb.AXISID) = axisId;
+    __mcl_cmd_ReadSimFeedback(&rfb);
+    ASSERT_FNEAR(IEC_VAL(rfb.VELOCITY), 0.0, 0.01,
+                 "ReadSimFeedback velocity should be 0 after DONE");
+    printf("  ReadSimFeedback: pos=%.4f, vel=%.4f, flow=%.4f\n",
+           (double)IEC_VAL(rfb.POSITION),
+           (double)IEC_VAL(rfb.VELOCITY),
+           (double)IEC_VAL(rfb.FLOW));
+}
+
+/* ==================================================================
+ * Test 14: MoveAbsolute缩回Done后速度归零
+ *
+ * 验证缩回方向同样满足Done后速度为0
+ * ================================================================== */
+static void test_moveabsolute_retract_done_velocity_zero(void) {
+    HYD_MOVEABSOLUTE ma;
+    int axisId, steps;
+
+    printf("--- Test: MoveAbsolute retract DONE → velocity zero ---\n");
+
+    __HydMotion_framework_Init();
+    axisId = create_sim_axis(false);
+    ASSERT_TRUE(axisId >= 0, "CreateMotion should succeed");
+
+    /* 先伸出到 80mm */
+    memset(&ma, 0, sizeof(ma));
+    IEC_VAL(ma.EN) = true;
+    IEC_VAL(ma.AXISID) = axisId;
+    IEC_VAL(ma.POSITION) = 80.0f;
+    IEC_VAL(ma.VELOCITY) = 40.0f;
+    IEC_VAL(ma.ACCELERATION) = 200.0f;
+    IEC_VAL(ma.DIRECTION) = 1;
+
+    steps = run_moveabsolute_to_done(&ma, MAX_SIM_STEPS);
+    ASSERT_TRUE(steps > 0, "Extend should reach DONE");
+
+    /* EXECUTE下降沿 */
+    IEC_VAL(ma.EXECUTE) = false;
+    ma.EXECUTE0.value = true;
+    __mcl_cmd_MoveAbsolute(&ma);
+    __HydMotion_framework_Publish();
+
+    /* 缩回到 0mm */
+    memset(&ma, 0, sizeof(ma));
+    IEC_VAL(ma.EN) = true;
+    IEC_VAL(ma.AXISID) = axisId;
+    IEC_VAL(ma.POSITION) = 0.0f;
+    IEC_VAL(ma.VELOCITY) = 40.0f;
+    IEC_VAL(ma.ACCELERATION) = 200.0f;
+    IEC_VAL(ma.DIRECTION) = -1;
+
+    steps = run_moveabsolute_to_done(&ma, MAX_SIM_STEPS);
+    ASSERT_TRUE(steps > 0, "Retract should reach DONE");
+
+    /* 验证缩回Done后速度为0 */
+    {
+        HYD_MotionControlFB* fb = __MK_GetPublic_MotionControlFB(axisId);
+        ASSERT_TRUE(fb != NULL, "Should get FB by index");
+        ASSERT_FNEAR(fb->_simFeedback.targetVelocity, 0.0, 0.01,
+                     "simFeedback velocity should be 0 after retract DONE");
+        ASSERT_FNEAR(fb->AXIS_REF.velocity, 0.0, 0.01,
+                     "AXIS_REF velocity should be 0 after retract DONE");
+        printf("  Retract DONE: simVel=%.4f, axisVel=%.4f\n",
+               (double)fb->_simFeedback.targetVelocity,
+               (double)fb->AXIS_REF.velocity);
+    }
+}
+
+/* ==================================================================
+ * Test 15: MoveAbsolute运行中Abort后速度归零
+ *
+ * 验证: Abort路径同样清除仿真反馈速度
+ * ================================================================== */
+static void test_moveabsolute_abort_velocity_zero(void) {
+    HYD_MOVEABSOLUTE ma;
+    HYD_STOP stop;
+    int axisId, step;
+
+    printf("--- Test: MoveAbsolute abort → velocity zero ---\n");
+
+    __HydMotion_framework_Init();
+    axisId = create_sim_axis(false);
+    ASSERT_TRUE(axisId >= 0, "CreateMotion should succeed");
+
+    /* 启动MoveAbsolute */
+    memset(&ma, 0, sizeof(ma));
+    IEC_VAL(ma.EN) = true;
+    IEC_VAL(ma.AXISID) = axisId;
+    IEC_VAL(ma.POSITION) = 100.0f;
+    IEC_VAL(ma.VELOCITY) = 50.0f;
+    IEC_VAL(ma.ACCELERATION) = 200.0f;
+    IEC_VAL(ma.DIRECTION) = 1;
+
+    IEC_VAL(ma.EXECUTE) = true;
+    ma.EXECUTE0.value = false;
+    __mcl_cmd_MoveAbsolute(&ma);
+    __HydMotion_framework_Publish();
+
+    IEC_VAL(ma.EXECUTE) = true;
+    ma.EXECUTE0.value = true;
+    __mcl_cmd_MoveAbsolute(&ma);
+
+    /* 运行若干周期让速度建立 */
+    for (step = 0; step < 20; step++) {
+        __HydMotion_framework_Publish();
+        IEC_VAL(ma.EXECUTE) = true;
+        ma.EXECUTE0.value = true;
+        __mcl_cmd_MoveAbsolute(&ma);
+    }
+
+    /* Abort */
+    memset(&stop, 0, sizeof(stop));
+    IEC_VAL(stop.EN) = true;
+    IEC_VAL(stop.EXECUTE) = true;
+    stop.EXECUTE0.value = false;
+    IEC_VAL(stop.AXISID) = axisId;
+    __mcl_cmd_Stop(&stop);
+    __HydMotion_framework_Publish();
+
+    /* 等待Stop Done */
+    for (step = 0; step < 100; step++) {
+        __HydMotion_framework_Publish();
+        IEC_VAL(stop.EXECUTE) = true;
+        stop.EXECUTE0.value = true;
+        __mcl_cmd_Stop(&stop);
+        if (IEC_VAL(stop.DONE)) break;
+    }
+
+    /* 验证Abort后仿真反馈速度为0 */
+    {
+        HYD_MotionControlFB* fb = __MK_GetPublic_MotionControlFB(axisId);
+        ASSERT_TRUE(fb != NULL, "Should get FB by index");
+        ASSERT_FNEAR(fb->_simFeedback.targetVelocity, 0.0, 0.01,
+                     "simFeedback velocity should be 0 after abort");
+        ASSERT_FNEAR(fb->AXIS_REF.velocity, 0.0, 0.01,
+                     "AXIS_REF velocity should be 0 after abort");
+        printf("  After abort: simVel=%.4f, axisVel=%.4f\n",
+               (double)fb->_simFeedback.targetVelocity,
+               (double)fb->AXIS_REF.velocity);
+    }
+}
+
 int main(void) {
     printf("=== Motion Interface Done Signal Simulation Tests ===\n\n");
 
@@ -1008,6 +1240,9 @@ int main(void) {
     test_multi_axis_extend_retract_parallel();
     test_stop_during_moveabsolute_done();
     test_movevelocity_preempted_by_another_movevelocity();
+    test_moveabsolute_done_velocity_zero();
+    test_moveabsolute_retract_done_velocity_zero();
+    test_moveabsolute_abort_velocity_zero();
 
     printf("\n=== Results: %d/%d passed ===\n", tests_passed, tests_run);
     return (tests_passed == tests_run) ? 0 : 1;
