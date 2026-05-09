@@ -28,22 +28,20 @@ static float lcg_rand_float(uint32_t *seed) {
 
 /* 初始化RBF网络参数(中心、宽度、权重) */
 static void rbf_init_network(RBF_PID_Handle *pid) {
-    uint32_t seed = 12345UL;   // 固定种子，可重复
+    uint32_t seed = pid->network_seed;
     int i, j;
 
     for (i = 0; i < RBF_HNUM; i++) {
         for (j = 0; j < RBF_INPUT_DIM; j++) {
             float rand_val = lcg_rand_float(&seed);
             if (j == 0) {
-                // 第一个输入(du_prev)范围[-1,1]
                 pid->c[i][j] = rand_val * 2.0f - 1.0f;
             } else {
-                // 其他输入范围[0,1]
                 pid->c[i][j] = rand_val;
             }
         }
         pid->b_rbf[i] = 1.5f;
-        pid->w[i] = 0.5f;
+        pid->w[i] = 0.3f + lcg_rand_float(&seed) * 0.4f;
     }
 
     /* 复制到历史数组 */
@@ -94,6 +92,9 @@ void RBF_PID_Init(RBF_PID_Handle *pid, float sampling_period,
     pid->eta_i = 0.25f;
     pid->eta_d = 0.25f;
 
+    /* 默认网络种子 */
+    pid->network_seed = 12345UL;
+
     /* 动量因子 */
     pid->alpha = 0.05f;
     pid->belte = 0.01f;
@@ -142,13 +143,17 @@ void RBF_PID_Reset(RBF_PID_Handle *pid) {
 
 /* 更新RBF网络参数(带动量项) */
 static void rbf_update_network(RBF_PID_Handle *pid, float x_norm[RBF_INPUT_DIM],
-                               const float h[RBF_HNUM], float error_rbf) {
+                               const float h[RBF_HNUM], float error_rbf,
+                               float eta_scale) {
     int i, j;
     float norm_val, b_delta, c_delta;
+    float eta_w_eff = pid->eta_w * eta_scale;
+    float eta_c_eff = pid->eta_c * eta_scale;
+    float eta_b_eff = pid->eta_b * eta_scale;
 
     /* 更新权重 w (动量 + 学习率) */
     for (i = 0; i < RBF_HNUM; i++) {
-        float delta_w = pid->eta_w * error_rbf * h[i];
+        float delta_w = eta_w_eff * error_rbf * h[i];
         pid->w[i] = pid->w_1[i] + delta_w
                     + pid->alpha * (pid->w_1[i] - pid->w_2[i])
                     + pid->belte * (pid->w_2[i] - pid->w_3[i]);
@@ -164,7 +169,7 @@ static void rbf_update_network(RBF_PID_Handle *pid, float x_norm[RBF_INPUT_DIM],
         }
 
         /* 宽度更新 */
-        b_delta = pid->eta_b * error_rbf * pid->w[i] * h[i] * norm_val
+        b_delta = eta_b_eff * error_rbf * pid->w[i] * h[i] * norm_val
                   / (pid->b_rbf[i] * pid->b_rbf[i] * pid->b_rbf[i]);
         pid->b_rbf[i] = pid->bi_1[i] + b_delta
                         + pid->alpha * (pid->bi_1[i] - pid->bi_2[i])
@@ -174,7 +179,7 @@ static void rbf_update_network(RBF_PID_Handle *pid, float x_norm[RBF_INPUT_DIM],
 
         /* 中心更新 */
         for (j = 0; j < RBF_INPUT_DIM; j++) {
-            c_delta = pid->eta_c * error_rbf * pid->w[i] * h[i]
+            c_delta = eta_c_eff * error_rbf * pid->w[i] * h[i]
                       * (x_norm[j] - pid->c[i][j]) / (pid->b_rbf[i] * pid->b_rbf[i]);
             pid->c[i][j] = pid->ci_1[i][j] + c_delta
                            + pid->alpha * (pid->ci_1[i][j] - pid->ci_2[i][j])
@@ -262,14 +267,20 @@ float RBF_PID_Update(RBF_PID_Handle *pid, float setpoint, float feedback) {
     }
     pid->Jacobian = LIMIT(-1.0f, sum_jacobian, 1.0f);
 
+    /* ----- 自适应学习率: 误差大时高学习率(快速跟踪)，误差小时低学习率(稳定保持) ----- */
+    {
+        float error_norm = ABS(error) / (ABS(pid->Setpoint) + 1e-6f);
+        pid->eta_scale = LIMIT(0.01f, error_norm * 4.0f, 1.0f);
+    }
+
     /* ----- RBF网络参数更新 (在线学习) ----- */
     error_rbf = pid->Feedback - y_hat;
-    rbf_update_network(pid, x_normalized, pid->h, error_rbf);
+    rbf_update_network(pid, x_normalized, pid->h, error_rbf, pid->eta_scale);
 
     /* ----- PID参数自适应更新 (基于梯度下降) ----- */
-    float delta_kp = pid->eta_p * error * pid->Jacobian * (error - pid->e_prev1);
-    float delta_ki = pid->eta_i * error * pid->Jacobian * error;
-    float delta_kd = pid->eta_d * error * pid->Jacobian * (error - 2*pid->e_prev1 + pid->e_prev2);
+    float delta_kp = pid->eta_p * pid->eta_scale * error * pid->Jacobian * (error - pid->e_prev1);
+    float delta_ki = pid->eta_i * pid->eta_scale * error * pid->Jacobian * error;
+    float delta_kd = pid->eta_d * pid->eta_scale * error * pid->Jacobian * (error - 2*pid->e_prev1 + pid->e_prev2);
 
     pid->KP += delta_kp;
     pid->KI += delta_ki;
@@ -381,4 +392,13 @@ void RBF_PID_SetLearningRates(RBF_PID_Handle *pid,
     pid->eta_p = eta_p;
     pid->eta_i = eta_i;
     pid->eta_d = eta_d;
+}
+
+void RBF_PID_SetSeed(RBF_PID_Handle *pid, uint32_t seed) {
+    if (pid == NULL) {
+        return;
+    }
+    pid->network_seed = seed;
+    rbf_init_network(pid);
+    controller_reset_state(pid);
 }

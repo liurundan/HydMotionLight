@@ -265,6 +265,8 @@ typedef struct {
      */
     HYD_PressureControllerType pressureController;
     HYD_REAL pressureKp;                     /* L/min per MPa */
+    HYD_REAL pressureKpHigh;                 /* L/min per MPa, high-error gain for scheduling; 0 disables */
+    HYD_REAL pressureGainBand;               /* error ratio threshold for gain interpolation, 0 uses default 0.2 */
     HYD_REAL pressureKi;                     /* L/min per (MPa*s) */
     HYD_REAL pressureKd;                     /* L/min per (MPa/s) */
     HYD_REAL pressureIntegralLimit;          /* L/min absolute limit for integral contribution */

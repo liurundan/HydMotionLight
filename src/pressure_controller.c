@@ -34,6 +34,8 @@ typedef struct {
     const HYD_PressureStrategySpec* strategySpec;
     HYD_PressureControllerType strategy;
     HYD_REAL kp;
+    HYD_REAL kpHigh;
+    HYD_REAL gainBand;
     HYD_REAL ki;
     HYD_REAL kd;
     HYD_REAL integralLimit;
@@ -224,6 +226,10 @@ static void HYD_ResolvePressureControllerConfig(const HYD_MotionSegment* segment
     config->strategy = strategySpec->strategy;
     config->kp = HYD_ResolveGain((segment != NULL) ? segment->pressureKp : 0.0,
                                  HYD_LEGACY_PRESSURE_FLOW_KP);
+    config->kpHigh = (segment != NULL && segment->pressureKpHigh > 0.0)
+        ? segment->pressureKpHigh : 0.0;
+    config->gainBand = (segment != NULL && segment->pressureGainBand > 0.0)
+        ? segment->pressureGainBand : 0.2;
     config->ki = strategySpec->supportsIntegral
         ? HYD_ResolveGain((segment != NULL) ? segment->pressureKi : 0.0, 0.0)
         : 0.0;
@@ -504,6 +510,14 @@ void HYD_PressureController_Execute(const HYD_MotionSegment* segment,
     }
 
     proportionalTerm = config.kp * error;
+
+    if (config.kpHigh > 0.0 && fabs(input->targetPressure) > 0.0) {
+        HYD_REAL errorRatio = fabs(error) / input->targetPressure;
+        HYD_REAL fraction = HYD_ClampReal(errorRatio / config.gainBand, 0.0, 1.0);
+        HYD_REAL kpEff = config.kp + fraction * (config.kpHigh - config.kp);
+        proportionalTerm = kpEff * error;
+    }
+
     derivativeTerm = 0.0;
     if (config.strategySpec->supportsDerivative && config.dt > 0.0) {
         derivativeTerm = -config.kd * filteredPressureRate;

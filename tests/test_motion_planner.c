@@ -42,7 +42,7 @@ static HYD_MotionSegment create_test_segment(void) {
 static void test_position_based_extend_velocity(void) {
     HYD_AxisRef axisRef;
     HYD_MotionSegment segment;
-    HYD_MotionPlannerInput input;
+    HYD_MotionPlannerInput input = {0};
     HYD_MotionPlannerOutput output = {0};
     HYD_REAL remainingDistance;
     HYD_REAL expectedVelocityMagnitude;
@@ -73,7 +73,7 @@ static void test_position_based_extend_velocity(void) {
 static void test_position_based_retract_velocity(void) {
     HYD_AxisRef axisRef;
     HYD_MotionSegment segment;
-    HYD_MotionPlannerInput input;
+    HYD_MotionPlannerInput input = {0};
     HYD_MotionPlannerOutput output = {0};
     HYD_REAL remainingDistance;
     HYD_REAL expectedVelocityMagnitude;
@@ -106,7 +106,7 @@ static void test_position_based_retract_velocity(void) {
 static void test_speed_ramp_directional_planning(void) {
     HYD_AxisRef axisRef;
     HYD_MotionSegment segment;
-    HYD_MotionPlannerInput input;
+    HYD_MotionPlannerInput input = {0};
     HYD_MotionPlannerOutput output = {0};
     HYD_REAL expectedVelocityMagnitude;
 
@@ -143,7 +143,7 @@ static void test_speed_ramp_directional_planning(void) {
 static void test_position_mode_time_planner_brakes_near_target(void) {
     HYD_AxisRef axisRef;
     HYD_MotionSegment segment;
-    HYD_MotionPlannerInput input;
+    HYD_MotionPlannerInput input = {0};
     HYD_MotionPlannerOutput output = {0};
     HYD_REAL remainingDistance;
     HYD_REAL brakeVelocityMagnitude;
@@ -179,7 +179,7 @@ static void test_position_mode_time_planner_brakes_near_target(void) {
 static void test_pressure_mode_is_left_to_pressure_controller_module(void) {
     HYD_AxisRef axisRef;
     HYD_MotionSegment segment;
-    HYD_MotionPlannerInput input;
+    HYD_MotionPlannerInput input = {0};
     HYD_MotionPlannerOutput output = {0};
 
     printf("Testing pressure mode planner bypass behavior...\n");

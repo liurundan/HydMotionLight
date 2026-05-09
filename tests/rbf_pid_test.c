@@ -72,12 +72,77 @@ static void test_explicit_reset_restores_runtime_state(void) {
     printf("✓ RBF_PID explicit reset test passed\n");
 }
 
+static void test_adaptive_learning_rate_scales_with_error(void) {
+    RBF_PID_Handle pid;
+    float kp_before, kp_after;
+    int step;
+
+    printf("Testing adaptive learning rate scaling...\n");
+    RBF_PID_Init(&pid, 0.01f, 1500.0f, 1.0f);
+    pid.enable = true;
+
+    /* Drive to steady state */
+    for (step = 0; step < 15; step++) {
+        float feedback = step * 5.0f;
+        if (feedback > 95.0f) feedback = 95.0f;
+        (void)RBF_PID_Update(&pid, 100.0f, feedback);
+    }
+
+    /* Record KP at near-steady state */
+    kp_before = pid.KP;
+
+    /* Run many steps with very small error */
+    for (step = 0; step < 10; step++) {
+        (void)RBF_PID_Update(&pid, 100.0f, 99.9f);
+    }
+
+    kp_after = pid.KP;
+    /* KP should not drift more than 5% from its previous value */
+    assert(fabsf(kp_after - kp_before) < 0.05f * kp_before + 0.01f);
+    printf("✓ Adaptive learning rate scaling test passed\n");
+}
+
+static void test_multi_axis_differentiated_seeds(void) {
+    RBF_PID_Handle pid1, pid2;
+    float max_diff;
+    int i, j;
+
+    printf("Testing multi-axis differentiated seeds...\n");
+
+    RBF_PID_Init(&pid1, 0.01f, 1500.0f, 1.0f);
+    RBF_PID_SetSeed(&pid1, 12345UL);
+
+    RBF_PID_Init(&pid2, 0.01f, 1500.0f, 1.0f);
+    RBF_PID_SetSeed(&pid2, 67890UL);
+
+    /* Different seeds should produce different initial centers */
+    max_diff = 0.0f;
+    for (i = 0; i < RBF_HNUM; i++) {
+        for (j = 0; j < RBF_INPUT_DIM; j++) {
+            float diff = fabsf(pid1.c[i][j] - pid2.c[i][j]);
+            if (diff > max_diff) max_diff = diff;
+        }
+    }
+    assert(max_diff > 0.01f);
+
+    /* Different seeds should produce different initial weights */
+    max_diff = 0.0f;
+    for (i = 0; i < RBF_HNUM; i++) {
+        float diff = fabsf(pid1.w[i] - pid2.w[i]);
+        if (diff > max_diff) max_diff = diff;
+    }
+    assert(max_diff > 0.01f);
+    printf("✓ Multi-axis differentiated seeds test passed\n");
+}
+
 int main(void) {
     printf("Running RBF_PID tests...\n\n");
 
     test_disabled_controller_returns_zero_output();
     test_enabled_controller_respects_limits_and_drives_feedback();
     test_explicit_reset_restores_runtime_state();
+    test_adaptive_learning_rate_scales_with_error();
+    test_multi_axis_differentiated_seeds();
 
     printf("\n✅ All RBF_PID tests passed successfully!\n");
     return 0;

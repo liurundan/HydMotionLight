@@ -65,6 +65,9 @@ target_link_libraries(test_diagnostic_criteria PRIVATE HydroMotionLib)
 add_executable(test_sprint3_integration tests/test_sprint3_integration.c)
 target_link_libraries(test_sprint3_integration PRIVATE HydroMotionLib)
 
+add_executable(test_sprint_b_integration tests/test_sprint_b_integration.c)
+target_link_libraries(test_sprint_b_integration PRIVATE HydroMotionLib)
+
 add_executable(test_direct_mode tests/test_direct_mode.c)
 target_link_libraries(test_direct_mode PRIVATE HydroMotionLib)
 
@@ -110,6 +113,7 @@ add_test(NAME test_ramp_controller COMMAND ramp_controller_test)
 add_test(NAME test_diagnostic_monitor COMMAND test_diagnostic_monitor)
 add_test(NAME test_diagnostic_criteria COMMAND test_diagnostic_criteria)
 add_test(NAME test_sprint3_integration COMMAND test_sprint3_integration)
+add_test(NAME test_sprint_b_integration COMMAND test_sprint_b_integration)
 add_test(NAME test_direct_mode COMMAND test_direct_mode)
 add_test(NAME test_hydro_sim_fb COMMAND test_hydro_sim_fb)
 add_test(NAME test_motion_interface_unit COMMAND test_motion_interface_unit)

@@ -614,6 +614,74 @@ static void test_default_filter_applies_smoothing(void) {
     printf("✓ Default filter alpha smoothing test passed\n");
 }
 
+static void test_gain_scheduling_with_error_magnitude(void) {
+    HYD_MotionSegment segment;
+    HYD_PressureControllerState state;
+    HYD_PressureControllerInput input;
+    HYD_PressureControllerOutput outputLow;
+    HYD_PressureControllerOutput outputHigh;
+
+    printf("Testing gain scheduling with error magnitude...\n");
+
+    /* Without scheduling: Kp constant regardless of error */
+    segment = make_pressure_segment();
+    segment.pressureController = HYD_PRESSURE_CONTROLLER_P;
+    segment.pressureKp = 0.5;
+    segment.pressureKpHigh = 0.0;
+    segment.maxFlow = 20.0;
+
+    HYD_PressureController_InitState(&state, 10.0, segment.targetFlow, 0.0);
+
+    /* Small error */
+    input.targetPressure = 11.0;
+    input.measuredPressure = 10.0;
+    input.feedforwardFlow = segment.targetFlow;
+    input.outputMin = 0.0;
+    input.outputMax = segment.maxFlow;
+    input.timestamp = 0.01;
+    HYD_PressureController_Execute(&segment, &state, &input, &outputLow);
+    assert(fabs(outputLow.proportionalTerm - 0.5) < 0.001);
+
+    /* Large error - same Kp */
+    input.targetPressure = 20.0;
+    input.measuredPressure = 10.0;
+    input.timestamp = 0.02;
+    HYD_PressureController_Execute(&segment, &state, &input, &outputHigh);
+    assert(fabs(outputHigh.proportionalTerm - 5.0) < 0.001);
+
+    /* With scheduling: Kp varies by error magnitude */
+    segment.pressureKp = 0.2;       /* low-error gain */
+    segment.pressureKpHigh = 1.0;   /* high-error gain */
+    segment.pressureGainBand = 0.2; /* 20% error threshold */
+
+    HYD_PressureController_InitState(&state, 10.0, segment.targetFlow, 0.0);
+
+    /* Small error (1 MPa / 11 ≈ 9%): closer to low gain */
+    input.targetPressure = 11.0;
+    input.measuredPressure = 10.0;
+    input.timestamp = 0.01;
+    HYD_PressureController_Execute(&segment, &state, &input, &outputLow);
+    /* Effective Kp should be closer to 0.2 than 1.0 */
+    /* errorRatio = 1/11 ≈ 0.09, fraction = 0.09/0.2 = 0.45 */
+    /* kpEff = 0.2 + 0.45*(1.0-0.2) = 0.2 + 0.36 = 0.56 */
+    /* proportionalTerm = 0.56 * 1.0 = 0.56 */
+    assert(outputLow.proportionalTerm > 0.2);
+    assert(outputLow.proportionalTerm < 0.8);
+
+    /* Large error (10 MPa / 20 = 50%): closer to high gain */
+    segment.pressureKpHigh = 1.0;
+    input.targetPressure = 20.0;
+    input.measuredPressure = 10.0;
+    input.timestamp = 0.02;
+    HYD_PressureController_Execute(&segment, &state, &input, &outputHigh);
+    /* errorRatio = 10/20 = 0.5, fraction = min(0.5/0.2, 1.0) = 1.0 */
+    /* kpEff = 0.2 + 1.0*(1.0-0.2) = 1.0 */
+    /* proportionalTerm = 1.0 * 10 = 10.0 */
+    assert(outputHigh.proportionalTerm > 5.0);
+    assert(fabs(outputHigh.proportionalTerm - 10.0) < 0.01);
+    printf("✓ Gain scheduling with error magnitude test passed\n");
+}
+
 int main(void) {
     printf("Running PressureController tests...\n\n");
 
@@ -631,6 +699,7 @@ int main(void) {
     test_long_run_integral_stability();
     test_small_kp_produces_proportional_output();
     test_default_filter_applies_smoothing();
+    test_gain_scheduling_with_error_magnitude();
 
     printf("\n✅ All PressureController tests passed successfully!\n");
     return 0;

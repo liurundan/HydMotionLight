@@ -119,6 +119,12 @@ typedef struct {
     float fKSetpoint;               // 设定值变化率前馈增益(0.3)
     float fBaseBias;                // 静态偏置(0.00001)
 
+    /* 自适应学习率 */
+    float eta_scale;                // 误差驱动的学习率缩放因子 [0.01, 1.0]
+
+    /* 网络初始化种子 */
+    uint32_t network_seed;          // 可配置的RBF网络初始化种子
+
     /* 初始化标志 */
     bool FirstScan;
 
@@ -169,5 +175,7 @@ void RBF_PID_SetParamLimits(RBF_PID_Handle *pid,
 void RBF_PID_SetLearningRates(RBF_PID_Handle *pid,
     float eta_w, float eta_c, float eta_b,
     float eta_p, float eta_i, float eta_d);
+
+void RBF_PID_SetSeed(RBF_PID_Handle *pid, uint32_t seed);
 
 #endif /* RBF_PID_H */
