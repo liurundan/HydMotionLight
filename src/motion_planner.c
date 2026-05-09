@@ -1,6 +1,7 @@
 #include "motion_planner.h"
 #include "segment_limits.h"
 #include <math.h>
+#include <string.h>
 
 static HYD_REAL HYD_MinReal(HYD_REAL left, HYD_REAL right) {
     return (left < right) ? left : right;
@@ -70,6 +71,69 @@ static HYD_REAL HYD_ComputeTimeBasedVelocityMagnitude(HYD_REAL elapsedTime,
     return HYD_ClampReal(velocityMagnitude, 0.0, maxVelocity);
 }
 
+HYD_BOOL HYD_PlanTrapezoid(HYD_TrapezoidProfile* profile,
+                           HYD_REAL distance,
+                           HYD_REAL vMax,
+                           HYD_REAL acc) {
+    HYD_REAL sBrake;
+
+    if (profile == NULL || distance <= 0.0 || vMax <= 0.0 || acc <= 0.0) {
+        if (profile != NULL) {
+            memset(profile, 0, sizeof(*profile));
+        }
+        return false;
+    }
+
+    sBrake = (vMax * vMax) / (2.0 * acc);
+
+    if (2.0 * sBrake >= distance) {
+        HYD_REAL vPeak = sqrt(acc * distance);
+        profile->tAcc   = vPeak / acc;
+        profile->tConst = 0.0;
+        profile->tDec   = profile->tAcc;
+        profile->sAcc   = distance * 0.5;
+        profile->sConst = 0.0;
+        profile->sDec   = distance * 0.5;
+        profile->vPeak  = vPeak;
+    } else {
+        profile->tAcc   = vMax / acc;
+        profile->sAcc   = sBrake;
+        profile->sDec   = sBrake;
+        profile->sConst = distance - 2.0 * sBrake;
+        profile->tConst = profile->sConst / vMax;
+        profile->tDec   = profile->tAcc;
+        profile->vPeak  = vMax;
+    }
+    return true;
+}
+
+HYD_REAL HYD_EvalTrapezoid(const HYD_TrapezoidProfile* profile,
+                          HYD_REAL elapsed,
+                          HYD_REAL acc,
+                          HYD_REAL vMax) {
+    HYD_REAL tDec;
+    (void)vMax;
+
+    if (profile == NULL || elapsed <= 0.0) {
+        return 0.0;
+    }
+
+    if (elapsed < profile->tAcc) {
+        return acc * elapsed;
+    }
+
+    if (elapsed < profile->tAcc + profile->tConst) {
+        return profile->vPeak;
+    }
+
+    tDec = elapsed - profile->tAcc - profile->tConst;
+    if (tDec >= profile->tDec) {
+        return 0.0;
+    }
+
+    return HYD_ClampReal(profile->vPeak - acc * tDec, 0.0, profile->vPeak);
+}
+
 static HYD_REAL HYD_ConvertVelocityToFlowMagnitude(HYD_REAL velocityMagnitude,
                                                    const HYD_MotionSegment* segment) {
     HYD_REAL gain;
@@ -136,6 +200,7 @@ static HYD_REAL HYD_ComputeSpeedRampVelocityMagnitude(const HYD_MotionPlannerInp
     HYD_REAL velocityMagnitude;
     HYD_REAL remainingDistance;
     HYD_REAL brakeVelocityMagnitude;
+    HYD_REAL decelVelocity;
 
     if (input == NULL || input->segment == NULL || input->axisRef == NULL) {
         return 0.0;
@@ -144,6 +209,15 @@ static HYD_REAL HYD_ComputeSpeedRampVelocityMagnitude(const HYD_MotionPlannerInp
     velocityMagnitude = HYD_ComputeTimeBasedVelocityMagnitude(input->elapsedTime,
                                                               input->segment->maxAcceleration,
                                                               input->segment->maxVelocity);
+
+    if (input->decelElapsed > 0.0 && input->decelStartVel > 0.0) {
+        decelVelocity = input->decelStartVel -
+            input->segment->maxAcceleration * input->decelElapsed;
+        if (decelVelocity < 0.0) {
+            decelVelocity = 0.0;
+        }
+        velocityMagnitude = HYD_MinReal(velocityMagnitude, decelVelocity);
+    }
 
     if (input->segment->endCondition != HYD_END_POSITION) {
         return velocityMagnitude;

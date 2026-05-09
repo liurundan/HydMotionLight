@@ -181,6 +181,9 @@ typedef struct {
     HYD_TIME _holdStateTime;
     HYD_RampController _rampController;
     HYD_PressureControllerState _pressureController;
+    HYD_BOOL _isDecelerating;
+    HYD_TIME _decelStartTime;
+    HYD_REAL _decelStartVel;
 
     /* Diagnostic criteria layer - unified through diagnostics_monitor + diagnostics_criteria
      * Supports: startup suppress, switch suppress, debounce, hysteresis, fault escalation. */

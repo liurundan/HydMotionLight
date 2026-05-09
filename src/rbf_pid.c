@@ -142,21 +142,9 @@ void RBF_PID_Reset(RBF_PID_Handle *pid) {
 
 /* 更新RBF网络参数(带动量项) */
 static void rbf_update_network(RBF_PID_Handle *pid, float x_norm[RBF_INPUT_DIM],
-                               float error_rbf, float y_hat) {
-    (void)y_hat;
+                               const float h[RBF_HNUM], float error_rbf) {
     int i, j;
     float norm_val, b_delta, c_delta;
-    float h[RBF_HNUM];
-
-    /* 前向计算隐含层输出 (需要重新计算h，因为外部可能未保存) */
-    for (i = 0; i < RBF_HNUM; i++) {
-        float norm_sq = 0.0f;
-        for (j = 0; j < RBF_INPUT_DIM; j++) {
-            float diff = x_norm[j] - pid->c[i][j];
-            norm_sq += diff * diff;
-        }
-        h[i] = expf(-norm_sq / (2.0f * pid->b_rbf[i] * pid->b_rbf[i]));
-    }
 
     /* 更新权重 w (动量 + 学习率) */
     for (i = 0; i < RBF_HNUM; i++) {
@@ -276,7 +264,7 @@ float RBF_PID_Update(RBF_PID_Handle *pid, float setpoint, float feedback) {
 
     /* ----- RBF网络参数更新 (在线学习) ----- */
     error_rbf = pid->Feedback - y_hat;
-    rbf_update_network(pid, x_normalized, error_rbf, y_hat);
+    rbf_update_network(pid, x_normalized, pid->h, error_rbf);
 
     /* ----- PID参数自适应更新 (基于梯度下降) ----- */
     float delta_kp = pid->eta_p * error * pid->Jacobian * (error - pid->e_prev1);

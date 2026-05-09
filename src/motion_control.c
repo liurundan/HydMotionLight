@@ -338,6 +338,9 @@ static void HYD_PrimeSegmentControllers(HYD_MotionControlFB* fb,
         return;
     }
 
+    fb->_isDecelerating = false;
+    fb->_decelStartTime = 0.0;
+    fb->_decelStartVel = 0.0;
     fb->_lastFeedbackTimestamp = timestamp;
     HYD_RampController_Init(&fb->_rampController, fb->AXIS_REF.pressure, timestamp);
 
@@ -905,6 +908,13 @@ static void HYD_ExecuteActiveSegmentControl(HYD_MotionControlFB* fb,
         plannerInput.segment = segment;
         plannerInput.elapsedTime = elapsed;
         plannerInput.rampedPressure = rampOutput->rampedPressure;
+        if (fb->_isDecelerating) {
+            plannerInput.decelElapsed = fb->AXIS_REF.timestamp - fb->_decelStartTime;
+            plannerInput.decelStartVel = fb->_decelStartVel;
+        } else {
+            plannerInput.decelElapsed = 0.0;
+            plannerInput.decelStartVel = 0.0;
+        }
         HYD_MotionPlanner_Execute(&plannerInput, plannerOutput);
     }
 
@@ -1273,11 +1283,7 @@ static void HYD_MotionControlFB_RunRunningState(HYD_MotionControlFB* fb) {
         return;
     }
 
-    completionContext.segment = segment;
-    completionContext.axisRef = &fb->AXIS_REF;
-    completionContext.references = &executionReference;
-    segmentCompleted = HYD_SegmentCompletion_CheckWithContext(&completionContext);
-    if (segmentCompleted) {
+    if (fb->_isDecelerating && fabs(plannerOutput.targetVelocity) < 0.001) {
         completedSegmentSource = fb->_activeSegmentSource;
         recipeFinished = (completedSegmentSource == HYD_SEGMENT_SOURCE_DIRECT) ||
             (fb->STATE.currentSegmentIndex + 1U >= fb->RECIPE_SIZE);
@@ -1285,6 +1291,29 @@ static void HYD_MotionControlFB_RunRunningState(HYD_MotionControlFB* fb) {
         HYD_StateReporter_SetSegmentSource(fb, completedSegmentSource);
         HYD_StateReporter_RecordDiagnosticEvent(fb, fb->AXIS_REF.timestamp, segment, &executionReference);
         return;
+    }
+
+    completionContext.segment = segment;
+    completionContext.axisRef = &fb->AXIS_REF;
+    completionContext.references = &executionReference;
+    segmentCompleted = HYD_SegmentCompletion_CheckWithContext(&completionContext);
+    if (segmentCompleted) {
+        if (!fb->_isDecelerating &&
+            segment->mode == HYD_MODE_SPEED_RAMP &&
+            segment->endCondition != HYD_END_POSITION) {
+            fb->_isDecelerating = true;
+            fb->_decelStartTime = fb->AXIS_REF.timestamp;
+            fb->_decelStartVel = fabs(plannerOutput.targetVelocity);
+            /* continue execution to let deceleration take effect */
+        } else {
+            completedSegmentSource = fb->_activeSegmentSource;
+            recipeFinished = (completedSegmentSource == HYD_SEGMENT_SOURCE_DIRECT) ||
+                (fb->STATE.currentSegmentIndex + 1U >= fb->RECIPE_SIZE);
+            HYD_ProtectionManager_ApplyIdleState(fb, recipeFinished, true);
+            HYD_StateReporter_SetSegmentSource(fb, completedSegmentSource);
+            HYD_StateReporter_RecordDiagnosticEvent(fb, fb->AXIS_REF.timestamp, segment, &executionReference);
+            return;
+        }
     }
 
     HYD_StateReporter_ReportExecution(fb,

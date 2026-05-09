@@ -235,6 +235,179 @@ static void test_edge_cases(void) {
     printf("✓ Planner edge cases test passed\n");
 }
 
+/* ---- Trapezoid profile tests ---- */
+
+static void test_trapezoid_full_profile(void) {
+    HYD_TrapezoidProfile profile;
+    HYD_BOOL ok;
+    HYD_REAL vel;
+    HYD_REAL vMax = 10.0;
+    HYD_REAL acc = 5.0;
+    HYD_REAL distance = 100.0;
+
+    printf("Testing full trapezoid profile (enough distance)...\n");
+
+    ok = HYD_PlanTrapezoid(&profile, distance, vMax, acc);
+    assert(ok);
+
+    /* s_brake = 10^2 / (2*5) = 10, 2*s_brake = 20 < 100, full trapezoid */
+    assert(profile.sAcc > 0.0);
+    assert(profile.sConst > 0.0);
+    assert(profile.sDec > 0.0);
+    assert(fabs(profile.sAcc + profile.sConst + profile.sDec - distance) < 0.001);
+    assert(fabs(profile.sAcc - profile.sDec) < 0.001);
+
+    /* Acceleration phase: at t = tAcc/2, velocity should be acc * tAcc/2 */
+    vel = HYD_EvalTrapezoid(&profile, profile.tAcc * 0.5, acc, vMax);
+    assert(vel > 0.0 && vel < vMax);
+
+    /* At end of acceleration: velocity should be vMax */
+    vel = HYD_EvalTrapezoid(&profile, profile.tAcc, acc, vMax);
+    assert(fabs(vel - vMax) < 0.001);
+
+    /* Constant phase: velocity should be vMax */
+    vel = HYD_EvalTrapezoid(&profile, profile.tAcc + profile.tConst * 0.5, acc, vMax);
+    assert(fabs(vel - vMax) < 0.001);
+
+    /* Deceleration phase: at mid-decel, velocity should be between 0 and vMax */
+    vel = HYD_EvalTrapezoid(&profile, profile.tAcc + profile.tConst + profile.tDec * 0.5, acc, vMax);
+    assert(vel > 0.0 && vel < vMax);
+
+    /* At end: velocity should be 0 */
+    vel = HYD_EvalTrapezoid(&profile, profile.tAcc + profile.tConst + profile.tDec, acc, vMax);
+    assert(fabs(vel) < 0.001);
+    printf("✓ Full trapezoid profile test passed\n");
+}
+
+static void test_trapezoid_triangular_profile(void) {
+    HYD_TrapezoidProfile profile;
+    HYD_BOOL ok;
+    HYD_REAL vel;
+    HYD_REAL vMax = 10.0;
+    HYD_REAL acc = 5.0;
+    HYD_REAL distance = 10.0;
+
+    printf("Testing triangular profile (short distance)...\n");
+
+    ok = HYD_PlanTrapezoid(&profile, distance, vMax, acc);
+    assert(ok);
+
+    /* s_brake = 10, 2*s_brake = 20 > 10, triangular: no const phase */
+    assert(profile.sAcc > 0.0);
+    assert(fabs(profile.sConst) < 0.001);
+    assert(profile.sDec > 0.0);
+    assert(fabs(profile.sAcc + profile.sConst + profile.sDec - distance) < 0.001);
+    assert(fabs(profile.sAcc - profile.sDec) < 0.001);
+
+    /* At peak, velocity should be sqrt(acc * distance) = sqrt(50) ≈ 7.07 */
+    vel = HYD_EvalTrapezoid(&profile, profile.tAcc, acc, vMax);
+    assert(vel > 0.0 && vel < vMax);
+    assert(fabs(vel - sqrt(acc * distance)) < 0.001);
+
+    /* At end: velocity should be 0 */
+    vel = HYD_EvalTrapezoid(&profile, profile.tAcc + profile.tDec, acc, vMax);
+    assert(fabs(vel) < 0.001);
+    printf("✓ Triangular profile test passed\n");
+}
+
+static void test_trapezoid_edge_cases(void) {
+    HYD_TrapezoidProfile profile;
+    HYD_BOOL ok;
+    HYD_REAL vel;
+
+    printf("Testing trapezoid edge cases...\n");
+
+    /* Zero distance */
+    ok = HYD_PlanTrapezoid(&profile, 0.0, 10.0, 5.0);
+    assert(!ok);
+    assert(fabs(profile.tAcc) < 0.001);
+    assert(fabs(profile.sAcc) < 0.001);
+
+    /* Zero vMax */
+    ok = HYD_PlanTrapezoid(&profile, 100.0, 0.0, 5.0);
+    assert(!ok);
+
+    /* Zero acc */
+    ok = HYD_PlanTrapezoid(&profile, 100.0, 10.0, 0.0);
+    assert(!ok);
+
+    /* NULL profile */
+    ok = HYD_PlanTrapezoid(NULL, 100.0, 10.0, 5.0);
+    assert(!ok);
+
+    /* EvalTrapezoid at negative elapsed */
+    ok = HYD_PlanTrapezoid(&profile, 100.0, 10.0, 5.0);
+    assert(ok);
+    vel = HYD_EvalTrapezoid(&profile, -1.0, 5.0, 10.0);
+    assert(fabs(vel) < 0.001);
+
+    /* EvalTrapezoid beyond total time */
+    vel = HYD_EvalTrapezoid(&profile, profile.tAcc + profile.tConst + profile.tDec + 10.0, 5.0, 10.0);
+    assert(fabs(vel) < 0.001);
+    printf("✓ Trapezoid edge cases test passed\n");
+}
+
+static void test_speed_ramp_deceleration_on_stop(void) {
+    HYD_AxisRef axisRef;
+    HYD_MotionSegment segment;
+    HYD_MotionPlannerInput input;
+    HYD_MotionPlannerOutput output;
+    HYD_REAL acc;
+    HYD_REAL startVel;
+
+    printf("Testing SPEED_RAMP deceleration behavior...\n");
+
+    axisRef = create_test_axis_ref(50.0);
+    segment = create_test_segment();
+    segment.mode = HYD_MODE_SPEED_RAMP;
+    segment.planner = HYD_PLANNER_TIME_BASED;
+    segment.endCondition = HYD_END_TIME;
+    segment.maxAcceleration = 4.0;
+    segment.maxVelocity = 20.0;
+    segment.duration = 10.0;
+
+    input.axisRef = &axisRef;
+    input.segment = &segment;
+    input.elapsedTime = 5.0;
+    input.rampedPressure = 50.0;
+
+    /* No deceleration: normal ramp up */
+    input.decelElapsed = 0.0;
+    input.decelStartVel = 0.0;
+    HYD_MotionPlanner_Execute(&input, &output);
+    assert(output.targetVelocity > 0.0);
+    assert(fabs(output.targetVelocity - 20.0) < 0.001);
+
+    /* Deceleration active: velocity should decrease from startVel */
+    acc = segment.maxAcceleration;
+    startVel = 16.0;
+
+    input.decelStartVel = startVel;
+    input.decelElapsed = 1.0;
+    HYD_MotionPlanner_Execute(&input, &output);
+    assert(fabs(output.targetVelocity - (startVel - acc * 1.0)) < 0.001);
+
+    input.decelElapsed = 2.0;
+    HYD_MotionPlanner_Execute(&input, &output);
+    assert(fabs(output.targetVelocity - (startVel - acc * 2.0)) < 0.001);
+
+    /* Deceleration to zero: velocity clamped at 0 */
+    input.decelElapsed = 5.0;
+    HYD_MotionPlanner_Execute(&input, &output);
+    assert(fabs(output.targetVelocity) < 0.001);
+
+    /* Deceleration with position end condition: brake still applies */
+    segment.endCondition = HYD_END_POSITION;
+    segment.targetPosition = 60.0;
+    input.decelElapsed = 1.0;
+    input.decelStartVel = 10.0;
+    HYD_MotionPlanner_Execute(&input, &output);
+    /* Should be min(ramp braking, deceleration) */
+    assert(output.targetVelocity >= 0.0);
+    assert(output.targetVelocity <= 10.0);
+    printf("✓ SPEED_RAMP deceleration test passed\n");
+}
+
 int main(void) {
     printf("Running MotionPlanner tests...\n\n");
 
@@ -244,6 +417,10 @@ int main(void) {
     test_position_mode_time_planner_brakes_near_target();
     test_pressure_mode_is_left_to_pressure_controller_module();
     test_edge_cases();
+    test_trapezoid_full_profile();
+    test_trapezoid_triangular_profile();
+    test_trapezoid_edge_cases();
+    test_speed_ramp_deceleration_on_stop();
 
     printf("\n✅ All MotionPlanner tests passed successfully!\n");
     return 0;

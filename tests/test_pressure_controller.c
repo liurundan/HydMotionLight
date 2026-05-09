@@ -576,6 +576,44 @@ static void test_small_kp_produces_proportional_output(void) {
     printf("✓ Small-Kp P controller test passed\n");
 }
 
+static void test_default_filter_applies_smoothing(void) {
+    HYD_MotionSegment segment;
+    HYD_PressureControllerState state;
+    HYD_PressureControllerInput input;
+    HYD_PressureControllerOutput output;
+
+    printf("Testing default filter alpha applies smoothing...\n");
+    segment = make_pressure_segment();
+    segment.pressureFilterAlpha = 0.0;
+    segment.pressureDerivativeFilterAlpha = 0.0;
+
+    HYD_PressureController_InitState(&state, 10.0, segment.targetFlow, 0.0);
+
+    input.targetPressure = 20.0;
+    input.measuredPressure = 10.0;
+    input.feedforwardFlow = segment.targetFlow;
+    input.outputMin = 0.0;
+    input.outputMax = segment.maxFlow;
+    input.timestamp = 0.01;
+    HYD_PressureController_Execute(&segment, &state, &input, &output);
+
+    /* With default alpha < 1.0, filtered pressure should be between
+     * previous (10.0) and measured (10.0) - for first call with
+     * alpha=0.1, filtered = 10.0 + 0.1*(10.0-10.0) = 10.0 */
+    assert(fabs(output.filteredPressure - 10.0) < 0.001);
+
+    /* Step change: measured jumps from 10 to 15.
+     * With alpha=0.1: filtered = 10.0 + 0.1*(15.0-10.0) = 10.5 */
+    input.measuredPressure = 15.0;
+    input.timestamp = 0.02;
+    HYD_PressureController_Execute(&segment, &state, &input, &output);
+    assert(output.filteredPressure > 10.0);
+    assert(output.filteredPressure < 15.0);
+    /* filtered should be ~10.5 with alpha=0.1 */
+    assert(fabs(output.filteredPressure - 10.5) < 0.01);
+    printf("✓ Default filter alpha smoothing test passed\n");
+}
+
 int main(void) {
     printf("Running PressureController tests...\n\n");
 
@@ -592,6 +630,7 @@ int main(void) {
     test_p_to_pi_strategy_switch_preinitializes_integral();
     test_long_run_integral_stability();
     test_small_kp_produces_proportional_output();
+    test_default_filter_applies_smoothing();
 
     printf("\n✅ All PressureController tests passed successfully!\n");
     return 0;
