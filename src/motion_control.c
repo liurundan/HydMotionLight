@@ -1513,6 +1513,11 @@ void HYD_MotionControlFB_Init(HYD_MotionControlFB* fb) {
     fb->_params.pressureControllerType = (HYD_REAL)HYD_PRESSURE_CONTROLLER_PI;
     fb->_params.defaultTargetFlow = 5.0f;
     fb->_params.useSimulation = false;
+
+    /* Sync legacy fields for backward compatibility */
+    fb->FLOW_TO_PUMP_SPEED_GAIN = fb->_params.flowToPumpSpeedGain;
+    fb->PUMP_SPEED_LIMIT = fb->_params.pumpSpeedLimit;
+    fb->_useSimulation = fb->_params.useSimulation;
 }
 
 void HYD_MotionControlFB_SoftReset(HYD_MotionControlFB* fb) {
@@ -1524,6 +1529,7 @@ void HYD_MotionControlFB_SoftReset(HYD_MotionControlFB* fb) {
     HYD_REAL savedFlowToPumpSpeedGain;
     HYD_REAL savedPumpSpeedLimit;
     HYD_BOOL savedUseRecipe;
+    HYD_MotionFBParams savedParams;
     HYD_DiagnosticCriteria savedPressureCriteria;
     HYD_DiagnosticCriteria savedFlowCriteria;
     HYD_DiagnosticCriteria savedVelocityCriteria;
@@ -1541,6 +1547,7 @@ void HYD_MotionControlFB_SoftReset(HYD_MotionControlFB* fb) {
     savedFlowToPumpSpeedGain = fb->FLOW_TO_PUMP_SPEED_GAIN;
     savedPumpSpeedLimit = fb->PUMP_SPEED_LIMIT;
     savedUseRecipe = fb->USE_RECIPE;
+    savedParams = fb->_params;
     savedPressureCriteria = fb->_pressureCriteria;
     savedFlowCriteria = fb->_flowCriteria;
     savedVelocityCriteria = fb->_velocityCriteria;
@@ -1558,6 +1565,10 @@ void HYD_MotionControlFB_SoftReset(HYD_MotionControlFB* fb) {
     fb->FLOW_TO_PUMP_SPEED_GAIN = savedFlowToPumpSpeedGain;
     fb->PUMP_SPEED_LIMIT = savedPumpSpeedLimit;
     fb->USE_RECIPE = savedUseRecipe;
+    fb->_params = savedParams;
+    fb->FLOW_TO_PUMP_SPEED_GAIN = savedParams.flowToPumpSpeedGain;
+    fb->PUMP_SPEED_LIMIT = savedParams.pumpSpeedLimit;
+    fb->_useSimulation = savedParams.useSimulation;
     fb->_pressureCriteria = savedPressureCriteria;
     fb->_flowCriteria = savedFlowCriteria;
     fb->_velocityCriteria = savedVelocityCriteria;

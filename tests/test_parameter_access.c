@@ -165,8 +165,22 @@ static void test_legacy_field_sync_on_write(void) {
     ASSERT_TRUE(fb._useSimulation == true, "Legacy _useSimulation should be synced to true");
 }
 
+/* Test: Init syncs legacy fields from _params defaults */
+static void test_init_syncs_legacy_fields(void) {
+    HYD_MotionControlFB fb;
+    HYD_MotionControlFB_Init(&fb);
+
+    ASSERT_FLOAT_EQ(fb.FLOW_TO_PUMP_SPEED_GAIN, 20.0f, 0.001f,
+                    "Legacy FLOW_TO_PUMP_SPEED_GAIN should be 20.0 after Init");
+    ASSERT_FLOAT_EQ(fb.PUMP_SPEED_LIMIT, 1800.0f, 0.001f,
+                    "Legacy PUMP_SPEED_LIMIT should be 1800.0 after Init");
+    ASSERT_TRUE(fb._useSimulation == false,
+                "Legacy _useSimulation should be false after Init");
+}
+
 int main(void) {
     test_init_sets_defaults();
+    test_init_syncs_legacy_fields();
     test_write_read_roundtrip();
     test_write_read_bool_roundtrip();
     test_invalid_param_number();
