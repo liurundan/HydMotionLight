@@ -74,6 +74,12 @@ target_link_libraries(test_direct_mode PRIVATE HydroMotionLib)
 add_executable(test_direct_mode_simple tests/test_direct_mode_simple.c)
 target_link_libraries(test_direct_mode_simple PRIVATE HydroMotionLib)
 
+add_executable(test_parameter_access tests/test_parameter_access.c)
+target_link_libraries(test_parameter_access PRIVATE HydroMotionLib)
+
+add_executable(test_parameter_iec tests/test_parameter_iec.c)
+target_link_libraries(test_parameter_iec PRIVATE HydroMotionLib)
+
 # ==================================================================
 # 仿真相关测试
 # ==================================================================
@@ -115,6 +121,8 @@ add_test(NAME test_diagnostic_criteria COMMAND test_diagnostic_criteria)
 add_test(NAME test_sprint3_integration COMMAND test_sprint3_integration)
 add_test(NAME test_sprint_b_integration COMMAND test_sprint_b_integration)
 add_test(NAME test_direct_mode COMMAND test_direct_mode)
+add_test(NAME test_parameter_access COMMAND test_parameter_access)
+add_test(NAME test_parameter_iec COMMAND test_parameter_iec)
 add_test(NAME test_hydro_sim_fb COMMAND test_hydro_sim_fb)
 add_test(NAME test_motion_interface_unit COMMAND test_motion_interface_unit)
 add_test(NAME test_motion_interface_arbitration COMMAND test_motion_interface_arbitration)

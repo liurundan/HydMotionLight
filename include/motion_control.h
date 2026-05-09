@@ -203,6 +203,7 @@ typedef struct {
     HYD_UINT8 _index;
     uint16_t _executionId;   /* incremented on BeginSegment success; IEC layer uses for ownership tracking */
     HYD_BOOL _useSimulation;           /* If true, the FB simulates motion without real hardware interaction for testing purposes. */
+    HYD_MotionFBParams _params;        /* Tunable parameter defaults for segment builders */
     struct {
         HYD_REAL targetPosition;
         HYD_REAL targetVelocity;
@@ -306,5 +307,12 @@ void HYD_MotionControlFB_Scan(HYD_MotionControlFB* fb);
 
 /* Compatibility cyclic entry; currently equivalent to Scan(). */
 void HYD_MotionControlFB_Execute(HYD_MotionControlFB* fb);
+
+/* Parameter accessors for IEC Read/Write Parameter FBs.
+ * Return false on out-of-range paramNumber or type mismatch. */
+HYD_BOOL HYD_MotionControlFB_ReadParameter(const HYD_MotionControlFB* fb, int paramNumber, HYD_REAL* value);
+HYD_BOOL HYD_MotionControlFB_WriteParameter(HYD_MotionControlFB* fb, int paramNumber, HYD_REAL value);
+HYD_BOOL HYD_MotionControlFB_ReadBoolParameter(const HYD_MotionControlFB* fb, int paramNumber, HYD_BOOL* value);
+HYD_BOOL HYD_MotionControlFB_WriteBoolParameter(HYD_MotionControlFB* fb, int paramNumber, HYD_BOOL value);
 
 #endif /* HYD_MOTION_CONTROL_H */

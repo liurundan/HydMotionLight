@@ -395,4 +395,65 @@ static inline HYD_REAL HYD_ClampReal(HYD_REAL value, HYD_REAL minimum, HYD_REAL 
     return value;
 }
 
+/* ============================================================================
+ * FB Parameter Access — PARAMETERNUMBER → field mapping
+ * Used by HYD_ReadParameter / HYD_WriteParameter / HYD_ReadBoolParameter / HYD_WriteBoolParameter
+ * ============================================================================ */
+typedef enum {
+    HYD_PARAM_POSITION_TOLERANCE = 0,
+    HYD_PARAM_VELOCITY_TOLERANCE,
+    HYD_PARAM_FLOW_TOLERANCE,
+    HYD_PARAM_PRESSURE_TOLERANCE,
+    HYD_PARAM_TIMEOUT_LIMIT,
+    HYD_PARAM_VELOCITY_TO_FLOW_GAIN,
+    HYD_PARAM_MAX_VELOCITY,
+    HYD_PARAM_MAX_ACCELERATION,
+    HYD_PARAM_MAX_DECELERATION,
+    HYD_PARAM_MAX_FLOW,
+    HYD_PARAM_PRESSURE_RAMP_RATE,
+    HYD_PARAM_PRESSURE_KP,
+    HYD_PARAM_PRESSURE_KP_HIGH,
+    HYD_PARAM_PRESSURE_GAIN_BAND,
+    HYD_PARAM_PRESSURE_KI,
+    HYD_PARAM_PRESSURE_KD,
+    HYD_PARAM_PRESSURE_INTEGRAL_LIMIT,
+    HYD_PARAM_PRESSURE_DEADBAND,
+    HYD_PARAM_PRESSURE_FILTER_ALPHA,
+    HYD_PARAM_PRESSURE_DERIVATIVE_FILTER_ALPHA,
+    HYD_PARAM_FLOW_TO_PUMP_SPEED_GAIN,
+    HYD_PARAM_PUMP_SPEED_LIMIT,
+    HYD_PARAM_PRESSURE_CONTROLLER_TYPE,
+    HYD_PARAM_DEFAULT_TARGET_FLOW,
+    HYD_PARAM_USE_SIMULATION,
+    HYD_PARAM_COUNT
+} HYD_ParameterNumber;
+
+typedef struct {
+    HYD_REAL positionTolerance;
+    HYD_REAL velocityTolerance;
+    HYD_REAL flowTolerance;
+    HYD_REAL pressureTolerance;
+    HYD_REAL timeoutLimit;
+    HYD_REAL velocityToFlowGain;
+    HYD_REAL maxVelocity;
+    HYD_REAL maxAcceleration;
+    HYD_REAL maxDeceleration;
+    HYD_REAL maxFlow;
+    HYD_REAL pressureRampRate;
+    HYD_REAL pressureKp;
+    HYD_REAL pressureKpHigh;
+    HYD_REAL pressureGainBand;
+    HYD_REAL pressureKi;
+    HYD_REAL pressureKd;
+    HYD_REAL pressureIntegralLimit;
+    HYD_REAL pressureDeadband;
+    HYD_REAL pressureFilterAlpha;
+    HYD_REAL pressureDerivativeFilterAlpha;
+    HYD_REAL flowToPumpSpeedGain;
+    HYD_REAL pumpSpeedLimit;
+    HYD_REAL pressureControllerType;
+    HYD_REAL defaultTargetFlow;
+    HYD_BOOL useSimulation;
+} HYD_MotionFBParams;
+
 #endif /* HYD_COMMON_TYPES_H */

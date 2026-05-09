@@ -1486,6 +1486,33 @@ void HYD_MotionControlFB_Init(HYD_MotionControlFB* fb) {
     HYD_DiagnosticCriteria_InitState(&fb->_timeoutCriteriaState);
     fb->_isSwitchPhase = false;
     fb->_switchSuppressEndTime = 0.0;
+
+    /* Set parameter defaults (matching previous hardcoded values in motion_interface.c) */
+    fb->_params.positionTolerance = 0.1f;
+    fb->_params.velocityTolerance = 5.0f;
+    fb->_params.flowTolerance = 1.0f;
+    fb->_params.pressureTolerance = 0.5f;
+    fb->_params.timeoutLimit = 30.0f;
+    fb->_params.velocityToFlowGain = 0.2f;
+    fb->_params.maxVelocity = 100.0f;
+    fb->_params.maxAcceleration = 500.0f;
+    fb->_params.maxDeceleration = 500.0f;
+    fb->_params.maxFlow = 50.0f;
+    fb->_params.pressureRampRate = 10.0f;
+    fb->_params.pressureKp = 0.5f;
+    fb->_params.pressureKpHigh = 0.0f;
+    fb->_params.pressureGainBand = 0.2f;
+    fb->_params.pressureKi = 0.1f;
+    fb->_params.pressureKd = 0.0f;
+    fb->_params.pressureIntegralLimit = 10.0f;
+    fb->_params.pressureDeadband = 0.5f;
+    fb->_params.pressureFilterAlpha = 0.5f;
+    fb->_params.pressureDerivativeFilterAlpha = 0.5f;
+    fb->_params.flowToPumpSpeedGain = 20.0f;
+    fb->_params.pumpSpeedLimit = 1800.0f;
+    fb->_params.pressureControllerType = (HYD_REAL)HYD_PRESSURE_CONTROLLER_PI;
+    fb->_params.defaultTargetFlow = 5.0f;
+    fb->_params.useSimulation = false;
 }
 
 void HYD_MotionControlFB_SoftReset(HYD_MotionControlFB* fb) {
@@ -1750,4 +1777,101 @@ void HYD_MotionControlFB_Scan(HYD_MotionControlFB* fb) {
 
 void HYD_MotionControlFB_Execute(HYD_MotionControlFB* fb) {
     HYD_MotionControlFB_Scan(fb);
+}
+
+HYD_BOOL HYD_MotionControlFB_ReadParameter(const HYD_MotionControlFB* fb, int paramNumber, HYD_REAL* value)
+{
+    if (fb == NULL || value == NULL) return false;
+    if (paramNumber < 0 || paramNumber >= HYD_PARAM_COUNT) return false;
+    if (paramNumber == HYD_PARAM_USE_SIMULATION) return false;
+
+    switch ((HYD_ParameterNumber)paramNumber) {
+        case HYD_PARAM_POSITION_TOLERANCE:             *value = fb->_params.positionTolerance; break;
+        case HYD_PARAM_VELOCITY_TOLERANCE:             *value = fb->_params.velocityTolerance; break;
+        case HYD_PARAM_FLOW_TOLERANCE:                 *value = fb->_params.flowTolerance; break;
+        case HYD_PARAM_PRESSURE_TOLERANCE:             *value = fb->_params.pressureTolerance; break;
+        case HYD_PARAM_TIMEOUT_LIMIT:                  *value = fb->_params.timeoutLimit; break;
+        case HYD_PARAM_VELOCITY_TO_FLOW_GAIN:          *value = fb->_params.velocityToFlowGain; break;
+        case HYD_PARAM_MAX_VELOCITY:                   *value = fb->_params.maxVelocity; break;
+        case HYD_PARAM_MAX_ACCELERATION:               *value = fb->_params.maxAcceleration; break;
+        case HYD_PARAM_MAX_DECELERATION:               *value = fb->_params.maxDeceleration; break;
+        case HYD_PARAM_MAX_FLOW:                       *value = fb->_params.maxFlow; break;
+        case HYD_PARAM_PRESSURE_RAMP_RATE:             *value = fb->_params.pressureRampRate; break;
+        case HYD_PARAM_PRESSURE_KP:                    *value = fb->_params.pressureKp; break;
+        case HYD_PARAM_PRESSURE_KP_HIGH:               *value = fb->_params.pressureKpHigh; break;
+        case HYD_PARAM_PRESSURE_GAIN_BAND:             *value = fb->_params.pressureGainBand; break;
+        case HYD_PARAM_PRESSURE_KI:                    *value = fb->_params.pressureKi; break;
+        case HYD_PARAM_PRESSURE_KD:                    *value = fb->_params.pressureKd; break;
+        case HYD_PARAM_PRESSURE_INTEGRAL_LIMIT:        *value = fb->_params.pressureIntegralLimit; break;
+        case HYD_PARAM_PRESSURE_DEADBAND:              *value = fb->_params.pressureDeadband; break;
+        case HYD_PARAM_PRESSURE_FILTER_ALPHA:          *value = fb->_params.pressureFilterAlpha; break;
+        case HYD_PARAM_PRESSURE_DERIVATIVE_FILTER_ALPHA: *value = fb->_params.pressureDerivativeFilterAlpha; break;
+        case HYD_PARAM_FLOW_TO_PUMP_SPEED_GAIN:        *value = fb->_params.flowToPumpSpeedGain; break;
+        case HYD_PARAM_PUMP_SPEED_LIMIT:               *value = fb->_params.pumpSpeedLimit; break;
+        case HYD_PARAM_PRESSURE_CONTROLLER_TYPE:       *value = fb->_params.pressureControllerType; break;
+        case HYD_PARAM_DEFAULT_TARGET_FLOW:            *value = fb->_params.defaultTargetFlow; break;
+        default: return false;
+    }
+    return true;
+}
+
+HYD_BOOL HYD_MotionControlFB_WriteParameter(HYD_MotionControlFB* fb, int paramNumber, HYD_REAL value)
+{
+    if (fb == NULL) return false;
+    if (paramNumber < 0 || paramNumber >= HYD_PARAM_COUNT) return false;
+    if (paramNumber == HYD_PARAM_USE_SIMULATION) return false;
+
+    switch ((HYD_ParameterNumber)paramNumber) {
+        case HYD_PARAM_POSITION_TOLERANCE:             fb->_params.positionTolerance = value; break;
+        case HYD_PARAM_VELOCITY_TOLERANCE:             fb->_params.velocityTolerance = value; break;
+        case HYD_PARAM_FLOW_TOLERANCE:                 fb->_params.flowTolerance = value; break;
+        case HYD_PARAM_PRESSURE_TOLERANCE:             fb->_params.pressureTolerance = value; break;
+        case HYD_PARAM_TIMEOUT_LIMIT:                  fb->_params.timeoutLimit = value; break;
+        case HYD_PARAM_VELOCITY_TO_FLOW_GAIN:          fb->_params.velocityToFlowGain = value; break;
+        case HYD_PARAM_MAX_VELOCITY:                   fb->_params.maxVelocity = value; break;
+        case HYD_PARAM_MAX_ACCELERATION:               fb->_params.maxAcceleration = value; break;
+        case HYD_PARAM_MAX_DECELERATION:               fb->_params.maxDeceleration = value; break;
+        case HYD_PARAM_MAX_FLOW:                       fb->_params.maxFlow = value; break;
+        case HYD_PARAM_PRESSURE_RAMP_RATE:             fb->_params.pressureRampRate = value; break;
+        case HYD_PARAM_PRESSURE_KP:                    fb->_params.pressureKp = value; break;
+        case HYD_PARAM_PRESSURE_KP_HIGH:               fb->_params.pressureKpHigh = value; break;
+        case HYD_PARAM_PRESSURE_GAIN_BAND:             fb->_params.pressureGainBand = value; break;
+        case HYD_PARAM_PRESSURE_KI:                    fb->_params.pressureKi = value; break;
+        case HYD_PARAM_PRESSURE_KD:                    fb->_params.pressureKd = value; break;
+        case HYD_PARAM_PRESSURE_INTEGRAL_LIMIT:        fb->_params.pressureIntegralLimit = value; break;
+        case HYD_PARAM_PRESSURE_DEADBAND:              fb->_params.pressureDeadband = value; break;
+        case HYD_PARAM_PRESSURE_FILTER_ALPHA:          fb->_params.pressureFilterAlpha = value; break;
+        case HYD_PARAM_PRESSURE_DERIVATIVE_FILTER_ALPHA: fb->_params.pressureDerivativeFilterAlpha = value; break;
+        case HYD_PARAM_FLOW_TO_PUMP_SPEED_GAIN:
+            fb->_params.flowToPumpSpeedGain = value;
+            fb->FLOW_TO_PUMP_SPEED_GAIN = value;
+            break;
+        case HYD_PARAM_PUMP_SPEED_LIMIT:
+            fb->_params.pumpSpeedLimit = value;
+            fb->PUMP_SPEED_LIMIT = value;
+            break;
+        case HYD_PARAM_PRESSURE_CONTROLLER_TYPE:       fb->_params.pressureControllerType = value; break;
+        case HYD_PARAM_DEFAULT_TARGET_FLOW:            fb->_params.defaultTargetFlow = value; break;
+        default: return false;
+    }
+    return true;
+}
+
+HYD_BOOL HYD_MotionControlFB_ReadBoolParameter(const HYD_MotionControlFB* fb, int paramNumber, HYD_BOOL* value)
+{
+    if (fb == NULL || value == NULL) return false;
+    if (paramNumber != HYD_PARAM_USE_SIMULATION) return false;
+
+    *value = fb->_params.useSimulation;
+    return true;
+}
+
+HYD_BOOL HYD_MotionControlFB_WriteBoolParameter(HYD_MotionControlFB* fb, int paramNumber, HYD_BOOL value)
+{
+    if (fb == NULL) return false;
+    if (paramNumber != HYD_PARAM_USE_SIMULATION) return false;
+
+    fb->_params.useSimulation = value;
+    fb->_useSimulation = value;
+    return true;
 }

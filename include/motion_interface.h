@@ -357,6 +357,72 @@ typedef struct
 
 } HYD_READSIMFEEDBACK;
 
+// FUNCTION_BLOCK HYD_READPARAMETER
+// Data part
+typedef struct {
+    __DECLARE_VAR(BOOL, EN)
+    __DECLARE_VAR(BOOL, ENO)
+    __DECLARE_VAR(SINT, AXISID)
+    __DECLARE_VAR(BOOL, ENABLE)
+    __DECLARE_VAR(INT, PARAMETERNUMBER)
+    __DECLARE_VAR(BOOL, VALID)
+    __DECLARE_VAR(BOOL, BUSY)
+    __DECLARE_VAR(BOOL, ERROR)
+    __DECLARE_VAR(WORD, ERRORID)
+    __DECLARE_VAR(LREAL, VALUE)
+    __DECLARE_VAR(BOOL, ENABLE0)
+} HYD_READPARAMETER;
+
+// FUNCTION_BLOCK HYD_WRITEPARAMETER
+// Data part
+typedef struct {
+    __DECLARE_VAR(BOOL, EN)
+    __DECLARE_VAR(BOOL, ENO)
+    __DECLARE_VAR(SINT, AXISID)
+    __DECLARE_VAR(BOOL, EXECUTE)
+    __DECLARE_VAR(INT, PARAMETERNUMBER)
+    __DECLARE_VAR(LREAL, VALUE)
+    __DECLARE_VAR(BOOL, DONE)
+    __DECLARE_VAR(BOOL, BUSY)
+    __DECLARE_VAR(BOOL, ERROR)
+    __DECLARE_VAR(WORD, ERRORID)
+    __DECLARE_VAR(BOOL, EXECUTE0)
+    __DECLARE_VAR(BOOL, DONE0)
+} HYD_WRITEPARAMETER;
+
+// FUNCTION_BLOCK HYD_READBOOLPARAMETER
+// Data part
+typedef struct {
+    __DECLARE_VAR(BOOL, EN)
+    __DECLARE_VAR(BOOL, ENO)
+    __DECLARE_VAR(SINT, AXISID)
+    __DECLARE_VAR(BOOL, ENABLE)
+    __DECLARE_VAR(INT, PARAMETERNUMBER)
+    __DECLARE_VAR(BOOL, VALID)
+    __DECLARE_VAR(BOOL, BUSY)
+    __DECLARE_VAR(BOOL, ERROR)
+    __DECLARE_VAR(WORD, ERRORID)
+    __DECLARE_VAR(BOOL, VALUE)
+    __DECLARE_VAR(BOOL, ENABLE0)
+} HYD_READBOOLPARAMETER;
+
+// FUNCTION_BLOCK HYD_WRITEBOOLPARAMETER
+// Data part
+typedef struct {
+    __DECLARE_VAR(BOOL, EN)
+    __DECLARE_VAR(BOOL, ENO)
+    __DECLARE_VAR(SINT, AXISID)
+    __DECLARE_VAR(BOOL, EXECUTE)
+    __DECLARE_VAR(INT, PARAMETERNUMBER)
+    __DECLARE_VAR(BOOL, VALUE)
+    __DECLARE_VAR(BOOL, DONE)
+    __DECLARE_VAR(BOOL, BUSY)
+    __DECLARE_VAR(BOOL, ERROR)
+    __DECLARE_VAR(WORD, ERRORID)
+    __DECLARE_VAR(BOOL, EXECUTE0)
+    __DECLARE_VAR(BOOL, DONE0)
+} HYD_WRITEBOOLPARAMETER;
+
 extern int  __HydMotion_framework_Init();
 extern void __HydMotion_framework_Cleanup();
 extern void __HydMotion_framework_Retrieve();
@@ -376,5 +442,10 @@ extern void __mcl_cmd_GetPumpRequest(HYD_GETPUMPREQUEST *data__);
 extern void __mcl_cmd_ReadStatus(HYD_READSTATUS* data__);
 extern void __mcl_cmd_ReadError(HYD_READERROR* data__);
 extern void __mcl_cmd_ReadSimFeedback(HYD_READSIMFEEDBACK* data__);
+
+extern void __mcl_cmd_ReadParameter(HYD_READPARAMETER* data__);
+extern void __mcl_cmd_WriteParameter(HYD_WRITEPARAMETER* data__);
+extern void __mcl_cmd_ReadBoolParameter(HYD_READBOOLPARAMETER* data__);
+extern void __mcl_cmd_WriteBoolParameter(HYD_WRITEBOOLPARAMETER* data__);
 
 #endif
