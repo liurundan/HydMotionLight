@@ -443,7 +443,18 @@ void __mcl_cmd_Stop(HYD_STOP *data__)
 
     if (execRising)
     {
-        HYD_MotionControlFB_Abort(fb);
+        /* Already idle or done — nothing to stop. */
+        if (fb->FB_STATE != HYD_FB_STATE_STARTING &&
+            fb->FB_STATE != HYD_FB_STATE_RUNNING &&
+            fb->FB_STATE != HYD_FB_STATE_HOLD)
+        {
+            __SET_VAR(data__->, DONE, , true);
+            __SET_VAR(data__->, BUSY, , false);
+            __SET_VAR(data__->, EXECUTE0, , execute);
+            return;
+        }
+
+        HYD_MotionControlFB_Stop(fb, fb->AXIS_REF.timestamp);
         HYD_MotionControlFB_Scan(fb);
         __SET_VAR(data__->, _PENDING, , true);
         __SET_VAR(data__->, BUSY, , true);
@@ -455,22 +466,35 @@ void __mcl_cmd_Stop(HYD_STOP *data__)
 
     if (isPending)
     {
-        if (!fb->STATE.active && fb->FB_STATE != HYD_FB_STATE_RUNNING)
+        if (HYD_MotionControlFB_IsError(fb))
+        {
+            __SET_VAR(data__->, ERROR, , true);
+            __SET_VAR(data__->, ERRORID, , (IEC_WORD)fb->ERROR_ID);
+            __SET_VAR(data__->, BUSY, , false);
+            __SET_VAR(data__->, _PENDING, , false);
+        }
+        else if (fb->FB_STATE == HYD_FB_STATE_DONE)
         {
             __SET_VAR(data__->, DONE, , true);
+            __SET_VAR(data__->, BUSY, , false);
+            __SET_VAR(data__->, _PENDING, , false);
+        }
+        else if (fb->FB_STATE == HYD_FB_STATE_ABORTED)
+        {
+            __SET_VAR(data__->, COMMANDABORTED, , true);
+            __SET_VAR(data__->, BUSY, , false);
+            __SET_VAR(data__->, _PENDING, , false);
+        }
+        else if (fb->FB_STATE == HYD_FB_STATE_FAULT)
+        {
+            __SET_VAR(data__->, ERROR, , true);
+            __SET_VAR(data__->, ERRORID, , (IEC_WORD)fb->ERROR_ID);
             __SET_VAR(data__->, BUSY, , false);
             __SET_VAR(data__->, _PENDING, , false);
         }
         else
         {
             __SET_VAR(data__->, BUSY, , true);
-        }
-
-        if (HYD_MotionControlFB_IsError(fb))
-        {
-            __SET_VAR(data__->, ERROR, , true);
-            __SET_VAR(data__->, ERRORID, , (IEC_WORD)fb->ERROR_ID);
-            __SET_VAR(data__->, BUSY, , false);
         }
     }
 

@@ -892,8 +892,8 @@ static void test_stop_during_moveabsolute_done(void) {
     __mcl_cmd_Stop(&stop);
     __HydMotion_framework_Publish();
 
-    /* 等待 Stop Done */
-    for (step = 0; step < 100; step++) {
+    /* 等待 Stop Done (decelerating stop needs time) */
+    for (step = 0; step < 500; step++) {
         __HydMotion_framework_Publish();
         IEC_VAL(stop.EXECUTE) = true;
         stop.EXECUTE0.value = true;
@@ -1202,8 +1202,8 @@ static void test_moveabsolute_abort_velocity_zero(void) {
     __mcl_cmd_Stop(&stop);
     __HydMotion_framework_Publish();
 
-    /* 等待Stop Done */
-    for (step = 0; step < 100; step++) {
+    /* 等待Stop完成减速 */
+    for (step = 0; step < 500; step++) {
         __HydMotion_framework_Publish();
         IEC_VAL(stop.EXECUTE) = true;
         stop.EXECUTE0.value = true;
