@@ -1102,10 +1102,8 @@
 			<pou name="HYD_ReadParameter" pouType="functionBlock">
 				<interface>
 					<inputVars>
-						<variable name="EN"><type><BOOL /></type></variable>
-						<variable name="ENO"><type><BOOL /></type></variable>
-						<variable name="AXISID"><type><SINT /></type></variable>
 						<variable name="ENABLE"><type><BOOL /></type></variable>
+						<variable name="AXISID"><type><SINT /></type></variable>
 						<variable name="PARAMETERNUMBER"><type><INT /></type></variable>
 					</inputVars>
 					<outputVars>
@@ -1126,10 +1124,8 @@
 			<pou name="HYD_WriteParameter" pouType="functionBlock">
 				<interface>
 					<inputVars>
-						<variable name="EN"><type><BOOL /></type></variable>
-						<variable name="ENO"><type><BOOL /></type></variable>
-						<variable name="AXISID"><type><SINT /></type></variable>
 						<variable name="EXECUTE"><type><BOOL /></type></variable>
+						<variable name="AXISID"><type><SINT /></type></variable>
 						<variable name="PARAMETERNUMBER"><type><INT /></type></variable>
 						<variable name="VALUE"><type><LREAL /></type></variable>
 					</inputVars>
@@ -1151,10 +1147,8 @@
 			<pou name="HYD_ReadBoolParameter" pouType="functionBlock">
 				<interface>
 					<inputVars>
-						<variable name="EN"><type><BOOL /></type></variable>
-						<variable name="ENO"><type><BOOL /></type></variable>
-						<variable name="AXISID"><type><SINT /></type></variable>
 						<variable name="ENABLE"><type><BOOL /></type></variable>
+						<variable name="AXISID"><type><SINT /></type></variable>
 						<variable name="PARAMETERNUMBER"><type><INT /></type></variable>
 					</inputVars>
 					<outputVars>
@@ -1175,10 +1169,8 @@
 			<pou name="HYD_WriteBoolParameter" pouType="functionBlock">
 				<interface>
 					<inputVars>
-						<variable name="EN"><type><BOOL /></type></variable>
-						<variable name="ENO"><type><BOOL /></type></variable>
-						<variable name="AXISID"><type><SINT /></type></variable>
 						<variable name="EXECUTE"><type><BOOL /></type></variable>
+						<variable name="AXISID"><type><SINT /></type></variable>
 						<variable name="PARAMETERNUMBER"><type><INT /></type></variable>
 						<variable name="VALUE"><type><BOOL /></type></variable>
 					</inputVars>
