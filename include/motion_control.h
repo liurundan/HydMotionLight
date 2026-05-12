@@ -313,6 +313,11 @@ HYD_BOOL HYD_MotionControlFB_Hold(HYD_MotionControlFB* fb);
 /* Queues a resume command for the currently held segment. Execution continues on the next Cycle()/Scan()/Execute(). */
 HYD_BOOL HYD_MotionControlFB_Resume(HYD_MotionControlFB* fb);
 
+/* Queues a decelerating stop command. The stop profile is executed on the next Cycle()/Scan()/Execute(). */
+HYD_BOOL HYD_MotionControlFB_Stop(HYD_MotionControlFB* fb,
+                                  HYD_TIME timestamp,
+                                  HYD_REAL deceleration);
+
 /* Queues an abort command. Safe outputs are applied on the next Cycle()/Scan()/Execute(). */
 HYD_BOOL HYD_MotionControlFB_Abort(HYD_MotionControlFB* fb);
 

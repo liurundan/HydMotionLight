@@ -61,7 +61,10 @@ static const HYD_FbStateMask HYD_COMMAND_ALLOWED_STATE_MASKS[HYD_CMD_ACK + 1U] =
         HYD_FB_STATE_MASK_BIT(HYD_FB_STATE_DONE) |
         HYD_FB_STATE_MASK_BIT(HYD_FB_STATE_ABORTED),
     [HYD_CMD_NEXT] = HYD_FB_STATE_MASK_BIT(HYD_FB_STATE_SEGMENT_COMPLETE),
-    [HYD_CMD_STOP] = (HYD_FbStateMask)0U,
+    [HYD_CMD_STOP] = HYD_FB_STATE_MASK_BIT(HYD_FB_STATE_STARTING) |
+        HYD_FB_STATE_MASK_BIT(HYD_FB_STATE_RUNNING) |
+        HYD_FB_STATE_MASK_BIT(HYD_FB_STATE_SEGMENT_COMPLETE) |
+        HYD_FB_STATE_MASK_BIT(HYD_FB_STATE_HOLD),
     [HYD_CMD_HOLD] = HYD_FB_STATE_MASK_BIT(HYD_FB_STATE_STARTING) |
         HYD_FB_STATE_MASK_BIT(HYD_FB_STATE_RUNNING),
     [HYD_CMD_RESUME] = HYD_FB_STATE_MASK_BIT(HYD_FB_STATE_HOLD),
@@ -731,6 +734,20 @@ static HYD_BOOL HYD_MotionControlFB_ConsumePendingCommand(HYD_MotionControlFB* f
         case HYD_CMD_NEXT:
             (void)HYD_AdvanceToNextSegment(fb, timestamp);
             return true;
+        case HYD_CMD_STOP:
+            fb->_lastPreemptedExecutionId = fb->_directOwnerExecutionId;
+            fb->_lastPreemptedKind = fb->_directOwnerKind;
+            fb->_executionId++;
+            fb->_directOwnerExecutionId = fb->_executionId;
+            fb->_directOwnerKind = HYD_DIRECT_CMD_STOP;
+            fb->_directSessionState = HYD_DIRECT_SESSION_STOPPING;
+            fb->_isStopping = true;
+            fb->_stopStartTime = timestamp;
+            fb->_stopStartVel = fb->AXIS_REF.velocity;
+            if (fabs(fb->_stopStartVel) < 0.001f) {
+                fb->_stopStartVel = fb->STATE.plannedVelocity;
+            }
+            return true;
         case HYD_CMD_HOLD:
             HYD_EnterHoldNow(fb, timestamp);
             return false;
@@ -1277,6 +1294,54 @@ static void HYD_MotionControlFB_RunRunningState(HYD_MotionControlFB* fb) {
 
     fb->_lastCommandedFlow = pumpOutput.commandFlow;
 
+    if (fb->_isStopping) {
+        HYD_REAL stopElapsed = fb->AXIS_REF.timestamp - fb->_stopStartTime;
+        HYD_REAL stopMag = fabs(fb->_stopStartVel);
+        HYD_REAL stopSign = (fb->_stopStartVel >= 0.0f) ? 1.0f : -1.0f;
+        HYD_REAL stopDeceleration = (fb->_stopDeceleration > 0.0f) ?
+            fb->_stopDeceleration : segment->maxAcceleration;
+        HYD_REAL decelMag = stopMag - stopDeceleration * stopElapsed;
+
+        if (decelMag < 0.0f) {
+            decelMag = 0.0f;
+        }
+
+        plannerOutput.targetVelocity = decelMag * stopSign;
+        plannerOutput.targetFlow = HYD_ClampReal(decelMag * segment->velocityToFlowGain,
+                                                 0.0f,
+                                                 segment->maxFlow);
+        pumpOutput.commandFlow = plannerOutput.targetFlow;
+        pumpOutput.pumpSpeed = HYD_ClampReal(plannerOutput.targetFlow * fb->FLOW_TO_PUMP_SPEED_GAIN,
+                                             0.0f,
+                                             fb->PUMP_SPEED_LIMIT);
+        executionReference.flowReference = pumpOutput.commandFlow;
+        executionReference.velocityReference = plannerOutput.targetVelocity;
+
+        HYD_StateReporter_ReportExecution(fb,
+                                          &plannerOutput,
+                                          &pumpOutput,
+                                          &executionReference,
+                                          pressureOutput.appliedStrategy,
+                                          &pressureOutput,
+                                          &fb->DIAGNOSTIC);
+
+        fb->_simFeedback.targetPosition = segment->targetPosition;
+        fb->_simFeedback.targetVelocity = plannerOutput.targetVelocity;
+        fb->_simFeedback.targetFlow = pumpOutput.commandFlow;
+        fb->_simFeedback.targetPressure = executionReference.pressureReference;
+        fb->_simFeedback.valid = true;
+
+        if (decelMag < 0.001f && fabs(fb->AXIS_REF.velocity) < 0.01f) {
+            fb->_isStopping = false;
+            fb->_stopStartVel = 0.0f;
+            fb->_stopDeceleration = 0.0f;
+            fb->_directSessionState = HYD_DIRECT_SESSION_DONE;
+            HYD_ProtectionManager_ApplyIdleState(fb, true, false);
+            HYD_StateReporter_SetFbState(fb, HYD_FB_STATE_DONE);
+        }
+        return;
+    }
+
     if (fb->DIAGNOSTIC.protectionAction == HYD_PROTECTION_ACTION_STOP) {
         HYD_ProtectionManager_EnterFaultStop(fb);
         HYD_StateReporter_RecordDiagnosticEvent(fb, fb->AXIS_REF.timestamp, segment, &executionReference);
@@ -1385,6 +1450,21 @@ static HYD_BOOL HYD_RequestHoldCommand(HYD_MotionControlFB* fb,
 
     return HYD_RequestCommandQueue(fb,
                                    HYD_CMD_HOLD,
+                                   0U,
+                                   timestamp,
+                                   &fb->STATE.references);
+}
+
+static HYD_BOOL HYD_RequestStopCommand(HYD_MotionControlFB* fb,
+                                       HYD_TIME timestamp,
+                                       HYD_REAL deceleration) {
+    if (fb == NULL || fb->STATE.faultActive) {
+        return false;
+    }
+
+    fb->_stopDeceleration = (deceleration > 0.0f) ? deceleration : 0.0f;
+    return HYD_RequestCommandQueue(fb,
+                                   HYD_CMD_STOP,
                                    0U,
                                    timestamp,
                                    &fb->STATE.references);
@@ -1746,6 +1826,12 @@ HYD_BOOL HYD_MotionControlFB_Hold(HYD_MotionControlFB* fb) {
 
 HYD_BOOL HYD_MotionControlFB_Resume(HYD_MotionControlFB* fb) {
     return HYD_RequestResumeCommand(fb, (fb != NULL) ? fb->AXIS_REF.timestamp : 0.0);
+}
+
+HYD_BOOL HYD_MotionControlFB_Stop(HYD_MotionControlFB* fb,
+                                  HYD_TIME timestamp,
+                                  HYD_REAL deceleration) {
+    return HYD_RequestStopCommand(fb, timestamp, deceleration);
 }
 
 HYD_BOOL HYD_MotionControlFB_Abort(HYD_MotionControlFB* fb) {
