@@ -603,18 +603,10 @@ void __mcl_cmd_MoveAbsolute(HYD_MOVEABSOLUTE *data__)
     if (myExecId != 0)
     {
 		if (myExecId != (IEC_WORD) fb->_executionId) {
-			/*  修复：如果FB已经DONE且finished，说明是Stop正常完成，
-			 * 不是被其他命令取代，应报DONE而非COMMANDABORTED */
-			if (fb->FB_STATE == HYD_FB_STATE_DONE && fb->STATE.finished) {
-				__SET_VAR(data__->, DONE,, true);
-				__SET_VAR(data__->, BUSY,, false);
-				__SET_VAR(data__->, ACTIVE,, false);
-			} else {
-				__SET_VAR(data__->, COMMANDABORTED,, true);
-				__SET_VAR(data__->, BUSY,, false);
-				__SET_VAR(data__->, ACTIVE,, false);
-				__SET_VAR(data__->, DONE,, false);
-			}
+			__SET_VAR(data__->, COMMANDABORTED, , true);
+			__SET_VAR(data__->, BUSY, , false);
+			__SET_VAR(data__->, ACTIVE, , false);
+			__SET_VAR(data__->, DONE, , false);
 
 		} else {
             if (fb->SEGMENT_COMPLETED || (HYD_MotionControlFB_IsDone(fb) && fb->STATE.finished))

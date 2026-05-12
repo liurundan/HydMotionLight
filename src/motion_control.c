@@ -745,7 +745,7 @@ static HYD_BOOL HYD_MotionControlFB_ConsumePendingCommand(HYD_MotionControlFB* f
             fb->_isStopping = true;
             fb->_stopStartTime = timestamp;
             fb->_stopStartVel = fb->AXIS_REF.velocity;
-            //fb->_executionId++; stop协作性减速不重置执行ID，以允许下一个segment继续使用当前segment的执行上下文（例如诊断状态）
+            fb->_executionId++;
             return true;
         case HYD_CMD_HOLD:
             HYD_EnterHoldNow(fb, timestamp);
