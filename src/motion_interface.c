@@ -612,7 +612,14 @@ void __mcl_cmd_MoveAbsolute(HYD_MOVEABSOLUTE *data__)
             __SET_VAR(data__->, DONE, , false);
         } else if (myExecId == (IEC_WORD)HYD_MotionControlFB_GetDirectOwnerExecutionId(fb) &&
                    HYD_MotionControlFB_GetDirectOwnerKind(fb) == HYD_DIRECT_CMD_MOVE_ABSOLUTE) {
-            if (fb->SEGMENT_COMPLETED || (HYD_MotionControlFB_IsDone(fb) && fb->STATE.finished))
+            if (HYD_MotionControlFB_IsError(fb))
+            {
+                __SET_VAR(data__->, ERROR, , true);
+                __SET_VAR(data__->, ERRORID, , (IEC_WORD)fb->ERROR_ID);
+                __SET_VAR(data__->, BUSY, , false);
+                __SET_VAR(data__->, ACTIVE, , false);
+            }
+            else if (fb->SEGMENT_COMPLETED || (HYD_MotionControlFB_IsDone(fb) && fb->STATE.finished))
             {
                 __SET_VAR(data__->, DONE, , true);
                 __SET_VAR(data__->, BUSY, , false);
@@ -629,12 +636,6 @@ void __mcl_cmd_MoveAbsolute(HYD_MOVEABSOLUTE *data__)
             __SET_VAR(data__->, BUSY, , false);
             __SET_VAR(data__->, ACTIVE, , false);
             __SET_VAR(data__->, DONE, , false);
-        } else if (HYD_MotionControlFB_IsError(fb))
-        {
-            __SET_VAR(data__->, ERROR, , true);
-            __SET_VAR(data__->, ERRORID, , (IEC_WORD)fb->ERROR_ID);
-            __SET_VAR(data__->, BUSY, , false);
-            __SET_VAR(data__->, ACTIVE, , false);
         }
     }
 
