@@ -252,6 +252,7 @@ static void test_movevelocity_then_stop_done(void) {
     HYD_MOVEVELOCITY mv;
     HYD_STOP stop;
     int axisId, step;
+    int stopDoneStep = -1;
 
     printf("--- Test: MoveVelocity then Stop → DONE ---\n");
 
@@ -294,6 +295,8 @@ static void test_movevelocity_then_stop_done(void) {
     stop.EXECUTE0.value = false;
     IEC_VAL(stop.AXISID) = axisId;
     __mcl_cmd_Stop(&stop);
+    ASSERT_TRUE(IEC_VAL(stop.DONE) == false,
+               "Stop should not complete on the trigger call");
     __HydMotion_framework_Publish();
 
     /* 等待 Stop 完成 */
@@ -304,12 +307,15 @@ static void test_movevelocity_then_stop_done(void) {
         __mcl_cmd_Stop(&stop);
 
         if (IEC_VAL(stop.DONE)) {
+            stopDoneStep = step + 1;
             break;
         }
     }
 
     ASSERT_TRUE(IEC_VAL(stop.DONE) == true,
                "Stop should reach DONE after stopping motion");
+    ASSERT_TRUE(stopDoneStep > 1,
+               "Stop should require multiple cycles to decelerate active motion");
     ASSERT_TRUE(IEC_VAL(stop.BUSY) == false,
                "Stop should clear BUSY after DONE");
     ASSERT_TRUE(IEC_VAL(stop.ERROR) == false,
@@ -847,6 +853,7 @@ static void test_stop_during_moveabsolute_done(void) {
     HYD_MOVEABSOLUTE ma;
     HYD_STOP stop;
     int axisId, step;
+    int stopDoneStep = -1;
 
     printf("--- Test: Stop during MoveAbsolute → DONE ---\n");
 
@@ -890,20 +897,27 @@ static void test_stop_during_moveabsolute_done(void) {
     stop.EXECUTE0.value = false;
     IEC_VAL(stop.AXISID) = axisId;
     __mcl_cmd_Stop(&stop);
+    ASSERT_TRUE(IEC_VAL(stop.DONE) == false,
+               "Stop should not be DONE on the trigger call");
     __HydMotion_framework_Publish();
 
     /* 等待 Stop Done */
-    for (step = 0; step < 100; step++) {
+    for (step = 0; step < MAX_SIM_STEPS; step++) {
         __HydMotion_framework_Publish();
         IEC_VAL(stop.EXECUTE) = true;
         stop.EXECUTE0.value = true;
         __mcl_cmd_Stop(&stop);
 
-        if (IEC_VAL(stop.DONE)) break;
+        if (IEC_VAL(stop.DONE)) {
+            stopDoneStep = step + 1;
+            break;
+        }
     }
 
     ASSERT_TRUE(IEC_VAL(stop.DONE) == true,
                "Stop should reach DONE during active motion");
+    ASSERT_TRUE(stopDoneStep > 1,
+               "Stop should take multiple cycles to finish during active motion");
     ASSERT_TRUE(IEC_VAL(stop.BUSY) == false,
                "Stop BUSY should be false after DONE");
     ASSERT_TRUE(IEC_VAL(stop.ERROR) == false,
@@ -1152,16 +1166,16 @@ static void test_moveabsolute_retract_done_velocity_zero(void) {
 }
 
 /* ==================================================================
- * Test 15: MoveAbsolute运行中Abort后速度归零
+ * Test 15: MoveAbsolute运行中Stop完成后速度归零
  *
- * 验证: Abort路径同样清除仿真反馈速度
+ * 验证: Stop减速完成后清除仿真反馈速度
  * ================================================================== */
-static void test_moveabsolute_abort_velocity_zero(void) {
+static void test_moveabsolute_stop_velocity_zero(void) {
     HYD_MOVEABSOLUTE ma;
     HYD_STOP stop;
     int axisId, step;
 
-    printf("--- Test: MoveAbsolute abort → velocity zero ---\n");
+    printf("--- Test: MoveAbsolute stop → velocity zero ---\n");
 
     __HydMotion_framework_Init();
     axisId = create_sim_axis(false);
@@ -1193,7 +1207,7 @@ static void test_moveabsolute_abort_velocity_zero(void) {
         __mcl_cmd_MoveAbsolute(&ma);
     }
 
-    /* Abort */
+    /* Stop */
     memset(&stop, 0, sizeof(stop));
     IEC_VAL(stop.EN) = true;
     IEC_VAL(stop.EXECUTE) = true;
@@ -1203,7 +1217,7 @@ static void test_moveabsolute_abort_velocity_zero(void) {
     __HydMotion_framework_Publish();
 
     /* 等待Stop Done */
-    for (step = 0; step < 100; step++) {
+    for (step = 0; step < MAX_SIM_STEPS; step++) {
         __HydMotion_framework_Publish();
         IEC_VAL(stop.EXECUTE) = true;
         stop.EXECUTE0.value = true;
@@ -1211,15 +1225,18 @@ static void test_moveabsolute_abort_velocity_zero(void) {
         if (IEC_VAL(stop.DONE)) break;
     }
 
-    /* 验证Abort后仿真反馈速度为0 */
+    ASSERT_TRUE(IEC_VAL(stop.DONE) == true,
+               "Stop should reach DONE before zero-velocity assertions");
+
+    /* 验证Stop完成后仿真反馈速度为0 */
     {
         HYD_MotionControlFB* fb = __MK_GetPublic_MotionControlFB(axisId);
         ASSERT_TRUE(fb != NULL, "Should get FB by index");
         ASSERT_FNEAR(fb->_simFeedback.targetVelocity, 0.0, 0.01,
-                     "simFeedback velocity should be 0 after abort");
+                     "simFeedback velocity should be 0 after stop completion");
         ASSERT_FNEAR(fb->AXIS_REF.velocity, 0.0, 0.01,
-                     "AXIS_REF velocity should be 0 after abort");
-        printf("  After abort: simVel=%.4f, axisVel=%.4f\n",
+                     "AXIS_REF velocity should be 0 after stop completion");
+        printf("  After stop: simVel=%.4f, axisVel=%.4f\n",
                (double)fb->_simFeedback.targetVelocity,
                (double)fb->AXIS_REF.velocity);
     }
@@ -1242,7 +1259,7 @@ int main(void) {
     test_movevelocity_preempted_by_another_movevelocity();
     test_moveabsolute_done_velocity_zero();
     test_moveabsolute_retract_done_velocity_zero();
-    test_moveabsolute_abort_velocity_zero();
+    test_moveabsolute_stop_velocity_zero();
 
     printf("\n=== Results: %d/%d passed ===\n", tests_passed, tests_run);
     return (tests_passed == tests_run) ? 0 : 1;

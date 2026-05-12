@@ -25,6 +25,8 @@ extern HYD_MotionControlFB* __MK_GetPublic_MotionControlFB(int index);
 
 #define IEC_VAL(var) ((var).value)
 
+#define STOP_WAIT_BUDGET 5000
+
 static int tests_run = 0;
 static int tests_passed = 0;
 
@@ -89,12 +91,42 @@ static void start_movevelocity_on_axis(int axisIndex, HYD_MOVEVELOCITY* mv) {
     __mcl_cmd_MoveVelocity(mv);
 }
 
+static int drive_stop_until_done(int axisIndex, HYD_STOP* stop, int maxSteps) {
+    HYD_MotionControlFB* fb = __MK_GetPublic_MotionControlFB(axisIndex);
+
+    if (fb == NULL) {
+        return -1;
+    }
+
+    for (int step = 0; step < maxSteps; step++) {
+        fb->AXIS_REF.timestamp += 0.01f;
+        if (fb->_simFeedback.valid) {
+            fb->AXIS_REF.velocity = fb->_simFeedback.targetVelocity;
+            fb->AXIS_REF.position += fb->AXIS_REF.velocity * 0.01f;
+            fb->AXIS_REF.flow = fb->_simFeedback.targetFlow;
+            fb->AXIS_REF.pressure = fb->_simFeedback.targetPressure;
+        }
+
+        __HydMotion_framework_Publish();
+        IEC_VAL(stop->EXECUTE) = true;
+        stop->EXECUTE0.value = true;
+        __mcl_cmd_Stop(stop);
+
+        if (IEC_VAL(stop->DONE)) {
+            return step + 1;
+        }
+    }
+
+    return -1;
+}
+
 /* ==================================================================
  * Test 1: MoveAbsolute 被 Stop 抢占 → COMMANDABORTED
  * ================================================================== */
 static void test_moveabsolute_preempted_by_stop(void) {
     HYD_MOVEABSOLUTE ma;
     HYD_STOP stop;
+    int stopDoneStep = -1;
 
     __HydMotion_framework_Init();
     ensure_axes_allocated(2);
@@ -111,12 +143,16 @@ static void test_moveabsolute_preempted_by_stop(void) {
     stop.EXECUTE0.value = false;
     IEC_VAL(stop.AXISID) = 0;
     __mcl_cmd_Stop(&stop);
+    ASSERT_TRUE(IEC_VAL(stop.DONE) == false,
+               "Stop should not complete on the trigger call");
     __HydMotion_framework_Publish();
 
     /* 下一周期Stop继续 */
     IEC_VAL(stop.EXECUTE) = true;
     stop.EXECUTE0.value = true;
     __mcl_cmd_Stop(&stop);
+    ASSERT_TRUE(IEC_VAL(stop.DONE) == false,
+               "Stop should still be pending while decelerating active motion");
 
     /* Step 3: MoveAbsolute 应检测到被抢占 */
     IEC_VAL(ma.EXECUTE) = true;
@@ -127,6 +163,13 @@ static void test_moveabsolute_preempted_by_stop(void) {
                "MoveAbsolute should raise COMMANDABORTED when preempted by Stop");
     ASSERT_TRUE(IEC_VAL(ma.BUSY) == false,
                "MoveAbsolute BUSY should be false after preemption");
+
+    stopDoneStep = drive_stop_until_done(0, &stop, STOP_WAIT_BUDGET);
+
+    ASSERT_TRUE(stopDoneStep > 1,
+               "Stop should require multiple cycles before DONE after taking over");
+    ASSERT_TRUE(IEC_VAL(stop.BUSY) == false,
+               "Stop BUSY should be false once DONE");
 }
 
 /* ==================================================================
@@ -244,6 +287,8 @@ static void test_pressurehandle_preempted_by_stop(void) {
     stop.EXECUTE0.value = false;
     IEC_VAL(stop.AXISID) = 0;
     __mcl_cmd_Stop(&stop);
+    ASSERT_TRUE(IEC_VAL(stop.DONE) == false,
+               "Axis 0 Stop should not complete on the trigger call");
     __HydMotion_framework_Publish();
 
     /* Step 3: PressureHandle 应检测到被抢占 */
@@ -365,10 +410,11 @@ static void test_stop_success_then_new_command_starts(void) {
     __mcl_cmd_Stop(&stop);
     __HydMotion_framework_Publish();
 
-    /* Stop 应该在下一周期完成 */
-    IEC_VAL(stop.EXECUTE) = true;
-    stop.EXECUTE0.value = true;
-    __mcl_cmd_Stop(&stop);
+    {
+        int stopDoneStep = drive_stop_until_done(0, &stop, STOP_WAIT_BUDGET);
+        ASSERT_TRUE(stopDoneStep > 1,
+                   "Stop should require multiple cycles before axis is stopped");
+    }
     ASSERT_TRUE(IEC_VAL(stop.DONE) == true,
                "Stop should report DONE after axis is stopped");
     ASSERT_TRUE(IEC_VAL(stop.BUSY) == false,
