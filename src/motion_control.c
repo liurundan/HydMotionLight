@@ -1518,6 +1518,15 @@ void HYD_MotionControlFB_Init(HYD_MotionControlFB* fb) {
     fb->FLOW_TO_PUMP_SPEED_GAIN = fb->_params.flowToPumpSpeedGain;
     fb->PUMP_SPEED_LIMIT = fb->_params.pumpSpeedLimit;
     fb->_useSimulation = fb->_params.useSimulation;
+    fb->_directOwnerKind = HYD_DIRECT_CMD_NONE;
+    fb->_directSessionState = HYD_DIRECT_SESSION_IDLE;
+    fb->_directOwnerExecutionId = 0U;
+    fb->_lastPreemptedExecutionId = 0U;
+    fb->_lastPreemptedKind = HYD_DIRECT_CMD_NONE;
+    fb->_isStopping = false;
+    fb->_stopStartTime = 0.0;
+    fb->_stopStartVel = 0.0;
+    fb->_stopDeceleration = 0.0;
 }
 
 void HYD_MotionControlFB_SoftReset(HYD_MotionControlFB* fb) {
@@ -1573,6 +1582,15 @@ void HYD_MotionControlFB_SoftReset(HYD_MotionControlFB* fb) {
     fb->_flowCriteria = savedFlowCriteria;
     fb->_velocityCriteria = savedVelocityCriteria;
     fb->_positionCriteria = savedPositionCriteria;
+    fb->_directOwnerKind = HYD_DIRECT_CMD_NONE;
+    fb->_directSessionState = HYD_DIRECT_SESSION_IDLE;
+    fb->_directOwnerExecutionId = 0U;
+    fb->_lastPreemptedExecutionId = 0U;
+    fb->_lastPreemptedKind = HYD_DIRECT_CMD_NONE;
+    fb->_isStopping = false;
+    fb->_stopStartTime = 0.0;
+    fb->_stopStartVel = 0.0;
+    fb->_stopDeceleration = 0.0;
 
     /* 4. Reinitialize framework-level state (same as Init) */
     fb->_activeSegmentSource = HYD_SEGMENT_SOURCE_NONE;
@@ -1866,6 +1884,26 @@ HYD_BOOL HYD_MotionControlFB_WriteParameter(HYD_MotionControlFB* fb, int paramNu
         default: return false;
     }
     return true;
+}
+
+HYD_DirectCommandKind HYD_MotionControlFB_GetDirectOwnerKind(const HYD_MotionControlFB* fb) {
+    return (fb != NULL) ? fb->_directOwnerKind : HYD_DIRECT_CMD_NONE;
+}
+
+HYD_DirectSessionState HYD_MotionControlFB_GetDirectSessionState(const HYD_MotionControlFB* fb) {
+    return (fb != NULL) ? fb->_directSessionState : HYD_DIRECT_SESSION_IDLE;
+}
+
+uint16_t HYD_MotionControlFB_GetDirectOwnerExecutionId(const HYD_MotionControlFB* fb) {
+    return (fb != NULL) ? fb->_directOwnerExecutionId : 0U;
+}
+
+HYD_BOOL HYD_MotionControlFB_WasExecutionPreempted(const HYD_MotionControlFB* fb,
+                                                   uint16_t executionId,
+                                                   HYD_DirectCommandKind kind) {
+    return (fb != NULL) &&
+           fb->_lastPreemptedExecutionId == executionId &&
+           fb->_lastPreemptedKind == kind;
 }
 
 HYD_BOOL HYD_MotionControlFB_ReadBoolParameter(const HYD_MotionControlFB* fb, int paramNumber, HYD_BOOL* value)
