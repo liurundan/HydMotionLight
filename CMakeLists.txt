@@ -98,6 +98,9 @@ target_link_libraries(test_motion_interface_arbitration PRIVATE HydroMotionLib)
 add_executable(test_motion_interface_done_signals tests/test_motion_interface_done_signals.c)
 target_link_libraries(test_motion_interface_done_signals PRIVATE HydroMotionLib)
 
+add_executable(test_stop_immediate_done tests/test_stop_immediate_done.c)
+target_link_libraries(test_stop_immediate_done PRIVATE HydroMotionLib)
+
 add_executable(test_ramp_controller tests/test_ramp_controller.c)
 target_link_libraries(test_ramp_controller PRIVATE HydroMotionLib)
 
@@ -127,4 +130,5 @@ add_test(NAME test_hydro_sim_fb COMMAND test_hydro_sim_fb)
 add_test(NAME test_motion_interface_unit COMMAND test_motion_interface_unit)
 add_test(NAME test_motion_interface_arbitration COMMAND test_motion_interface_arbitration)
 add_test(NAME test_motion_interface_done_signals COMMAND test_motion_interface_done_signals)
+add_test(NAME test_stop_immediate_done COMMAND test_stop_immediate_done)
 add_test(NAME test_ramp_controller_detailed COMMAND test_ramp_controller)

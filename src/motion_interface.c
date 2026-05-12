@@ -443,6 +443,12 @@ void __mcl_cmd_Stop(HYD_STOP *data__)
 
     if (execRising)
     {
+        /* Process any pending commands (e.g. a START queued by MoveAbsolute
+         * in the same scan) so the state reflects actual motion status.
+         * Without this, Stop sees IDLE/READY and incorrectly signals DONE
+         * before the motion has even started. */
+        HYD_MotionControlFB_Scan(fb);
+
         /* Already idle or done — nothing to stop. */
         if (fb->FB_STATE != HYD_FB_STATE_STARTING &&
             fb->FB_STATE != HYD_FB_STATE_RUNNING &&
