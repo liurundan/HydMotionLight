@@ -745,7 +745,7 @@ static HYD_BOOL HYD_MotionControlFB_ConsumePendingCommand(HYD_MotionControlFB* f
             fb->_isStopping = true;
             fb->_stopStartTime = timestamp;
             fb->_stopStartVel = fb->AXIS_REF.velocity;
-            fb->_executionId++;
+            //fb->_executionId++; stop协作性减速不重置执行ID，以允许下一个segment继续使用当前segment的执行上下文（例如诊断状态）
             return true;
         case HYD_CMD_HOLD:
             HYD_EnterHoldNow(fb, timestamp);
@@ -1317,6 +1317,26 @@ static void HYD_MotionControlFB_RunRunningState(HYD_MotionControlFB* fb) {
             HYD_StateReporter_RecordDiagnosticEvent(fb, fb->AXIS_REF.timestamp, segment, &executionReference);
             return;
         }
+
+        /* 输出当前减速状态和仿真反馈 */
+       HYD_StateReporter_ReportExecution(fb,
+                                         &plannerOutput,
+                                         &pumpOutput,
+                                         &executionReference,
+                                         pressureOutput.appliedStrategy,
+                                         &pressureOutput,
+                                         &fb->DIAGNOSTIC);
+       HYD_StateReporter_SetSegmentSource(fb, fb->_activeSegmentSource);
+       HYD_StateReporter_RecordDiagnosticEvent(fb, fb->AXIS_REF.timestamp, segment, &executionReference);
+
+       fb->_simFeedback.targetPosition = segment->targetPosition;
+       fb->_simFeedback.targetVelocity = plannerOutput.targetVelocity;
+       fb->_simFeedback.targetFlow     = pumpOutput.commandFlow;
+       fb->_simFeedback.targetPressure = executionReference.pressureReference;
+       fb->_simFeedback.valid          = true;
+
+       fb->SEGMENT_COMPLETED = false;
+       return;   // ← Stop减速期间直接返回，不进入段完成检查
     }
 
     if (fb->DIAGNOSTIC.protectionAction == HYD_PROTECTION_ACTION_STOP) {
