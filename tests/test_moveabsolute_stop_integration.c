@@ -9,7 +9,6 @@
 extern HYD_MotionControlFB* __MK_GetPublic_MotionControlFB(int index);
 
 #define IEC_VAL(var) ((var).value)
-#define CYCLE_PERIOD 0.001f
 
 static int tests_run = 0;
 static int tests_passed = 0;
@@ -100,8 +99,6 @@ static void test_moveabsolute_stop_loop(void) {
 }
 
 int main(void) {
-    (void)CYCLE_PERIOD;
-
     printf("=== MoveAbsolute + Stop Integration ===\n");
     test_moveabsolute_stop_loop();
     printf("=== Results: %d/%d passed ===\n", tests_passed, tests_run);
