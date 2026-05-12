@@ -27,16 +27,20 @@ static int tests_passed = 0;
     else { printf("  FAIL: %s\n", msg); } \
 } while (0)
 
-static int create_sim_axis(void) {
+static int create_axis(bool useSimulation) {
     HYD_CREATEMOTION cm;
     memset(&cm, 0, sizeof(cm));
     IEC_VAL(cm.EN) = true;
     IEC_VAL(cm.USE_RECIPE) = false;
     IEC_VAL(cm.FLOW_TO_PUMPSPEED) = 1.0f;
     IEC_VAL(cm.PUMPSPEED_LIMIT) = 3000.0f;
-    IEC_VAL(cm.USE_SIMULATION) = true;
+    IEC_VAL(cm.USE_SIMULATION) = useSimulation;
     __mcl_cmd_CreateMotion(&cm);
     return (int)IEC_VAL(cm.AXISID);
+}
+
+static int create_sim_axis(void) {
+    return create_axis(true);
 }
 
 /* ==================================================================
@@ -272,6 +276,87 @@ static void test_stop_deceleration_input_is_honored(void) {
           "Stop.DECELERATION should extend the stop duration");
 }
 
+/* ==================================================================
+ * Scenario D: Stop should decelerate from planned velocity when feedback
+ * velocity is not being closed by the test harness / hardware adapter yet.
+ *
+ * AXIS_REF.velocity remains zero here, but MoveAbsolute has already produced
+ * a nonzero planned velocity. Stop must not treat that as already stopped.
+ * ================================================================== */
+static void test_stop_uses_planned_velocity_when_feedback_velocity_is_zero(void) {
+    HYD_MOVEABSOLUTE ma;
+    HYD_STOP stop;
+    HYD_MotionControlFB* fb;
+    int axisId, step;
+    int stopDoneStep = 0;
+    HYD_REAL plannedBeforeStop;
+
+    printf("\n--- Scenario D: Stop uses planned velocity when feedback velocity is zero ---\n");
+    __HydMotion_framework_Init();
+    axisId = create_axis(false);
+    CHECK(axisId >= 0, "Create non-sim axis");
+    fb = __MK_GetPublic_MotionControlFB(axisId);
+
+    memset(&ma, 0, sizeof(ma));
+    IEC_VAL(ma.EN) = true;
+    IEC_VAL(ma.AXISID) = axisId;
+    IEC_VAL(ma.POSITION) = 200.0f;
+    IEC_VAL(ma.VELOCITY) = 20.0f;
+    IEC_VAL(ma.ACCELERATION) = 200.0f;
+    IEC_VAL(ma.DIRECTION) = 1;
+    IEC_VAL(ma.BUFFERMODE) = 1;
+
+    IEC_VAL(ma.EXECUTE) = true;
+    ma.EXECUTE0.value = false;
+    __mcl_cmd_MoveAbsolute(&ma);
+
+    for (step = 0; step < 30; step++) {
+        fb->AXIS_REF.timestamp += 0.001f;
+        __HydMotion_framework_Publish();
+        IEC_VAL(ma.EXECUTE) = true;
+        ma.EXECUTE0.value = true;
+        __mcl_cmd_MoveAbsolute(&ma);
+    }
+
+    plannedBeforeStop = fb->STATE.plannedVelocity;
+    printf("  Feedback velocity: %.4f, planned velocity: %.4f\n",
+           (double)fb->AXIS_REF.velocity,
+           (double)plannedBeforeStop);
+    CHECK(fabs(fb->AXIS_REF.velocity) < 0.001,
+          "Feedback velocity stays zero in this harness");
+    CHECK(fabs(plannedBeforeStop) > 1.0,
+          "MoveAbsolute should have nonzero planned velocity before Stop");
+
+    memset(&stop, 0, sizeof(stop));
+    IEC_VAL(stop.EN) = true;
+    IEC_VAL(stop.EXECUTE) = true;
+    stop.EXECUTE0.value = false;
+    IEC_VAL(stop.AXISID) = axisId;
+    IEC_VAL(stop.DECELERATION) = 50.0f;
+    __mcl_cmd_Stop(&stop);
+
+    CHECK(IEC_VAL(stop.DONE) == false,
+          "Stop.DONE should not be true on first call when planned velocity is nonzero");
+
+    for (step = 0; step < 1000; step++) {
+        fb->AXIS_REF.timestamp += 0.001f;
+        __HydMotion_framework_Publish();
+        IEC_VAL(stop.EXECUTE) = true;
+        stop.EXECUTE0.value = true;
+        __mcl_cmd_Stop(&stop);
+        if (IEC_VAL(stop.DONE)) {
+            stopDoneStep = step + 1;
+            break;
+        }
+    }
+
+    printf("  Stop.DONE reached after %d Publish cycles\n", stopDoneStep);
+    CHECK(stopDoneStep > 5,
+          "Stop.DONE should take multiple cycles when planned velocity must decelerate");
+    CHECK(IEC_VAL(stop.ERROR) == false,
+          "Stop should not set ERROR while decelerating from planned velocity");
+}
+
 int main(void) {
     printf("=== Stop Immediate DONE Reproduction ===\n");
 
@@ -283,6 +368,9 @@ int main(void) {
 
     __HydMotion_framework_Init();
     test_stop_deceleration_input_is_honored();
+
+    __HydMotion_framework_Init();
+    test_stop_uses_planned_velocity_when_feedback_velocity_is_zero();
 
     printf("\n=== Results: %d/%d passed ===\n", tests_passed, tests_run);
     return (tests_passed == tests_run) ? 0 : 1;

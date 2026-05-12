@@ -746,6 +746,10 @@ static HYD_BOOL HYD_MotionControlFB_ConsumePendingCommand(HYD_MotionControlFB* f
             fb->_isStopping = true;
             fb->_stopStartTime = timestamp;
             fb->_stopStartVel = fb->AXIS_REF.velocity;
+            if (fabs(fb->_stopStartVel) < 0.001f &&
+                fabs(fb->STATE.plannedVelocity) >= 0.001f) {
+                fb->_stopStartVel = fb->STATE.plannedVelocity;
+            }
             fb->_executionId++;
             return true;
         case HYD_CMD_HOLD:
