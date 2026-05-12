@@ -187,6 +187,7 @@ typedef struct {
     HYD_BOOL _isStopping;
     HYD_TIME _stopStartTime;
     HYD_REAL _stopStartVel;
+    HYD_REAL _stopDeceleration;
 
     /* Diagnostic criteria layer - unified through diagnostics_monitor + diagnostics_criteria
      * Supports: startup suppress, switch suppress, debounce, hysteresis, fault escalation. */
@@ -297,7 +298,9 @@ HYD_BOOL HYD_MotionControlFB_Abort(HYD_MotionControlFB* fb);
 
 /* Queues a decelerating stop command. Velocity ramps to zero at segment maxAcceleration,
  * then FB transitions to DONE. Allowed in STARTING / RUNNING / HOLD. */
-HYD_BOOL HYD_MotionControlFB_Stop(HYD_MotionControlFB* fb, HYD_TIME timestamp);
+HYD_BOOL HYD_MotionControlFB_Stop(HYD_MotionControlFB* fb,
+                                   HYD_TIME timestamp,
+                                   HYD_REAL deceleration);
 
 /*
  * Clears retained diagnostic latch/snapshot/history after the live event has

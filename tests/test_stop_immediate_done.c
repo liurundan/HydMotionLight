@@ -207,6 +207,71 @@ static void test_stop_after_motion_running(void) {
     }
 }
 
+/* ==================================================================
+ * Scenario C: Stop.DECELERATION should affect the stop duration
+ *
+ * Using a 20 mm/s motion and Stop.DECELERATION=50, the stop should
+ * take roughly 400 cycles, not 100 cycles from the motion acceleration.
+ * ================================================================== */
+static void test_stop_deceleration_input_is_honored(void) {
+    HYD_MOVEABSOLUTE ma;
+    HYD_STOP stop;
+    int axisId, step;
+    int stopDoneStep = 0;
+
+    printf("\n--- Scenario C: Stop deceleration input is honored ---\n");
+    __HydMotion_framework_Init();
+    axisId = create_sim_axis();
+    CHECK(axisId >= 0, "Create sim axis");
+
+    memset(&ma, 0, sizeof(ma));
+    IEC_VAL(ma.EN) = true;
+    IEC_VAL(ma.AXISID) = axisId;
+    IEC_VAL(ma.POSITION) = 200.0f;
+    IEC_VAL(ma.VELOCITY) = 20.0f;
+    IEC_VAL(ma.ACCELERATION) = 200.0f;
+    IEC_VAL(ma.DIRECTION) = 1;
+    IEC_VAL(ma.BUFFERMODE) = 1;
+
+    IEC_VAL(ma.EXECUTE) = true;
+    ma.EXECUTE0.value = false;
+    __mcl_cmd_MoveAbsolute(&ma);
+    __HydMotion_framework_Publish();
+
+    IEC_VAL(ma.EXECUTE) = true;
+    ma.EXECUTE0.value = true;
+    __mcl_cmd_MoveAbsolute(&ma);
+
+    for (step = 0; step < 30; step++) {
+        __HydMotion_framework_Publish();
+        IEC_VAL(ma.EXECUTE) = true;
+        ma.EXECUTE0.value = true;
+        __mcl_cmd_MoveAbsolute(&ma);
+    }
+
+    memset(&stop, 0, sizeof(stop));
+    IEC_VAL(stop.EN) = true;
+    IEC_VAL(stop.EXECUTE) = true;
+    stop.EXECUTE0.value = false;
+    IEC_VAL(stop.AXISID) = axisId;
+    IEC_VAL(stop.DECELERATION) = 50.0f;
+    __mcl_cmd_Stop(&stop);
+
+    for (step = 0; step < 1000; step++) {
+        __HydMotion_framework_Publish();
+        IEC_VAL(stop.EXECUTE) = true;
+        stop.EXECUTE0.value = true;
+        __mcl_cmd_Stop(&stop);
+        if (IEC_VAL(stop.DONE)) {
+            stopDoneStep = step + 1;
+            break;
+        }
+    }
+
+    CHECK(stopDoneStep >= 300,
+          "Stop.DECELERATION should extend the stop duration");
+}
+
 int main(void) {
     printf("=== Stop Immediate DONE Reproduction ===\n");
 
@@ -215,6 +280,9 @@ int main(void) {
 
     __HydMotion_framework_Init();
     test_stop_after_motion_running();
+
+    __HydMotion_framework_Init();
+    test_stop_deceleration_input_is_honored();
 
     printf("\n=== Results: %d/%d passed ===\n", tests_passed, tests_run);
     return (tests_passed == tests_run) ? 0 : 1;

@@ -346,6 +346,7 @@ static void HYD_PrimeSegmentControllers(HYD_MotionControlFB* fb,
     fb->_isStopping = false;
     fb->_stopStartTime = 0.0;
     fb->_stopStartVel = 0.0;
+    fb->_stopDeceleration = 0.0;
     fb->_lastFeedbackTimestamp = timestamp;
     HYD_RampController_Init(&fb->_rampController, fb->AXIS_REF.pressure, timestamp);
 
@@ -1300,7 +1301,11 @@ static void HYD_MotionControlFB_RunRunningState(HYD_MotionControlFB* fb) {
         if (stopElapsed < 0.0f) stopElapsed = 0.0f;
         stopMag  = (fb->_stopStartVel > 0.0f) ? fb->_stopStartVel : (-fb->_stopStartVel);
         stopSign = (fb->_stopStartVel >= 0.0f) ? 1.0f : -1.0f;
-        decelMag = stopMag - segment->maxAcceleration * stopElapsed;
+        {
+            HYD_REAL stopDeceleration = (fb->_stopDeceleration > 0.0f) ?
+                fb->_stopDeceleration : segment->maxAcceleration;
+            decelMag = stopMag - stopDeceleration * stopElapsed;
+        }
         if (decelMag < 0.0f) decelMag = 0.0f;
 
         plannerOutput.targetVelocity = decelMag * stopSign;
@@ -1312,6 +1317,7 @@ static void HYD_MotionControlFB_RunRunningState(HYD_MotionControlFB* fb) {
         if (decelMag < 0.001f) {
             fb->_isStopping = false;
             fb->_stopStartVel = 0.0f;
+            fb->_stopDeceleration = 0.0f;
             HYD_ProtectionManager_ApplyIdleState(fb, true, false);
             HYD_StateReporter_SetFbState(fb, HYD_FB_STATE_DONE);
             HYD_StateReporter_RecordDiagnosticEvent(fb, fb->AXIS_REF.timestamp, segment, &executionReference);
@@ -1493,7 +1499,8 @@ static HYD_BOOL HYD_RequestAbortCommand(HYD_MotionControlFB* fb,
 }
 
 static HYD_BOOL HYD_RequestStopCommand(HYD_MotionControlFB* fb,
-                                       HYD_TIME timestamp) {
+                                       HYD_TIME timestamp,
+                                       HYD_REAL deceleration) {
     HYD_FbState effectiveState;
 
     if (fb == NULL || fb->STATE.faultActive) {
@@ -1511,6 +1518,7 @@ static HYD_BOOL HYD_RequestStopCommand(HYD_MotionControlFB* fb,
         return false;
     }
 
+    fb->_stopDeceleration = (deceleration > 0.0f) ? deceleration : 0.0f;
     HYD_ClearStartCommandInput(fb);
     return HYD_RequestCommandQueue(fb,
                                    HYD_CMD_STOP,
@@ -1823,8 +1831,10 @@ HYD_BOOL HYD_MotionControlFB_Abort(HYD_MotionControlFB* fb) {
     return HYD_RequestAbortCommand(fb, (fb != NULL) ? fb->AXIS_REF.timestamp : 0.0);
 }
 
-HYD_BOOL HYD_MotionControlFB_Stop(HYD_MotionControlFB* fb, HYD_TIME timestamp) {
-    return HYD_RequestStopCommand(fb, timestamp);
+HYD_BOOL HYD_MotionControlFB_Stop(HYD_MotionControlFB* fb,
+                                   HYD_TIME timestamp,
+                                   HYD_REAL deceleration) {
+    return HYD_RequestStopCommand(fb, timestamp, deceleration);
 }
 
 HYD_BOOL HYD_MotionControlFB_AcknowledgeDiagnostics(HYD_MotionControlFB* fb) {

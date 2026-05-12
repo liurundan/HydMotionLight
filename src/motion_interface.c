@@ -460,7 +460,9 @@ void __mcl_cmd_Stop(HYD_STOP *data__)
             return;
         }
 
-        HYD_MotionControlFB_Stop(fb, fb->AXIS_REF.timestamp);
+        HYD_MotionControlFB_Stop(fb,
+                                  fb->AXIS_REF.timestamp,
+                                  __GET_VAR(data__->DECELERATION));
         HYD_MotionControlFB_Scan(fb);
         __SET_VAR(data__->, _PENDING, , true);
         __SET_VAR(data__->, BUSY, , true);
