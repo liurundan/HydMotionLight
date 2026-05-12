@@ -49,6 +49,19 @@ Why this approach:
 - It preserves the existing explicit `Publish()` simulation contract.
 - It gives a clean path to later unify `MoveVelocity` and `PressureHandle` without redesigning the public FB contract again.
 
+## Simplicity and Extensibility Guardrails
+
+This design is only acceptable if it remains simple enough to reason about in one pass and narrow enough to extend without rewriting the stop path again.
+
+Guardrails:
+
+- reuse the existing `_executionId` concept instead of inventing a second command identity mechanism
+- add only the minimum direct-session metadata needed for ownership, session kind, session state, and preemption reason
+- keep the core as the single source of truth for session lifecycle; IEC code may map outputs, but may not reconstruct lifecycle by combining shared FB fields
+- do not push direct-session semantics down into `motion_planner.c`; planning remains a service to the owning session
+- keep `USE_SIMULATION` explicit and external to command lifecycle; publish drives time, commands drive ownership
+- structure the first pass so that `MoveVelocity` and `PressureHandle` can reuse the same ownership query path later without requiring a second architecture rewrite
+
 ## Alternative Approaches Considered
 
 ### 1. Minimal patch
