@@ -23,6 +23,7 @@ static HYD_BOOL HYD_QueuePendingCommand(HYD_MotionControlFB* fb,
                                         HYD_UINT segmentIndex,
                                         HYD_TIME timestamp);
 static void HYD_MotionControlFB_RunRunningState(HYD_MotionControlFB* fb);
+static HYD_DirectCommandKind HYD_InferDirectCommandKindFromSegment(const HYD_MotionSegment* segment);
 static void HYD_PrimeSegmentControllers(HYD_MotionControlFB* fb,
                                         const HYD_MotionSegment* segment,
                                         HYD_TIME timestamp,
@@ -272,6 +273,19 @@ static void HYD_PrepareRecipeLoadState(HYD_MotionControlFB* fb) {
     HYD_StateReporter_ClearSegmentTag(fb);
 }
 
+static HYD_DirectCommandKind HYD_InferDirectCommandKindFromSegment(const HYD_MotionSegment* segment) {
+    if (segment == NULL) {
+        return HYD_DIRECT_CMD_NONE;
+    }
+
+    if (segment->mode == HYD_MODE_POSITION &&
+        segment->endCondition == HYD_END_POSITION) {
+        return HYD_DIRECT_CMD_MOVE_ABSOLUTE;
+    }
+
+    return HYD_DIRECT_CMD_NONE;
+}
+
 /* Diagnostic reporting moved into StateReporter (see state_reporter.c). */
 
 static HYD_BOOL HYD_ValidateNextRequest(const HYD_MotionControlFB* fb,
@@ -498,6 +512,7 @@ static HYD_BOOL HYD_BeginSegment(HYD_MotionControlFB* fb,
     HYD_StateReporter_SetFbState(fb, HYD_FB_STATE_STARTING);
     fb->_executionId++;
     if (resolvedSource == HYD_SEGMENT_SOURCE_DIRECT) {
+        fb->_directOwnerKind = HYD_InferDirectCommandKindFromSegment(sourceSegment);
         fb->_directSessionState = HYD_DIRECT_SESSION_RUNNING;
         fb->_directOwnerExecutionId = fb->_executionId;
     }
@@ -738,8 +753,13 @@ static HYD_BOOL HYD_MotionControlFB_ConsumePendingCommand(HYD_MotionControlFB* f
             (void)HYD_AdvanceToNextSegment(fb, timestamp);
             return true;
         case HYD_CMD_STOP:
-            fb->_lastPreemptedExecutionId = fb->_directOwnerExecutionId;
-            fb->_lastPreemptedKind = fb->_directOwnerKind;
+            if (fb->_activeSegmentSource == HYD_SEGMENT_SOURCE_DIRECT) {
+                fb->_lastPreemptedExecutionId = fb->_directOwnerExecutionId;
+                fb->_lastPreemptedKind = fb->_directOwnerKind;
+            } else {
+                fb->_lastPreemptedExecutionId = 0U;
+                fb->_lastPreemptedKind = HYD_DIRECT_CMD_NONE;
+            }
             fb->_executionId++;
             fb->_directOwnerExecutionId = fb->_executionId;
             fb->_directOwnerKind = HYD_DIRECT_CMD_STOP;
