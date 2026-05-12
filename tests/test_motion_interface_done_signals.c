@@ -917,6 +917,16 @@ static void test_stop_during_moveabsolute_done(void) {
                "MoveAbsolute should get COMMANDABORTED after Stop");
     ASSERT_TRUE(IEC_VAL(ma.DONE) == false,
                "MoveAbsolute should NOT be DONE when stopped prematurely");
+
+    /* EXECUTE下降沿后，MoveAbsolute 的终态脉冲应清除 */
+    IEC_VAL(stop.EXECUTE) = false;
+    stop.EXECUTE0.value = true;
+    __mcl_cmd_Stop(&stop);
+    IEC_VAL(ma.EXECUTE) = false;
+    ma.EXECUTE0.value = true;
+    __mcl_cmd_MoveAbsolute(&ma);
+    ASSERT_TRUE(IEC_VAL(ma.COMMANDABORTED) == false,
+               "MoveAbsolute COMMANDABORTED should clear after EXECUTE falls");
 }
 
 /* ==================================================================

@@ -635,6 +635,23 @@ void __mcl_cmd_MoveAbsolute(HYD_MOVEABSOLUTE *data__)
         }
     }
 
+    /* PLCopen lifecycle: once the command has reached a terminal state,
+     * drop the latched outputs after EXECUTE falls so the FB is ready for
+     * the next rising edge. */
+    if (!execute &&
+        (fb->FB_STATE == HYD_FB_STATE_DONE ||
+         fb->FB_STATE == HYD_FB_STATE_ABORTED ||
+         fb->FB_STATE == HYD_FB_STATE_FAULT)) {
+        __SET_VAR(data__->, DONE, , false);
+        __SET_VAR(data__->, BUSY, , false);
+        __SET_VAR(data__->, ACTIVE, , false);
+        __SET_VAR(data__->, COMMANDABORTED, , false);
+        __SET_VAR(data__->, ERROR, , false);
+        __SET_VAR(data__->, ERRORID, , (IEC_WORD)0);
+        __SET_VAR(data__->, _PENDING, , false);
+        __SET_VAR(data__->, _EXEC_ID, , (IEC_WORD)0);
+    }
+
     __SET_VAR(data__->, ACTIVE0, , __GET_VAR(data__->ACTIVE));
     __SET_VAR(data__->, EXECUTE0, , execute);
 }
@@ -761,6 +778,20 @@ void __mcl_cmd_MoveVelocity(HYD_MOVEVELOCITY *data__)
                 __SET_VAR(data__->, ACTIVE, , fb->STATE.active ? true : false);
             }
         }
+    }
+
+    if (!execute &&
+        (fb->FB_STATE == HYD_FB_STATE_DONE ||
+         fb->FB_STATE == HYD_FB_STATE_ABORTED ||
+         fb->FB_STATE == HYD_FB_STATE_FAULT)) {
+        __SET_VAR(data__->, BUSY, , false);
+        __SET_VAR(data__->, ACTIVE, , false);
+        __SET_VAR(data__->, INVELOCITY, , false);
+        __SET_VAR(data__->, COMMANDABORTED, , false);
+        __SET_VAR(data__->, ERROR, , false);
+        __SET_VAR(data__->, ERRORID, , (IEC_WORD)0);
+        __SET_VAR(data__->, _PENDING, , false);
+        __SET_VAR(data__->, _EXEC_ID, , (IEC_WORD)0);
     }
 
     __SET_VAR(data__->, ACTIVE0, , __GET_VAR(data__->ACTIVE));
@@ -932,6 +963,20 @@ void __mcl_cmd_PressureHandle(HYD_PRESSUREHANDLE *data__)
                 __SET_VAR(data__->, ACTIVE, , fb->STATE.active ? true : false);
             }
         }
+    }
+
+    if (!execute &&
+        (fb->FB_STATE == HYD_FB_STATE_DONE ||
+         fb->FB_STATE == HYD_FB_STATE_ABORTED ||
+         fb->FB_STATE == HYD_FB_STATE_FAULT)) {
+        __SET_VAR(data__->, BUSY, , false);
+        __SET_VAR(data__->, ACTIVE, , false);
+        __SET_VAR(data__->, INPRESSURE, , false);
+        __SET_VAR(data__->, COMMANDABORTED, , false);
+        __SET_VAR(data__->, ERROR, , false);
+        __SET_VAR(data__->, ERRORID, , (IEC_WORD)0);
+        __SET_VAR(data__->, _PENDING, , false);
+        __SET_VAR(data__->, _EXEC_ID, , (IEC_WORD)0);
     }
 
     __SET_VAR(data__->, ACTIVE0, , __GET_VAR(data__->ACTIVE));
