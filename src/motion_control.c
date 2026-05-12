@@ -62,9 +62,7 @@ static const HYD_FbStateMask HYD_COMMAND_ALLOWED_STATE_MASKS[HYD_CMD_ACK + 1U] =
         HYD_FB_STATE_MASK_BIT(HYD_FB_STATE_ABORTED),
     [HYD_CMD_NEXT] = HYD_FB_STATE_MASK_BIT(HYD_FB_STATE_SEGMENT_COMPLETE),
     [HYD_CMD_STOP] = HYD_FB_STATE_MASK_BIT(HYD_FB_STATE_STARTING) |
-        HYD_FB_STATE_MASK_BIT(HYD_FB_STATE_RUNNING) |
-        HYD_FB_STATE_MASK_BIT(HYD_FB_STATE_SEGMENT_COMPLETE) |
-        HYD_FB_STATE_MASK_BIT(HYD_FB_STATE_HOLD),
+        HYD_FB_STATE_MASK_BIT(HYD_FB_STATE_RUNNING),
     [HYD_CMD_HOLD] = HYD_FB_STATE_MASK_BIT(HYD_FB_STATE_STARTING) |
         HYD_FB_STATE_MASK_BIT(HYD_FB_STATE_RUNNING),
     [HYD_CMD_RESUME] = HYD_FB_STATE_MASK_BIT(HYD_FB_STATE_HOLD),
@@ -499,6 +497,10 @@ static HYD_BOOL HYD_BeginSegment(HYD_MotionControlFB* fb,
     HYD_StateReporter_SetPlannedDirection(fb, fb->_activeSegment.direction);
     HYD_StateReporter_SetFbState(fb, HYD_FB_STATE_STARTING);
     fb->_executionId++;
+    if (resolvedSource == HYD_SEGMENT_SOURCE_DIRECT) {
+        fb->_directSessionState = HYD_DIRECT_SESSION_RUNNING;
+        fb->_directOwnerExecutionId = fb->_executionId;
+    }
     return true;
 }
 
@@ -622,6 +624,7 @@ static void HYD_AbortNow(HYD_MotionControlFB* fb,
     HYD_ResetReadyContextPreview(fb);
     HYD_StateReporter_ClearSegmentTag(fb);
     HYD_StateReporter_SetSegmentSource(fb, HYD_SEGMENT_SOURCE_NONE);
+    fb->_directSessionState = HYD_DIRECT_SESSION_ABORTED;
     HYD_StateReporter_SetFbState(fb, HYD_FB_STATE_ABORTED);
     HYD_StateReporter_ReportDiagnostic(fb,
                                        HYD_DIAG_CODE_ABORTED,
@@ -1343,6 +1346,7 @@ static void HYD_MotionControlFB_RunRunningState(HYD_MotionControlFB* fb) {
     }
 
     if (fb->DIAGNOSTIC.protectionAction == HYD_PROTECTION_ACTION_STOP) {
+        fb->_directSessionState = HYD_DIRECT_SESSION_FAULT;
         HYD_ProtectionManager_EnterFaultStop(fb);
         HYD_StateReporter_RecordDiagnosticEvent(fb, fb->AXIS_REF.timestamp, segment, &executionReference);
         return;

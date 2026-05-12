@@ -104,12 +104,12 @@
  * Current command legality matrix (framework-layer contract):
  * - START: IDLE / READY / SEGMENT_COMPLETE / DONE / ABORTED
  * - NEXT: SEGMENT_COMPLETE only
+ * - STOP: STARTING / RUNNING
  * - HOLD: STARTING / RUNNING
  * - RESUME: HOLD only
  * - ABORT: STARTING / RUNNING / SEGMENT_COMPLETE / HOLD
  * - ACK: DISABLED / IDLE / READY / SEGMENT_COMPLETE / HOLD / DONE / ABORTED
  * - RESET: handled by RESET input and consumed on the next Cycle()/Scan()/Execute()
- * - STOP: still reserved and intentionally rejected until its state semantics are implemented
  *
  * Hold / Resume semantics in the current minimal skeleton:
  * - HOLD drives safe zero outputs, preserves the active segment context, and freezes
