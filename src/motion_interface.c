@@ -852,6 +852,21 @@ void __mcl_cmd_PressureHandle(HYD_PRESSUREHANDLE *data__)
     IEC_WORD myExecId = __GET_VAR(data__->_EXEC_ID);
     HYD_REAL targetPressure = __GET_VAR(data__->PRESSURE);
 
+    if (!execute)
+    {
+        __SET_VAR(data__->, INPRESSURE, , false);
+        __SET_VAR(data__->, COMMANDABORTED, , false);
+        __SET_VAR(data__->, ERROR, , false);
+        __SET_VAR(data__->, ERRORID, , (IEC_WORD)0);
+        __SET_VAR(data__->, BUSY, , false);
+        __SET_VAR(data__->, ACTIVE, , false);
+        __SET_VAR(data__->, _PENDING, , false);
+        __SET_VAR(data__->, _EXEC_ID, , (IEC_WORD)0);
+        __SET_VAR(data__->, ACTIVE0, , false);
+        __SET_VAR(data__->, EXECUTE0, , execute);
+        return;
+    }
+
     if (execRising)
     {
         if (bufferMode == HYD_BUFFER_MODE_ABORT) {
@@ -913,47 +928,44 @@ void __mcl_cmd_PressureHandle(HYD_PRESSUREHANDLE *data__)
 
     if (myExecId != 0)
     {
-        if (myExecId != (IEC_WORD)fb->_executionId) {
+        if (HYD_MotionControlFB_WasExecutionPreempted(fb,
+                                                      (uint16_t)myExecId,
+                                                      HYD_DIRECT_CMD_PRESSURE_HANDLE)) {
             __SET_VAR(data__->, COMMANDABORTED, , true);
             __SET_VAR(data__->, BUSY, , false);
             __SET_VAR(data__->, ACTIVE, , false);
             __SET_VAR(data__->, INPRESSURE, , false);
-        } else {
-            if (fb->SEGMENT_COMPLETED || (HYD_MotionControlFB_IsDone(fb) && fb->STATE.finished))
-            {
-                __SET_VAR(data__->, BUSY, , false);
-                __SET_VAR(data__->, ACTIVE, , false);
-                __SET_VAR(data__->, INPRESSURE, , false);
-            }
-            else if (fb->STATE.active)
-            {
-                __SET_VAR(data__->, BUSY, , true);
-                __SET_VAR(data__->, ACTIVE, , true);
-
-                HYD_REAL pressError = fb->AXIS_REF.pressure - targetPressure;
-                if (pressError < 0.0f) pressError = -pressError;
-                if (targetPressure > 0.0f && pressError < 0.5f)
-                {
-                    __SET_VAR(data__->, INPRESSURE, , true);
-                }
-                else
-                {
-                    __SET_VAR(data__->, INPRESSURE, , false);
-                }
-            }
-            else if (HYD_MotionControlFB_IsError(fb))
+        } else if (myExecId == (IEC_WORD)HYD_MotionControlFB_GetDirectOwnerExecutionId(fb) &&
+                   HYD_MotionControlFB_GetDirectOwnerKind(fb) == HYD_DIRECT_CMD_PRESSURE_HANDLE) {
+            if (HYD_MotionControlFB_IsError(fb))
             {
                 __SET_VAR(data__->, ERROR, , true);
                 __SET_VAR(data__->, ERRORID, , (IEC_WORD)fb->ERROR_ID);
                 __SET_VAR(data__->, BUSY, , false);
                 __SET_VAR(data__->, ACTIVE, , false);
                 __SET_VAR(data__->, INPRESSURE, , false);
+            } else if (fb->SEGMENT_COMPLETED || (HYD_MotionControlFB_IsDone(fb) && fb->STATE.finished)) {
+                __SET_VAR(data__->, BUSY, , false);
+                __SET_VAR(data__->, ACTIVE, , false);
+                __SET_VAR(data__->, INPRESSURE, , false);
+            } else {
+                __SET_VAR(data__->, BUSY, , true);
+                __SET_VAR(data__->, ACTIVE, , true);
+
+                HYD_REAL pressError = fb->AXIS_REF.pressure - targetPressure;
+                if (pressError < 0.0f) pressError = -pressError;
+                if (targetPressure > 0.0f && pressError < 0.5f) {
+                    __SET_VAR(data__->, INPRESSURE, , true);
+                } else {
+                    __SET_VAR(data__->, INPRESSURE, , false);
+                }
             }
-            else
-            {
-                __SET_VAR(data__->, BUSY, , HYD_MotionControlFB_IsBusy(fb));
-                __SET_VAR(data__->, ACTIVE, , fb->STATE.active ? true : false);
-            }
+        } else if (myExecId != (IEC_WORD)HYD_MotionControlFB_GetDirectOwnerExecutionId(fb) ||
+                   HYD_MotionControlFB_GetDirectOwnerKind(fb) != HYD_DIRECT_CMD_PRESSURE_HANDLE) {
+            __SET_VAR(data__->, COMMANDABORTED, , true);
+            __SET_VAR(data__->, BUSY, , false);
+            __SET_VAR(data__->, ACTIVE, , false);
+            __SET_VAR(data__->, INPRESSURE, , false);
         }
     }
 
