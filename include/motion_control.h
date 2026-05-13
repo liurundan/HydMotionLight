@@ -143,6 +143,21 @@ typedef enum {
     HYD_FB_STATE_FAULT
 } HYD_FbState;
 
+typedef enum {
+    HYD_DIRECT_CMD_NONE = 0,
+    HYD_DIRECT_CMD_MOVE_ABSOLUTE,
+    HYD_DIRECT_CMD_STOP
+} HYD_DirectCommandKind;
+
+typedef enum {
+    HYD_DIRECT_SESSION_IDLE = 0,
+    HYD_DIRECT_SESSION_RUNNING,
+    HYD_DIRECT_SESSION_STOPPING,
+    HYD_DIRECT_SESSION_DONE,
+    HYD_DIRECT_SESSION_ABORTED,
+    HYD_DIRECT_SESSION_FAULT
+} HYD_DirectSessionState;
+
 typedef struct {
     HYD_BOOL RESET;
     HYD_BOOL START_SEGMENT;
@@ -184,6 +199,15 @@ typedef struct {
     HYD_BOOL _isDecelerating;
     HYD_TIME _decelStartTime;
     HYD_REAL _decelStartVel;
+    HYD_DirectCommandKind _directOwnerKind;
+    HYD_DirectSessionState _directSessionState;
+    uint16_t _directOwnerExecutionId;
+    uint16_t _lastPreemptedExecutionId;
+    HYD_DirectCommandKind _lastPreemptedKind;
+    HYD_BOOL _isStopping;
+    HYD_TIME _stopStartTime;
+    HYD_REAL _stopStartVel;
+    HYD_REAL _stopDeceleration;
 
     /* Diagnostic criteria layer - unified through diagnostics_monitor + diagnostics_criteria
      * Supports: startup suppress, switch suppress, debounce, hysteresis, fault escalation. */
@@ -298,6 +322,13 @@ HYD_BOOL HYD_MotionControlFB_Abort(HYD_MotionControlFB* fb);
  * state). Fault-state retention is intentionally not clearable without RESET.
  */
 HYD_BOOL HYD_MotionControlFB_AcknowledgeDiagnostics(HYD_MotionControlFB* fb);
+
+HYD_DirectCommandKind HYD_MotionControlFB_GetDirectOwnerKind(const HYD_MotionControlFB* fb);
+HYD_DirectSessionState HYD_MotionControlFB_GetDirectSessionState(const HYD_MotionControlFB* fb);
+uint16_t HYD_MotionControlFB_GetDirectOwnerExecutionId(const HYD_MotionControlFB* fb);
+HYD_BOOL HYD_MotionControlFB_WasExecutionPreempted(const HYD_MotionControlFB* fb,
+                                                   uint16_t executionId,
+                                                   HYD_DirectCommandKind kind);
 
 /* Executes the already-sampled pending command and the explicit state machine. */
 void HYD_MotionControlFB_Cycle(HYD_MotionControlFB* fb);

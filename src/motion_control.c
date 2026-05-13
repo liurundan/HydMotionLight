@@ -1456,6 +1456,15 @@ void HYD_MotionControlFB_Init(HYD_MotionControlFB* fb) {
     }
 
     memset(fb, 0, sizeof(*fb));
+    fb->_directOwnerKind = HYD_DIRECT_CMD_NONE;
+    fb->_directSessionState = HYD_DIRECT_SESSION_IDLE;
+    fb->_directOwnerExecutionId = 0U;
+    fb->_lastPreemptedExecutionId = 0U;
+    fb->_lastPreemptedKind = HYD_DIRECT_CMD_NONE;
+    fb->_isStopping = false;
+    fb->_stopStartTime = 0.0;
+    fb->_stopStartVel = 0.0;
+    fb->_stopDeceleration = 0.0;
     fb->_lastFeedbackTimestamp = -1.0;  /* sentinel: not yet valid */
     fb->USE_RECIPE = false;
     fb->FB_STATE = HYD_FB_STATE_IDLE;
@@ -1555,6 +1564,15 @@ void HYD_MotionControlFB_SoftReset(HYD_MotionControlFB* fb) {
 
     /* 2. Full memset to clear all runtime state cleanly */
     (void)memset(fb, 0, sizeof(*fb));
+    fb->_directOwnerKind = HYD_DIRECT_CMD_NONE;
+    fb->_directSessionState = HYD_DIRECT_SESSION_IDLE;
+    fb->_directOwnerExecutionId = 0U;
+    fb->_lastPreemptedExecutionId = 0U;
+    fb->_lastPreemptedKind = HYD_DIRECT_CMD_NONE;
+    fb->_isStopping = false;
+    fb->_stopStartTime = 0.0;
+    fb->_stopStartVel = 0.0;
+    fb->_stopDeceleration = 0.0;
     fb->_lastFeedbackTimestamp = -1.0;  /* sentinel: not yet valid */
 
     /* 3. Restore persistent configuration */
@@ -1759,6 +1777,26 @@ HYD_BOOL HYD_MotionControlFB_AcknowledgeDiagnostics(HYD_MotionControlFB* fb) {
     HYD_StateReporter_ClearCurrentDiagnostic(fb);
     HYD_StateReporter_ClearDiagnosticRetentionOnly(fb);
     return true;
+}
+
+HYD_DirectCommandKind HYD_MotionControlFB_GetDirectOwnerKind(const HYD_MotionControlFB* fb) {
+    return (fb != NULL) ? fb->_directOwnerKind : HYD_DIRECT_CMD_NONE;
+}
+
+HYD_DirectSessionState HYD_MotionControlFB_GetDirectSessionState(const HYD_MotionControlFB* fb) {
+    return (fb != NULL) ? fb->_directSessionState : HYD_DIRECT_SESSION_IDLE;
+}
+
+uint16_t HYD_MotionControlFB_GetDirectOwnerExecutionId(const HYD_MotionControlFB* fb) {
+    return (fb != NULL) ? fb->_directOwnerExecutionId : 0U;
+}
+
+HYD_BOOL HYD_MotionControlFB_WasExecutionPreempted(const HYD_MotionControlFB* fb,
+                                                   uint16_t executionId,
+                                                   HYD_DirectCommandKind kind) {
+    return (fb != NULL) &&
+           fb->_lastPreemptedExecutionId == executionId &&
+           fb->_lastPreemptedKind == kind;
 }
 
 void HYD_MotionControlFB_Cycle(HYD_MotionControlFB* fb) {
