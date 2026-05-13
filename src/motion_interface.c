@@ -441,19 +441,25 @@ void __mcl_cmd_Stop(HYD_STOP *data__)
     HYD_MotionControlFB* fb = &HYD_MotionControlFB_inst[axisIndex];
     IEC_BOOL isPending = __GET_VAR(data__->_PENDING);
 
+    if (!execute)
+    {
+        __SET_VAR(data__->, DONE, , false);
+        __SET_VAR(data__->, COMMANDABORTED, , false);
+        __SET_VAR(data__->, ERROR, , false);
+        __SET_VAR(data__->, ERRORID, , (IEC_WORD)0);
+        __SET_VAR(data__->, BUSY, , false);
+        __SET_VAR(data__->, _PENDING, , false);
+        __SET_VAR(data__->, EXECUTE0, , execute);
+        return;
+    }
+
     if (execRising)
     {
-        /* Process any pending commands (e.g. a START queued by MoveAbsolute
-         * in the same scan) so the state reflects actual motion status.
-         * Without this, Stop sees IDLE/READY and incorrectly signals DONE
-         * before the motion has even started. */
         HYD_MotionControlFB_Scan(fb);
 
-        /* Already idle or done — nothing to stop. */
         if (fb->FB_STATE != HYD_FB_STATE_STARTING &&
             fb->FB_STATE != HYD_FB_STATE_RUNNING &&
-            fb->FB_STATE != HYD_FB_STATE_HOLD)
-        {
+            fb->FB_STATE != HYD_FB_STATE_HOLD) {
             __SET_VAR(data__->, DONE, , true);
             __SET_VAR(data__->, BUSY, , false);
             __SET_VAR(data__->, EXECUTE0, , execute);
@@ -461,8 +467,8 @@ void __mcl_cmd_Stop(HYD_STOP *data__)
         }
 
         HYD_MotionControlFB_Stop(fb,
-                                  fb->AXIS_REF.timestamp,
-                                  __GET_VAR(data__->DECELERATION));
+                                 fb->AXIS_REF.timestamp,
+                                 __GET_VAR(data__->DECELERATION));
         HYD_MotionControlFB_Scan(fb);
         __SET_VAR(data__->, _PENDING, , true);
         __SET_VAR(data__->, BUSY, , true);
@@ -481,22 +487,10 @@ void __mcl_cmd_Stop(HYD_STOP *data__)
             __SET_VAR(data__->, BUSY, , false);
             __SET_VAR(data__->, _PENDING, , false);
         }
-        else if (fb->FB_STATE == HYD_FB_STATE_DONE)
+        else if (HYD_MotionControlFB_GetDirectOwnerKind(fb) == HYD_DIRECT_CMD_STOP &&
+                 HYD_MotionControlFB_GetDirectSessionState(fb) == HYD_DIRECT_SESSION_DONE)
         {
             __SET_VAR(data__->, DONE, , true);
-            __SET_VAR(data__->, BUSY, , false);
-            __SET_VAR(data__->, _PENDING, , false);
-        }
-        else if (fb->FB_STATE == HYD_FB_STATE_ABORTED)
-        {
-            __SET_VAR(data__->, COMMANDABORTED, , true);
-            __SET_VAR(data__->, BUSY, , false);
-            __SET_VAR(data__->, _PENDING, , false);
-        }
-        else if (fb->FB_STATE == HYD_FB_STATE_FAULT)
-        {
-            __SET_VAR(data__->, ERROR, , true);
-            __SET_VAR(data__->, ERRORID, , (IEC_WORD)fb->ERROR_ID);
             __SET_VAR(data__->, BUSY, , false);
             __SET_VAR(data__->, _PENDING, , false);
         }
@@ -505,16 +499,6 @@ void __mcl_cmd_Stop(HYD_STOP *data__)
             __SET_VAR(data__->, BUSY, , true);
         }
     }
-
-	/* 命令已完成(_PENDING=false)且 EXECUTE 归零后，清除所有输出信号
-	 * PLCopen 语义：DONE/COMMANDABORTED 为单扫描脉冲，EXECUTE 下降沿后必须清除 */
-	if (!isPending && !execRising && !execute) {
-		__SET_VAR(data__->, DONE,, false);
-		__SET_VAR(data__->, BUSY,, false);
-		__SET_VAR(data__->, COMMANDABORTED,, false);
-		__SET_VAR(data__->, ERROR,, false);
-		__SET_VAR(data__->, ERRORID,, (IEC_WORD )0);
-	}
 
     __SET_VAR(data__->, EXECUTE0, , execute);
 }
@@ -541,6 +525,21 @@ void __mcl_cmd_MoveAbsolute(HYD_MOVEABSOLUTE *data__)
     IEC_INT bufferMode = __GET_VAR(data__->BUFFERMODE);
     IEC_BOOL isPending = __GET_VAR(data__->_PENDING);
     IEC_WORD myExecId = __GET_VAR(data__->_EXEC_ID);
+
+    if (!execute)
+    {
+        __SET_VAR(data__->, DONE, , false);
+        __SET_VAR(data__->, COMMANDABORTED, , false);
+        __SET_VAR(data__->, ERROR, , false);
+        __SET_VAR(data__->, ERRORID, , (IEC_WORD)0);
+        __SET_VAR(data__->, BUSY, , false);
+        __SET_VAR(data__->, ACTIVE, , false);
+        __SET_VAR(data__->, _PENDING, , false);
+        __SET_VAR(data__->, _EXEC_ID, , (IEC_WORD)0);
+        __SET_VAR(data__->, ACTIVE0, , false);
+        __SET_VAR(data__->, EXECUTE0, , execute);
+        return;
+    }
 
     if (execRising)
     {
@@ -604,54 +603,40 @@ void __mcl_cmd_MoveAbsolute(HYD_MOVEABSOLUTE *data__)
 
     if (myExecId != 0)
     {
-		if (myExecId != (IEC_WORD) fb->_executionId) {
-			__SET_VAR(data__->, COMMANDABORTED, , true);
-			__SET_VAR(data__->, BUSY, , false);
-			__SET_VAR(data__->, ACTIVE, , false);
-			__SET_VAR(data__->, DONE, , false);
-
-		} else {
-            if (fb->SEGMENT_COMPLETED || (HYD_MotionControlFB_IsDone(fb) && fb->STATE.finished))
-            {
-                __SET_VAR(data__->, DONE, , true);
-                __SET_VAR(data__->, BUSY, , false);
-                __SET_VAR(data__->, ACTIVE, , false);
-            }
-            else if (fb->STATE.active)
-            {
-                __SET_VAR(data__->, BUSY, , true);
-                __SET_VAR(data__->, ACTIVE, , true);
-            }
-            else if (HYD_MotionControlFB_IsError(fb))
+        if (HYD_MotionControlFB_WasExecutionPreempted(fb,
+                                                      (uint16_t)myExecId,
+                                                      HYD_DIRECT_CMD_MOVE_ABSOLUTE)) {
+            __SET_VAR(data__->, COMMANDABORTED, , true);
+            __SET_VAR(data__->, BUSY, , false);
+            __SET_VAR(data__->, ACTIVE, , false);
+            __SET_VAR(data__->, DONE, , false);
+        } else if (myExecId == (IEC_WORD)HYD_MotionControlFB_GetDirectOwnerExecutionId(fb) &&
+                   HYD_MotionControlFB_GetDirectOwnerKind(fb) == HYD_DIRECT_CMD_MOVE_ABSOLUTE) {
+            if (HYD_MotionControlFB_IsError(fb))
             {
                 __SET_VAR(data__->, ERROR, , true);
                 __SET_VAR(data__->, ERRORID, , (IEC_WORD)fb->ERROR_ID);
                 __SET_VAR(data__->, BUSY, , false);
                 __SET_VAR(data__->, ACTIVE, , false);
             }
+            else if (fb->SEGMENT_COMPLETED || (HYD_MotionControlFB_IsDone(fb) && fb->STATE.finished))
+            {
+                __SET_VAR(data__->, DONE, , true);
+                __SET_VAR(data__->, BUSY, , false);
+                __SET_VAR(data__->, ACTIVE, , false);
+            }
             else
             {
-                __SET_VAR(data__->, BUSY, , HYD_MotionControlFB_IsBusy(fb));
-                __SET_VAR(data__->, ACTIVE, , fb->STATE.active ? true : false);
+                __SET_VAR(data__->, BUSY, , true);
+                __SET_VAR(data__->, ACTIVE, , true);
             }
+        } else if (myExecId != (IEC_WORD)HYD_MotionControlFB_GetDirectOwnerExecutionId(fb) ||
+                   HYD_MotionControlFB_GetDirectOwnerKind(fb) != HYD_DIRECT_CMD_MOVE_ABSOLUTE) {
+            __SET_VAR(data__->, COMMANDABORTED, , true);
+            __SET_VAR(data__->, BUSY, , false);
+            __SET_VAR(data__->, ACTIVE, , false);
+            __SET_VAR(data__->, DONE, , false);
         }
-    }
-
-    /* PLCopen lifecycle: once the command has reached a terminal state,
-     * drop the latched outputs after EXECUTE falls so the FB is ready for
-     * the next rising edge. */
-    if (!execute &&
-        (fb->FB_STATE == HYD_FB_STATE_DONE ||
-         fb->FB_STATE == HYD_FB_STATE_ABORTED ||
-         fb->FB_STATE == HYD_FB_STATE_FAULT)) {
-        __SET_VAR(data__->, DONE, , false);
-        __SET_VAR(data__->, BUSY, , false);
-        __SET_VAR(data__->, ACTIVE, , false);
-        __SET_VAR(data__->, COMMANDABORTED, , false);
-        __SET_VAR(data__->, ERROR, , false);
-        __SET_VAR(data__->, ERRORID, , (IEC_WORD)0);
-        __SET_VAR(data__->, _PENDING, , false);
-        __SET_VAR(data__->, _EXEC_ID, , (IEC_WORD)0);
     }
 
     __SET_VAR(data__->, ACTIVE0, , __GET_VAR(data__->ACTIVE));
@@ -681,6 +666,21 @@ void __mcl_cmd_MoveVelocity(HYD_MOVEVELOCITY *data__)
     IEC_BOOL isPending = __GET_VAR(data__->_PENDING);
     IEC_WORD myExecId = __GET_VAR(data__->_EXEC_ID);
     HYD_REAL targetVelocity = __GET_VAR(data__->VELOCITY);
+
+    if (!execute)
+    {
+        __SET_VAR(data__->, INVELOCITY, , false);
+        __SET_VAR(data__->, COMMANDABORTED, , false);
+        __SET_VAR(data__->, ERROR, , false);
+        __SET_VAR(data__->, ERRORID, , (IEC_WORD)0);
+        __SET_VAR(data__->, BUSY, , false);
+        __SET_VAR(data__->, ACTIVE, , false);
+        __SET_VAR(data__->, _PENDING, , false);
+        __SET_VAR(data__->, _EXEC_ID, , (IEC_WORD)0);
+        __SET_VAR(data__->, ACTIVE0, , false);
+        __SET_VAR(data__->, EXECUTE0, , execute);
+        return;
+    }
 
     if (execRising)
     {
@@ -744,13 +744,24 @@ void __mcl_cmd_MoveVelocity(HYD_MOVEVELOCITY *data__)
 
     if (myExecId != 0)
     {
-        if (myExecId != (IEC_WORD)fb->_executionId) {
+        if (HYD_MotionControlFB_WasExecutionPreempted(fb,
+                                                      (uint16_t)myExecId,
+                                                      HYD_DIRECT_CMD_MOVE_VELOCITY)) {
             __SET_VAR(data__->, COMMANDABORTED, , true);
             __SET_VAR(data__->, BUSY, , false);
             __SET_VAR(data__->, ACTIVE, , false);
             __SET_VAR(data__->, INVELOCITY, , false);
-        } else {
-            if (fb->STATE.active)
+        } else if (myExecId == (IEC_WORD)HYD_MotionControlFB_GetDirectOwnerExecutionId(fb) &&
+                   HYD_MotionControlFB_GetDirectOwnerKind(fb) == HYD_DIRECT_CMD_MOVE_VELOCITY) {
+            if (HYD_MotionControlFB_IsError(fb))
+            {
+                __SET_VAR(data__->, ERROR, , true);
+                __SET_VAR(data__->, ERRORID, , (IEC_WORD)fb->ERROR_ID);
+                __SET_VAR(data__->, BUSY, , false);
+                __SET_VAR(data__->, ACTIVE, , false);
+                __SET_VAR(data__->, INVELOCITY, , false);
+            }
+            else
             {
                 __SET_VAR(data__->, BUSY, , true);
                 __SET_VAR(data__->, ACTIVE, , true);
@@ -766,34 +777,13 @@ void __mcl_cmd_MoveVelocity(HYD_MOVEVELOCITY *data__)
                     __SET_VAR(data__->, INVELOCITY, , false);
                 }
             }
-            else if (HYD_MotionControlFB_IsError(fb))
-            {
-                __SET_VAR(data__->, ERROR, , true);
-                __SET_VAR(data__->, ERRORID, , (IEC_WORD)fb->ERROR_ID);
-                __SET_VAR(data__->, BUSY, , false);
-                __SET_VAR(data__->, ACTIVE, , false);
-                __SET_VAR(data__->, INVELOCITY, , false);
-            }
-            else
-            {
-                __SET_VAR(data__->, BUSY, , HYD_MotionControlFB_IsBusy(fb));
-                __SET_VAR(data__->, ACTIVE, , fb->STATE.active ? true : false);
-            }
+        } else if (myExecId != (IEC_WORD)HYD_MotionControlFB_GetDirectOwnerExecutionId(fb) ||
+                   HYD_MotionControlFB_GetDirectOwnerKind(fb) != HYD_DIRECT_CMD_MOVE_VELOCITY) {
+            __SET_VAR(data__->, COMMANDABORTED, , true);
+            __SET_VAR(data__->, BUSY, , false);
+            __SET_VAR(data__->, ACTIVE, , false);
+            __SET_VAR(data__->, INVELOCITY, , false);
         }
-    }
-
-    if (!execute &&
-        (fb->FB_STATE == HYD_FB_STATE_DONE ||
-         fb->FB_STATE == HYD_FB_STATE_ABORTED ||
-         fb->FB_STATE == HYD_FB_STATE_FAULT)) {
-        __SET_VAR(data__->, BUSY, , false);
-        __SET_VAR(data__->, ACTIVE, , false);
-        __SET_VAR(data__->, INVELOCITY, , false);
-        __SET_VAR(data__->, COMMANDABORTED, , false);
-        __SET_VAR(data__->, ERROR, , false);
-        __SET_VAR(data__->, ERRORID, , (IEC_WORD)0);
-        __SET_VAR(data__->, _PENDING, , false);
-        __SET_VAR(data__->, _EXEC_ID, , (IEC_WORD)0);
     }
 
     __SET_VAR(data__->, ACTIVE0, , __GET_VAR(data__->ACTIVE));
@@ -862,6 +852,22 @@ void __mcl_cmd_PressureHandle(HYD_PRESSUREHANDLE *data__)
     IEC_WORD myExecId = __GET_VAR(data__->_EXEC_ID);
     HYD_REAL targetPressure = __GET_VAR(data__->PRESSURE);
 
+    if (!execute)
+    {
+        __SET_VAR(data__->, INPRESSURE, , false);
+        __SET_VAR(data__->, COMMANDABORTED, , false);
+        __SET_VAR(data__->, ERROR, , false);
+        __SET_VAR(data__->, ERRORID, , (IEC_WORD)0);
+        __SET_VAR(data__->, BUSY, , false);
+        __SET_VAR(data__->, ACTIVE, , false);
+        __SET_VAR(data__->, _PENDING, , false);
+        __SET_VAR(data__->, _EXEC_ID, , (IEC_WORD)0);
+        __SET_VAR(data__->, ACTIVE0, , false);
+        __SET_VAR(data__->, INPRESSURE0, , false);
+        __SET_VAR(data__->, EXECUTE0, , execute);
+        return;
+    }
+
     if (execRising)
     {
         if (bufferMode == HYD_BUFFER_MODE_ABORT) {
@@ -923,62 +929,45 @@ void __mcl_cmd_PressureHandle(HYD_PRESSUREHANDLE *data__)
 
     if (myExecId != 0)
     {
-        if (myExecId != (IEC_WORD)fb->_executionId) {
+        if (HYD_MotionControlFB_WasExecutionPreempted(fb,
+                                                      (uint16_t)myExecId,
+                                                      HYD_DIRECT_CMD_PRESSURE_HANDLE)) {
             __SET_VAR(data__->, COMMANDABORTED, , true);
             __SET_VAR(data__->, BUSY, , false);
             __SET_VAR(data__->, ACTIVE, , false);
             __SET_VAR(data__->, INPRESSURE, , false);
-        } else {
-            if (fb->SEGMENT_COMPLETED || (HYD_MotionControlFB_IsDone(fb) && fb->STATE.finished))
-            {
-                __SET_VAR(data__->, BUSY, , false);
-                __SET_VAR(data__->, ACTIVE, , false);
-                __SET_VAR(data__->, INPRESSURE, , false);
-            }
-            else if (fb->STATE.active)
-            {
-                __SET_VAR(data__->, BUSY, , true);
-                __SET_VAR(data__->, ACTIVE, , true);
-
-                HYD_REAL pressError = fb->AXIS_REF.pressure - targetPressure;
-                if (pressError < 0.0f) pressError = -pressError;
-                if (targetPressure > 0.0f && pressError < 0.5f)
-                {
-                    __SET_VAR(data__->, INPRESSURE, , true);
-                }
-                else
-                {
-                    __SET_VAR(data__->, INPRESSURE, , false);
-                }
-            }
-            else if (HYD_MotionControlFB_IsError(fb))
+        } else if (myExecId == (IEC_WORD)HYD_MotionControlFB_GetDirectOwnerExecutionId(fb) &&
+                   HYD_MotionControlFB_GetDirectOwnerKind(fb) == HYD_DIRECT_CMD_PRESSURE_HANDLE) {
+            if (HYD_MotionControlFB_IsError(fb))
             {
                 __SET_VAR(data__->, ERROR, , true);
                 __SET_VAR(data__->, ERRORID, , (IEC_WORD)fb->ERROR_ID);
                 __SET_VAR(data__->, BUSY, , false);
                 __SET_VAR(data__->, ACTIVE, , false);
                 __SET_VAR(data__->, INPRESSURE, , false);
-            }
-            else
-            {
-                __SET_VAR(data__->, BUSY, , HYD_MotionControlFB_IsBusy(fb));
-                __SET_VAR(data__->, ACTIVE, , fb->STATE.active ? true : false);
-            }
-        }
-    }
+            } else if (fb->SEGMENT_COMPLETED || (HYD_MotionControlFB_IsDone(fb) && fb->STATE.finished)) {
+                __SET_VAR(data__->, BUSY, , false);
+                __SET_VAR(data__->, ACTIVE, , false);
+                __SET_VAR(data__->, INPRESSURE, , false);
+            } else {
+                __SET_VAR(data__->, BUSY, , true);
+                __SET_VAR(data__->, ACTIVE, , true);
 
-    if (!execute &&
-        (fb->FB_STATE == HYD_FB_STATE_DONE ||
-         fb->FB_STATE == HYD_FB_STATE_ABORTED ||
-         fb->FB_STATE == HYD_FB_STATE_FAULT)) {
-        __SET_VAR(data__->, BUSY, , false);
-        __SET_VAR(data__->, ACTIVE, , false);
-        __SET_VAR(data__->, INPRESSURE, , false);
-        __SET_VAR(data__->, COMMANDABORTED, , false);
-        __SET_VAR(data__->, ERROR, , false);
-        __SET_VAR(data__->, ERRORID, , (IEC_WORD)0);
-        __SET_VAR(data__->, _PENDING, , false);
-        __SET_VAR(data__->, _EXEC_ID, , (IEC_WORD)0);
+                HYD_REAL pressError = fb->AXIS_REF.pressure - targetPressure;
+                if (pressError < 0.0f) pressError = -pressError;
+                if (targetPressure > 0.0f && pressError < 0.5f) {
+                    __SET_VAR(data__->, INPRESSURE, , true);
+                } else {
+                    __SET_VAR(data__->, INPRESSURE, , false);
+                }
+            }
+        } else if (myExecId != (IEC_WORD)HYD_MotionControlFB_GetDirectOwnerExecutionId(fb) ||
+                   HYD_MotionControlFB_GetDirectOwnerKind(fb) != HYD_DIRECT_CMD_PRESSURE_HANDLE) {
+            __SET_VAR(data__->, COMMANDABORTED, , true);
+            __SET_VAR(data__->, BUSY, , false);
+            __SET_VAR(data__->, ACTIVE, , false);
+            __SET_VAR(data__->, INPRESSURE, , false);
+        }
     }
 
     __SET_VAR(data__->, ACTIVE0, , __GET_VAR(data__->ACTIVE));

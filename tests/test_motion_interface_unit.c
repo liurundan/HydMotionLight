@@ -260,6 +260,53 @@ static void test_moveabsolute_sustains_busy_active_across_calls(void) {
                "COMMANDABORTED should not fire for current owner");
 }
 
+/* ==================================================================
+ * Test 7: MoveAbsolute 持有执行权时 fault 应映射到 ERROR/ERRORID
+ * ================================================================== */
+static void test_moveabsolute_owned_fault_sets_error_outputs(void) {
+    HYD_MOVEABSOLUTE ma;
+    HYD_MotionControlFB* fb;
+
+    __HydMotion_framework_Init();
+    ensure_axes_allocated(2);
+    memset(&ma, 0, sizeof(ma));
+
+    IEC_VAL(ma.EN) = true;
+    IEC_VAL(ma.EXECUTE) = true;
+    ma.EXECUTE0.value = false;
+    IEC_VAL(ma.AXISID) = 0;
+    IEC_VAL(ma.POSITION) = 100.0f;
+    IEC_VAL(ma.VELOCITY) = 50.0f;
+    IEC_VAL(ma.ACCELERATION) = 200.0f;
+    IEC_VAL(ma.DIRECTION) = 1;
+
+    __mcl_cmd_MoveAbsolute(&ma);
+    __HydMotion_framework_Publish();
+
+    IEC_VAL(ma.EXECUTE) = true;
+    ma.EXECUTE0.value = true;
+    __mcl_cmd_MoveAbsolute(&ma);
+
+    fb = __MK_GetPublic_MotionControlFB(0);
+    ASSERT_TRUE(fb != NULL, "FB instance should exist for owned fault test");
+
+    fb->STATE.faultActive = true;
+    fb->FB_STATE = HYD_FB_STATE_FAULT;
+    fb->ERROR_ID = HYD_DIAG_CODE_SENSOR_FAULT;
+    fb->DIAGNOSTIC.severity = HYD_DIAG_SEVERITY_FAULT;
+
+    __mcl_cmd_MoveAbsolute(&ma);
+
+    ASSERT_TRUE(IEC_VAL(ma.ERROR) == true,
+               "MoveAbsolute should surface ERROR while owned execution is in fault");
+    ASSERT_TRUE(IEC_VAL(ma.ERRORID) == HYD_DIAG_CODE_SENSOR_FAULT,
+               "MoveAbsolute should surface the active fault code");
+    ASSERT_TRUE(IEC_VAL(ma.BUSY) == false,
+               "MoveAbsolute BUSY should clear when owned execution faults");
+    ASSERT_TRUE(IEC_VAL(ma.ACTIVE) == false,
+               "MoveAbsolute ACTIVE should clear when owned execution faults");
+}
+
 
 /* ==================================================================
  * Test 8: MoveAbsolute 非法 AXISID 返回错误
@@ -446,6 +493,44 @@ static void test_reset_immediate_done_on_uninitialized_axis(void) {
                "Reset BUSY should be false on unallocated axis");
 }
 
+static void test_reset_preserves_direct_segment_configuration(void) {
+    HYD_MOVEABSOLUTE ma;
+    HYD_RESET reset;
+    HYD_MotionControlFB* fb;
+
+    __HydMotion_framework_Init();
+    ensure_axes_allocated(2);
+    memset(&ma, 0, sizeof(ma));
+
+    IEC_VAL(ma.EN) = true;
+    IEC_VAL(ma.EXECUTE) = true;
+    ma.EXECUTE0.value = false;
+    IEC_VAL(ma.AXISID) = 0;
+    IEC_VAL(ma.POSITION) = 123.0f;
+    IEC_VAL(ma.VELOCITY) = 40.0f;
+    IEC_VAL(ma.ACCELERATION) = 200.0f;
+    IEC_VAL(ma.DIRECTION) = 1;
+    __mcl_cmd_MoveAbsolute(&ma);
+    __HydMotion_framework_Publish();
+
+    fb = __MK_GetPublic_MotionControlFB(0);
+    ASSERT_TRUE(fb != NULL, "FB instance should exist");
+    ASSERT_TRUE(fb->DIRECT_SEGMENT_VALID == true,
+               "Direct segment should be loaded before reset");
+
+    memset(&reset, 0, sizeof(reset));
+    IEC_VAL(reset.EN) = true;
+    IEC_VAL(reset.EXECUTE) = true;
+    reset.EXECUTE0.value = false;
+    IEC_VAL(reset.AXISID) = 0;
+    __mcl_cmd_Reset(&reset);
+
+    ASSERT_TRUE(fb->DIRECT_SEGMENT_VALID == true,
+               "SoftReset should preserve the direct segment");
+    ASSERT_TRUE(fb->STATE.active == false,
+               "SoftReset should clear active execution state");
+}
+
 /* ==================================================================
  * Test 17: PressureHandle EXECUTE 上升沿 启动压力控制
  * ================================================================== */
@@ -586,6 +671,7 @@ int main(void) {
     test_moveprofile_execute_rising_triggers_motion();
     test_moveabsolute_execute_rising_sets_busy_active();
     test_moveabsolute_sustains_busy_active_across_calls();
+    test_moveabsolute_owned_fault_sets_error_outputs();
     test_moveabsolute_rejects_invalid_axis_index();
     test_movevelocity_execute_rising_starts_velocity_control();
     test_movevelocity_rejects_invalid_axis_index();
@@ -593,6 +679,7 @@ int main(void) {
     test_stop_rejects_invalid_axis_index();
     test_reset_immediate_done_on_initialized_axis();
     test_reset_immediate_done_on_uninitialized_axis();
+    test_reset_preserves_direct_segment_configuration();
     test_pressurehandle_execute_rising_starts_pressure_control();
     test_pressurehandle_en_false_clears_outputs();
     test_pressurehandle_rejects_invalid_axis_index();

@@ -71,20 +71,6 @@ static HYD_REAL HYD_ComputeTimeBasedVelocityMagnitude(HYD_REAL elapsedTime,
     return HYD_ClampReal(velocityMagnitude, 0.0, maxVelocity);
 }
 
-/**
- * @brief 规划梯形速度曲线剖面。
- *
- * 根据给定的运动距离、最大速度和加速度，计算梯形（或三角形）速度曲线的
- * 各阶段参数。当制动距离的两倍大于等于总距离时，退化为三角形曲线
- * （无匀速段）；否则生成完整的梯形曲线（加速-匀速-减速）。
- *
- * @param profile  输出参数，梯形剖面结构体指针，填充各阶段的时间和距离参数。
- * @param distance 运动总距离，必须为正值。
- * @param vMax     最大速度限制，必须为正值。
- * @param acc      加速度，必须为正值。
- * @return HYD_BOOL 参数有效时返回 true 并填充 profile；参数无效时返回 false，
- *                   并将 profile 清零。
- */
 HYD_BOOL HYD_PlanTrapezoid(HYD_TrapezoidProfile* profile,
                            HYD_REAL distance,
                            HYD_REAL vMax,
@@ -188,7 +174,7 @@ static HYD_REAL HYD_ComputePositionModeVelocityMagnitude(const HYD_MotionPlanner
                                                          HYD_MotionDirection direction) {
     HYD_REAL remainingDistance;
     HYD_REAL brakeVelocityMagnitude;
-    HYD_TrapezoidProfile profile;
+    HYD_REAL rampVelocityMagnitude;
 
     if (input == NULL || input->segment == NULL || input->axisRef == NULL) {
         return 0.0;
@@ -199,22 +185,14 @@ static HYD_REAL HYD_ComputePositionModeVelocityMagnitude(const HYD_MotionPlanner
                                                                        input->segment->maxAcceleration,
                                                                        input->segment->maxVelocity);
 
-    if (input->segment->planner == HYD_PLANNER_TIME_BASED) {
-        HYD_REAL trapezoidVelocity = 0.0;
-        if (HYD_PlanTrapezoid(&profile, remainingDistance,
-                              input->segment->maxVelocity,
-                              input->segment->maxAcceleration)) {
-            trapezoidVelocity = HYD_EvalTrapezoid(&profile, input->elapsedTime,
-                                                   input->segment->maxAcceleration,
-                                                   input->segment->maxVelocity);
-        }
-        if (trapezoidVelocity < 0.001f && brakeVelocityMagnitude > 0.001f) {
-            return brakeVelocityMagnitude;
-        }
-        return HYD_MinReal(trapezoidVelocity, brakeVelocityMagnitude);
+    if (input->segment->planner == HYD_PLANNER_POSITION_BASED) {
+        return brakeVelocityMagnitude;
     }
 
-    return brakeVelocityMagnitude;
+    rampVelocityMagnitude = HYD_ComputeTimeBasedVelocityMagnitude(input->elapsedTime,
+                                                                  input->segment->maxAcceleration,
+                                                                  input->segment->maxVelocity);
+    return HYD_MinReal(rampVelocityMagnitude, brakeVelocityMagnitude);
 }
 
 static HYD_REAL HYD_ComputeSpeedRampVelocityMagnitude(const HYD_MotionPlannerInput* input,
