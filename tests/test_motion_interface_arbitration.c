@@ -654,6 +654,62 @@ static void test_never_activated_fb_no_false_commandaborted(void) {
                "Never-activated FB should not be BUSY");
 }
 
+static void test_direct_command_preempts_moveprofile(void) {
+    HYD_MOVEPROFILE mp;
+    HYD_MOVEABSOLUTE ma;
+    HYD_CREATEMOTION cm;
+    HYD_AXISMOTION motion;
+
+    __HydMotion_framework_Init();
+
+    memset(&cm, 0, sizeof(cm));
+    IEC_VAL(cm.EN) = true;
+    IEC_VAL(cm.USE_RECIPE) = true;
+    IEC_VAL(cm.FLOW_TO_PUMPSPEED) = 1.2f;
+    IEC_VAL(cm.PUMPSPEED_LIMIT) = 3000.0f;
+    IEC_VAL(cm.USE_SIMULATION) = false;
+    __mcl_cmd_CreateMotion(&cm);
+
+    memset(&mp, 0, sizeof(mp));
+    memset(&motion, 0, sizeof(motion));
+    IEC_VAL(mp.EN) = true;
+    IEC_VAL(mp.EXECUTE) = true;
+    mp.EXECUTE0.value = false;
+    IEC_VAL(mp.AXISID) = IEC_VAL(cm.AXISID);
+    motion.MODE = HYD_MODE_POSITION;
+    motion.ENDCONDITION = HYD_END_POSITION;
+    motion.DIRECTION = HYD_DIRECTION_EXTEND;
+    motion.SETPOSITION = 100.0f;
+    motion.SETVELOCITY = 40.0f;
+    motion.SETFLOW = 10.0f;
+    motion.ACCELERATION = 150.0f;
+    motion.TIMESTAMP = 0.0f;
+    __SET_VAR(mp., MOTION, , motion);
+    __mcl_cmd_MoveProfile(&mp);
+    __HydMotion_framework_Publish();
+
+    memset(&ma, 0, sizeof(ma));
+    IEC_VAL(ma.EN) = true;
+    IEC_VAL(ma.EXECUTE) = true;
+    ma.EXECUTE0.value = false;
+    IEC_VAL(ma.AXISID) = IEC_VAL(cm.AXISID);
+    IEC_VAL(ma.POSITION) = 50.0f;
+    IEC_VAL(ma.VELOCITY) = 30.0f;
+    IEC_VAL(ma.ACCELERATION) = 120.0f;
+    IEC_VAL(ma.DIRECTION) = 1;
+    __mcl_cmd_MoveAbsolute(&ma);
+    __HydMotion_framework_Publish();
+
+    IEC_VAL(mp.EXECUTE) = true;
+    mp.EXECUTE0.value = true;
+    __mcl_cmd_MoveProfile(&mp);
+
+    ASSERT_TRUE(IEC_VAL(mp.ACTIVE) == false,
+               "MoveProfile should clear ACTIVE when a direct command takes over");
+    ASSERT_TRUE(IEC_VAL(mp.BUSY) == false,
+               "MoveProfile should clear BUSY when a direct command takes over");
+}
+
 int main(void) {
     printf("=== Motion Interface Arbitration Tests ===\n\n");
 
@@ -668,6 +724,7 @@ int main(void) {
     test_previous_command_loses_ownership_after_reset();
     test_preemption_chain_three_commands();
     test_never_activated_fb_no_false_commandaborted();
+    test_direct_command_preempts_moveprofile();
 
     printf("\n=== Results: %d/%d passed ===\n", tests_passed, tests_run);
     return (tests_passed == tests_run) ? 0 : 1;

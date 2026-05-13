@@ -493,6 +493,44 @@ static void test_reset_immediate_done_on_uninitialized_axis(void) {
                "Reset BUSY should be false on unallocated axis");
 }
 
+static void test_reset_preserves_direct_segment_configuration(void) {
+    HYD_MOVEABSOLUTE ma;
+    HYD_RESET reset;
+    HYD_MotionControlFB* fb;
+
+    __HydMotion_framework_Init();
+    ensure_axes_allocated(2);
+    memset(&ma, 0, sizeof(ma));
+
+    IEC_VAL(ma.EN) = true;
+    IEC_VAL(ma.EXECUTE) = true;
+    ma.EXECUTE0.value = false;
+    IEC_VAL(ma.AXISID) = 0;
+    IEC_VAL(ma.POSITION) = 123.0f;
+    IEC_VAL(ma.VELOCITY) = 40.0f;
+    IEC_VAL(ma.ACCELERATION) = 200.0f;
+    IEC_VAL(ma.DIRECTION) = 1;
+    __mcl_cmd_MoveAbsolute(&ma);
+    __HydMotion_framework_Publish();
+
+    fb = __MK_GetPublic_MotionControlFB(0);
+    ASSERT_TRUE(fb != NULL, "FB instance should exist");
+    ASSERT_TRUE(fb->DIRECT_SEGMENT_VALID == true,
+               "Direct segment should be loaded before reset");
+
+    memset(&reset, 0, sizeof(reset));
+    IEC_VAL(reset.EN) = true;
+    IEC_VAL(reset.EXECUTE) = true;
+    reset.EXECUTE0.value = false;
+    IEC_VAL(reset.AXISID) = 0;
+    __mcl_cmd_Reset(&reset);
+
+    ASSERT_TRUE(fb->DIRECT_SEGMENT_VALID == true,
+               "SoftReset should preserve the direct segment");
+    ASSERT_TRUE(fb->STATE.active == false,
+               "SoftReset should clear active execution state");
+}
+
 /* ==================================================================
  * Test 17: PressureHandle EXECUTE 上升沿 启动压力控制
  * ================================================================== */
@@ -641,6 +679,7 @@ int main(void) {
     test_stop_rejects_invalid_axis_index();
     test_reset_immediate_done_on_initialized_axis();
     test_reset_immediate_done_on_uninitialized_axis();
+    test_reset_preserves_direct_segment_configuration();
     test_pressurehandle_execute_rising_starts_pressure_control();
     test_pressurehandle_en_false_clears_outputs();
     test_pressurehandle_rejects_invalid_axis_index();

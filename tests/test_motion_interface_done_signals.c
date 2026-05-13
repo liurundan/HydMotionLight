@@ -668,6 +668,58 @@ static void test_reset_during_motion_done(void) {
                "MoveAbsolute should get COMMANDABORTED after Reset");
 }
 
+static void test_reset_preempts_movevelocity(void) {
+    HYD_MOVEVELOCITY mv;
+    HYD_RESET reset;
+    int axisId, step;
+
+    __HydMotion_framework_Init();
+    axisId = create_sim_axis(false);
+    ASSERT_TRUE(axisId >= 0, "CreateMotion should succeed");
+
+    memset(&mv, 0, sizeof(mv));
+    IEC_VAL(mv.EN) = true;
+    IEC_VAL(mv.EXECUTE) = true;
+    mv.EXECUTE0.value = false;
+    IEC_VAL(mv.AXISID) = axisId;
+    IEC_VAL(mv.VELOCITY) = 30.0f;
+    IEC_VAL(mv.ACCELERATION) = 150.0f;
+    IEC_VAL(mv.DIRECTION) = 1;
+    __mcl_cmd_MoveVelocity(&mv);
+    __HydMotion_framework_Publish();
+
+    IEC_VAL(mv.EXECUTE) = true;
+    mv.EXECUTE0.value = true;
+    __mcl_cmd_MoveVelocity(&mv);
+
+    for (step = 0; step < 5; step++) {
+        __HydMotion_framework_Publish();
+        IEC_VAL(mv.EXECUTE) = true;
+        mv.EXECUTE0.value = true;
+        __mcl_cmd_MoveVelocity(&mv);
+    }
+
+    memset(&reset, 0, sizeof(reset));
+    IEC_VAL(reset.EN) = true;
+    IEC_VAL(reset.EXECUTE) = true;
+    reset.EXECUTE0.value = false;
+    IEC_VAL(reset.AXISID) = axisId;
+    __mcl_cmd_Reset(&reset);
+
+    ASSERT_TRUE(IEC_VAL(reset.DONE) == true,
+               "Reset should complete immediately while preempting MoveVelocity");
+
+    __HydMotion_framework_Publish();
+    IEC_VAL(mv.EXECUTE) = true;
+    mv.EXECUTE0.value = true;
+    __mcl_cmd_MoveVelocity(&mv);
+
+    ASSERT_TRUE(IEC_VAL(mv.COMMANDABORTED) == true,
+               "MoveVelocity should report COMMANDABORTED after Reset");
+    ASSERT_TRUE(IEC_VAL(mv.INVELOCITY) == false,
+               "MoveVelocity INVELOCITY should clear after Reset takeover");
+}
+
 /* ==================================================================
  * Test 8: MoveAbsolute 伸出→Done→MoveVelocity 连续切换
  *
@@ -1254,6 +1306,7 @@ int main(void) {
     test_two_moveabsolute_fbs_alternating_same_axis();
     test_moveabsolute_done_read_sim_feedback();
     test_reset_during_motion_done();
+    test_reset_preempts_movevelocity();
     test_moveabsolute_done_then_movevelocity();
     test_moveabsolute_done_then_pressurehandle();
     test_multi_axis_extend_retract_parallel();
