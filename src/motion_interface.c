@@ -667,6 +667,21 @@ void __mcl_cmd_MoveVelocity(HYD_MOVEVELOCITY *data__)
     IEC_WORD myExecId = __GET_VAR(data__->_EXEC_ID);
     HYD_REAL targetVelocity = __GET_VAR(data__->VELOCITY);
 
+    if (!execute)
+    {
+        __SET_VAR(data__->, INVELOCITY, , false);
+        __SET_VAR(data__->, COMMANDABORTED, , false);
+        __SET_VAR(data__->, ERROR, , false);
+        __SET_VAR(data__->, ERRORID, , (IEC_WORD)0);
+        __SET_VAR(data__->, BUSY, , false);
+        __SET_VAR(data__->, ACTIVE, , false);
+        __SET_VAR(data__->, _PENDING, , false);
+        __SET_VAR(data__->, _EXEC_ID, , (IEC_WORD)0);
+        __SET_VAR(data__->, ACTIVE0, , false);
+        __SET_VAR(data__->, EXECUTE0, , execute);
+        return;
+    }
+
     if (execRising)
     {
         if (bufferMode == HYD_BUFFER_MODE_ABORT) {
