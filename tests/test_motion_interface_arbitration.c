@@ -347,9 +347,13 @@ static void test_multi_axis_isolation(void) {
 static void test_stop_success_then_new_command_starts(void) {
     HYD_MOVEABSOLUTE ma;
     HYD_STOP stop;
+    HYD_MotionControlFB* fb;
+    int step;
+    int stopDoneStep = 0;
 
     __HydMotion_framework_Init();
     ensure_axes_allocated(2);
+    fb = __MK_GetPublic_MotionControlFB(0);
 
     /* Step 1: 先启动 MoveAbsolute */
     start_moveabsolute_on_axis(0, &ma);
@@ -363,16 +367,25 @@ static void test_stop_success_then_new_command_starts(void) {
     stop.EXECUTE0.value = false;
     IEC_VAL(stop.AXISID) = 0;
     __mcl_cmd_Stop(&stop);
-    __HydMotion_framework_Publish();
 
-    /* Stop 应该在下一周期完成 */
-    IEC_VAL(stop.EXECUTE) = true;
-    stop.EXECUTE0.value = true;
-    __mcl_cmd_Stop(&stop);
+    for (step = 0; step < 1000; step++) {
+        fb->AXIS_REF.timestamp += 0.001f;
+        __HydMotion_framework_Publish();
+        IEC_VAL(stop.EXECUTE) = true;
+        stop.EXECUTE0.value = true;
+        __mcl_cmd_Stop(&stop);
+        if (IEC_VAL(stop.DONE)) {
+            stopDoneStep = step + 1;
+            break;
+        }
+    }
+
     ASSERT_TRUE(IEC_VAL(stop.DONE) == true,
-               "Stop should report DONE after axis is stopped");
+               "Stop should report DONE after deceleration completes");
     ASSERT_TRUE(IEC_VAL(stop.BUSY) == false,
                "Stop BUSY should be false after DONE");
+    ASSERT_TRUE(stopDoneStep > 1,
+               "Stop should not complete immediately while decelerating");
 
     /* Step 3: 新的 MoveAbsolute 在停止后的轴上启动 */
     memset(&ma, 0, sizeof(ma));

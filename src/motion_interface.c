@@ -443,7 +443,26 @@ void __mcl_cmd_Stop(HYD_STOP *data__)
 
     if (execRising)
     {
-        HYD_MotionControlFB_Abort(fb);
+        /* Process any pending commands (e.g. a START queued by MoveAbsolute
+         * in the same scan) so the state reflects actual motion status.
+         * Without this, Stop sees IDLE/READY and incorrectly signals DONE
+         * before the motion has even started. */
+        HYD_MotionControlFB_Scan(fb);
+
+        /* Already idle or done — nothing to stop. */
+        if (fb->FB_STATE != HYD_FB_STATE_STARTING &&
+            fb->FB_STATE != HYD_FB_STATE_RUNNING &&
+            fb->FB_STATE != HYD_FB_STATE_HOLD)
+        {
+            __SET_VAR(data__->, DONE, , true);
+            __SET_VAR(data__->, BUSY, , false);
+            __SET_VAR(data__->, EXECUTE0, , execute);
+            return;
+        }
+
+        HYD_MotionControlFB_Stop(fb,
+                                  fb->AXIS_REF.timestamp,
+                                  __GET_VAR(data__->DECELERATION));
         HYD_MotionControlFB_Scan(fb);
         __SET_VAR(data__->, _PENDING, , true);
         __SET_VAR(data__->, BUSY, , true);
@@ -455,9 +474,29 @@ void __mcl_cmd_Stop(HYD_STOP *data__)
 
     if (isPending)
     {
-        if (!fb->STATE.active && fb->FB_STATE != HYD_FB_STATE_RUNNING)
+        if (HYD_MotionControlFB_IsError(fb))
+        {
+            __SET_VAR(data__->, ERROR, , true);
+            __SET_VAR(data__->, ERRORID, , (IEC_WORD)fb->ERROR_ID);
+            __SET_VAR(data__->, BUSY, , false);
+            __SET_VAR(data__->, _PENDING, , false);
+        }
+        else if (fb->FB_STATE == HYD_FB_STATE_DONE)
         {
             __SET_VAR(data__->, DONE, , true);
+            __SET_VAR(data__->, BUSY, , false);
+            __SET_VAR(data__->, _PENDING, , false);
+        }
+        else if (fb->FB_STATE == HYD_FB_STATE_ABORTED)
+        {
+            __SET_VAR(data__->, COMMANDABORTED, , true);
+            __SET_VAR(data__->, BUSY, , false);
+            __SET_VAR(data__->, _PENDING, , false);
+        }
+        else if (fb->FB_STATE == HYD_FB_STATE_FAULT)
+        {
+            __SET_VAR(data__->, ERROR, , true);
+            __SET_VAR(data__->, ERRORID, , (IEC_WORD)fb->ERROR_ID);
             __SET_VAR(data__->, BUSY, , false);
             __SET_VAR(data__->, _PENDING, , false);
         }
@@ -465,14 +504,17 @@ void __mcl_cmd_Stop(HYD_STOP *data__)
         {
             __SET_VAR(data__->, BUSY, , true);
         }
-
-        if (HYD_MotionControlFB_IsError(fb))
-        {
-            __SET_VAR(data__->, ERROR, , true);
-            __SET_VAR(data__->, ERRORID, , (IEC_WORD)fb->ERROR_ID);
-            __SET_VAR(data__->, BUSY, , false);
-        }
     }
+
+	/* 命令已完成(_PENDING=false)且 EXECUTE 归零后，清除所有输出信号
+	 * PLCopen 语义：DONE/COMMANDABORTED 为单扫描脉冲，EXECUTE 下降沿后必须清除 */
+	if (!isPending && !execRising && !execute) {
+		__SET_VAR(data__->, DONE,, false);
+		__SET_VAR(data__->, BUSY,, false);
+		__SET_VAR(data__->, COMMANDABORTED,, false);
+		__SET_VAR(data__->, ERROR,, false);
+		__SET_VAR(data__->, ERRORID,, (IEC_WORD )0);
+	}
 
     __SET_VAR(data__->, EXECUTE0, , execute);
 }
@@ -562,12 +604,13 @@ void __mcl_cmd_MoveAbsolute(HYD_MOVEABSOLUTE *data__)
 
     if (myExecId != 0)
     {
-        if (myExecId != (IEC_WORD)fb->_executionId) {
-            __SET_VAR(data__->, COMMANDABORTED, , true);
-            __SET_VAR(data__->, BUSY, , false);
-            __SET_VAR(data__->, ACTIVE, , false);
-            __SET_VAR(data__->, DONE, , false);
-        } else {
+		if (myExecId != (IEC_WORD) fb->_executionId) {
+			__SET_VAR(data__->, COMMANDABORTED, , true);
+			__SET_VAR(data__->, BUSY, , false);
+			__SET_VAR(data__->, ACTIVE, , false);
+			__SET_VAR(data__->, DONE, , false);
+
+		} else {
             if (fb->SEGMENT_COMPLETED || (HYD_MotionControlFB_IsDone(fb) && fb->STATE.finished))
             {
                 __SET_VAR(data__->, DONE, , true);
@@ -592,6 +635,23 @@ void __mcl_cmd_MoveAbsolute(HYD_MOVEABSOLUTE *data__)
                 __SET_VAR(data__->, ACTIVE, , fb->STATE.active ? true : false);
             }
         }
+    }
+
+    /* PLCopen lifecycle: once the command has reached a terminal state,
+     * drop the latched outputs after EXECUTE falls so the FB is ready for
+     * the next rising edge. */
+    if (!execute &&
+        (fb->FB_STATE == HYD_FB_STATE_DONE ||
+         fb->FB_STATE == HYD_FB_STATE_ABORTED ||
+         fb->FB_STATE == HYD_FB_STATE_FAULT)) {
+        __SET_VAR(data__->, DONE, , false);
+        __SET_VAR(data__->, BUSY, , false);
+        __SET_VAR(data__->, ACTIVE, , false);
+        __SET_VAR(data__->, COMMANDABORTED, , false);
+        __SET_VAR(data__->, ERROR, , false);
+        __SET_VAR(data__->, ERRORID, , (IEC_WORD)0);
+        __SET_VAR(data__->, _PENDING, , false);
+        __SET_VAR(data__->, _EXEC_ID, , (IEC_WORD)0);
     }
 
     __SET_VAR(data__->, ACTIVE0, , __GET_VAR(data__->ACTIVE));
@@ -720,6 +780,20 @@ void __mcl_cmd_MoveVelocity(HYD_MOVEVELOCITY *data__)
                 __SET_VAR(data__->, ACTIVE, , fb->STATE.active ? true : false);
             }
         }
+    }
+
+    if (!execute &&
+        (fb->FB_STATE == HYD_FB_STATE_DONE ||
+         fb->FB_STATE == HYD_FB_STATE_ABORTED ||
+         fb->FB_STATE == HYD_FB_STATE_FAULT)) {
+        __SET_VAR(data__->, BUSY, , false);
+        __SET_VAR(data__->, ACTIVE, , false);
+        __SET_VAR(data__->, INVELOCITY, , false);
+        __SET_VAR(data__->, COMMANDABORTED, , false);
+        __SET_VAR(data__->, ERROR, , false);
+        __SET_VAR(data__->, ERRORID, , (IEC_WORD)0);
+        __SET_VAR(data__->, _PENDING, , false);
+        __SET_VAR(data__->, _EXEC_ID, , (IEC_WORD)0);
     }
 
     __SET_VAR(data__->, ACTIVE0, , __GET_VAR(data__->ACTIVE));
@@ -891,6 +965,20 @@ void __mcl_cmd_PressureHandle(HYD_PRESSUREHANDLE *data__)
                 __SET_VAR(data__->, ACTIVE, , fb->STATE.active ? true : false);
             }
         }
+    }
+
+    if (!execute &&
+        (fb->FB_STATE == HYD_FB_STATE_DONE ||
+         fb->FB_STATE == HYD_FB_STATE_ABORTED ||
+         fb->FB_STATE == HYD_FB_STATE_FAULT)) {
+        __SET_VAR(data__->, BUSY, , false);
+        __SET_VAR(data__->, ACTIVE, , false);
+        __SET_VAR(data__->, INPRESSURE, , false);
+        __SET_VAR(data__->, COMMANDABORTED, , false);
+        __SET_VAR(data__->, ERROR, , false);
+        __SET_VAR(data__->, ERRORID, , (IEC_WORD)0);
+        __SET_VAR(data__->, _PENDING, , false);
+        __SET_VAR(data__->, _EXEC_ID, , (IEC_WORD)0);
     }
 
     __SET_VAR(data__->, ACTIVE0, , __GET_VAR(data__->ACTIVE));

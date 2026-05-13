@@ -892,8 +892,8 @@ static void test_stop_during_moveabsolute_done(void) {
     __mcl_cmd_Stop(&stop);
     __HydMotion_framework_Publish();
 
-    /* 等待 Stop Done */
-    for (step = 0; step < 100; step++) {
+    /* 等待 Stop Done (decelerating stop needs time) */
+    for (step = 0; step < 500; step++) {
         __HydMotion_framework_Publish();
         IEC_VAL(stop.EXECUTE) = true;
         stop.EXECUTE0.value = true;
@@ -917,6 +917,16 @@ static void test_stop_during_moveabsolute_done(void) {
                "MoveAbsolute should get COMMANDABORTED after Stop");
     ASSERT_TRUE(IEC_VAL(ma.DONE) == false,
                "MoveAbsolute should NOT be DONE when stopped prematurely");
+
+    /* EXECUTE下降沿后，MoveAbsolute 的终态脉冲应清除 */
+    IEC_VAL(stop.EXECUTE) = false;
+    stop.EXECUTE0.value = true;
+    __mcl_cmd_Stop(&stop);
+    IEC_VAL(ma.EXECUTE) = false;
+    ma.EXECUTE0.value = true;
+    __mcl_cmd_MoveAbsolute(&ma);
+    ASSERT_TRUE(IEC_VAL(ma.COMMANDABORTED) == false,
+               "MoveAbsolute COMMANDABORTED should clear after EXECUTE falls");
 }
 
 /* ==================================================================
@@ -1202,8 +1212,8 @@ static void test_moveabsolute_abort_velocity_zero(void) {
     __mcl_cmd_Stop(&stop);
     __HydMotion_framework_Publish();
 
-    /* 等待Stop Done */
-    for (step = 0; step < 100; step++) {
+    /* 等待Stop完成减速 */
+    for (step = 0; step < 500; step++) {
         __HydMotion_framework_Publish();
         IEC_VAL(stop.EXECUTE) = true;
         stop.EXECUTE0.value = true;

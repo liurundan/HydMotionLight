@@ -109,7 +109,7 @@
  * - ABORT: STARTING / RUNNING / SEGMENT_COMPLETE / HOLD
  * - ACK: DISABLED / IDLE / READY / SEGMENT_COMPLETE / HOLD / DONE / ABORTED
  * - RESET: handled by RESET input and consumed on the next Cycle()/Scan()/Execute()
- * - STOP: still reserved and intentionally rejected until its state semantics are implemented
+ * - STOP: STARTING / RUNNING / HOLD (decelerates to zero then DONE)
  *
  * Hold / Resume semantics in the current minimal skeleton:
  * - HOLD drives safe zero outputs, preserves the active segment context, and freezes
@@ -199,11 +199,13 @@ typedef struct {
     HYD_BOOL _isDecelerating;
     HYD_TIME _decelStartTime;
     HYD_REAL _decelStartVel;
+ 
     HYD_DirectCommandKind _directOwnerKind;
     HYD_DirectSessionState _directSessionState;
     uint16_t _directOwnerExecutionId;
     uint16_t _lastPreemptedExecutionId;
     HYD_DirectCommandKind _lastPreemptedKind;
+ 
     HYD_BOOL _isStopping;
     HYD_TIME _stopStartTime;
     HYD_REAL _stopStartVel;
@@ -315,6 +317,12 @@ HYD_BOOL HYD_MotionControlFB_Resume(HYD_MotionControlFB* fb);
 
 /* Queues an abort command. Safe outputs are applied on the next Cycle()/Scan()/Execute(). */
 HYD_BOOL HYD_MotionControlFB_Abort(HYD_MotionControlFB* fb);
+
+/* Queues a decelerating stop command. Velocity ramps to zero at segment maxAcceleration,
+ * then FB transitions to DONE. Allowed in STARTING / RUNNING / HOLD. */
+HYD_BOOL HYD_MotionControlFB_Stop(HYD_MotionControlFB* fb,
+                                   HYD_TIME timestamp,
+                                   HYD_REAL deceleration);
 
 /*
  * Clears retained diagnostic latch/snapshot/history after the live event has
