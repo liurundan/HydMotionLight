@@ -15,6 +15,7 @@
 #include <math.h>
 #include <string.h>
 #include <stdbool.h>
+#include <stddef.h>
 
 #include "motion_interface.h"
 #include "motion_control.h"
@@ -219,6 +220,49 @@ static void test_moveabsolute_execute_rising_sets_busy_active(void) {
     ASSERT_TRUE(IEC_VAL(ma.COMMANDABORTED) == false, "COMMANDABORTED should be false initially");
     ASSERT_TRUE(IEC_VAL(ma.ERROR) == false, "ERROR should be false on normal start");
     /* ENO由PLC IEC层处理，不在C库层测试 */
+}
+
+/* ==================================================================
+ * ABI Regression: HYD_STOP field order must match PLC POU declaration
+ * ================================================================== */
+static void test_stop_struct_layout_matches_pou_order(void) {
+    ASSERT_TRUE(offsetof(HYD_STOP, BUSY) < offsetof(HYD_STOP, DONE),
+               "HYD_STOP BUSY must precede DONE to match PLC POU field order");
+}
+
+static void test_fb_struct_layout_matches_pou_order(void) {
+    ASSERT_TRUE(offsetof(HYD_MOVEPROFILE, ACTIVE) < offsetof(HYD_MOVEPROFILE, BUSY),
+               "HYD_MOVEPROFILE ACTIVE/BUSY order must match PLC POU");
+    ASSERT_TRUE(offsetof(HYD_LOADPROFILE, BUSY) < offsetof(HYD_LOADPROFILE, DONE),
+               "HYD_LOADPROFILE BUSY/DONE order must match PLC POU");
+    ASSERT_TRUE(offsetof(HYD_MOVEABSOLUTE, DONE) < offsetof(HYD_MOVEABSOLUTE, BUSY),
+               "HYD_MOVEABSOLUTE DONE/BUSY order must match PLC POU");
+    ASSERT_TRUE(offsetof(HYD_MOVEVELOCITY, INVELOCITY) < offsetof(HYD_MOVEVELOCITY, BUSY),
+               "HYD_MOVEVELOCITY INVELOCITY/BUSY order must match PLC POU");
+    ASSERT_TRUE(offsetof(HYD_RESET, DONE) < offsetof(HYD_RESET, BUSY),
+               "HYD_RESET DONE/BUSY order must match PLC POU");
+    ASSERT_TRUE(offsetof(HYD_PRESSUREHANDLE, INPRESSURE) < offsetof(HYD_PRESSUREHANDLE, BUSY),
+               "HYD_PRESSUREHANDLE INPRESSURE/BUSY order must match PLC POU");
+    ASSERT_TRUE(offsetof(HYD_CREATEMOTION, AXISID) < offsetof(HYD_CREATEMOTION, BUSY),
+               "HYD_CREATEMOTION AXISID/BUSY order must match PLC POU");
+    ASSERT_TRUE(offsetof(HYD_SETAXISFEEDBACK, BUSY) < offsetof(HYD_SETAXISFEEDBACK, DONE),
+               "HYD_SETAXISFEEDBACK BUSY/DONE order must match PLC POU");
+    ASSERT_TRUE(offsetof(HYD_GETPUMPREQUEST, PUMPSPEED) < offsetof(HYD_GETPUMPREQUEST, BUSY),
+               "HYD_GETPUMPREQUEST PUMPSPEED/BUSY order must match PLC POU");
+    ASSERT_TRUE(offsetof(HYD_READSTATUS, VALID) < offsetof(HYD_READSTATUS, BUSY),
+               "HYD_READSTATUS VALID/BUSY order must match PLC POU");
+    ASSERT_TRUE(offsetof(HYD_READERROR, VALID) < offsetof(HYD_READERROR, BUSY),
+               "HYD_READERROR VALID/BUSY order must match PLC POU");
+    ASSERT_TRUE(offsetof(HYD_READSIMFEEDBACK, VALID) < offsetof(HYD_READSIMFEEDBACK, BUSY),
+               "HYD_READSIMFEEDBACK VALID/BUSY order must match PLC POU");
+    ASSERT_TRUE(offsetof(HYD_READPARAMETER, ENABLE) < offsetof(HYD_READPARAMETER, AXISID),
+               "HYD_READPARAMETER ENABLE/AXISID input order must match PLC POU");
+    ASSERT_TRUE(offsetof(HYD_WRITEPARAMETER, EXECUTE) < offsetof(HYD_WRITEPARAMETER, AXISID),
+               "HYD_WRITEPARAMETER EXECUTE/AXISID input order must match PLC POU");
+    ASSERT_TRUE(offsetof(HYD_READBOOLPARAMETER, ENABLE) < offsetof(HYD_READBOOLPARAMETER, AXISID),
+               "HYD_READBOOLPARAMETER ENABLE/AXISID input order must match PLC POU");
+    ASSERT_TRUE(offsetof(HYD_WRITEBOOLPARAMETER, EXECUTE) < offsetof(HYD_WRITEBOOLPARAMETER, AXISID),
+               "HYD_WRITEBOOLPARAMETER EXECUTE/AXISID input order must match PLC POU");
 }
 
 /* ==================================================================
@@ -669,6 +713,8 @@ int main(void) {
     test_moveprofile_init_allocates_fb_with_recipe_mode();
     test_moveprofile_no_execute_does_not_start();
     test_moveprofile_execute_rising_triggers_motion();
+    test_stop_struct_layout_matches_pou_order();
+    test_fb_struct_layout_matches_pou_order();
     test_moveabsolute_execute_rising_sets_busy_active();
     test_moveabsolute_sustains_busy_active_across_calls();
     test_moveabsolute_owned_fault_sets_error_outputs();
