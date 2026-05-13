@@ -283,6 +283,14 @@ static HYD_DirectCommandKind HYD_InferDirectCommandKindFromSegment(const HYD_Mot
         return HYD_DIRECT_CMD_MOVE_ABSOLUTE;
     }
 
+    if (segment->mode == HYD_MODE_SPEED_RAMP) {
+        return HYD_DIRECT_CMD_MOVE_VELOCITY;
+    }
+
+    if (segment->mode == HYD_MODE_PRESSURE_CLOSED_LOOP) {
+        return HYD_DIRECT_CMD_PRESSURE_HANDLE;
+    }
+
     return HYD_DIRECT_CMD_NONE;
 }
 
