@@ -455,7 +455,7 @@ void __mcl_cmd_Stop(HYD_STOP *data__)
 
     if (execRising)
     {
-    	HYD_MotionControlFB_Scan(fb);
+        HYD_MotionControlFB_Scan(fb);
 
         if (fb->FB_STATE != HYD_FB_STATE_STARTING &&
             fb->FB_STATE != HYD_FB_STATE_RUNNING &&
@@ -469,14 +469,13 @@ void __mcl_cmd_Stop(HYD_STOP *data__)
         HYD_MotionControlFB_Stop(fb,
                                  fb->AXIS_REF.timestamp,
                                  __GET_VAR(data__->DECELERATION));
-        HYD_MotionControlFB_Scan(fb);
+        HYD_MotionControlFB_Cycle(fb);
 
         __SET_VAR(data__->, _PENDING, , true);
         __SET_VAR(data__->, BUSY, , true);
-
+        __SET_VAR(data__->, DONE, , false);
         __SET_VAR(data__->, COMMANDABORTED, , false);
         __SET_VAR(data__->, EXECUTE0, , execute);
-        __SET_VAR(data__->, DONE, , false);
         return;
     }
 

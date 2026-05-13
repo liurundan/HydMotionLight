@@ -38,28 +38,49 @@ def normalize_field(name: str) -> str:
     return XML_TO_C_FIELD.get(name, name).upper()
 
 
+def local_name(tag: str) -> str:
+    return tag.rsplit("}", 1)[-1]
+
+
+def children_named(elem: ET.Element, name: str) -> list[ET.Element]:
+    return [child for child in list(elem) if local_name(child.tag) == name]
+
+
+def descendants_named(elem: ET.Element, name: str) -> list[ET.Element]:
+    return [child for child in elem.iter() if local_name(child.tag) == name]
+
+
 def parse_xml(xml_path: Path):
     tree = ET.parse(xml_path)
     root = tree.getroot()
 
     data_types = {}
-    for data_type in root.findall(".//dataType"):
+    for data_type in descendants_named(root, "dataType"):
         name = data_type.attrib.get("name")
         if not name:
             continue
-        fields = [normalize_field(v.attrib["name"]) for v in data_type.findall("./baseType/struct/variable")]
+        fields = []
+        for base_type in children_named(data_type, "baseType"):
+            for struct in children_named(base_type, "struct"):
+                fields.extend(normalize_field(v.attrib["name"]) for v in children_named(struct, "variable"))
         if fields:
             data_types[name.upper()] = fields
 
     pous = {}
-    for pou in root.findall(".//pou[@pouType='functionBlock']"):
+    for pou in descendants_named(root, "pou"):
+        if pou.attrib.get("pouType") != "functionBlock":
+            continue
         pou_name = pou.attrib.get("name")
         if not pou_name:
             continue
         fields = []
+        interface = next(iter(children_named(pou, "interface")), None)
+        if interface is None:
+            continue
         for section in ("inputVars", "outputVars", "localVars"):
-            for var in pou.findall(f"./interface/{section}/variable"):
-                fields.append(normalize_field(var.attrib["name"]))
+            for section_elem in children_named(interface, section):
+                for var in children_named(section_elem, "variable"):
+                    fields.append(normalize_field(var.attrib["name"]))
         if fields:
             pous[pou_name] = fields
 
