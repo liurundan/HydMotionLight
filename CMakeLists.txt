@@ -132,3 +132,6 @@ add_test(NAME test_motion_interface_arbitration COMMAND test_motion_interface_ar
 add_test(NAME test_motion_interface_done_signals COMMAND test_motion_interface_done_signals)
 add_test(NAME test_moveabsolute_stop_integration COMMAND test_moveabsolute_stop_integration)
 add_test(NAME test_ramp_controller_detailed COMMAND test_ramp_controller)
+add_test(NAME test_interface_layout_consistency
+         COMMAND ${CMAKE_COMMAND} -E env PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}
+                 python3 ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_interface_layout_consistency.py)

@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project>
+  <types>
+    <dataTypes>
+      <dataType name="HYD_AxisMotion">
+        <baseType>
+          <struct>
+            <variable name="SEGMENTTAG"><type><USINT /></type></variable>
+            <variable name="PLANNER"><type><USINT /></type></variable>
+            <variable name="MODE"><type><USINT /></type></variable>
+            <variable name="ENDCONDITION"><type><USINT /></type></variable>
+            <variable name="DIRECTION"><type><USINT /></type></variable>
+            <variable name="SETPOSITION"><type><REAL /></type></variable>
+          </struct>
+        </baseType>
+      </dataType>
+    </dataTypes>
+    <pous>
+      <pou name="HYD_Stop" pouType="functionBlock">
+        <interface>
+          <inputVars>
+            <variable name="EXECUTE"><type><BOOL /></type></variable>
+            <variable name="AXISID"><type><SINT /></type></variable>
+            <variable name="DECELERATION"><type><REAL /></type></variable>
+          </inputVars>
+          <outputVars>
+            <variable name="DONE"><type><BOOL /></type></variable>
+            <variable name="BUSY"><type><BOOL /></type></variable>
+            <variable name="COMMANDABORTED"><type><BOOL /></type></variable>
+            <variable name="ERROR"><type><BOOL /></type></variable>
+            <variable name="ERRORID"><type><WORD /></type></variable>
+          </outputVars>
+          <localVars>
+            <variable name="Execute0"><type><BOOL /></type></variable>
+            <variable name="Done0"><type><BOOL /></type></variable>
+            <variable name="Active0"><type><BOOL /></type></variable>
+            <variable name="_PENDING"><type><BOOL /></type></variable>
+          </localVars>
+        </interface>
+      </pou>
+    </pous>
+  </types>
+</project>
