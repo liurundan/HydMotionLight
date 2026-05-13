@@ -129,6 +129,11 @@
 			<pou name="HYD_MoveProfile" pouType="functionBlock">
 				<interface>
 					<inputVars>
+						<variable name="AXISID">
+							<type>
+								<SINT />
+							</type>
+						</variable>
 						<variable name="EXECUTE">
 							<type>
 								<BOOL />
@@ -139,11 +144,6 @@
 								<derived name="HYD_AxisMotion" />
 							</type>
 						</variable>
-						<variable name="AXISID">
-							<type>
-								<SINT />
-							</type>
-						</variable>
 						<variable name="BUFFERMODE">
 							<type>
 								<INT />
@@ -151,7 +151,7 @@
 						</variable>
 					</inputVars>
 					<outputVars>
-						<variable name="ACTIVE">
+						<variable name="DONE">
 							<type>
 								<BOOL />
 							</type>
@@ -161,7 +161,7 @@
 								<BOOL />
 							</type>
 						</variable>
-						<variable name="DONE">
+						<variable name="ACTIVE">
 							<type>
 								<BOOL />
 							</type>
@@ -212,14 +212,14 @@
 			<pou name="HYD_LoadProfile" pouType="functionBlock">
 				<interface>
 					<inputVars>
-						<variable name="EXECUTE">
-							<type>
-								<BOOL />
-							</type>
-						</variable>
 						<variable name="AXISID">
 							<type>
 								<SINT />
+							</type>
+						</variable>				
+						<variable name="EXECUTE">
+							<type>
+								<BOOL />
 							</type>
 						</variable>
 						<variable name="MOTION">
@@ -229,12 +229,12 @@
 						</variable>
 					</inputVars>
 					<outputVars>
-						<variable name="BUSY">
+						<variable name="DONE">
 							<type>
 								<BOOL />
 							</type>
-						</variable>
-						<variable name="DONE">
+						</variable>				
+						<variable name="BUSY">
 							<type>
 								<BOOL />
 							</type>
@@ -272,14 +272,14 @@
 			<pou name="HYD_Stop" pouType="functionBlock">
 				<interface>
 					<inputVars>
-						<variable name="EXECUTE">
-							<type>
-								<BOOL />
-							</type>
-						</variable>
 						<variable name="AXISID">
 							<type>
 								<SINT />
+							</type>
+						</variable>					
+						<variable name="EXECUTE">
+							<type>
+								<BOOL />
 							</type>
 						</variable>
 						<variable name="DECELERATION">
@@ -289,12 +289,12 @@
 						</variable>
 					</inputVars>
 					<outputVars>
-						<variable name="BUSY">
+						<variable name="DONE">
 							<type>
 								<BOOL />
 							</type>
-						</variable>
-						<variable name="DONE">
+						</variable>					
+						<variable name="BUSY">
 							<type>
 								<BOOL />
 							</type>
@@ -347,17 +347,17 @@
 			<pou name="HYD_MoveAbsolute" pouType="functionBlock">
 				<interface>
 					<inputVars>
+						<variable name="AXISID">
+							<type>
+								<SINT />
+							</type>
+						</variable>					
 						<variable name="EXECUTE">
 							<type>
 								<BOOL />
 							</type>
 						</variable>
-						<variable name="AXISID">
-							<type>
-								<SINT />
-							</type>
-						</variable>
-						<variable name="ContinuousUpdate">
+						<variable name="CONTINUOUSUPDATE">
 							<type>
 								<BOOL />
 							</type>
@@ -468,14 +468,14 @@
 			<pou name="HYD_MoveVelocity" pouType="functionBlock">
 				<interface>
 					<inputVars>
-						<variable name="EXECUTE">
-							<type>
-								<BOOL />
-							</type>
-						</variable>
 						<variable name="AXISID">
 							<type>
 								<SINT />
+							</type>
+						</variable>					
+						<variable name="EXECUTE">
+							<type>
+								<BOOL />
 							</type>
 						</variable>
 						<variable name="CONTINUOUSUPDATE">
@@ -582,14 +582,14 @@
 			<pou name="HYD_Reset" pouType="functionBlock">
 				<interface>
 					<inputVars>
-						<variable name="EXECUTE">
-							<type>
-								<BOOL />
-							</type>
-						</variable>
 						<variable name="AXISID">
 							<type>
 								<SINT />
+							</type>
+						</variable>
+						<variable name="EXECUTE">
+							<type>
+								<BOOL />
 							</type>
 						</variable>
 					</inputVars>
@@ -636,14 +636,14 @@
 			<pou name="HYD_PressureHandle" pouType="functionBlock">
 				<interface>
 					<inputVars>
-						<variable name="EXECUTE">
-							<type>
-								<BOOL />
-							</type>
-						</variable>
 						<variable name="AXISID">
 							<type>
 								<SINT />
+							</type>
+						</variable>
+						<variable name="EXECUTE">
+							<type>
+								<BOOL />
 							</type>
 						</variable>
 						<variable name="PRESSURE">
@@ -774,12 +774,12 @@
 								<SINT />
 							</type>
 						</variable>
-						<variable name="BUSY">
+						<variable name="DONE">
 							<type>
 								<BOOL />
 							</type>
-						</variable>
-						<variable name="DONE">
+						</variable>						
+						<variable name="BUSY">
 							<type>
 								<BOOL />
 							</type>
@@ -813,14 +813,14 @@
 			<pou name="HYD_SetAxisFeedback" pouType="functionBlock">
 				<interface>
 					<inputVars>
-						<variable name="ENABLE">
-							<type>
-								<BOOL />
-							</type>
-						</variable>
 						<variable name="AXISID">
 							<type>
 								<SINT />
+							</type>
+						</variable>
+						<variable name="ENABLE">
+							<type>
+								<BOOL />
 							</type>
 						</variable>
 						<variable name="ACT_POSITION">
@@ -850,12 +850,12 @@
 						</variable>
 					</inputVars>
 					<outputVars>
-						<variable name="BUSY">
+						<variable name="DONE">
 							<type>
 								<BOOL />
 							</type>
-						</variable>
-						<variable name="DONE">
+						</variable>					
+						<variable name="BUSY">
 							<type>
 								<BOOL />
 							</type>
@@ -945,14 +945,14 @@
 			<pou name="HYD_ReadStatus" pouType="functionBlock">
 				<interface>
 					<inputVars>
-						<variable name="ENABLE">
-							<type>
-								<BOOL />
-							</type>
-						</variable>
 						<variable name="AXISID">
 							<type>
 								<SINT />
+							</type>
+						</variable>					
+						<variable name="ENABLE">
+							<type>
+								<BOOL />
 							</type>
 						</variable>
 					</inputVars>
@@ -994,14 +994,14 @@
 			<pou name="HYD_ReadError" pouType="functionBlock">
 				<interface>
 					<inputVars>
-						<variable name="ENABLE">
-							<type>
-								<BOOL />
-							</type>
-						</variable>
 						<variable name="AXISID">
 							<type>
 								<SINT />
+							</type>
+						</variable>					
+						<variable name="ENABLE">
+							<type>
+								<BOOL />
 							</type>
 						</variable>
 					</inputVars>
@@ -1038,14 +1038,14 @@
 			<pou name="HYD_ReadSimFeedback" pouType="functionBlock">
 				<interface>
 					<inputVars>
-						<variable name="ENABLE">
-							<type>
-								<BOOL />
-							</type>
-						</variable>
 						<variable name="AXISID">
 							<type>
 								<SINT />
+							</type>
+						</variable>					
+						<variable name="ENABLE">
+							<type>
+								<BOOL />
 							</type>
 						</variable>
 					</inputVars>
@@ -1102,8 +1102,8 @@
 			<pou name="HYD_ReadParameter" pouType="functionBlock">
 				<interface>
 					<inputVars>
+						<variable name="AXISID"><type><SINT /></type></variable>					
 						<variable name="ENABLE"><type><BOOL /></type></variable>
-						<variable name="AXISID"><type><SINT /></type></variable>
 						<variable name="PARAMETERNUMBER"><type><INT /></type></variable>
 					</inputVars>
 					<outputVars>
@@ -1124,8 +1124,8 @@
 			<pou name="HYD_WriteParameter" pouType="functionBlock">
 				<interface>
 					<inputVars>
+						<variable name="AXISID"><type><SINT /></type></variable>					
 						<variable name="EXECUTE"><type><BOOL /></type></variable>
-						<variable name="AXISID"><type><SINT /></type></variable>
 						<variable name="PARAMETERNUMBER"><type><INT /></type></variable>
 						<variable name="VALUE"><type><LREAL /></type></variable>
 					</inputVars>
@@ -1147,8 +1147,8 @@
 			<pou name="HYD_ReadBoolParameter" pouType="functionBlock">
 				<interface>
 					<inputVars>
+						<variable name="AXISID"><type><SINT /></type></variable>					
 						<variable name="ENABLE"><type><BOOL /></type></variable>
-						<variable name="AXISID"><type><SINT /></type></variable>
 						<variable name="PARAMETERNUMBER"><type><INT /></type></variable>
 					</inputVars>
 					<outputVars>
@@ -1169,8 +1169,8 @@
 			<pou name="HYD_WriteBoolParameter" pouType="functionBlock">
 				<interface>
 					<inputVars>
+						<variable name="AXISID"><type><SINT /></type></variable>					
 						<variable name="EXECUTE"><type><BOOL /></type></variable>
-						<variable name="AXISID"><type><SINT /></type></variable>
 						<variable name="PARAMETERNUMBER"><type><INT /></type></variable>
 						<variable name="VALUE"><type><BOOL /></type></variable>
 					</inputVars>
