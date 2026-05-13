@@ -729,13 +729,24 @@ void __mcl_cmd_MoveVelocity(HYD_MOVEVELOCITY *data__)
 
     if (myExecId != 0)
     {
-        if (myExecId != (IEC_WORD)fb->_executionId) {
+        if (HYD_MotionControlFB_WasExecutionPreempted(fb,
+                                                      (uint16_t)myExecId,
+                                                      HYD_DIRECT_CMD_MOVE_VELOCITY)) {
             __SET_VAR(data__->, COMMANDABORTED, , true);
             __SET_VAR(data__->, BUSY, , false);
             __SET_VAR(data__->, ACTIVE, , false);
             __SET_VAR(data__->, INVELOCITY, , false);
-        } else {
-            if (fb->STATE.active)
+        } else if (myExecId == (IEC_WORD)HYD_MotionControlFB_GetDirectOwnerExecutionId(fb) &&
+                   HYD_MotionControlFB_GetDirectOwnerKind(fb) == HYD_DIRECT_CMD_MOVE_VELOCITY) {
+            if (HYD_MotionControlFB_IsError(fb))
+            {
+                __SET_VAR(data__->, ERROR, , true);
+                __SET_VAR(data__->, ERRORID, , (IEC_WORD)fb->ERROR_ID);
+                __SET_VAR(data__->, BUSY, , false);
+                __SET_VAR(data__->, ACTIVE, , false);
+                __SET_VAR(data__->, INVELOCITY, , false);
+            }
+            else
             {
                 __SET_VAR(data__->, BUSY, , true);
                 __SET_VAR(data__->, ACTIVE, , true);
@@ -751,19 +762,12 @@ void __mcl_cmd_MoveVelocity(HYD_MOVEVELOCITY *data__)
                     __SET_VAR(data__->, INVELOCITY, , false);
                 }
             }
-            else if (HYD_MotionControlFB_IsError(fb))
-            {
-                __SET_VAR(data__->, ERROR, , true);
-                __SET_VAR(data__->, ERRORID, , (IEC_WORD)fb->ERROR_ID);
-                __SET_VAR(data__->, BUSY, , false);
-                __SET_VAR(data__->, ACTIVE, , false);
-                __SET_VAR(data__->, INVELOCITY, , false);
-            }
-            else
-            {
-                __SET_VAR(data__->, BUSY, , HYD_MotionControlFB_IsBusy(fb));
-                __SET_VAR(data__->, ACTIVE, , fb->STATE.active ? true : false);
-            }
+        } else if (myExecId != (IEC_WORD)HYD_MotionControlFB_GetDirectOwnerExecutionId(fb) ||
+                   HYD_MotionControlFB_GetDirectOwnerKind(fb) != HYD_DIRECT_CMD_MOVE_VELOCITY) {
+            __SET_VAR(data__->, COMMANDABORTED, , true);
+            __SET_VAR(data__->, BUSY, , false);
+            __SET_VAR(data__->, ACTIVE, , false);
+            __SET_VAR(data__->, INVELOCITY, , false);
         }
     }
 
