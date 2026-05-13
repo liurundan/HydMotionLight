@@ -300,6 +300,54 @@ static void test_pressurehandle_preempted_by_stop(void) {
                "PressureHandle should raise COMMANDABORTED when preempted by Stop");
     ASSERT_TRUE(IEC_VAL(ph.ACTIVE) == false,
                "PressureHandle ACTIVE should be false after preemption");
+    ASSERT_TRUE(IEC_VAL(ph.INPRESSURE) == false,
+               "PressureHandle INPRESSURE should clear after Stop takeover");
+}
+
+/* ==================================================================
+ * Test 5: 多轴隔离 — 轴0的命令不影响轴1
+ * ================================================================== */
+static void test_movevelocity_preempted_by_pressurehandle(void) {
+    HYD_MOVEVELOCITY mv;
+    HYD_PRESSUREHANDLE ph;
+
+    __HydMotion_framework_Init();
+    ensure_axes_allocated(2);
+
+    memset(&mv, 0, sizeof(mv));
+    IEC_VAL(mv.EN) = true;
+    IEC_VAL(mv.EXECUTE) = true;
+    mv.EXECUTE0.value = false;
+    IEC_VAL(mv.AXISID) = 0;
+    IEC_VAL(mv.VELOCITY) = 30.0f;
+    IEC_VAL(mv.ACCELERATION) = 150.0f;
+    IEC_VAL(mv.DIRECTION) = 1;
+    __mcl_cmd_MoveVelocity(&mv);
+    __HydMotion_framework_Publish();
+
+    IEC_VAL(mv.EXECUTE) = true;
+    mv.EXECUTE0.value = true;
+    __mcl_cmd_MoveVelocity(&mv);
+
+    memset(&ph, 0, sizeof(ph));
+    IEC_VAL(ph.EN) = true;
+    IEC_VAL(ph.EXECUTE) = true;
+    ph.EXECUTE0.value = false;
+    IEC_VAL(ph.AXISID) = 0;
+    IEC_VAL(ph.PRESSURE) = 5.0f;
+    IEC_VAL(ph.PRESSURERAMPRATE) = 10.0f;
+    IEC_VAL(ph.DURATION) = 0.5f;
+    __mcl_cmd_PressureHandle(&ph);
+    __HydMotion_framework_Publish();
+
+    IEC_VAL(mv.EXECUTE) = true;
+    mv.EXECUTE0.value = true;
+    __mcl_cmd_MoveVelocity(&mv);
+
+    ASSERT_TRUE(IEC_VAL(mv.COMMANDABORTED) == true,
+               "MoveVelocity should raise COMMANDABORTED when preempted by PressureHandle");
+    ASSERT_TRUE(IEC_VAL(mv.INVELOCITY) == false,
+               "MoveVelocity INVELOCITY should clear after PressureHandle takeover");
 }
 
 /* ==================================================================
@@ -613,6 +661,7 @@ int main(void) {
     test_moveabsolute_preempted_by_movevelocity();
     test_movevelocity_preempted_by_moveabsolute();
     test_pressurehandle_preempted_by_stop();
+    test_movevelocity_preempted_by_pressurehandle();
     test_multi_axis_isolation();
     test_stop_success_then_new_command_starts();
     test_self_preemption_same_fb_twice();

@@ -327,6 +327,8 @@ static void test_movevelocity_then_stop_done(void) {
     __mcl_cmd_MoveVelocity(&mv);
     ASSERT_TRUE(IEC_VAL(mv.COMMANDABORTED) == true,
                "MoveVelocity should get COMMANDABORTED when stopped");
+    ASSERT_TRUE(IEC_VAL(mv.INVELOCITY) == false,
+               "MoveVelocity INVELOCITY should clear after Stop takeover");
 }
 
 /* ==================================================================
