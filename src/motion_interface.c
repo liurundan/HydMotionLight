@@ -678,7 +678,6 @@ void __mcl_cmd_MoveVelocity(HYD_MOVEVELOCITY *data__)
         __SET_VAR(data__->, _PENDING, , false);
         __SET_VAR(data__->, _EXEC_ID, , (IEC_WORD)0);
         __SET_VAR(data__->, ACTIVE0, , false);
-        __SET_VAR(data__->, INPRESSURE0, , false);
         __SET_VAR(data__->, EXECUTE0, , execute);
         return;
     }
@@ -864,6 +863,7 @@ void __mcl_cmd_PressureHandle(HYD_PRESSUREHANDLE *data__)
         __SET_VAR(data__->, _PENDING, , false);
         __SET_VAR(data__->, _EXEC_ID, , (IEC_WORD)0);
         __SET_VAR(data__->, ACTIVE0, , false);
+        __SET_VAR(data__->, INPRESSURE0, , false);
         __SET_VAR(data__->, EXECUTE0, , execute);
         return;
     }
