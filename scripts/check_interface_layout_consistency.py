@@ -10,6 +10,8 @@ POU_TO_C_TYPE = {
     "HYD_MoveProfile": "HYD_MOVEPROFILE",
     "HYD_LoadProfile": "HYD_LOADPROFILE",
     "HYD_Stop": "HYD_STOP",
+    "HYD_Hold": "HYD_HOLD",
+    "HYD_Resume": "HYD_RESUME",
     "HYD_MoveAbsolute": "HYD_MOVEABSOLUTE",
     "HYD_MoveVelocity": "HYD_MOVEVELOCITY",
     "HYD_Reset": "HYD_RESET",

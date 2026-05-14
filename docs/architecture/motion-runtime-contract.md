@@ -328,4 +328,3 @@ Known examples to verify against implementation and future documentation cleanup
 - `DECELERATION`, `JERK`, and `CONTINUOUSUPDATE` on some IEC FBs do not yet imply full independent runtime semantics
 - `HYD_LOADPROFILE` is not yet a fully implemented lifecycle component
 - `PressureHandle` timed completion currently clears `BUSY/ACTIVE` without exposing a `DONE` pin like `MoveAbsolute` or `Stop`
-- Dedicated integration-surface wrappers for some core commands, such as `Hold` and `Resume`, are not yet present in the same way as the currently exposed IEC FB set

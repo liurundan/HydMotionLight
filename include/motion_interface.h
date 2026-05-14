@@ -119,6 +119,46 @@ typedef struct {
 
 } HYD_STOP;
 
+// FUNCTION_BLOCK HYD_Hold
+// Data part
+typedef struct {
+  // FB Interface - IN, OUT, IN_OUT variables
+  __DECLARE_VAR(BOOL,EN)
+  __DECLARE_VAR(BOOL,ENO)
+  __DECLARE_VAR(SINT,AXISID)
+  __DECLARE_VAR(BOOL,EXECUTE)
+  __DECLARE_VAR(BOOL,DONE)
+  __DECLARE_VAR(BOOL,BUSY)
+  __DECLARE_VAR(BOOL,ERROR)
+  __DECLARE_VAR(WORD,ERRORID)
+
+  // FB private variables - TEMP, private and located variables
+  __DECLARE_VAR(BOOL,EXECUTE0)
+  __DECLARE_VAR(BOOL,DONE0)
+  __DECLARE_VAR(BOOL,_PENDING)
+
+} HYD_HOLD;
+
+// FUNCTION_BLOCK HYD_Resume
+// Data part
+typedef struct {
+  // FB Interface - IN, OUT, IN_OUT variables
+  __DECLARE_VAR(BOOL,EN)
+  __DECLARE_VAR(BOOL,ENO)
+  __DECLARE_VAR(SINT,AXISID)
+  __DECLARE_VAR(BOOL,EXECUTE)
+  __DECLARE_VAR(BOOL,DONE)
+  __DECLARE_VAR(BOOL,BUSY)
+  __DECLARE_VAR(BOOL,ERROR)
+  __DECLARE_VAR(WORD,ERRORID)
+
+  // FB private variables - TEMP, private and located variables
+  __DECLARE_VAR(BOOL,EXECUTE0)
+  __DECLARE_VAR(BOOL,DONE0)
+  __DECLARE_VAR(BOOL,_PENDING)
+
+} HYD_RESUME;
+
 // FUNCTION_BLOCK HYD_MoveAbsolute
 // Note: JERK and CONTINUOUSUPDATE are currently reserved compatibility pins.
 // Non-default values are rejected by the IEC adapter until runtime support exists.
@@ -444,6 +484,8 @@ extern void __mcl_cmd_CreateMotion(HYD_CREATEMOTION *data__);
 extern void __mcl_cmd_LoadProfile(HYD_LOADPROFILE *data__);
 extern void __mcl_cmd_MoveProfile(HYD_MOVEPROFILE *data__);
 extern void __mcl_cmd_Stop(HYD_STOP *data__);
+extern void __mcl_cmd_Hold(HYD_HOLD *data__);
+extern void __mcl_cmd_Resume(HYD_RESUME *data__);
 extern void __mcl_cmd_MoveAbsolute(HYD_MOVEABSOLUTE *data__);
 extern void __mcl_cmd_Reset(HYD_RESET *data__);
 extern void __mcl_cmd_MoveVelocity(HYD_MOVEVELOCITY *data__);

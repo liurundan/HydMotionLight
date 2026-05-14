@@ -37,7 +37,7 @@ against the current implementation in:
 
 ### Medium
 
-4. `Hold` and `Resume` exist in the runtime core but have no equivalent IEC FB surface.
+4. `Hold` and `Resume` now have dedicated IEC FB wrappers; PLC integration examples still need to be documented.
 5. `BufferMode` remains a very small subset of the apparent PLCopen surface.
 6. `segmentTag` and `segmentType` are still partially conflated in the adapter/build path.
 7. Some in-code comments and header contracts are narrower than the actual runtime behavior.
@@ -131,33 +131,39 @@ Recommended direction:
 
 - Decide whether recipe-side takeover should remain implicitly observed or be surfaced as a first-class lifecycle signal.
 
-### 4. `Hold` and `Resume` Exist Only in the Core
+### 4. `Hold` and `Resume` IEC Surface Added
 
-Severity: Medium
+Severity: Resolved implementation gap; documentation follow-up remains
 
 Affected surface:
 
 - [motion_control.h](/home/dan/project/hdy-motion-light/include/motion_control.h:114)
 - [motion_control.c](/home/dan/project/hdy-motion-light/src/motion_control.c:558)
+- [motion_interface.h](/home/dan/project/hdy-motion-light/include/motion_interface.h)
+- [motion_interface.c](/home/dan/project/hdy-motion-light/src/motion_interface.c)
+- [pousHydMotion.xml](/home/dan/project/hdy-motion-light/pousHydMotion.xml)
 
-Observed mismatch:
+Current status:
 
 - `Hold` and `Resume` are fully modeled in the runtime core.
-- The IEC surface does not currently expose dedicated FBs or equivalent BOOL-driven command wrappers for them.
+- The IEC surface now exposes dedicated `HYD_Hold` and `HYD_Resume` command wrappers.
+- The wrappers expose the same command-lifecycle fields as other simple command FBs: `AXISID`, `EXECUTE`, `DONE`, `BUSY`, `ERROR`, and `ERRORID`.
 
 Evidence:
 
 - Runtime command enums and implementation contain `HYD_CMD_HOLD` and `HYD_CMD_RESUME`: [motion_control.h](/home/dan/project/hdy-motion-light/include/motion_control.h:121), [motion_control.c](/home/dan/project/hdy-motion-light/src/motion_control.c:782)
-- Header comments explicitly say these are currently exposed only through API calls: [motion_control.h](/home/dan/project/hdy-motion-light/include/motion_control.h:114)
+- IEC adapter wrappers call `HYD_MotionControlFB_Hold()` and `HYD_MotionControlFB_Resume()` and report `DONE` after the requested state transition is observed.
+- Interface layout consistency tests cover the XML/C field-order contract for both new POUs.
 
 Impact:
 
-- The core is more capable than the public PLC-facing surface.
-- PLC process-layer users cannot consume these capabilities through the same documented FB workflow as the rest of the library.
+- PLC process-layer users can consume hold/resume through the same documented FB workflow as the rest of the library.
+- PLC integration documentation should still describe when process logic should prefer `Hold`/`Resume` over `Stop`, `Abort`, and process-level phase transitions.
 
 Recommended direction:
 
-- Either add IEC-facing wrappers or keep them explicitly internal/API-only and document that as a product boundary.
+- Add PLC integration examples for `HYD_Hold` and `HYD_Resume`.
+- Keep `Hold`/`Resume` documented as runtime pause/resume semantics, not as machine phase sequencing.
 
 ### 5. `BufferMode` Is Only a Small Subset of the Apparent Surface
 

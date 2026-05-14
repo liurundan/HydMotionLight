@@ -326,6 +326,19 @@ static HYD_BOOL directStopCanCompleteImmediately(const HYD_MotionControlFB* fb)
            fb->FB_STATE != HYD_FB_STATE_HOLD;
 }
 
+static HYD_BOOL axisIndexIsAllocated(IEC_SINT axisIndex)
+{
+    return axisIndex >= 0 && axisIndex < (IEC_SINT)nextAllocatedFB;
+}
+
+static IEC_WORD commandFailureErrorId(const HYD_MotionControlFB* fb)
+{
+    if (fb != NULL && fb->ERROR_ID != HYD_DIAG_CODE_NONE) {
+        return (IEC_WORD)fb->ERROR_ID;
+    }
+    return (IEC_WORD)HYD_DIAG_CODE_COMMAND_NOT_ALLOWED;
+}
+
 static HYD_BOOL validateSupportedBufferMode(IEC_INT bufferMode, IEC_WORD* errorId)
 {
     if (bufferMode == HYD_BUFFER_MODE_ABORT || bufferMode == HYD_BUFFER_MODE_BUFFER) {
@@ -770,6 +783,156 @@ void __mcl_cmd_Stop(HYD_STOP *data__)
     __SET_VAR(data__->, EXECUTE0, , execute);
 }
 
+void __mcl_cmd_Hold(HYD_HOLD *data__)
+{
+    IEC_BOOL execute = __GET_VAR(data__->EXECUTE);
+    IEC_BOOL execRising = execute && !__GET_VAR(data__->EXECUTE0);
+    IEC_SINT axisIndex = __GET_VAR(data__->AXISID);
+
+    if (!axisIndexIsAllocated(axisIndex))
+    {
+        __SET_VAR(data__->, ERROR, , true);
+        __SET_VAR(data__->, ERRORID, , (IEC_WORD)HYD_DIAG_CODE_START_CONTEXT_INVALID);
+        __SET_VAR(data__->, BUSY, , false);
+        __SET_VAR(data__->, EXECUTE0, , execute);
+        return;
+    }
+
+    HYD_MotionControlFB* fb = &HYD_MotionControlFB_inst[axisIndex];
+    IEC_BOOL isPending = __GET_VAR(data__->_PENDING);
+
+    if (!execute)
+    {
+        __SET_VAR(data__->, DONE, , false);
+        __SET_VAR(data__->, ERROR, , false);
+        __SET_VAR(data__->, ERRORID, , (IEC_WORD)0);
+        __SET_VAR(data__->, BUSY, , false);
+        __SET_VAR(data__->, _PENDING, , false);
+        __SET_VAR(data__->, EXECUTE0, , execute);
+        return;
+    }
+
+    if (execRising)
+    {
+        if (!HYD_MotionControlFB_Hold(fb))
+        {
+            __SET_VAR(data__->, ERROR, , true);
+            __SET_VAR(data__->, ERRORID, , commandFailureErrorId(fb));
+            __SET_VAR(data__->, BUSY, , false);
+            __SET_VAR(data__->, EXECUTE0, , execute);
+            return;
+        }
+
+        __SET_VAR(data__->, DONE, , false);
+        __SET_VAR(data__->, BUSY, , true);
+        __SET_VAR(data__->, ERROR, , false);
+        __SET_VAR(data__->, ERRORID, , (IEC_WORD)0);
+        __SET_VAR(data__->, _PENDING, , true);
+        __SET_VAR(data__->, EXECUTE0, , execute);
+        return;
+    }
+
+    if (isPending)
+    {
+        if (HYD_MotionControlFB_IsError(fb))
+        {
+            __SET_VAR(data__->, ERROR, , true);
+            __SET_VAR(data__->, ERRORID, , (IEC_WORD)fb->ERROR_ID);
+            __SET_VAR(data__->, BUSY, , false);
+            __SET_VAR(data__->, _PENDING, , false);
+        }
+        else if (fb->FB_STATE == HYD_FB_STATE_HOLD)
+        {
+            __SET_VAR(data__->, DONE, , true);
+            __SET_VAR(data__->, BUSY, , false);
+            __SET_VAR(data__->, ERROR, , false);
+            __SET_VAR(data__->, ERRORID, , (IEC_WORD)0);
+            __SET_VAR(data__->, _PENDING, , false);
+        }
+        else
+        {
+            __SET_VAR(data__->, BUSY, , true);
+        }
+    }
+
+    __SET_VAR(data__->, EXECUTE0, , execute);
+}
+
+void __mcl_cmd_Resume(HYD_RESUME *data__)
+{
+    IEC_BOOL execute = __GET_VAR(data__->EXECUTE);
+    IEC_BOOL execRising = execute && !__GET_VAR(data__->EXECUTE0);
+    IEC_SINT axisIndex = __GET_VAR(data__->AXISID);
+
+    if (!axisIndexIsAllocated(axisIndex))
+    {
+        __SET_VAR(data__->, ERROR, , true);
+        __SET_VAR(data__->, ERRORID, , (IEC_WORD)HYD_DIAG_CODE_START_CONTEXT_INVALID);
+        __SET_VAR(data__->, BUSY, , false);
+        __SET_VAR(data__->, EXECUTE0, , execute);
+        return;
+    }
+
+    HYD_MotionControlFB* fb = &HYD_MotionControlFB_inst[axisIndex];
+    IEC_BOOL isPending = __GET_VAR(data__->_PENDING);
+
+    if (!execute)
+    {
+        __SET_VAR(data__->, DONE, , false);
+        __SET_VAR(data__->, ERROR, , false);
+        __SET_VAR(data__->, ERRORID, , (IEC_WORD)0);
+        __SET_VAR(data__->, BUSY, , false);
+        __SET_VAR(data__->, _PENDING, , false);
+        __SET_VAR(data__->, EXECUTE0, , execute);
+        return;
+    }
+
+    if (execRising)
+    {
+        if (!HYD_MotionControlFB_Resume(fb))
+        {
+            __SET_VAR(data__->, ERROR, , true);
+            __SET_VAR(data__->, ERRORID, , commandFailureErrorId(fb));
+            __SET_VAR(data__->, BUSY, , false);
+            __SET_VAR(data__->, EXECUTE0, , execute);
+            return;
+        }
+
+        __SET_VAR(data__->, DONE, , false);
+        __SET_VAR(data__->, BUSY, , true);
+        __SET_VAR(data__->, ERROR, , false);
+        __SET_VAR(data__->, ERRORID, , (IEC_WORD)0);
+        __SET_VAR(data__->, _PENDING, , true);
+        __SET_VAR(data__->, EXECUTE0, , execute);
+        return;
+    }
+
+    if (isPending)
+    {
+        if (HYD_MotionControlFB_IsError(fb))
+        {
+            __SET_VAR(data__->, ERROR, , true);
+            __SET_VAR(data__->, ERRORID, , (IEC_WORD)fb->ERROR_ID);
+            __SET_VAR(data__->, BUSY, , false);
+            __SET_VAR(data__->, _PENDING, , false);
+        }
+        else if (fb->FB_STATE != HYD_FB_STATE_HOLD)
+        {
+            __SET_VAR(data__->, DONE, , true);
+            __SET_VAR(data__->, BUSY, , false);
+            __SET_VAR(data__->, ERROR, , false);
+            __SET_VAR(data__->, ERRORID, , (IEC_WORD)0);
+            __SET_VAR(data__->, _PENDING, , false);
+        }
+        else
+        {
+            __SET_VAR(data__->, BUSY, , true);
+        }
+    }
+
+    __SET_VAR(data__->, EXECUTE0, , execute);
+}
+
 /* ======================================================================
  * MoveAbsolute (Direct模式) 命令实现
  * ====================================================================== */
@@ -883,6 +1046,12 @@ void __mcl_cmd_MoveAbsolute(HYD_MOVEABSOLUTE *data__)
                 __SET_VAR(data__->, ERROR, , true);
                 __SET_VAR(data__->, ERRORID, , (IEC_WORD)fb->ERROR_ID);
                 __SET_VAR(data__->, BUSY, , false);
+                __SET_VAR(data__->, ACTIVE, , false);
+            }
+            else if (fb->FB_STATE == HYD_FB_STATE_HOLD)
+            {
+                __SET_VAR(data__->, DONE, , false);
+                __SET_VAR(data__->, BUSY, , true);
                 __SET_VAR(data__->, ACTIVE, , false);
             }
             else if (fb->SEGMENT_COMPLETED || (HYD_MotionControlFB_IsDone(fb) && fb->STATE.finished))
@@ -1022,6 +1191,12 @@ void __mcl_cmd_MoveVelocity(HYD_MOVEVELOCITY *data__)
                 __SET_VAR(data__->, ERROR, , true);
                 __SET_VAR(data__->, ERRORID, , (IEC_WORD)fb->ERROR_ID);
                 __SET_VAR(data__->, BUSY, , false);
+                __SET_VAR(data__->, ACTIVE, , false);
+                __SET_VAR(data__->, INVELOCITY, , false);
+            }
+            else if (fb->FB_STATE == HYD_FB_STATE_HOLD)
+            {
+                __SET_VAR(data__->, BUSY, , true);
                 __SET_VAR(data__->, ACTIVE, , false);
                 __SET_VAR(data__->, INVELOCITY, , false);
             }
@@ -1202,6 +1377,10 @@ void __mcl_cmd_PressureHandle(HYD_PRESSUREHANDLE *data__)
                 __SET_VAR(data__->, ERROR, , true);
                 __SET_VAR(data__->, ERRORID, , (IEC_WORD)fb->ERROR_ID);
                 __SET_VAR(data__->, BUSY, , false);
+                __SET_VAR(data__->, ACTIVE, , false);
+                __SET_VAR(data__->, INPRESSURE, , false);
+            } else if (fb->FB_STATE == HYD_FB_STATE_HOLD) {
+                __SET_VAR(data__->, BUSY, , true);
                 __SET_VAR(data__->, ACTIVE, , false);
                 __SET_VAR(data__->, INPRESSURE, , false);
             } else if (fb->SEGMENT_COMPLETED || (HYD_MotionControlFB_IsDone(fb) && fb->STATE.finished)) {

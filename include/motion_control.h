@@ -116,7 +116,7 @@
  *   elapsed segment time until RESUME is consumed.
  * - RESUME re-primes ramp / pressure-controller state from the current feedback and
  *   continues the same segment without advancing the recipe index.
- * - HOLD / RESUME are currently exposed through API calls, not dedicated BOOL inputs.
+ * - HOLD / RESUME are exposed through API calls and IEC adapter command wrappers.
  */
 typedef enum {
     HYD_CMD_NONE,

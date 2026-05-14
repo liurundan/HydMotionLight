@@ -349,6 +349,122 @@
 					</ST>
 				</body>
 			</pou>
+			<pou name="HYD_Hold" pouType="functionBlock">
+				<interface>
+					<inputVars>
+						<variable name="AXISID">
+							<type>
+								<SINT />
+							</type>
+						</variable>
+						<variable name="EXECUTE">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+					</inputVars>
+					<outputVars>
+						<variable name="DONE">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="BUSY">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="ERROR">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="ERRORID">
+							<type>
+								<WORD />
+							</type>
+						</variable>
+					</outputVars>
+					<localVars>
+						<variable name="EXECUTE0">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="DONE0">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="_PENDING">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+					</localVars>
+				</interface>
+				<body>
+					<ST><![CDATA[{{ extern void __mcl_cmd_Hold(HYD_HOLD*); __mcl_cmd_Hold(data__); }} ]]></ST>
+				</body>
+			</pou>
+			<pou name="HYD_Resume" pouType="functionBlock">
+				<interface>
+					<inputVars>
+						<variable name="AXISID">
+							<type>
+								<SINT />
+							</type>
+						</variable>
+						<variable name="EXECUTE">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+					</inputVars>
+					<outputVars>
+						<variable name="DONE">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="BUSY">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="ERROR">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="ERRORID">
+							<type>
+								<WORD />
+							</type>
+						</variable>
+					</outputVars>
+					<localVars>
+						<variable name="EXECUTE0">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="DONE0">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="_PENDING">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+					</localVars>
+				</interface>
+				<body>
+					<ST><![CDATA[{{ extern void __mcl_cmd_Resume(HYD_RESUME*); __mcl_cmd_Resume(data__); }} ]]></ST>
+				</body>
+			</pou>
 			<pou name="HYD_MoveAbsolute" pouType="functionBlock">
 				<interface>
 					<inputVars>

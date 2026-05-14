@@ -887,6 +887,149 @@ static void test_pressurehandle_completion_keeps_completion_semantics(void) {
                "PressureHandle should not report COMMANDABORTED on normal completion");
 }
 
+static void test_hold_resume_surface_transitions_active_motion(void) {
+    HYD_MOVEABSOLUTE ma;
+    HYD_HOLD hold;
+    HYD_RESUME resume;
+    HYD_MotionControlFB* fb;
+
+    __HydMotion_framework_Init();
+    ensure_axes_allocated(1);
+    memset(&ma, 0, sizeof(ma));
+
+    IEC_VAL(ma.EN) = true;
+    IEC_VAL(ma.EXECUTE) = true;
+    ma.EXECUTE0.value = false;
+    IEC_VAL(ma.AXISID) = 0;
+    IEC_VAL(ma.POSITION) = 100.0f;
+    IEC_VAL(ma.VELOCITY) = 50.0f;
+    IEC_VAL(ma.ACCELERATION) = 200.0f;
+    IEC_VAL(ma.DIRECTION) = 1;
+    __mcl_cmd_MoveAbsolute(&ma);
+    __HydMotion_framework_Publish();
+
+    IEC_VAL(ma.EXECUTE) = true;
+    ma.EXECUTE0.value = true;
+    __mcl_cmd_MoveAbsolute(&ma);
+
+    fb = __MK_GetPublic_MotionControlFB(0);
+    ASSERT_TRUE(fb != NULL, "FB instance should exist before Hold");
+    ASSERT_TRUE(fb->FB_STATE == HYD_FB_STATE_RUNNING || fb->FB_STATE == HYD_FB_STATE_STARTING,
+               "MoveAbsolute should be executing before Hold");
+
+    memset(&hold, 0, sizeof(hold));
+    IEC_VAL(hold.EN) = true;
+    IEC_VAL(hold.EXECUTE) = true;
+    hold.EXECUTE0.value = false;
+    IEC_VAL(hold.AXISID) = 0;
+    __mcl_cmd_Hold(&hold);
+
+    ASSERT_TRUE(IEC_VAL(hold.DONE) == false, "Hold should not report DONE on the trigger call");
+    ASSERT_TRUE(IEC_VAL(hold.BUSY) == true, "Hold should report BUSY while pending");
+
+    __HydMotion_framework_Publish();
+    IEC_VAL(hold.EXECUTE) = true;
+    hold.EXECUTE0.value = true;
+    __mcl_cmd_Hold(&hold);
+
+    ASSERT_TRUE(fb->FB_STATE == HYD_FB_STATE_HOLD, "Hold should transition runtime to HOLD");
+    ASSERT_TRUE(IEC_VAL(hold.DONE) == true, "Hold should report DONE when HOLD state is reached");
+    ASSERT_TRUE(IEC_VAL(hold.BUSY) == false, "Hold BUSY should clear after DONE");
+    ASSERT_TRUE(IEC_VAL(hold.ERROR) == false, "Hold should not report ERROR on success");
+
+    IEC_VAL(ma.EXECUTE) = true;
+    ma.EXECUTE0.value = true;
+    __mcl_cmd_MoveAbsolute(&ma);
+
+    ASSERT_TRUE(IEC_VAL(ma.BUSY) == true, "Held MoveAbsolute owner should remain BUSY");
+    ASSERT_TRUE(IEC_VAL(ma.ACTIVE) == false, "Held MoveAbsolute owner should clear ACTIVE");
+    ASSERT_TRUE(IEC_VAL(ma.COMMANDABORTED) == false,
+               "Held MoveAbsolute owner should not report COMMANDABORTED");
+
+    memset(&resume, 0, sizeof(resume));
+    IEC_VAL(resume.EN) = true;
+    IEC_VAL(resume.EXECUTE) = true;
+    resume.EXECUTE0.value = false;
+    IEC_VAL(resume.AXISID) = 0;
+    __mcl_cmd_Resume(&resume);
+
+    ASSERT_TRUE(IEC_VAL(resume.DONE) == false, "Resume should not report DONE on the trigger call");
+    ASSERT_TRUE(IEC_VAL(resume.BUSY) == true, "Resume should report BUSY while pending");
+
+    __HydMotion_framework_Publish();
+    IEC_VAL(resume.EXECUTE) = true;
+    resume.EXECUTE0.value = true;
+    __mcl_cmd_Resume(&resume);
+
+    ASSERT_TRUE(fb->FB_STATE == HYD_FB_STATE_RUNNING || fb->FB_STATE == HYD_FB_STATE_STARTING,
+               "Resume should return runtime to execution state");
+    ASSERT_TRUE(IEC_VAL(resume.DONE) == true, "Resume should report DONE once HOLD is left");
+    ASSERT_TRUE(IEC_VAL(resume.BUSY) == false, "Resume BUSY should clear after DONE");
+    ASSERT_TRUE(IEC_VAL(resume.ERROR) == false, "Resume should not report ERROR on success");
+}
+
+static void test_hold_resume_reject_invalid_axis_index(void) {
+    HYD_HOLD hold;
+    HYD_RESUME resume;
+
+    __HydMotion_framework_Init();
+    ensure_axes_allocated(1);
+
+    memset(&hold, 0, sizeof(hold));
+    IEC_VAL(hold.EN) = true;
+    IEC_VAL(hold.EXECUTE) = true;
+    hold.EXECUTE0.value = false;
+    IEC_VAL(hold.AXISID) = -1;
+    __mcl_cmd_Hold(&hold);
+
+    ASSERT_TRUE(IEC_VAL(hold.ERROR) == true, "Hold should set ERROR for invalid AXISID");
+    ASSERT_TRUE(IEC_VAL(hold.ERRORID) == HYD_DIAG_CODE_START_CONTEXT_INVALID,
+               "Hold ERRORID should be START_CONTEXT_INVALID");
+    ASSERT_TRUE(IEC_VAL(hold.BUSY) == false, "Hold BUSY should be false after invalid AXISID");
+
+    memset(&resume, 0, sizeof(resume));
+    IEC_VAL(resume.EN) = true;
+    IEC_VAL(resume.EXECUTE) = true;
+    resume.EXECUTE0.value = false;
+    IEC_VAL(resume.AXISID) = 2;
+    __mcl_cmd_Resume(&resume);
+
+    ASSERT_TRUE(IEC_VAL(resume.ERROR) == true, "Resume should set ERROR for unallocated AXISID");
+    ASSERT_TRUE(IEC_VAL(resume.ERRORID) == HYD_DIAG_CODE_START_CONTEXT_INVALID,
+               "Resume ERRORID should be START_CONTEXT_INVALID");
+    ASSERT_TRUE(IEC_VAL(resume.BUSY) == false, "Resume BUSY should be false after invalid AXISID");
+}
+
+static void test_hold_resume_reject_invalid_runtime_state(void) {
+    HYD_HOLD hold;
+    HYD_RESUME resume;
+
+    __HydMotion_framework_Init();
+    ensure_axes_allocated(1);
+
+    memset(&hold, 0, sizeof(hold));
+    IEC_VAL(hold.EN) = true;
+    IEC_VAL(hold.EXECUTE) = true;
+    hold.EXECUTE0.value = false;
+    IEC_VAL(hold.AXISID) = 0;
+    __mcl_cmd_Hold(&hold);
+
+    ASSERT_TRUE(IEC_VAL(hold.ERROR) == true, "Hold should reject an idle axis");
+    ASSERT_TRUE(IEC_VAL(hold.ERRORID) != 0, "Hold should report non-zero ERRORID for invalid state");
+    ASSERT_TRUE(IEC_VAL(hold.BUSY) == false, "Hold BUSY should stay false for invalid state");
+
+    memset(&resume, 0, sizeof(resume));
+    IEC_VAL(resume.EN) = true;
+    IEC_VAL(resume.EXECUTE) = true;
+    resume.EXECUTE0.value = false;
+    IEC_VAL(resume.AXISID) = 0;
+    __mcl_cmd_Resume(&resume);
+
+    ASSERT_TRUE(IEC_VAL(resume.ERROR) == true, "Resume should reject a non-held axis");
+    ASSERT_TRUE(IEC_VAL(resume.ERRORID) != 0, "Resume should report non-zero ERRORID for invalid state");
+    ASSERT_TRUE(IEC_VAL(resume.BUSY) == false, "Resume BUSY should stay false for invalid state");
+}
+
 /* ==================================================================
  * Test 20: 多个轴独立运行 (轴0和轴1各自执行不同命令)
  * ================================================================== */
@@ -970,6 +1113,9 @@ int main(void) {
     test_pressurehandle_en_false_clears_outputs();
     test_pressurehandle_rejects_invalid_axis_index();
     test_pressurehandle_completion_keeps_completion_semantics();
+    test_hold_resume_surface_transitions_active_motion();
+    test_hold_resume_reject_invalid_axis_index();
+    test_hold_resume_reject_invalid_runtime_state();
     test_multiple_axes_operate_independently();
 
     printf("\n=== Results: %d/%d passed ===\n", tests_passed, tests_run);
