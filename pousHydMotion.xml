@@ -30,6 +30,11 @@
 								<USINT />
 							</type>
 						</variable>
+						<variable name="SEGMENTTYPE">
+							<type>
+								<USINT />
+							</type>
+						</variable>
 						<variable name="PLANNER">
 							<type>
 								<USINT />

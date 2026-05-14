@@ -245,7 +245,9 @@ Recipe execution does not currently expose a separate recipe-side owner-kind sig
 5. `NextSegment()` is meaningful only for recipe execution.
 6. Direct execution is modeled as a single direct-run action owned by the current direct command.
 7. Switching `USE_RECIPE` or editing `DIRECT_SEGMENT` while a segment is active does not retroactively change the current active segment.
-8. If a direct command takes over a recipe execution, recipe-side observation is currently driven mainly by runtime-state changes rather than by a dedicated recipe-side `COMMANDABORTED` signal.
+8. `HYD_AXISMOTION.SEGMENTTAG` is the opaque process-layer segment identifier.
+9. `HYD_AXISMOTION.SEGMENTTYPE` is the domain segment type and is mapped independently from `SEGMENTTAG`.
+10. If a direct command takes over a recipe execution, recipe-side observation is currently driven mainly by runtime-state changes rather than by a dedicated recipe-side `COMMANDABORTED` signal.
 
 ## Error and Protection Contract
 

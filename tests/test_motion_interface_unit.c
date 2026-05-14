@@ -382,6 +382,53 @@ static void test_loadprofile_preloads_single_recipe_segment(void) {
                "LoadProfile should preload only, not start execution");
 }
 
+static void test_loadprofile_keeps_segment_tag_and_type_separate(void) {
+    HYD_CREATEMOTION cm;
+    HYD_LOADPROFILE lp;
+    HYD_MotionControlFB* fb;
+    HYD_AXISMOTION motion;
+
+    __HydMotion_framework_Init();
+
+    memset(&cm, 0, sizeof(cm));
+    IEC_VAL(cm.EN) = true;
+    IEC_VAL(cm.USE_RECIPE) = true;
+    IEC_VAL(cm.FLOW_TO_PUMPSPEED) = 1.2f;
+    IEC_VAL(cm.PUMPSPEED_LIMIT) = 3000.0f;
+    IEC_VAL(cm.USE_SIMULATION) = false;
+    __mcl_cmd_CreateMotion(&cm);
+
+    memset(&lp, 0, sizeof(lp));
+    memset(&motion, 0, sizeof(motion));
+    IEC_VAL(lp.EN) = true;
+    IEC_VAL(lp.EXECUTE) = true;
+    lp.EXECUTE0.value = false;
+    IEC_VAL(lp.AXISID) = IEC_VAL(cm.AXISID);
+
+    motion.SEGMENTTAG = 99;
+    motion.SEGMENTTYPE = HYD_SEGMENT_TYPE_HOLDING;
+    motion.PLANNER = HYD_PLANNER_TIME_BASED;
+    motion.MODE = HYD_MODE_PRESSURE_CLOSED_LOOP;
+    motion.ENDCONDITION = HYD_END_TIME;
+    motion.DIRECTION = HYD_DIRECTION_HOLD;
+    motion.SETFLOW = 4.0f;
+    motion.SETPRESSURE = 15.0f;
+    motion.ACCELERATION = 55.0f;
+    motion.DURATION = 0.5f;
+    __SET_VAR(lp., MOTION, , motion);
+
+    __mcl_cmd_LoadProfile(&lp);
+
+    fb = __MK_GetPublic_MotionControlFB((int)IEC_VAL(cm.AXISID));
+    ASSERT_TRUE(fb != NULL, "LoadProfile recipe axis should resolve an FB");
+    ASSERT_TRUE(IEC_VAL(lp.DONE) == true, "LoadProfile should complete for independent tag/type fields");
+    ASSERT_TRUE(fb->RECIPE_SIZE == 1U, "LoadProfile should preload one recipe segment");
+    ASSERT_TRUE(fb->RECIPE[0].segmentTag == 99,
+               "SEGMENTTAG should remain the opaque process-layer tag");
+    ASSERT_TRUE(fb->RECIPE[0].segmentType == HYD_SEGMENT_TYPE_HOLDING,
+               "SEGMENTTYPE should define the domain segment type independently");
+}
+
 static void test_loadprofile_preloads_direct_segment_on_direct_axis(void) {
     HYD_CREATEMOTION cm;
     HYD_LOADPROFILE lp;
@@ -1097,6 +1144,7 @@ int main(void) {
     test_moveabsolute_owned_fault_sets_error_outputs();
     test_moveabsolute_rejects_invalid_axis_index();
     test_loadprofile_preloads_single_recipe_segment();
+    test_loadprofile_keeps_segment_tag_and_type_separate();
     test_loadprofile_preloads_direct_segment_on_direct_axis();
     test_loadprofile_keeps_recipe_preload_target_after_direct_override();
     test_moveabsolute_rejects_nonzero_jerk_until_supported();

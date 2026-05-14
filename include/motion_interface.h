@@ -24,6 +24,7 @@
 
 __DECLARE_STRUCT_TYPE(HYD_AXISMOTION,
     USINT SEGMENTTAG;
+    USINT SEGMENTTYPE;
     USINT PLANNER;
     USINT MODE;
     USINT ENDCONDITION;
@@ -47,7 +48,7 @@ __DECLARE_STRUCT_TYPE(HYD_AXISMOTION,
 // Recipe模式：配方驱动的多段运动控制
 // MOTION字段为双向通道：
 //   输入侧(ACT*): 轴反馈数据 → AXIS_REF
-//   输出侧(SET*, SEGMENTTAG等): 当前活动段参数读回
+//   输出侧(SET*, SEGMENTTAG, SEGMENTTYPE等): 当前活动段参数读回
 // 配方来源:
 //   1. 从MOTION字段构建1段配方(EXECUTE时自动加载)
 //   2. 外部通过HDY_MotionControlFB_LoadRecipe()预加载多段配方

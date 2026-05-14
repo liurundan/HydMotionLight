@@ -167,7 +167,7 @@ static HYD_MotionSegment buildSegmentFromMotion(const HYD_AXISMOTION* motion,
     memset(&seg, 0, sizeof(seg));
 
     seg.segmentTag = (HYD_UINT8)motion->SEGMENTTAG;
-    seg.segmentType = (HYD_SegmentType)motion->SEGMENTTAG;
+    seg.segmentType = (HYD_SegmentType)motion->SEGMENTTYPE;
     seg.mode = (HYD_ControlMode)motion->MODE;
     seg.endCondition = (HYD_EndConditionType)motion->ENDCONDITION;
     seg.direction = (HYD_MotionDirection)motion->DIRECTION;
@@ -206,6 +206,7 @@ static void writeMotionFromSegment(HYD_AXISMOTION* motion, const HYD_MotionContr
     const HYD_MotionSegment* seg = &fb->_activeSegment;
 
     motion->SEGMENTTAG = (USINT)seg->segmentTag;
+    motion->SEGMENTTYPE = (USINT)seg->segmentType;
     motion->PLANNER = (USINT)seg->planner;
     motion->MODE = (USINT)seg->mode;
     motion->ENDCONDITION = (USINT)seg->endCondition;

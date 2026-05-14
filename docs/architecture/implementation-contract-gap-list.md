@@ -39,12 +39,11 @@ against the current implementation in:
 
 4. `Hold` and `Resume` now have dedicated IEC FB wrappers; PLC integration examples still need to be documented.
 5. `BufferMode` remains a very small subset of the apparent PLCopen surface.
-6. `segmentTag` and `segmentType` are still partially conflated in the adapter/build path.
-7. Some in-code comments and header contracts are narrower than the actual runtime behavior.
+6. Some in-code comments and header contracts are narrower than the actual runtime behavior.
 
 ### Low
 
-8. A few adapter/runtime naming and field-mirroring patterns still make the contract harder to maintain than necessary.
+7. A few adapter/runtime naming and field-mirroring patterns still make the contract harder to maintain than necessary.
 
 ## Detailed Gaps
 
@@ -194,36 +193,7 @@ Recommended direction:
 
 - Keep the limited subset explicit, or narrow the visible surface until more modes are genuinely supported.
 
-### 6. `segmentTag` and `segmentType` Are Still Partially Conflated
-
-Severity: Medium
-
-Affected surface:
-
-- [common_types.h](/home/dan/project/hdy-motion-light/include/common_types.h:229)
-- [motion_interface.c](/home/dan/project/hdy-motion-light/src/motion_interface.c:161)
-
-Observed mismatch:
-
-- The shared type contract treats `segmentTag` as an opaque identifier assigned by the process layer.
-- In adapter code, `SEGMENTTAG` from `HYD_AXISMOTION` is reused as both `segmentTag` and `segmentType`.
-
-Evidence:
-
-- `seg.segmentTag = (HYD_UINT8)motion->SEGMENTTAG;`
-- `seg.segmentType = (HYD_SegmentType)motion->SEGMENTTAG;`
-- in [motion_interface.c](/home/dan/project/hdy-motion-light/src/motion_interface.c:168)
-
-Impact:
-
-- This couples HMI/process-layer identity with domain segment typing.
-- It makes long-term template, traceability, and diagnostic naming harder to cleanly separate.
-
-Recommended direction:
-
-- Split “opaque step tag” from “domain segment type” more explicitly in the IEC mapping path.
-
-### 7. In-Code Header Contract Does Not Fully Match Runtime Implementation
+### 6. In-Code Header Contract Does Not Fully Match Runtime Implementation
 
 Severity: Medium
 
@@ -249,7 +219,7 @@ Recommended direction:
 
 - Make the header contract and the code match exactly; do not leave legality comments as historical approximations.
 
-### 8. Configuration Source-of-Truth Is Still Duplicated
+### 7. Configuration Source-of-Truth Is Still Duplicated
 
 Severity: Low
 
@@ -286,7 +256,6 @@ Recommended direction:
    - recipe takeover visibility
    - `Hold/Resume` surface decision
 3. Clean structural ambiguities:
-   - `segmentTag` vs `segmentType`
    - header-comment vs implementation legality
 4. Clean maintainability debt:
    - duplicated config source-of-truth
