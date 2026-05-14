@@ -219,6 +219,106 @@ static void writeMotionFromSegment(HYD_AXISMOTION* motion, const HYD_MotionContr
     motion->PRESSURERAMPRATE = (REAL)seg->pressureRampRate;
 }
 
+typedef enum {
+    HYD_DIRECT_PENDING_WAITING = 0,
+    HYD_DIRECT_PENDING_ACQUIRED,
+    HYD_DIRECT_PENDING_ABORTED
+} HYD_DirectPendingStatus;
+
+static void directBufferModeAbortIfRequested(HYD_MotionControlFB* fb, IEC_INT bufferMode)
+{
+    if (fb == NULL || bufferMode != HYD_BUFFER_MODE_ABORT) {
+        return;
+    }
+
+    HYD_MotionControlFB_Abort(fb);
+    HYD_MotionControlFB_Scan(fb);
+}
+
+static HYD_DirectPendingStatus resolveDirectPendingOwnership(HYD_MotionControlFB* fb,
+                                                             IEC_WORD* execId)
+{
+    if (fb == NULL) {
+        return HYD_DIRECT_PENDING_WAITING;
+    }
+
+    if (fb->STATE.active && fb->_activeSegmentSource == HYD_SEGMENT_SOURCE_DIRECT) {
+        if (execId != NULL) {
+            *execId = (IEC_WORD)fb->_executionId;
+        }
+        return HYD_DIRECT_PENDING_ACQUIRED;
+    }
+
+    if (fb->FB_STATE == HYD_FB_STATE_ABORTED && !fb->STATE.active) {
+        return HYD_DIRECT_PENDING_ABORTED;
+    }
+
+    return HYD_DIRECT_PENDING_WAITING;
+}
+
+static HYD_BOOL directExecutionWasPreempted(const HYD_MotionControlFB* fb,
+                                            IEC_WORD execId,
+                                            HYD_DirectCommandKind kind)
+{
+    return HYD_MotionControlFB_WasExecutionPreempted(fb, (uint16_t)execId, kind);
+}
+
+static HYD_BOOL directExecutionIsCurrentOwner(const HYD_MotionControlFB* fb,
+                                              IEC_WORD execId,
+                                              HYD_DirectCommandKind kind)
+{
+    return execId == (IEC_WORD)HYD_MotionControlFB_GetDirectOwnerExecutionId(fb) &&
+           HYD_MotionControlFB_GetDirectOwnerKind(fb) == kind;
+}
+
+static HYD_BOOL directExecutionLostOwnership(const HYD_MotionControlFB* fb,
+                                             IEC_WORD execId,
+                                             HYD_DirectCommandKind kind)
+{
+    return execId != (IEC_WORD)HYD_MotionControlFB_GetDirectOwnerExecutionId(fb) ||
+           HYD_MotionControlFB_GetDirectOwnerKind(fb) != kind;
+}
+
+static HYD_BOOL directStopCanCompleteImmediately(const HYD_MotionControlFB* fb)
+{
+    return fb != NULL &&
+           fb->FB_STATE != HYD_FB_STATE_STARTING &&
+           fb->FB_STATE != HYD_FB_STATE_RUNNING &&
+           fb->FB_STATE != HYD_FB_STATE_HOLD;
+}
+
+static HYD_BOOL startDirectSegmentExecution(HYD_MotionControlFB* fb,
+                                            const HYD_MotionSegment* segment,
+                                            IEC_WORD* errorId)
+{
+    if (errorId != NULL) {
+        *errorId = (IEC_WORD)0;
+    }
+
+    if (fb == NULL || segment == NULL) {
+        if (errorId != NULL) {
+            *errorId = (IEC_WORD)HYD_DIAG_CODE_INTERNAL_ERROR;
+        }
+        return false;
+    }
+
+    if (!HYD_MotionControlFB_LoadDirectSegment(fb, segment)) {
+        if (errorId != NULL) {
+            *errorId = (IEC_WORD)HYD_DIAG_CODE_SEGMENT_INVALID;
+        }
+        return false;
+    }
+
+    if (!HYD_MotionControlFB_StartSegment(fb, 0, fb->AXIS_REF.timestamp)) {
+        if (errorId != NULL) {
+            *errorId = (IEC_WORD)fb->ERROR_ID;
+        }
+        return false;
+    }
+
+    return true;
+}
+
 /* ======================================================================
  * 框架生命周期函数
  * ====================================================================== */
@@ -457,9 +557,7 @@ void __mcl_cmd_Stop(HYD_STOP *data__)
     {
         HYD_MotionControlFB_Scan(fb);
 
-        if (fb->FB_STATE != HYD_FB_STATE_STARTING &&
-            fb->FB_STATE != HYD_FB_STATE_RUNNING &&
-            fb->FB_STATE != HYD_FB_STATE_HOLD) {
+        if (directStopCanCompleteImmediately(fb)) {
             __SET_VAR(data__->, DONE, , true);
             __SET_VAR(data__->, BUSY, , false);
             __SET_VAR(data__->, EXECUTE0, , execute);
@@ -544,10 +642,8 @@ void __mcl_cmd_MoveAbsolute(HYD_MOVEABSOLUTE *data__)
 
     if (execRising)
     {
-        if (bufferMode == HYD_BUFFER_MODE_ABORT) {
-            HYD_MotionControlFB_Abort(fb);
-            HYD_MotionControlFB_Scan(fb);
-        }
+        IEC_WORD errorId;
+        directBufferModeAbortIfRequested(fb, bufferMode);
 
         HYD_MotionDirection dir = mapPlcOpenDirection(__GET_VAR(data__->DIRECTION));
         HYD_MotionSegment segment = buildPositionSegment(
@@ -557,18 +653,10 @@ void __mcl_cmd_MoveAbsolute(HYD_MOVEABSOLUTE *data__)
             dir,
             fb);
 
-        if (!HYD_MotionControlFB_LoadDirectSegment(fb, &segment))
+        if (!startDirectSegmentExecution(fb, &segment, &errorId))
         {
             __SET_VAR(data__->, ERROR, , true);
-            __SET_VAR(data__->, ERRORID, , (IEC_WORD)HYD_DIAG_CODE_SEGMENT_INVALID);
-            __SET_VAR(data__->, EXECUTE0, , execute);
-            return;
-        }
-
-        if (!HYD_MotionControlFB_StartSegment(fb, 0, fb->AXIS_REF.timestamp))
-        {
-            __SET_VAR(data__->, ERROR, , true);
-            __SET_VAR(data__->, ERRORID, , (IEC_WORD)fb->ERROR_ID);
+            __SET_VAR(data__->, ERRORID, , errorId);
             __SET_VAR(data__->, EXECUTE0, , execute);
             return;
         }
@@ -586,11 +674,12 @@ void __mcl_cmd_MoveAbsolute(HYD_MOVEABSOLUTE *data__)
 
     if (isPending)
     {
-        if (fb->STATE.active && fb->_activeSegmentSource == HYD_SEGMENT_SOURCE_DIRECT) {
-            __SET_VAR(data__->, _EXEC_ID, , (IEC_WORD)fb->_executionId);
+        HYD_DirectPendingStatus pendingStatus = resolveDirectPendingOwnership(fb, &myExecId);
+
+        if (pendingStatus == HYD_DIRECT_PENDING_ACQUIRED) {
+            __SET_VAR(data__->, _EXEC_ID, , myExecId);
             __SET_VAR(data__->, _PENDING, , false);
-            myExecId = (IEC_WORD)fb->_executionId;
-        } else if (fb->FB_STATE == HYD_FB_STATE_ABORTED && !fb->STATE.active) {
+        } else if (pendingStatus == HYD_DIRECT_PENDING_ABORTED) {
             __SET_VAR(data__->, COMMANDABORTED, , true);
             __SET_VAR(data__->, BUSY, , false);
             __SET_VAR(data__->, ACTIVE, , false);
@@ -604,15 +693,12 @@ void __mcl_cmd_MoveAbsolute(HYD_MOVEABSOLUTE *data__)
 
     if (myExecId != 0)
     {
-        if (HYD_MotionControlFB_WasExecutionPreempted(fb,
-                                                      (uint16_t)myExecId,
-                                                      HYD_DIRECT_CMD_MOVE_ABSOLUTE)) {
+        if (directExecutionWasPreempted(fb, myExecId, HYD_DIRECT_CMD_MOVE_ABSOLUTE)) {
             __SET_VAR(data__->, COMMANDABORTED, , true);
             __SET_VAR(data__->, BUSY, , false);
             __SET_VAR(data__->, ACTIVE, , false);
             __SET_VAR(data__->, DONE, , false);
-        } else if (myExecId == (IEC_WORD)HYD_MotionControlFB_GetDirectOwnerExecutionId(fb) &&
-                   HYD_MotionControlFB_GetDirectOwnerKind(fb) == HYD_DIRECT_CMD_MOVE_ABSOLUTE) {
+        } else if (directExecutionIsCurrentOwner(fb, myExecId, HYD_DIRECT_CMD_MOVE_ABSOLUTE)) {
             if (HYD_MotionControlFB_IsError(fb))
             {
                 __SET_VAR(data__->, ERROR, , true);
@@ -631,8 +717,7 @@ void __mcl_cmd_MoveAbsolute(HYD_MOVEABSOLUTE *data__)
                 __SET_VAR(data__->, BUSY, , true);
                 __SET_VAR(data__->, ACTIVE, , true);
             }
-        } else if (myExecId != (IEC_WORD)HYD_MotionControlFB_GetDirectOwnerExecutionId(fb) ||
-                   HYD_MotionControlFB_GetDirectOwnerKind(fb) != HYD_DIRECT_CMD_MOVE_ABSOLUTE) {
+        } else if (directExecutionLostOwnership(fb, myExecId, HYD_DIRECT_CMD_MOVE_ABSOLUTE)) {
             __SET_VAR(data__->, COMMANDABORTED, , true);
             __SET_VAR(data__->, BUSY, , false);
             __SET_VAR(data__->, ACTIVE, , false);
@@ -685,10 +770,8 @@ void __mcl_cmd_MoveVelocity(HYD_MOVEVELOCITY *data__)
 
     if (execRising)
     {
-        if (bufferMode == HYD_BUFFER_MODE_ABORT) {
-            HYD_MotionControlFB_Abort(fb);
-            HYD_MotionControlFB_Scan(fb);
-        }
+        IEC_WORD errorId;
+        directBufferModeAbortIfRequested(fb, bufferMode);
 
         HYD_MotionDirection dir = mapPlcOpenDirection(__GET_VAR(data__->DIRECTION));
         HYD_MotionSegment segment = buildVelocitySegment(
@@ -697,18 +780,10 @@ void __mcl_cmd_MoveVelocity(HYD_MOVEVELOCITY *data__)
             dir,
             fb);
 
-        if (!HYD_MotionControlFB_LoadDirectSegment(fb, &segment))
+        if (!startDirectSegmentExecution(fb, &segment, &errorId))
         {
             __SET_VAR(data__->, ERROR, , true);
-            __SET_VAR(data__->, ERRORID, , (IEC_WORD)HYD_DIAG_CODE_SEGMENT_INVALID);
-            __SET_VAR(data__->, EXECUTE0, , execute);
-            return;
-        }
-
-        if (!HYD_MotionControlFB_StartSegment(fb, 0, fb->AXIS_REF.timestamp))
-        {
-            __SET_VAR(data__->, ERROR, , true);
-            __SET_VAR(data__->, ERRORID, , (IEC_WORD)fb->ERROR_ID);
+            __SET_VAR(data__->, ERRORID, , errorId);
             __SET_VAR(data__->, EXECUTE0, , execute);
             return;
         }
@@ -726,11 +801,12 @@ void __mcl_cmd_MoveVelocity(HYD_MOVEVELOCITY *data__)
 
     if (isPending)
     {
-        if (fb->STATE.active && fb->_activeSegmentSource == HYD_SEGMENT_SOURCE_DIRECT) {
-            __SET_VAR(data__->, _EXEC_ID, , (IEC_WORD)fb->_executionId);
+        HYD_DirectPendingStatus pendingStatus = resolveDirectPendingOwnership(fb, &myExecId);
+
+        if (pendingStatus == HYD_DIRECT_PENDING_ACQUIRED) {
+            __SET_VAR(data__->, _EXEC_ID, , myExecId);
             __SET_VAR(data__->, _PENDING, , false);
-            myExecId = (IEC_WORD)fb->_executionId;
-        } else if (fb->FB_STATE == HYD_FB_STATE_ABORTED && !fb->STATE.active) {
+        } else if (pendingStatus == HYD_DIRECT_PENDING_ABORTED) {
             __SET_VAR(data__->, COMMANDABORTED, , true);
             __SET_VAR(data__->, BUSY, , false);
             __SET_VAR(data__->, ACTIVE, , false);
@@ -745,15 +821,12 @@ void __mcl_cmd_MoveVelocity(HYD_MOVEVELOCITY *data__)
 
     if (myExecId != 0)
     {
-        if (HYD_MotionControlFB_WasExecutionPreempted(fb,
-                                                      (uint16_t)myExecId,
-                                                      HYD_DIRECT_CMD_MOVE_VELOCITY)) {
+        if (directExecutionWasPreempted(fb, myExecId, HYD_DIRECT_CMD_MOVE_VELOCITY)) {
             __SET_VAR(data__->, COMMANDABORTED, , true);
             __SET_VAR(data__->, BUSY, , false);
             __SET_VAR(data__->, ACTIVE, , false);
             __SET_VAR(data__->, INVELOCITY, , false);
-        } else if (myExecId == (IEC_WORD)HYD_MotionControlFB_GetDirectOwnerExecutionId(fb) &&
-                   HYD_MotionControlFB_GetDirectOwnerKind(fb) == HYD_DIRECT_CMD_MOVE_VELOCITY) {
+        } else if (directExecutionIsCurrentOwner(fb, myExecId, HYD_DIRECT_CMD_MOVE_VELOCITY)) {
             if (HYD_MotionControlFB_IsError(fb))
             {
                 __SET_VAR(data__->, ERROR, , true);
@@ -778,8 +851,7 @@ void __mcl_cmd_MoveVelocity(HYD_MOVEVELOCITY *data__)
                     __SET_VAR(data__->, INVELOCITY, , false);
                 }
             }
-        } else if (myExecId != (IEC_WORD)HYD_MotionControlFB_GetDirectOwnerExecutionId(fb) ||
-                   HYD_MotionControlFB_GetDirectOwnerKind(fb) != HYD_DIRECT_CMD_MOVE_VELOCITY) {
+        } else if (directExecutionLostOwnership(fb, myExecId, HYD_DIRECT_CMD_MOVE_VELOCITY)) {
             __SET_VAR(data__->, COMMANDABORTED, , true);
             __SET_VAR(data__->, BUSY, , false);
             __SET_VAR(data__->, ACTIVE, , false);
@@ -871,10 +943,8 @@ void __mcl_cmd_PressureHandle(HYD_PRESSUREHANDLE *data__)
 
     if (execRising)
     {
-        if (bufferMode == HYD_BUFFER_MODE_ABORT) {
-            HYD_MotionControlFB_Abort(fb);
-            HYD_MotionControlFB_Scan(fb);
-        }
+        IEC_WORD errorId;
+        directBufferModeAbortIfRequested(fb, bufferMode);
 
         HYD_MotionSegment segment = buildPressureSegment(
             targetPressure,
@@ -882,18 +952,10 @@ void __mcl_cmd_PressureHandle(HYD_PRESSUREHANDLE *data__)
             __GET_VAR(data__->DURATION),
             fb);
 
-        if (!HYD_MotionControlFB_LoadDirectSegment(fb, &segment))
+        if (!startDirectSegmentExecution(fb, &segment, &errorId))
         {
             __SET_VAR(data__->, ERROR, , true);
-            __SET_VAR(data__->, ERRORID, , (IEC_WORD)HYD_DIAG_CODE_SEGMENT_INVALID);
-            __SET_VAR(data__->, EXECUTE0, , execute);
-            return;
-        }
-
-        if (!HYD_MotionControlFB_StartSegment(fb, 0, fb->AXIS_REF.timestamp))
-        {
-            __SET_VAR(data__->, ERROR, , true);
-            __SET_VAR(data__->, ERRORID, , (IEC_WORD)fb->ERROR_ID);
+            __SET_VAR(data__->, ERRORID, , errorId);
             __SET_VAR(data__->, EXECUTE0, , execute);
             return;
         }
@@ -911,11 +973,12 @@ void __mcl_cmd_PressureHandle(HYD_PRESSUREHANDLE *data__)
 
     if (isPending)
     {
-        if (fb->STATE.active && fb->_activeSegmentSource == HYD_SEGMENT_SOURCE_DIRECT) {
-            __SET_VAR(data__->, _EXEC_ID, , (IEC_WORD)fb->_executionId);
+        HYD_DirectPendingStatus pendingStatus = resolveDirectPendingOwnership(fb, &myExecId);
+
+        if (pendingStatus == HYD_DIRECT_PENDING_ACQUIRED) {
+            __SET_VAR(data__->, _EXEC_ID, , myExecId);
             __SET_VAR(data__->, _PENDING, , false);
-            myExecId = (IEC_WORD)fb->_executionId;
-        } else if (fb->FB_STATE == HYD_FB_STATE_ABORTED && !fb->STATE.active) {
+        } else if (pendingStatus == HYD_DIRECT_PENDING_ABORTED) {
             __SET_VAR(data__->, COMMANDABORTED, , true);
             __SET_VAR(data__->, BUSY, , false);
             __SET_VAR(data__->, ACTIVE, , false);
@@ -930,15 +993,12 @@ void __mcl_cmd_PressureHandle(HYD_PRESSUREHANDLE *data__)
 
     if (myExecId != 0)
     {
-        if (HYD_MotionControlFB_WasExecutionPreempted(fb,
-                                                      (uint16_t)myExecId,
-                                                      HYD_DIRECT_CMD_PRESSURE_HANDLE)) {
+        if (directExecutionWasPreempted(fb, myExecId, HYD_DIRECT_CMD_PRESSURE_HANDLE)) {
             __SET_VAR(data__->, COMMANDABORTED, , true);
             __SET_VAR(data__->, BUSY, , false);
             __SET_VAR(data__->, ACTIVE, , false);
             __SET_VAR(data__->, INPRESSURE, , false);
-        } else if (myExecId == (IEC_WORD)HYD_MotionControlFB_GetDirectOwnerExecutionId(fb) &&
-                   HYD_MotionControlFB_GetDirectOwnerKind(fb) == HYD_DIRECT_CMD_PRESSURE_HANDLE) {
+        } else if (directExecutionIsCurrentOwner(fb, myExecId, HYD_DIRECT_CMD_PRESSURE_HANDLE)) {
             if (HYD_MotionControlFB_IsError(fb))
             {
                 __SET_VAR(data__->, ERROR, , true);
@@ -962,8 +1022,7 @@ void __mcl_cmd_PressureHandle(HYD_PRESSUREHANDLE *data__)
                     __SET_VAR(data__->, INPRESSURE, , false);
                 }
             }
-        } else if (myExecId != (IEC_WORD)HYD_MotionControlFB_GetDirectOwnerExecutionId(fb) ||
-                   HYD_MotionControlFB_GetDirectOwnerKind(fb) != HYD_DIRECT_CMD_PRESSURE_HANDLE) {
+        } else if (directExecutionLostOwnership(fb, myExecId, HYD_DIRECT_CMD_PRESSURE_HANDLE)) {
             __SET_VAR(data__->, COMMANDABORTED, , true);
             __SET_VAR(data__->, BUSY, , false);
             __SET_VAR(data__->, ACTIVE, , false);

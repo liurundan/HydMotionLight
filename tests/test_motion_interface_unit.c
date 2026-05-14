@@ -608,6 +608,58 @@ static void test_pressurehandle_rejects_invalid_axis_index(void) {
 }
 
 /* ==================================================================
+ * Test 19b: PressureHandle 正常完成时保持当前完成语义
+ *
+ * 当前接口没有 DONE 引脚，因此外部完成语义是:
+ * 时间到后清除 BUSY/ACTIVE，且不报 COMMANDABORTED。
+ * 这是 direct FB 包装层重构时必须保持不变的行为。
+ * ================================================================== */
+static void test_pressurehandle_completion_keeps_completion_semantics(void) {
+    HYD_PRESSUREHANDLE ph;
+    HYD_CREATEMOTION cm;
+
+    __HydMotion_framework_Init();
+
+    memset(&cm, 0, sizeof(cm));
+    IEC_VAL(cm.EN) = true;
+    IEC_VAL(cm.USE_RECIPE) = false;
+    IEC_VAL(cm.FLOW_TO_PUMPSPEED) = 1.0f;
+    IEC_VAL(cm.PUMPSPEED_LIMIT) = 3000.0f;
+    IEC_VAL(cm.USE_SIMULATION) = true;
+    __mcl_cmd_CreateMotion(&cm);
+
+    memset(&ph, 0, sizeof(ph));
+    IEC_VAL(ph.EN) = true;
+    IEC_VAL(ph.EXECUTE) = true;
+    ph.EXECUTE0.value = false;
+    IEC_VAL(ph.AXISID) = IEC_VAL(cm.AXISID);
+    IEC_VAL(ph.PRESSURE) = 10.0f;
+    IEC_VAL(ph.PRESSURERAMPRATE) = 2.0f;
+    IEC_VAL(ph.DURATION) = 0.05f;
+
+    __mcl_cmd_PressureHandle(&ph);
+    __HydMotion_framework_Publish();
+
+    IEC_VAL(ph.EXECUTE) = true;
+    ph.EXECUTE0.value = true;
+
+    for (int step = 0; step < 500; step++) {
+        __mcl_cmd_PressureHandle(&ph);
+        if (!IEC_VAL(ph.BUSY) && !IEC_VAL(ph.ACTIVE)) {
+            break;
+        }
+        __HydMotion_framework_Publish();
+    }
+
+    ASSERT_TRUE(IEC_VAL(ph.BUSY) == false,
+               "PressureHandle should clear BUSY after timed completion");
+    ASSERT_TRUE(IEC_VAL(ph.ACTIVE) == false,
+               "PressureHandle should clear ACTIVE after timed completion");
+    ASSERT_TRUE(IEC_VAL(ph.COMMANDABORTED) == false,
+               "PressureHandle should not report COMMANDABORTED on normal completion");
+}
+
+/* ==================================================================
  * Test 20: 多个轴独立运行 (轴0和轴1各自执行不同命令)
  * ================================================================== */
 static void test_multiple_axes_operate_independently(void) {
@@ -683,6 +735,7 @@ int main(void) {
     test_pressurehandle_execute_rising_starts_pressure_control();
     test_pressurehandle_en_false_clears_outputs();
     test_pressurehandle_rejects_invalid_axis_index();
+    test_pressurehandle_completion_keeps_completion_semantics();
     test_multiple_axes_operate_independently();
 
     printf("\n=== Results: %d/%d passed ===\n", tests_passed, tests_run);
