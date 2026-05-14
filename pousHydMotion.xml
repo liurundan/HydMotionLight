@@ -166,6 +166,11 @@
 								<BOOL />
 							</type>
 						</variable>
+						<variable name="COMMANDABORTED">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
 						<variable name="ERROR">
 							<type>
 								<BOOL />

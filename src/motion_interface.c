@@ -280,6 +280,44 @@ static HYD_BOOL directExecutionLostOwnership(const HYD_MotionControlFB* fb,
            HYD_MotionControlFB_GetDirectOwnerKind(fb) != kind;
 }
 
+static HYD_BOOL recipeExecutionLostOwnership(const HYD_MotionControlFB* fb,
+                                             IEC_WORD execId)
+{
+    if (fb == NULL || execId == 0) {
+        return false;
+    }
+
+    if (fb->_activeSegmentSource == HYD_SEGMENT_SOURCE_RECIPE) {
+        return false;
+    }
+
+    if (HYD_MotionControlFB_IsDone(fb) && fb->STATE.finished) {
+        return false;
+    }
+
+    return execId != (IEC_WORD)fb->_executionId ||
+           (!fb->STATE.active &&
+            !HYD_MotionControlFB_IsBusy(fb) &&
+            !fb->STATE.finished &&
+            fb->_activeSegmentSource != HYD_SEGMENT_SOURCE_RECIPE);
+}
+
+static HYD_BOOL recipeExecutionCanAcquireOwnership(const HYD_MotionControlFB* fb)
+{
+    return fb != NULL &&
+           fb->_executionId != 0U &&
+           (HYD_MotionControlFB_GetDirectOwnerKind(fb) == HYD_DIRECT_CMD_NONE ||
+            HYD_MotionControlFB_GetDirectOwnerExecutionId(fb) != fb->_executionId);
+}
+
+static HYD_BOOL recipeExecutionWasTakenOverBeforeLatch(const HYD_MotionControlFB* fb)
+{
+    return fb != NULL &&
+           fb->_executionId != 0U &&
+           HYD_MotionControlFB_GetDirectOwnerKind(fb) != HYD_DIRECT_CMD_NONE &&
+           HYD_MotionControlFB_GetDirectOwnerExecutionId(fb) == fb->_executionId;
+}
+
 static HYD_BOOL directStopCanCompleteImmediately(const HYD_MotionControlFB* fb)
 {
     return fb != NULL &&
@@ -318,6 +356,8 @@ static HYD_BOOL startDirectSegmentExecution(HYD_MotionControlFB* fb,
                                             const HYD_MotionSegment* segment,
                                             IEC_WORD* errorId)
 {
+    HYD_BOOL savedUseRecipe;
+
     if (errorId != NULL) {
         *errorId = (IEC_WORD)0;
     }
@@ -336,12 +376,16 @@ static HYD_BOOL startDirectSegmentExecution(HYD_MotionControlFB* fb,
         return false;
     }
 
+    savedUseRecipe = fb->USE_RECIPE;
+    fb->USE_RECIPE = false;
     if (!HYD_MotionControlFB_StartSegment(fb, 0, fb->AXIS_REF.timestamp)) {
+        fb->USE_RECIPE = savedUseRecipe;
         if (errorId != NULL) {
             *errorId = (IEC_WORD)fb->ERROR_ID;
         }
         return false;
     }
+    fb->USE_RECIPE = savedUseRecipe;
 
     return true;
 }
@@ -424,6 +468,7 @@ void __mcl_cmd_CreateMotion(HYD_CREATEMOTION *data__)
 			HYD_MotionControlFB_Init(fb);
 			fb->FB_STATE = HYD_FB_STATE_IDLE;
 			fb->USE_RECIPE = __GET_VAR(data__->USE_RECIPE);
+			fb->_configuredUseRecipe = fb->USE_RECIPE;
 			fb->FLOW_TO_PUMP_SPEED_GAIN = __GET_VAR(data__->FLOW_TO_PUMPSPEED);
 			fb->PUMP_SPEED_LIMIT = __GET_VAR(data__->PUMPSPEED_LIMIT);
             fb->_useSimulation = __GET_VAR(data__->USE_SIMULATION);
@@ -463,7 +508,7 @@ void __mcl_cmd_LoadProfile(HYD_LOADPROFILE *data__)
         HYD_MotionSegment segment = buildSegmentFromMotion(&motionData, fb);
         HYD_BOOL ok;
 
-        if (fb->USE_RECIPE) {
+        if (fb->_configuredUseRecipe) {
             ok = HYD_MotionControlFB_LoadRecipe(fb, &segment, 1U);
         } else {
             ok = HYD_MotionControlFB_LoadDirectSegment(fb, &segment);
@@ -489,6 +534,10 @@ void __mcl_cmd_MoveProfile(HYD_MOVEPROFILE *data__)
 {
     IEC_SINT axisIndex = __GET_VAR(data__->AXISID);
     HYD_MotionControlFB *fb = __MK_GetPublic_MotionControlFB(axisIndex);
+    HYD_AXISMOTION motionData;
+    IEC_INT bufferMode;
+    IEC_BOOL isPending;
+    IEC_WORD myExecId;
 
     if (fb == NULL) {
         __SET_VAR(data__->, ERROR,, true);
@@ -499,17 +548,40 @@ void __mcl_cmd_MoveProfile(HYD_MOVEPROFILE *data__)
     IEC_BOOL execute = __GET_VAR(data__->EXECUTE);
     IEC_BOOL execRising = execute && !__GET_VAR(data__->EXECUTE0);
 
-    /* Update AXIS_REF from MOTION feedback */
-    HYD_AXISMOTION motionData = __GET_VAR(data__->MOTION);
-    fb->AXIS_REF.position = motionData.ACTPOSITION;
-    fb->AXIS_REF.velocity = motionData.ACTVELOCITY;
-    fb->AXIS_REF.flow     = motionData.ACTFLOW;
-    fb->AXIS_REF.pressure = motionData.ACTPRESSURE;
-    fb->AXIS_REF.timestamp = motionData.TIMESTAMP;
+    /* In simulation the FB owns feedback progression; otherwise feedback arrives via MOTION.ACT*. */
+    motionData = __GET_VAR(data__->MOTION);
+    if (!fb->_useSimulation) {
+        fb->AXIS_REF.position = motionData.ACTPOSITION;
+        fb->AXIS_REF.velocity = motionData.ACTVELOCITY;
+        fb->AXIS_REF.flow = motionData.ACTFLOW;
+        fb->AXIS_REF.pressure = motionData.ACTPRESSURE;
+        fb->AXIS_REF.timestamp = motionData.TIMESTAMP;
+    } else {
+        motionData.ACTPOSITION = (IEC_REAL)fb->AXIS_REF.position;
+        motionData.ACTVELOCITY = (IEC_REAL)fb->AXIS_REF.velocity;
+        motionData.ACTFLOW = (IEC_REAL)fb->AXIS_REF.flow;
+        motionData.ACTPRESSURE = (IEC_REAL)fb->AXIS_REF.pressure;
+        motionData.TIMESTAMP = (IEC_REAL)fb->AXIS_REF.timestamp;
+        __SET_VAR(data__->, MOTION,, motionData);
+    }
 
-    IEC_INT bufferMode = __GET_VAR(data__->BUFFERMODE);
-    IEC_BOOL isPending = __GET_VAR(data__->_PENDING);
-    IEC_WORD myExecId = __GET_VAR(data__->_EXEC_ID);
+    bufferMode = __GET_VAR(data__->BUFFERMODE);
+    isPending = __GET_VAR(data__->_PENDING);
+    myExecId = __GET_VAR(data__->_EXEC_ID);
+
+    if (!execute) {
+        __SET_VAR(data__->, DONE,, false);
+        __SET_VAR(data__->, COMMANDABORTED,, false);
+        __SET_VAR(data__->, ERROR,, false);
+        __SET_VAR(data__->, ERRORID,, (IEC_WORD)0);
+        __SET_VAR(data__->, BUSY,, false);
+        __SET_VAR(data__->, ACTIVE,, false);
+        __SET_VAR(data__->, _PENDING,, false);
+        __SET_VAR(data__->, _EXEC_ID,, (IEC_WORD)0);
+        __SET_VAR(data__->, ACTIVE0,, false);
+        __SET_VAR(data__->, EXECUTE0,, execute);
+        return;
+    }
 
     if (execRising) {
         IEC_WORD errorId = 0;
@@ -520,6 +592,7 @@ void __mcl_cmd_MoveProfile(HYD_MOVEPROFILE *data__)
             return;
         }
 
+        fb->USE_RECIPE = true;
         HYD_TIME currentTime = motionData.TIMESTAMP;
 
         if (bufferMode == HYD_BUFFER_MODE_ABORT) {
@@ -548,32 +621,55 @@ void __mcl_cmd_MoveProfile(HYD_MOVEPROFILE *data__)
 
         __SET_VAR(data__->, _PENDING,, true);
         __SET_VAR(data__->, _EXEC_ID,, (IEC_WORD)0);
+        __SET_VAR(data__->, ACTIVE,, true);
+        __SET_VAR(data__->, BUSY,, true);
+        __SET_VAR(data__->, DONE,, false);
+        __SET_VAR(data__->, COMMANDABORTED,, false);
+        __SET_VAR(data__->, ERROR,, false);
+        __SET_VAR(data__->, ERRORID,, (IEC_WORD)0);
         __SET_VAR(data__->, EXECUTE0,, execute);
         return;
     }
 
     /* Ownership tracking */
     if (isPending) {
-        if (fb->STATE.active) {
+        if (recipeExecutionCanAcquireOwnership(fb)) {
             __SET_VAR(data__->, _EXEC_ID,, (IEC_WORD)fb->_executionId);
             __SET_VAR(data__->, _PENDING,, false);
             myExecId = (IEC_WORD)fb->_executionId;
-        } else if (fb->FB_STATE == HYD_FB_STATE_ABORTED && !fb->STATE.active) {
+        } else if (recipeExecutionWasTakenOverBeforeLatch(fb) ||
+                   (fb->_pendingCommand != HYD_CMD_START &&
+                    fb->FB_STATE == HYD_FB_STATE_ABORTED && !fb->STATE.active) ||
+                   (fb->_pendingCommand != HYD_CMD_START &&
+                    fb->_executionId == 0U &&
+                    !fb->STATE.active &&
+                    !HYD_MotionControlFB_IsBusy(fb) &&
+                    !HYD_MotionControlFB_IsDone(fb) &&
+                    !fb->STATE.finished)) {
+            __SET_VAR(data__->, COMMANDABORTED,, true);
             __SET_VAR(data__->, ACTIVE,, false);
             __SET_VAR(data__->, BUSY,, false);
+            __SET_VAR(data__->, DONE,, false);
+            __SET_VAR(data__->, ERROR,, false);
+            __SET_VAR(data__->, ERRORID,, (IEC_WORD)0);
             __SET_VAR(data__->, _PENDING,, false);
+            __SET_VAR(data__->, _EXEC_ID,, (IEC_WORD)0);
             __SET_VAR(data__->, EXECUTE0,, execute);
             return;
         }
-        __SET_VAR(data__->, EXECUTE0,, execute);
-        return;
     }
 
     if (myExecId != 0) {
-        if (myExecId != (IEC_WORD)fb->_executionId) {
+        if (recipeExecutionLostOwnership(fb, myExecId)) {
+            __SET_VAR(data__->, COMMANDABORTED,, true);
             __SET_VAR(data__->, ACTIVE,, false);
             __SET_VAR(data__->, BUSY,, false);
+            __SET_VAR(data__->, DONE,, false);
+            __SET_VAR(data__->, ERROR,, false);
+            __SET_VAR(data__->, ERRORID,, (IEC_WORD)0);
+            __SET_VAR(data__->, _EXEC_ID,, (IEC_WORD)0);
         } else {
+            __SET_VAR(data__->, COMMANDABORTED,, false);
             __SET_VAR(data__->, ACTIVE,, fb->STATE.active ? true : false);
             __SET_VAR(data__->, BUSY,, HYD_MotionControlFB_IsBusy(fb));
             __SET_VAR(data__->, DONE,, (HYD_MotionControlFB_IsDone(fb) && fb->STATE.finished) ? true : false);
@@ -588,6 +684,7 @@ void __mcl_cmd_MoveProfile(HYD_MOVEPROFILE *data__)
         }
     }
 
+    __SET_VAR(data__->, ACTIVE0,, __GET_VAR(data__->ACTIVE));
     __SET_VAR(data__->, EXECUTE0,, execute);
 }
 
@@ -724,6 +821,7 @@ void __mcl_cmd_MoveAbsolute(HYD_MOVEABSOLUTE *data__)
             return;
         }
 
+        fb->USE_RECIPE = false;
         directBufferModeAbortIfRequested(fb, bufferMode);
 
         HYD_MotionDirection dir = mapPlcOpenDirection(__GET_VAR(data__->DIRECTION));
@@ -862,6 +960,7 @@ void __mcl_cmd_MoveVelocity(HYD_MOVEVELOCITY *data__)
             return;
         }
 
+        fb->USE_RECIPE = false;
         directBufferModeAbortIfRequested(fb, bufferMode);
 
         HYD_MotionDirection dir = mapPlcOpenDirection(__GET_VAR(data__->DIRECTION));
@@ -1042,6 +1141,7 @@ void __mcl_cmd_PressureHandle(HYD_PRESSUREHANDLE *data__)
             return;
         }
 
+        fb->USE_RECIPE = false;
         directBufferModeAbortIfRequested(fb, bufferMode);
 
         HYD_MotionSegment segment = buildPressureSegment(

@@ -229,6 +229,7 @@ typedef struct {
     HYD_UINT8 _index;
     uint16_t _executionId;   /* incremented on BeginSegment success; IEC layer uses for ownership tracking */
     HYD_BOOL _useSimulation;           /* If true, the FB simulates motion without real hardware interaction for testing purposes. */
+    HYD_BOOL _configuredUseRecipe;     /* Stable preload/source preference from axis setup; not the transient start selector. */
     HYD_MotionFBParams _params;        /* Tunable parameter defaults for segment builders */
     struct {
         HYD_REAL targetPosition;

@@ -1630,6 +1630,7 @@ void HYD_MotionControlFB_Init(HYD_MotionControlFB* fb) {
     fb->FLOW_TO_PUMP_SPEED_GAIN = fb->_params.flowToPumpSpeedGain;
     fb->PUMP_SPEED_LIMIT = fb->_params.pumpSpeedLimit;
     fb->_useSimulation = fb->_params.useSimulation;
+    fb->_configuredUseRecipe = false;
     fb->_directOwnerKind = HYD_DIRECT_CMD_NONE;
     fb->_directSessionState = HYD_DIRECT_SESSION_IDLE;
     fb->_directOwnerExecutionId = 0U;
@@ -1649,7 +1650,7 @@ void HYD_MotionControlFB_SoftReset(HYD_MotionControlFB* fb) {
     HYD_BOOL savedDirectSegmentValid;
     HYD_REAL savedFlowToPumpSpeedGain;
     HYD_REAL savedPumpSpeedLimit;
-    HYD_BOOL savedUseRecipe;
+    HYD_BOOL savedConfiguredUseRecipe;
     HYD_MotionFBParams savedParams;
     HYD_DiagnosticCriteria savedPressureCriteria;
     HYD_DiagnosticCriteria savedFlowCriteria;
@@ -1667,7 +1668,7 @@ void HYD_MotionControlFB_SoftReset(HYD_MotionControlFB* fb) {
     savedDirectSegmentValid = fb->DIRECT_SEGMENT_VALID;
     savedFlowToPumpSpeedGain = fb->FLOW_TO_PUMP_SPEED_GAIN;
     savedPumpSpeedLimit = fb->PUMP_SPEED_LIMIT;
-    savedUseRecipe = fb->USE_RECIPE;
+    savedConfiguredUseRecipe = fb->_configuredUseRecipe;
     savedParams = fb->_params;
     savedPressureCriteria = fb->_pressureCriteria;
     savedFlowCriteria = fb->_flowCriteria;
@@ -1685,11 +1686,12 @@ void HYD_MotionControlFB_SoftReset(HYD_MotionControlFB* fb) {
     fb->DIRECT_SEGMENT_VALID = savedDirectSegmentValid;
     fb->FLOW_TO_PUMP_SPEED_GAIN = savedFlowToPumpSpeedGain;
     fb->PUMP_SPEED_LIMIT = savedPumpSpeedLimit;
-    fb->USE_RECIPE = savedUseRecipe;
+    fb->USE_RECIPE = savedConfiguredUseRecipe;
     fb->_params = savedParams;
     fb->FLOW_TO_PUMP_SPEED_GAIN = savedParams.flowToPumpSpeedGain;
     fb->PUMP_SPEED_LIMIT = savedParams.pumpSpeedLimit;
     fb->_useSimulation = savedParams.useSimulation;
+    fb->_configuredUseRecipe = savedConfiguredUseRecipe;
     fb->_pressureCriteria = savedPressureCriteria;
     fb->_flowCriteria = savedFlowCriteria;
     fb->_velocityCriteria = savedVelocityCriteria;

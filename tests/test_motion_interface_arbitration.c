@@ -710,6 +710,314 @@ static void test_direct_command_preempts_moveprofile(void) {
                "MoveProfile should clear BUSY when a direct command takes over");
 }
 
+static void test_moveprofile_loses_activity_when_direct_command_takes_over(void) {
+    HYD_CREATEMOTION cm;
+    HYD_MOVEPROFILE mp;
+    HYD_AXISMOTION motion;
+    HYD_MOVEABSOLUTE ma;
+
+    __HydMotion_framework_Init();
+
+    memset(&cm, 0, sizeof(cm));
+    IEC_VAL(cm.EN) = true;
+    IEC_VAL(cm.USE_RECIPE) = true;
+    IEC_VAL(cm.FLOW_TO_PUMPSPEED) = 1.2f;
+    IEC_VAL(cm.PUMPSPEED_LIMIT) = 3000.0f;
+    IEC_VAL(cm.USE_SIMULATION) = false;
+    __mcl_cmd_CreateMotion(&cm);
+
+    memset(&mp, 0, sizeof(mp));
+    memset(&motion, 0, sizeof(motion));
+    IEC_VAL(mp.EN) = true;
+    IEC_VAL(mp.EXECUTE) = true;
+    mp.EXECUTE0.value = false;
+    IEC_VAL(mp.AXISID) = IEC_VAL(cm.AXISID);
+
+    motion.MODE = HYD_MODE_POSITION;
+    motion.ENDCONDITION = HYD_END_POSITION;
+    motion.DIRECTION = HYD_DIRECTION_EXTEND;
+    motion.SETPOSITION = 100.0f;
+    motion.SETVELOCITY = 40.0f;
+    motion.SETFLOW = 10.0f;
+    motion.ACCELERATION = 150.0f;
+    motion.TIMESTAMP = 0.0f;
+    __SET_VAR(mp., MOTION, , motion);
+
+    __mcl_cmd_MoveProfile(&mp);
+    __HydMotion_framework_Publish();
+    IEC_VAL(mp.EXECUTE) = true;
+    mp.EXECUTE0.value = true;
+    __mcl_cmd_MoveProfile(&mp);
+    ASSERT_TRUE(IEC_VAL(mp.ACTIVE) || IEC_VAL(mp.BUSY),
+               "MoveProfile should be active before direct takeover");
+
+    memset(&ma, 0, sizeof(ma));
+    IEC_VAL(ma.EN) = true;
+    IEC_VAL(ma.EXECUTE) = true;
+    ma.EXECUTE0.value = false;
+    IEC_VAL(ma.AXISID) = IEC_VAL(cm.AXISID);
+    IEC_VAL(ma.POSITION) = 50.0f;
+    IEC_VAL(ma.VELOCITY) = 20.0f;
+    IEC_VAL(ma.ACCELERATION) = 100.0f;
+    IEC_VAL(ma.DIRECTION) = 1;
+    __mcl_cmd_MoveAbsolute(&ma);
+    __HydMotion_framework_Publish();
+
+    IEC_VAL(mp.EXECUTE) = true;
+    mp.EXECUTE0.value = true;
+    __mcl_cmd_MoveProfile(&mp);
+
+    ASSERT_TRUE(IEC_VAL(mp.COMMANDABORTED) == true,
+               "MoveProfile should raise COMMANDABORTED when direct motion takes over");
+    ASSERT_TRUE(IEC_VAL(mp.ACTIVE) == false,
+               "MoveProfile should clear ACTIVE after direct takeover");
+    ASSERT_TRUE(IEC_VAL(mp.BUSY) == false,
+               "MoveProfile should clear BUSY after direct takeover");
+    ASSERT_TRUE(IEC_VAL(mp.DONE) == false,
+               "MoveProfile should not report DONE when displaced by takeover");
+}
+
+static void test_moveprofile_loses_activity_after_reset_takeover(void) {
+    HYD_CREATEMOTION cm;
+    HYD_MOVEPROFILE mp;
+    HYD_AXISMOTION motion;
+    HYD_RESET reset;
+
+    __HydMotion_framework_Init();
+
+    memset(&cm, 0, sizeof(cm));
+    IEC_VAL(cm.EN) = true;
+    IEC_VAL(cm.USE_RECIPE) = true;
+    IEC_VAL(cm.FLOW_TO_PUMPSPEED) = 1.2f;
+    IEC_VAL(cm.PUMPSPEED_LIMIT) = 3000.0f;
+    IEC_VAL(cm.USE_SIMULATION) = false;
+    __mcl_cmd_CreateMotion(&cm);
+
+    memset(&mp, 0, sizeof(mp));
+    memset(&motion, 0, sizeof(motion));
+    IEC_VAL(mp.EN) = true;
+    IEC_VAL(mp.EXECUTE) = true;
+    mp.EXECUTE0.value = false;
+    IEC_VAL(mp.AXISID) = IEC_VAL(cm.AXISID);
+
+    motion.MODE = HYD_MODE_POSITION;
+    motion.ENDCONDITION = HYD_END_POSITION;
+    motion.DIRECTION = HYD_DIRECTION_EXTEND;
+    motion.SETPOSITION = 80.0f;
+    motion.SETVELOCITY = 30.0f;
+    motion.SETFLOW = 8.0f;
+    motion.ACCELERATION = 120.0f;
+    motion.TIMESTAMP = 0.0f;
+    __SET_VAR(mp., MOTION, , motion);
+
+    __mcl_cmd_MoveProfile(&mp);
+    __HydMotion_framework_Publish();
+    IEC_VAL(mp.EXECUTE) = true;
+    mp.EXECUTE0.value = true;
+    __mcl_cmd_MoveProfile(&mp);
+
+    memset(&reset, 0, sizeof(reset));
+    IEC_VAL(reset.EN) = true;
+    IEC_VAL(reset.EXECUTE) = true;
+    reset.EXECUTE0.value = false;
+    IEC_VAL(reset.AXISID) = IEC_VAL(cm.AXISID);
+    __mcl_cmd_Reset(&reset);
+    ASSERT_TRUE(IEC_VAL(reset.DONE) == true,
+               "Reset should complete immediately on the recipe axis");
+
+    IEC_VAL(mp.EXECUTE) = true;
+    mp.EXECUTE0.value = true;
+    __mcl_cmd_MoveProfile(&mp);
+
+    ASSERT_TRUE(IEC_VAL(mp.COMMANDABORTED) == true,
+               "MoveProfile should raise COMMANDABORTED after reset takeover");
+    ASSERT_TRUE(IEC_VAL(mp.ACTIVE) == false,
+               "MoveProfile should clear ACTIVE after reset takeover");
+    ASSERT_TRUE(IEC_VAL(mp.BUSY) == false,
+               "MoveProfile should clear BUSY after reset takeover");
+    ASSERT_TRUE(IEC_VAL(mp.DONE) == false,
+               "MoveProfile should not report DONE after reset takeover");
+}
+
+static void test_direct_command_starts_cleanly_after_recipe_done(void) {
+    HYD_CREATEMOTION cm;
+    HYD_MOVEPROFILE mp;
+    HYD_AXISMOTION motion;
+    HYD_MOVEABSOLUTE ma;
+    HYD_MotionControlFB* fb;
+    int step;
+
+    __HydMotion_framework_Init();
+
+    memset(&cm, 0, sizeof(cm));
+    IEC_VAL(cm.EN) = true;
+    IEC_VAL(cm.USE_RECIPE) = true;
+    IEC_VAL(cm.FLOW_TO_PUMPSPEED) = 1.0f;
+    IEC_VAL(cm.PUMPSPEED_LIMIT) = 3000.0f;
+    IEC_VAL(cm.USE_SIMULATION) = true;
+    __mcl_cmd_CreateMotion(&cm);
+    fb = __MK_GetPublic_MotionControlFB((int)IEC_VAL(cm.AXISID));
+    ASSERT_TRUE(fb != NULL, "Recipe axis should expose an FB for simulation-backed MoveProfile");
+
+    memset(&mp, 0, sizeof(mp));
+    memset(&motion, 0, sizeof(motion));
+    IEC_VAL(mp.EN) = true;
+    IEC_VAL(mp.EXECUTE) = true;
+    mp.EXECUTE0.value = false;
+    IEC_VAL(mp.AXISID) = IEC_VAL(cm.AXISID);
+
+    motion.MODE = HYD_MODE_POSITION;
+    motion.ENDCONDITION = HYD_END_POSITION;
+    motion.DIRECTION = HYD_DIRECTION_EXTEND;
+    motion.SETPOSITION = 20.0f;
+    motion.SETVELOCITY = 10.0f;
+    motion.SETFLOW = 2.0f;
+    motion.ACCELERATION = 50.0f;
+    motion.TIMESTAMP = 0.0f;
+    __SET_VAR(mp., MOTION, , motion);
+
+    __mcl_cmd_MoveProfile(&mp);
+    __HydMotion_framework_Publish();
+    IEC_VAL(mp.EXECUTE) = true;
+    mp.EXECUTE0.value = true;
+    __mcl_cmd_MoveProfile(&mp);
+
+    for (step = 0; step < 4000; step++) {
+        __HydMotion_framework_Publish();
+        motion = __GET_VAR(mp.MOTION);
+        motion.ACTPOSITION = (REAL)fb->AXIS_REF.position;
+        motion.ACTVELOCITY = (REAL)fb->AXIS_REF.velocity;
+        motion.ACTFLOW = (REAL)fb->AXIS_REF.flow;
+        motion.ACTPRESSURE = (REAL)fb->AXIS_REF.pressure;
+        motion.TIMESTAMP = (REAL)fb->AXIS_REF.timestamp;
+        __SET_VAR(mp., MOTION, , motion);
+        IEC_VAL(mp.EXECUTE) = true;
+        mp.EXECUTE0.value = true;
+        __mcl_cmd_MoveProfile(&mp);
+        if (IEC_VAL(mp.DONE)) {
+            break;
+        }
+    }
+
+    ASSERT_TRUE(IEC_VAL(mp.DONE) == true,
+               "MoveProfile should reach DONE on the single recipe segment");
+
+    IEC_VAL(mp.EXECUTE) = false;
+    mp.EXECUTE0.value = true;
+    __mcl_cmd_MoveProfile(&mp);
+    __HydMotion_framework_Publish();
+
+    memset(&ma, 0, sizeof(ma));
+    IEC_VAL(ma.EN) = true;
+    IEC_VAL(ma.EXECUTE) = true;
+    ma.EXECUTE0.value = false;
+    IEC_VAL(ma.AXISID) = IEC_VAL(cm.AXISID);
+    IEC_VAL(ma.POSITION) = 0.0f;
+    IEC_VAL(ma.VELOCITY) = 15.0f;
+    IEC_VAL(ma.ACCELERATION) = 70.0f;
+    IEC_VAL(ma.DIRECTION) = -1;
+    __mcl_cmd_MoveAbsolute(&ma);
+    __HydMotion_framework_Publish();
+    IEC_VAL(ma.EXECUTE) = true;
+    ma.EXECUTE0.value = true;
+    __mcl_cmd_MoveAbsolute(&ma);
+
+    ASSERT_TRUE(IEC_VAL(ma.ERROR) == false,
+               "Direct command should start cleanly after recipe DONE");
+    ASSERT_TRUE(IEC_VAL(ma.COMMANDABORTED) == false,
+               "Direct command should not inherit an aborted lifecycle after recipe DONE");
+}
+
+static void test_moveprofile_does_not_self_abort_on_recipe_nextsegment(void) {
+    HYD_CREATEMOTION cm;
+    HYD_MOVEPROFILE mp;
+    HYD_AXISMOTION motion;
+    HYD_MotionControlFB* fb;
+    HYD_MotionSegment recipe[2];
+    int step;
+
+    __HydMotion_framework_Init();
+
+    memset(&cm, 0, sizeof(cm));
+    IEC_VAL(cm.EN) = true;
+    IEC_VAL(cm.USE_RECIPE) = true;
+    IEC_VAL(cm.FLOW_TO_PUMPSPEED) = 1.0f;
+    IEC_VAL(cm.PUMPSPEED_LIMIT) = 3000.0f;
+    IEC_VAL(cm.USE_SIMULATION) = false;
+    __mcl_cmd_CreateMotion(&cm);
+    fb = __MK_GetPublic_MotionControlFB((int)IEC_VAL(cm.AXISID));
+    ASSERT_TRUE(fb != NULL, "Recipe axis should expose an FB");
+
+    memset(recipe, 0, sizeof(recipe));
+    recipe[0].segmentTag = 1;
+    recipe[0].segmentType = HYD_SEGMENT_TYPE_HOLDING;
+    recipe[0].mode = HYD_MODE_PRESSURE_CLOSED_LOOP;
+    recipe[0].endCondition = HYD_END_TIME;
+    recipe[0].direction = HYD_DIRECTION_HOLD;
+    recipe[0].targetPressure = 5.0f;
+    recipe[0].targetFlow = 1.0f;
+    recipe[0].maxFlow = 5.0f;
+    recipe[0].duration = 0.002f;
+    recipe[0].pressureController = HYD_PRESSURE_CONTROLLER_P;
+    recipe[0].pressureKp = 0.5f;
+    recipe[0].pressureTolerance = 0.5f;
+    recipe[0].timeoutLimit = 1.0f;
+
+    recipe[1] = recipe[0];
+    recipe[1].segmentTag = 2;
+
+    ASSERT_TRUE(HYD_MotionControlFB_LoadRecipe(fb, recipe, 2U),
+               "Two-step recipe should preload successfully");
+
+    memset(&mp, 0, sizeof(mp));
+    memset(&motion, 0, sizeof(motion));
+    IEC_VAL(mp.EN) = true;
+    IEC_VAL(mp.EXECUTE) = true;
+    mp.EXECUTE0.value = false;
+    IEC_VAL(mp.AXISID) = IEC_VAL(cm.AXISID);
+    __SET_VAR(mp., MOTION, , motion);
+
+    __mcl_cmd_MoveProfile(&mp);
+    __HydMotion_framework_Publish();
+    IEC_VAL(mp.EXECUTE) = true;
+    mp.EXECUTE0.value = true;
+    __mcl_cmd_MoveProfile(&mp);
+
+    for (step = 0; step < 100; step++) {
+        motion = __GET_VAR(mp.MOTION);
+        motion.TIMESTAMP += 0.001f;
+        __SET_VAR(mp., MOTION, , motion);
+        __HydMotion_framework_Publish();
+        IEC_VAL(mp.EXECUTE) = true;
+        mp.EXECUTE0.value = true;
+        __mcl_cmd_MoveProfile(&mp);
+        if (fb->SEGMENT_COMPLETED) {
+            break;
+        }
+    }
+
+    ASSERT_TRUE(fb->SEGMENT_COMPLETED == true,
+               "First recipe segment should complete before NextSegment");
+    ASSERT_TRUE(IEC_VAL(mp.COMMANDABORTED) == false,
+               "MoveProfile should not self-abort on normal first-segment completion");
+
+    ASSERT_TRUE(HYD_MotionControlFB_NextSegment(fb, fb->AXIS_REF.timestamp),
+               "NextSegment should be accepted for the completed recipe");
+    __HydMotion_framework_Publish();
+
+    motion = __GET_VAR(mp.MOTION);
+    motion.TIMESTAMP += 0.001f;
+    __SET_VAR(mp., MOTION, , motion);
+    IEC_VAL(mp.EXECUTE) = true;
+    mp.EXECUTE0.value = true;
+    __mcl_cmd_MoveProfile(&mp);
+
+    ASSERT_TRUE(IEC_VAL(mp.COMMANDABORTED) == false,
+               "MoveProfile should not raise COMMANDABORTED on normal recipe NextSegment");
+    ASSERT_TRUE(IEC_VAL(mp.BUSY) == true || IEC_VAL(mp.ACTIVE) == true,
+               "MoveProfile should remain in a live lifecycle on the next recipe segment");
+}
+
 int main(void) {
     printf("=== Motion Interface Arbitration Tests ===\n\n");
 
@@ -725,6 +1033,10 @@ int main(void) {
     test_preemption_chain_three_commands();
     test_never_activated_fb_no_false_commandaborted();
     test_direct_command_preempts_moveprofile();
+    test_moveprofile_loses_activity_when_direct_command_takes_over();
+    test_moveprofile_loses_activity_after_reset_takeover();
+    test_direct_command_starts_cleanly_after_recipe_done();
+    test_moveprofile_does_not_self_abort_on_recipe_nextsegment();
 
     printf("\n=== Results: %d/%d passed ===\n", tests_passed, tests_run);
     return (tests_passed == tests_run) ? 0 : 1;

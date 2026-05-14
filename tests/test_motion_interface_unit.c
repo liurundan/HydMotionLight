@@ -429,6 +429,67 @@ static void test_loadprofile_preloads_direct_segment_on_direct_axis(void) {
                "Direct-axis LoadProfile should preload only, not start execution");
 }
 
+static void test_loadprofile_keeps_recipe_preload_target_after_direct_override(void) {
+    HYD_CREATEMOTION cm;
+    HYD_LOADPROFILE lp;
+    HYD_AXISMOTION motion;
+    HYD_MOVEABSOLUTE ma;
+    HYD_MotionControlFB* fb;
+
+    __HydMotion_framework_Init();
+
+    memset(&cm, 0, sizeof(cm));
+    IEC_VAL(cm.EN) = true;
+    IEC_VAL(cm.USE_RECIPE) = true;
+    IEC_VAL(cm.FLOW_TO_PUMPSPEED) = 1.2f;
+    IEC_VAL(cm.PUMPSPEED_LIMIT) = 3000.0f;
+    IEC_VAL(cm.USE_SIMULATION) = false;
+    __mcl_cmd_CreateMotion(&cm);
+    fb = __MK_GetPublic_MotionControlFB((int)IEC_VAL(cm.AXISID));
+    ASSERT_TRUE(fb != NULL, "Recipe axis should expose an FB");
+
+    memset(&ma, 0, sizeof(ma));
+    IEC_VAL(ma.EN) = true;
+    IEC_VAL(ma.EXECUTE) = true;
+    ma.EXECUTE0.value = false;
+    IEC_VAL(ma.AXISID) = IEC_VAL(cm.AXISID);
+    IEC_VAL(ma.POSITION) = 10.0f;
+    IEC_VAL(ma.VELOCITY) = 5.0f;
+    IEC_VAL(ma.ACCELERATION) = 20.0f;
+    IEC_VAL(ma.DIRECTION) = 1;
+    __mcl_cmd_MoveAbsolute(&ma);
+
+    ASSERT_TRUE(fb->USE_RECIPE == false,
+               "Direct command may temporarily switch the start selector to direct");
+
+    memset(&lp, 0, sizeof(lp));
+    memset(&motion, 0, sizeof(motion));
+    IEC_VAL(lp.EN) = true;
+    IEC_VAL(lp.EXECUTE) = true;
+    lp.EXECUTE0.value = false;
+    IEC_VAL(lp.AXISID) = IEC_VAL(cm.AXISID);
+
+    motion.SEGMENTTAG = 9;
+    motion.PLANNER = HYD_PLANNER_TIME_BASED;
+    motion.MODE = HYD_MODE_POSITION;
+    motion.ENDCONDITION = HYD_END_POSITION;
+    motion.DIRECTION = HYD_DIRECTION_EXTEND;
+    motion.SETPOSITION = 60.0f;
+    motion.SETVELOCITY = 12.0f;
+    motion.SETFLOW = 5.0f;
+    motion.ACCELERATION = 70.0f;
+    __SET_VAR(lp., MOTION, , motion);
+
+    __mcl_cmd_LoadProfile(&lp);
+
+    ASSERT_TRUE(IEC_VAL(lp.DONE) == true,
+               "LoadProfile should still complete on the recipe-configured axis");
+    ASSERT_TRUE(fb->RECIPE_SIZE == 1U,
+               "Recipe-configured axis should still preload RECIPE after direct override");
+    ASSERT_TRUE(fb->RECIPE[0].targetPosition == 60.0f,
+               "Recipe-configured axis should store the new preloaded recipe segment");
+}
+
 static void test_moveabsolute_rejects_nonzero_jerk_until_supported(void) {
     HYD_MOVEABSOLUTE ma;
 
@@ -894,6 +955,7 @@ int main(void) {
     test_moveabsolute_rejects_invalid_axis_index();
     test_loadprofile_preloads_single_recipe_segment();
     test_loadprofile_preloads_direct_segment_on_direct_axis();
+    test_loadprofile_keeps_recipe_preload_target_after_direct_override();
     test_moveabsolute_rejects_nonzero_jerk_until_supported();
     test_movevelocity_rejects_continuousupdate_until_supported();
     test_moveabsolute_rejects_unsupported_buffer_mode_values();
