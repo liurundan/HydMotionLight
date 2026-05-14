@@ -160,10 +160,10 @@ typedef enum {
     HYD_PRESSURE_CONTROLLER_RBF_PID
 } HYD_PressureControllerType;
 
-/* BufferMode: PLCopen-standard buffering mode for motion commands.
- * ABORT  (0): preempt current motion, execute immediately.
- * BUFFER (1): execute only when axis is idle; reject if axis is busy.
- * Values 2-5 are reserved for future blending modes. */
+/* BufferMode: currently supported IEC buffering subset.
+ * ABORT  (0): preempt current motion and execute immediately.
+ * BUFFER (1): preserve current command if immediate takeover is not requested.
+ * Values 2-5 are reserved and currently rejected by the IEC adapter layer. */
 typedef enum {
     HYD_BUFFER_MODE_ABORT  = 0,
     HYD_BUFFER_MODE_BUFFER = 1

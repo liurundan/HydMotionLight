@@ -333,6 +333,173 @@ static void test_moveabsolute_rejects_invalid_axis_index(void) {
     ASSERT_TRUE(IEC_VAL(ma.BUSY) == false, "BUSY should not be set for invalid AXISID");
 }
 
+static void test_loadprofile_preloads_single_recipe_segment(void) {
+    HYD_CREATEMOTION cm;
+    HYD_LOADPROFILE lp;
+    HYD_MotionControlFB* fb;
+    HYD_AXISMOTION motion;
+
+    __HydMotion_framework_Init();
+
+    memset(&cm, 0, sizeof(cm));
+    IEC_VAL(cm.EN) = true;
+    IEC_VAL(cm.USE_RECIPE) = true;
+    IEC_VAL(cm.FLOW_TO_PUMPSPEED) = 1.2f;
+    IEC_VAL(cm.PUMPSPEED_LIMIT) = 3000.0f;
+    IEC_VAL(cm.USE_SIMULATION) = false;
+    __mcl_cmd_CreateMotion(&cm);
+
+    memset(&lp, 0, sizeof(lp));
+    memset(&motion, 0, sizeof(motion));
+    IEC_VAL(lp.EN) = true;
+    IEC_VAL(lp.EXECUTE) = true;
+    lp.EXECUTE0.value = false;
+    IEC_VAL(lp.AXISID) = IEC_VAL(cm.AXISID);
+
+    motion.SEGMENTTAG = 7;
+    motion.PLANNER = HYD_PLANNER_TIME_BASED;
+    motion.MODE = HYD_MODE_POSITION;
+    motion.ENDCONDITION = HYD_END_POSITION;
+    motion.DIRECTION = HYD_DIRECTION_EXTEND;
+    motion.SETPOSITION = 42.0f;
+    motion.SETVELOCITY = 12.0f;
+    motion.SETFLOW = 4.0f;
+    motion.SETPRESSURE = 0.0f;
+    motion.ACCELERATION = 55.0f;
+    motion.DURATION = 0.0f;
+    motion.PRESSURERAMPRATE = 0.0f;
+    __SET_VAR(lp., MOTION, , motion);
+
+    __mcl_cmd_LoadProfile(&lp);
+
+    fb = __MK_GetPublic_MotionControlFB((int)IEC_VAL(cm.AXISID));
+    ASSERT_TRUE(fb != NULL, "LoadProfile recipe axis should resolve an FB");
+    ASSERT_TRUE(IEC_VAL(lp.DONE) == true, "LoadProfile should set DONE after preload");
+    ASSERT_TRUE(fb->RECIPE_SIZE == 1U, "LoadProfile should preload one recipe segment");
+    ASSERT_TRUE(fb->DIRECT_SEGMENT_VALID == false,
+               "Recipe-axis LoadProfile should not populate DIRECT_SEGMENT");
+    ASSERT_TRUE(fb->STATE.active == false,
+               "LoadProfile should preload only, not start execution");
+}
+
+static void test_loadprofile_preloads_direct_segment_on_direct_axis(void) {
+    HYD_CREATEMOTION cm;
+    HYD_LOADPROFILE lp;
+    HYD_MotionControlFB* fb;
+    HYD_AXISMOTION motion;
+
+    __HydMotion_framework_Init();
+
+    memset(&cm, 0, sizeof(cm));
+    IEC_VAL(cm.EN) = true;
+    IEC_VAL(cm.USE_RECIPE) = false;
+    IEC_VAL(cm.FLOW_TO_PUMPSPEED) = 1.2f;
+    IEC_VAL(cm.PUMPSPEED_LIMIT) = 3000.0f;
+    IEC_VAL(cm.USE_SIMULATION) = false;
+    __mcl_cmd_CreateMotion(&cm);
+
+    memset(&lp, 0, sizeof(lp));
+    memset(&motion, 0, sizeof(motion));
+    IEC_VAL(lp.EN) = true;
+    IEC_VAL(lp.EXECUTE) = true;
+    lp.EXECUTE0.value = false;
+    IEC_VAL(lp.AXISID) = IEC_VAL(cm.AXISID);
+
+    motion.SEGMENTTAG = 8;
+    motion.PLANNER = HYD_PLANNER_TIME_BASED;
+    motion.MODE = HYD_MODE_SPEED_RAMP;
+    motion.ENDCONDITION = HYD_END_TIME;
+    motion.DIRECTION = HYD_DIRECTION_EXTEND;
+    motion.SETVELOCITY = 15.0f;
+    motion.SETFLOW = 6.0f;
+    motion.ACCELERATION = 80.0f;
+    motion.DURATION = 0.5f;
+    __SET_VAR(lp., MOTION, , motion);
+
+    __mcl_cmd_LoadProfile(&lp);
+
+    fb = __MK_GetPublic_MotionControlFB((int)IEC_VAL(cm.AXISID));
+    ASSERT_TRUE(fb != NULL, "LoadProfile direct axis should resolve an FB");
+    ASSERT_TRUE(IEC_VAL(lp.DONE) == true, "LoadProfile should set DONE on direct preload");
+    ASSERT_TRUE(fb->DIRECT_SEGMENT_VALID == true,
+               "Direct-axis LoadProfile should populate DIRECT_SEGMENT");
+    ASSERT_TRUE(fb->RECIPE_SIZE == 0U,
+               "Direct-axis LoadProfile should not populate RECIPE");
+    ASSERT_TRUE(fb->STATE.active == false,
+               "Direct-axis LoadProfile should preload only, not start execution");
+}
+
+static void test_moveabsolute_rejects_nonzero_jerk_until_supported(void) {
+    HYD_MOVEABSOLUTE ma;
+
+    __HydMotion_framework_Init();
+    ensure_axes_allocated(1);
+    memset(&ma, 0, sizeof(ma));
+
+    IEC_VAL(ma.EN) = true;
+    IEC_VAL(ma.EXECUTE) = true;
+    ma.EXECUTE0.value = false;
+    IEC_VAL(ma.AXISID) = 0;
+    IEC_VAL(ma.POSITION) = 100.0f;
+    IEC_VAL(ma.VELOCITY) = 20.0f;
+    IEC_VAL(ma.ACCELERATION) = 50.0f;
+    IEC_VAL(ma.JERK) = 1.0f;
+
+    __mcl_cmd_MoveAbsolute(&ma);
+
+    ASSERT_TRUE(IEC_VAL(ma.ERROR) == true,
+               "MoveAbsolute should reject unsupported nonzero JERK");
+    ASSERT_TRUE(IEC_VAL(ma.ERRORID) == HYD_DIAG_CODE_COMMAND_NOT_ALLOWED,
+               "Unsupported JERK should surface COMMAND_NOT_ALLOWED");
+}
+
+static void test_movevelocity_rejects_continuousupdate_until_supported(void) {
+    HYD_MOVEVELOCITY mv;
+
+    __HydMotion_framework_Init();
+    ensure_axes_allocated(1);
+    memset(&mv, 0, sizeof(mv));
+
+    IEC_VAL(mv.EN) = true;
+    IEC_VAL(mv.EXECUTE) = true;
+    mv.EXECUTE0.value = false;
+    IEC_VAL(mv.AXISID) = 0;
+    IEC_VAL(mv.VELOCITY) = 25.0f;
+    IEC_VAL(mv.ACCELERATION) = 100.0f;
+    IEC_VAL(mv.CONTINUOUSUPDATE) = true;
+
+    __mcl_cmd_MoveVelocity(&mv);
+
+    ASSERT_TRUE(IEC_VAL(mv.ERROR) == true,
+               "MoveVelocity should reject unsupported CONTINUOUSUPDATE");
+    ASSERT_TRUE(IEC_VAL(mv.ERRORID) == HYD_DIAG_CODE_COMMAND_NOT_ALLOWED,
+               "Unsupported CONTINUOUSUPDATE should surface COMMAND_NOT_ALLOWED");
+}
+
+static void test_moveabsolute_rejects_unsupported_buffer_mode_values(void) {
+    HYD_MOVEABSOLUTE ma;
+
+    __HydMotion_framework_Init();
+    ensure_axes_allocated(1);
+    memset(&ma, 0, sizeof(ma));
+
+    IEC_VAL(ma.EN) = true;
+    IEC_VAL(ma.EXECUTE) = true;
+    ma.EXECUTE0.value = false;
+    IEC_VAL(ma.AXISID) = 0;
+    IEC_VAL(ma.POSITION) = 50.0f;
+    IEC_VAL(ma.VELOCITY) = 10.0f;
+    IEC_VAL(ma.ACCELERATION) = 40.0f;
+    IEC_VAL(ma.BUFFERMODE) = 2;
+
+    __mcl_cmd_MoveAbsolute(&ma);
+
+    ASSERT_TRUE(IEC_VAL(ma.ERROR) == true,
+               "MoveAbsolute should reject unsupported BUFFERMODE values");
+    ASSERT_TRUE(IEC_VAL(ma.ERRORID) == HYD_DIAG_CODE_COMMAND_NOT_ALLOWED,
+               "Unsupported BUFFERMODE should surface COMMAND_NOT_ALLOWED");
+}
+
 /* ==================================================================
  * Test 9: MoveVelocity EXECUTE 上升沿 启动速度控制
  * ================================================================== */
@@ -725,6 +892,11 @@ int main(void) {
     test_moveabsolute_sustains_busy_active_across_calls();
     test_moveabsolute_owned_fault_sets_error_outputs();
     test_moveabsolute_rejects_invalid_axis_index();
+    test_loadprofile_preloads_single_recipe_segment();
+    test_loadprofile_preloads_direct_segment_on_direct_axis();
+    test_moveabsolute_rejects_nonzero_jerk_until_supported();
+    test_movevelocity_rejects_continuousupdate_until_supported();
+    test_moveabsolute_rejects_unsupported_buffer_mode_values();
     test_movevelocity_execute_rising_starts_velocity_control();
     test_movevelocity_rejects_invalid_axis_index();
     test_stop_on_idle_axis_immediate_done();

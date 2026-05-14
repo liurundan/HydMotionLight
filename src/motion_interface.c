@@ -1,6 +1,7 @@
 #include "motion_interface.h"
 #include <string.h>
 #include <stdio.h>
+#include <math.h>
 
 /* ======================================================================
  * FB实例池管理
@@ -287,6 +288,32 @@ static HYD_BOOL directStopCanCompleteImmediately(const HYD_MotionControlFB* fb)
            fb->FB_STATE != HYD_FB_STATE_HOLD;
 }
 
+static HYD_BOOL validateSupportedBufferMode(IEC_INT bufferMode, IEC_WORD* errorId)
+{
+    if (bufferMode == HYD_BUFFER_MODE_ABORT || bufferMode == HYD_BUFFER_MODE_BUFFER) {
+        return true;
+    }
+
+    if (errorId != NULL) {
+        *errorId = (IEC_WORD)HYD_DIAG_CODE_COMMAND_NOT_ALLOWED;
+    }
+    return false;
+}
+
+static HYD_BOOL validateUnsupportedMotionOptions(IEC_BOOL continuousUpdate,
+                                                 IEC_REAL jerk,
+                                                 IEC_WORD* errorId)
+{
+    if (!continuousUpdate && fabs((double)jerk) <= 1e-6) {
+        return true;
+    }
+
+    if (errorId != NULL) {
+        *errorId = (IEC_WORD)HYD_DIAG_CODE_COMMAND_NOT_ALLOWED;
+    }
+    return false;
+}
+
 static HYD_BOOL startDirectSegmentExecution(HYD_MotionControlFB* fb,
                                             const HYD_MotionSegment* segment,
                                             IEC_WORD* errorId)
@@ -413,13 +440,49 @@ void __mcl_cmd_CreateMotion(HYD_CREATEMOTION *data__)
 
 void __mcl_cmd_LoadProfile(HYD_LOADPROFILE *data__)
 {
-    // TODO: 实现预加载配方, 目前仅支持单段MoveProfile的自动构建和执行,待后面补充完善
     IEC_SINT axisIndex = __GET_VAR(data__->AXISID);
     HYD_MotionControlFB* fb = __MK_GetPublic_MotionControlFB(axisIndex);
+    IEC_BOOL execute = __GET_VAR(data__->EXECUTE);
+    IEC_BOOL execRising = execute && !__GET_VAR(data__->EXECUTE0);
 
-    if (fb != NULL) {
-        // 预加载配方逻辑
+    if (fb == NULL) {
+        __SET_VAR(data__->, ERROR,, true);
+        __SET_VAR(data__->, ERRORID,, (IEC_WORD)HYD_DIAG_CODE_START_CONTEXT_INVALID);
+        __SET_VAR(data__->, EXECUTE0,, execute);
+        return;
     }
+
+    if (!execute) {
+        __SET_VAR(data__->, BUSY,, false);
+        __SET_VAR(data__->, EXECUTE0,, execute);
+        return;
+    }
+
+    if (execRising) {
+        HYD_AXISMOTION motionData = __GET_VAR(data__->MOTION);
+        HYD_MotionSegment segment = buildSegmentFromMotion(&motionData, fb);
+        HYD_BOOL ok;
+
+        if (fb->USE_RECIPE) {
+            ok = HYD_MotionControlFB_LoadRecipe(fb, &segment, 1U);
+        } else {
+            ok = HYD_MotionControlFB_LoadDirectSegment(fb, &segment);
+        }
+
+        if (!ok) {
+            __SET_VAR(data__->, ERROR,, true);
+            __SET_VAR(data__->, ERRORID,, (IEC_WORD)HYD_DIAG_CODE_SEGMENT_INVALID);
+            __SET_VAR(data__->, EXECUTE0,, execute);
+            return;
+        }
+
+        __SET_VAR(data__->, DONE,, true);
+        __SET_VAR(data__->, BUSY,, false);
+        __SET_VAR(data__->, ERROR,, false);
+        __SET_VAR(data__->, ERRORID,, (IEC_WORD)0);
+    }
+
+    __SET_VAR(data__->, EXECUTE0,, execute);
 }
 
 void __mcl_cmd_MoveProfile(HYD_MOVEPROFILE *data__)
@@ -449,6 +512,14 @@ void __mcl_cmd_MoveProfile(HYD_MOVEPROFILE *data__)
     IEC_WORD myExecId = __GET_VAR(data__->_EXEC_ID);
 
     if (execRising) {
+        IEC_WORD errorId = 0;
+        if (!validateSupportedBufferMode(bufferMode, &errorId)) {
+            __SET_VAR(data__->, ERROR,, true);
+            __SET_VAR(data__->, ERRORID,, errorId);
+            __SET_VAR(data__->, EXECUTE0,, execute);
+            return;
+        }
+
         HYD_TIME currentTime = motionData.TIMESTAMP;
 
         if (bufferMode == HYD_BUFFER_MODE_ABORT) {
@@ -642,7 +713,17 @@ void __mcl_cmd_MoveAbsolute(HYD_MOVEABSOLUTE *data__)
 
     if (execRising)
     {
-        IEC_WORD errorId;
+        IEC_WORD errorId = 0;
+        if (!validateSupportedBufferMode(bufferMode, &errorId) ||
+            !validateUnsupportedMotionOptions(__GET_VAR(data__->CONTINUOUSUPDATE),
+                                              __GET_VAR(data__->JERK),
+                                              &errorId)) {
+            __SET_VAR(data__->, ERROR, , true);
+            __SET_VAR(data__->, ERRORID, , errorId);
+            __SET_VAR(data__->, EXECUTE0, , execute);
+            return;
+        }
+
         directBufferModeAbortIfRequested(fb, bufferMode);
 
         HYD_MotionDirection dir = mapPlcOpenDirection(__GET_VAR(data__->DIRECTION));
@@ -770,7 +851,17 @@ void __mcl_cmd_MoveVelocity(HYD_MOVEVELOCITY *data__)
 
     if (execRising)
     {
-        IEC_WORD errorId;
+        IEC_WORD errorId = 0;
+        if (!validateSupportedBufferMode(bufferMode, &errorId) ||
+            !validateUnsupportedMotionOptions(__GET_VAR(data__->CONTINUOUSUPDATE),
+                                              __GET_VAR(data__->JERK),
+                                              &errorId)) {
+            __SET_VAR(data__->, ERROR, , true);
+            __SET_VAR(data__->, ERRORID, , errorId);
+            __SET_VAR(data__->, EXECUTE0, , execute);
+            return;
+        }
+
         directBufferModeAbortIfRequested(fb, bufferMode);
 
         HYD_MotionDirection dir = mapPlcOpenDirection(__GET_VAR(data__->DIRECTION));
@@ -943,7 +1034,14 @@ void __mcl_cmd_PressureHandle(HYD_PRESSUREHANDLE *data__)
 
     if (execRising)
     {
-        IEC_WORD errorId;
+        IEC_WORD errorId = 0;
+        if (!validateSupportedBufferMode(bufferMode, &errorId)) {
+            __SET_VAR(data__->, ERROR, , true);
+            __SET_VAR(data__->, ERRORID, , errorId);
+            __SET_VAR(data__->, EXECUTE0, , execute);
+            return;
+        }
+
         directBufferModeAbortIfRequested(fb, bufferMode);
 
         HYD_MotionSegment segment = buildPressureSegment(

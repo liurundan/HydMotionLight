@@ -119,6 +119,8 @@ typedef struct {
 } HYD_STOP;
 
 // FUNCTION_BLOCK HYD_MoveAbsolute
+// Note: JERK and CONTINUOUSUPDATE are currently reserved compatibility pins.
+// Non-default values are rejected by the IEC adapter until runtime support exists.
 // Data part
 typedef struct {
   // FB Interface - IN, OUT, IN_OUT variables
@@ -152,6 +154,8 @@ typedef struct {
 
 
 // FUNCTION_BLOCK HYD_MoveVelocity
+// Note: JERK and CONTINUOUSUPDATE are currently reserved compatibility pins.
+// Non-default values are rejected by the IEC adapter until runtime support exists.
 // Data part
 typedef struct {
   // FB Interface - IN, OUT, IN_OUT variables
