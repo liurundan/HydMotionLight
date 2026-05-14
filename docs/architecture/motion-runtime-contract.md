@@ -143,7 +143,7 @@ Recipe execution does not currently expose a separate recipe-side owner-kind sig
 
 - Trigger: start request reaches the runtime
 - Allowed runtime states: `HYD_FB_STATE_IDLE`, `HYD_FB_STATE_READY`, `HYD_FB_STATE_SEGMENT_COMPLETE`, `HYD_FB_STATE_DONE`, `HYD_FB_STATE_ABORTED`
-- Immediate effect: start command is queued and later consumed by the runtime
+- Immediate effect: start command is queued and consumed by the runtime on a following scan
 - Completion condition: segment starts successfully and runtime enters `STARTING`
 - Failure condition: invalid source, invalid segment, invalid state, or invalid start context
 
@@ -249,6 +249,17 @@ Recipe execution does not currently expose a separate recipe-side owner-kind sig
 9. `HYD_AXISMOTION.SEGMENTTYPE` is the domain segment type and is mapped independently from `SEGMENTTAG`.
 10. If a direct command takes over a recipe execution, recipe-side observation is currently driven mainly by runtime-state changes rather than by a dedicated recipe-side `COMMANDABORTED` signal.
 
+### `HYD_LOADPROFILE`
+
+`HYD_LOADPROFILE` is a preload-only IEC adapter FB. On a valid `EXECUTE` rising edge:
+
+- recipe-configured axes load one segment into `RECIPE[0]`
+- direct-configured axes load one segment into `DIRECT_SEGMENT`
+- `DONE` reports successful preload completion
+- the runtime does not start execution, take ownership, or set `STATE.active`
+
+Execution still begins through `MoveProfile`/`Start` or through direct command FBs.
+
 ## Error and Protection Contract
 
 ### Error Semantics
@@ -323,10 +334,10 @@ The current runtime contract does not define or fully support:
 - V/P transfer decision logic
 - machine-specific hydraulic interlocks
 - PLCopen blending modes beyond the currently supported buffer-mode subset
-- full end-to-end semantics for all exposed IEC pins that are present only for compatibility or future extension
+- full end-to-end semantics for all exposed IEC pins that are present only for compatibility or extension
 
-Known examples to verify against implementation and future documentation cleanup:
+Known examples to verify against implementation and documentation cleanup:
 
 - `DECELERATION`, `JERK`, and `CONTINUOUSUPDATE` on some IEC FBs do not yet imply full independent runtime semantics
-- `HYD_LOADPROFILE` is not yet a fully implemented lifecycle component
+- `HYD_LOADPROFILE` is implemented as preload-only and is not an execution lifecycle owner
 - `PressureHandle` timed completion currently clears `BUSY/ACTIVE` without exposing a `DONE` pin like `MoveAbsolute` or `Stop`

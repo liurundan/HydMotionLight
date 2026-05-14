@@ -32,11 +32,11 @@ against the current implementation in:
 ### High
 
 1. IEC FB surfaces expose parameters whose runtime semantics are not actually implemented end-to-end.
-2. `HYD_LOADPROFILE` exists in the IEC layer but remains effectively unimplemented.
-3. Recipe-side takeover semantics are weaker and less explicit than direct-side takeover semantics.
+2. Recipe-side takeover semantics are weaker and less explicit than direct-side takeover semantics.
 
 ### Medium
 
+3. `HYD_LOADPROFILE` is implemented as preload-only; PLC integration examples should make that boundary explicit.
 4. `Hold` and `Resume` now have dedicated IEC FB wrappers; PLC integration examples still need to be documented.
 5. `BufferMode` remains a very small subset of the apparent PLCopen surface.
 6. Some in-code comments and header contracts are narrower than the actual runtime behavior.
@@ -76,33 +76,7 @@ Recommended direction:
 
 - Either implement those semantics properly in the runtime and adapter path, or explicitly remove/deprecate/mark them unsupported at the interface level.
 
-### 2. `HYD_LOADPROFILE` Is Still a Stub
-
-Severity: High
-
-Affected surface:
-
-- [motion_interface.h](/home/dan/project/hdy-motion-light/include/motion_interface.h:75)
-- [motion_interface.c](/home/dan/project/hdy-motion-light/src/motion_interface.c:414)
-
-Observed mismatch:
-
-- The library exposes a dedicated `HYD_LOADPROFILE` FB but does not currently implement meaningful preload behavior in the IEC adapter path.
-
-Evidence:
-
-- `__mcl_cmd_LoadProfile()` is still marked TODO and contains no real logic: [motion_interface.c](/home/dan/project/hdy-motion-light/src/motion_interface.c:414)
-
-Impact:
-
-- The IEC surface implies a recipe-loading workflow that is not actually present.
-- This weakens recipe-mode completeness and confuses the intended contract.
-
-Recommended direction:
-
-- Either implement the preload path properly or remove/hide the FB from the supported contract until it exists.
-
-### 3. Recipe Takeover Is Less Explicit Than Direct Takeover
+### 2. Recipe Takeover Is Less Explicit Than Direct Takeover
 
 Severity: High
 
@@ -129,6 +103,35 @@ Impact:
 Recommended direction:
 
 - Decide whether recipe-side takeover should remain implicitly observed or be surfaced as a first-class lifecycle signal.
+
+### 3. `HYD_LOADPROFILE` Is Preload-Only
+
+Severity: Medium
+
+Affected surface:
+
+- [motion_interface.h](/home/dan/project/hdy-motion-light/include/motion_interface.h:75)
+- [motion_interface.c](/home/dan/project/hdy-motion-light/src/motion_interface.c:500)
+- [tests/test_motion_interface_unit.c](/home/dan/project/hdy-motion-light/tests/test_motion_interface_unit.c:336)
+
+Observed mismatch:
+
+- `HYD_LOADPROFILE` performs meaningful preload behavior, but it is not an execution lifecycle owner.
+- It loads one segment into `RECIPE[0]` for recipe-configured axes or into `DIRECT_SEGMENT` for direct-configured axes.
+
+Evidence:
+
+- `__mcl_cmd_LoadProfile()` builds a segment from `MOTION` and calls `HYD_MotionControlFB_LoadRecipe()` or `HYD_MotionControlFB_LoadDirectSegment()`.
+- Unit tests assert recipe preload, direct preload, and independent `SEGMENTTAG` / `SEGMENTTYPE` mapping.
+
+Impact:
+
+- PLC users must not treat `LoadProfile.DONE` as motion completion or ownership acquisition.
+- PLC integration docs should describe it as configuration/preload completion only.
+
+Recommended direction:
+
+- Keep this preload-only boundary explicit in the integration guide.
 
 ### 4. `Hold` and `Resume` IEC Surface Added
 
@@ -250,7 +253,6 @@ Recommended direction:
 
 1. Harden the IEC/public surface:
    - unsupported pins
-   - `LoadProfile`
    - `BufferMode` subset
 2. Normalize lifecycle exposure:
    - recipe takeover visibility

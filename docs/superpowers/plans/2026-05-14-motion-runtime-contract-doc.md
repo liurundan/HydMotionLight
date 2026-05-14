@@ -46,7 +46,7 @@
 - Reference: `tests/test_motion_interface_arbitration.c`
 - Reference: `tests/test_moveabsolute_stop_integration.c`
 
-- [ ] **Step 1: Re-read the approved design doc and extract the required sections**
+- [x] **Step 1: Re-read the approved design doc and extract the required sections**
 
 Read:
 
@@ -69,7 +69,7 @@ Expected extraction list:
 - worked examples
 - not supported
 
-- [ ] **Step 2: Capture the state and command vocabulary from `include/motion_control.h`**
+- [x] **Step 2: Capture the state and command vocabulary from `include/motion_control.h`**
 
 Read:
 
@@ -85,7 +85,7 @@ Record these exact contract items for later use:
 - `HYD_DirectSessionState`
 - comments describing `STATE.active`, `IsBusy`, `IsDone`, `IsError`, `SEGMENT_COMPLETED`, `DIAGNOSTIC`, and `USE_RECIPE`
 
-- [ ] **Step 3: Capture the shared type semantics from `include/common_types.h`**
+- [x] **Step 3: Capture the shared type semantics from `include/common_types.h`**
 
 Read:
 
@@ -105,7 +105,7 @@ Record these exact contract items for later use:
 - `HYD_BufferMode`
 - comments describing segment and mode semantics
 
-- [ ] **Step 4: Extract current runtime command and completion behavior from `src/motion_control.c`**
+- [x] **Step 4: Extract current runtime command and completion behavior from `src/motion_control.c`**
 
 Read:
 
@@ -125,7 +125,7 @@ Capture the actual current behavior for:
 - runtime fault entry
 - segment-complete to done path
 
-- [ ] **Step 5: Extract IEC-facing signal behavior from `src/motion_interface.c`**
+- [x] **Step 5: Extract IEC-facing signal behavior from `src/motion_interface.c`**
 
 Read:
 
@@ -150,7 +150,7 @@ Especially record:
 - when `COMMANDABORTED` is raised
 - when `INVELOCITY` and `INPRESSURE` are asserted
 
-- [ ] **Step 6: Cross-check tests so the document reflects externally relied-on behavior**
+- [x] **Step 6: Cross-check tests so the document reflects externally relied-on behavior**
 
 Read:
 
@@ -168,15 +168,15 @@ Extract externally visible guarantees already enforced by tests:
 - `PressureHandle` completion clears `BUSY/ACTIVE` without a `DONE` pin
 - `Reset` preserves direct configuration while clearing active execution
 
-- [ ] **Step 7: Summarize mismatches between interface appearance and actual supported semantics**
+- [x] **Step 7: Summarize mismatches between interface appearance and actual supported semantics**
 
 Make a working note with at least these items if still true during review:
 
 - `DECELERATION/JERK/CONTINUOUSUPDATE` are exposed on some IEC FBs but not fully implemented semantically
-- `LoadProfile` remains incomplete / TODO
+- `LoadProfile` is implemented as preload-only and is not an execution lifecycle owner
 - blending modes beyond `ABORT/BUFFER` are not supported
 
-- [ ] **Step 8: Commit the notes-free context collection checkpoint**
+- [x] **Step 8: Commit the notes-free context collection checkpoint**
 
 ```bash
 git status --short
@@ -193,7 +193,7 @@ No commit in this task; commit only after the document is created and reviewed.
 **Files:**
 - Create: `docs/architecture/motion-runtime-contract.md`
 
-- [ ] **Step 1: Write the document header and scope section**
+- [x] **Step 1: Write the document header and scope section**
 
 Create the file with this opening structure:
 
@@ -234,7 +234,7 @@ This contract applies to:
 - PLC process-layer consumers of the official runtime outputs
 ```
 
-- [ ] **Step 2: Add the runtime objects section**
+- [x] **Step 2: Add the runtime objects section**
 
 Write a `## Runtime Objects` section with a table containing at least these rows:
 
@@ -253,7 +253,7 @@ Write a `## Runtime Objects` section with a table containing at least these rows
 | `_isStopping` | Internal stop-deceleration flag | motion runtime core | No |
 ```
 
-- [ ] **Step 3: Add the state-model section with an explicit state table**
+- [x] **Step 3: Add the state-model section with an explicit state table**
 
 Write `## State Model` and include:
 
@@ -281,7 +281,7 @@ Then add short text explicitly distinguishing:
 - `STATE.finished` vs `SEGMENT_COMPLETED`
 - `DONE` vs “reached control band”
 
-- [ ] **Step 4: Add the execution ownership model section**
+- [x] **Step 4: Add the execution ownership model section**
 
 Write `## Execution Ownership Model` with:
 
@@ -298,7 +298,7 @@ Then add these exact rules in prose:
 4. `Reset` clears active execution state but is not a normal-completion event.
 ```
 
-- [ ] **Step 5: Add the command contract section**
+- [x] **Step 5: Add the command contract section**
 
 Write `## Command Contract` and add subsections for:
 
@@ -324,7 +324,7 @@ For each command, use this mini-template:
 - PLC note: `DONE` must not be assumed on the trigger cycle during active motion
 ```
 
-- [ ] **Step 6: Add the output signal contract table**
+- [x] **Step 6: Add the output signal contract table**
 
 Write `## Output Signal Contract` and include a table with at least:
 
@@ -345,7 +345,7 @@ Add text explicitly stating:
 - `DONE` is not a universal “target reached” signal for all FBs.
 - `INVELOCITY` and `INPRESSURE` are in-band achievement signals, not universal terminal signals.
 
-- [ ] **Step 7: Add a terminal-semantics matrix**
+- [x] **Step 7: Add a terminal-semantics matrix**
 
 Write `## Completion Semantics` with a matrix like:
 
@@ -359,7 +359,7 @@ Write `## Completion Semantics` with a matrix like:
 | Fault termination | No | No | No | Not required | Yes |
 ```
 
-- [ ] **Step 8: Add recipe/direct boundary and PLC dependency sections**
+- [x] **Step 8: Add recipe/direct boundary and PLC dependency sections**
 
 Write:
 
@@ -376,7 +376,7 @@ In `PLC Dependency Rules`, include an explicit table:
 | Internal bookkeeping | No | `_executionId`, `_pendingCommand`, `_isStopping` |
 ```
 
-- [ ] **Step 9: Add three worked examples**
+- [x] **Step 9: Add three worked examples**
 
 Write `## Worked Examples` with these subsections:
 
@@ -391,7 +391,7 @@ Each example should include:
 - expected external output changes
 - what the PLC layer should consume
 
-- [ ] **Step 10: Add `Not Supported`**
+- [x] **Step 10: Add `Not Supported`**
 
 Write `## Not Supported` with at least:
 
@@ -407,7 +407,7 @@ Write `## Not Supported` with at least:
 **Files:**
 - Modify: `docs/architecture/motion-runtime-contract.md`
 
-- [ ] **Step 1: Read the draft and compare each section against current runtime code**
+- [x] **Step 1: Read the draft and compare each section against current runtime code**
 
 Run:
 
@@ -422,7 +422,7 @@ Expected review outcome:
 - every document claim matches either code or explicit intended current behavior already enforced in tests
 - no machine-process sequencing language appears in the runtime document
 
-- [ ] **Step 2: Check the document against test-enforced behavior**
+- [x] **Step 2: Check the document against test-enforced behavior**
 
 Run:
 
@@ -438,7 +438,7 @@ Expected review outcome:
 - preemption behavior is documented correctly
 - `PressureHandle` completion semantics are documented correctly
 
-- [ ] **Step 3: Remove or soften any statement that over-promises unsupported semantics**
+- [x] **Step 3: Remove or soften any statement that over-promises unsupported semantics**
 
 Specifically verify the document does not imply:
 
@@ -447,7 +447,7 @@ Specifically verify the document does not imply:
 - full PLCopen blending support
 - machine-specific hydraulic sequencing support
 
-- [ ] **Step 4: Run a placeholder and ambiguity scan**
+- [x] **Step 4: Run a placeholder and ambiguity scan**
 
 Run:
 
@@ -460,7 +460,7 @@ Expected:
 - either no matches
 - or only deliberate mentions inside `Not Supported`
 
-- [ ] **Step 5: Commit the runtime-contract document**
+- [x] **Step 5: Commit the runtime-contract document**
 
 ```bash
 git add docs/architecture/motion-runtime-contract.md docs/superpowers/specs/2026-05-14-motion-control-layer-docs-design.md docs/superpowers/plans/2026-05-14-motion-runtime-contract-doc.md
