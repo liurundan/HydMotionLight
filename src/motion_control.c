@@ -1351,8 +1351,9 @@ static void HYD_MotionControlFB_RunRunningState(HYD_MotionControlFB* fb) {
         HYD_REAL stopElapsed = fb->AXIS_REF.timestamp - fb->_stopStartTime;
         HYD_REAL stopMag = fabs(fb->_stopStartVel);
         HYD_REAL stopSign = (fb->_stopStartVel >= 0.0f) ? 1.0f : -1.0f;
-        HYD_REAL stopDeceleration = (fb->_stopDeceleration > 0.0f) ?
-            fb->_stopDeceleration : segment->maxAcceleration;
+        HYD_REAL stopDeceleration = (fb->_stopDeceleration > 0.0f)
+            ? fb->_stopDeceleration
+            : ((segment->maxDeceleration > 0.0f) ? segment->maxDeceleration : segment->maxAcceleration);
         HYD_REAL decelMag = stopMag - stopDeceleration * stopElapsed;
 
         if (decelMag < 0.0f) {

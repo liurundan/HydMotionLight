@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <assert.h>
 #include <math.h>
 #include <string.h>
 #include <stdbool.h>
@@ -98,9 +99,53 @@ static void test_moveabsolute_stop_loop(void) {
     CHECK(fabs(fb->AXIS_REF.velocity) < 0.01f, "Velocity should be near zero when Stop.DONE becomes true");
 }
 
+static void test_stop_without_deceleration_uses_segment_max_deceleration(void) {
+    HYD_MotionControlFB fb;
+    HYD_MotionSegment segment;
+    HYD_REAL firstStopVelocity;
+
+    HYD_MotionControlFB_Init(&fb);
+    fb.USE_RECIPE = false;
+    fb.FLOW_TO_PUMP_SPEED_GAIN = 10.0;
+    fb.PUMP_SPEED_LIMIT = 3000.0;
+    fb.AXIS_REF.position = 0.0;
+    fb.AXIS_REF.velocity = 20.0;
+    fb.AXIS_REF.flow = 20.0;
+    fb.AXIS_REF.pressure = 5.0;
+    fb.AXIS_REF.timestamp = 0.0;
+
+    memset(&segment, 0, sizeof(segment));
+    segment.planner = HYD_PLANNER_TIME_BASED;
+    segment.mode = HYD_MODE_SPEED_RAMP;
+    segment.endCondition = HYD_END_MANUAL;
+    segment.direction = HYD_DIRECTION_EXTEND;
+    segment.maxVelocity = 50.0;
+    segment.maxAcceleration = 100.0;
+    segment.maxDeceleration = 5.0;
+    segment.maxFlow = 100.0;
+    segment.velocityToFlowGain = 1.0;
+
+    assert(HYD_MotionControlFB_LoadDirectSegment(&fb, &segment));
+    assert(HYD_MotionControlFB_StartSegment(&fb, 0, 0.0));
+
+    fb.AXIS_REF.timestamp = 0.1;
+    HYD_MotionControlFB_Cycle(&fb);
+
+    assert(HYD_MotionControlFB_Stop(&fb, 0.1, 0.0));
+
+    fb.AXIS_REF.timestamp = 0.2;
+    fb.AXIS_REF.velocity = 20.0;
+    HYD_MotionControlFB_Cycle(&fb);
+    firstStopVelocity = fabs(fb.STATE.plannedVelocity);
+
+    CHECK(fabs(firstStopVelocity - 19.5) < 0.01,
+          "Stop without DECELERATION should use segment maxDeceleration");
+}
+
 int main(void) {
     printf("=== MoveAbsolute + Stop Integration ===\n");
     test_moveabsolute_stop_loop();
+    test_stop_without_deceleration_uses_segment_max_deceleration();
     printf("=== Results: %d/%d passed ===\n", tests_passed, tests_run);
     return (tests_passed == tests_run) ? 0 : 1;
 }

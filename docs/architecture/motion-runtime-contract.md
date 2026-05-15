@@ -162,6 +162,7 @@ Recipe execution does not currently expose a separate recipe-side owner-kind sig
 - Immediate effect: stop request is queued; on consumption it may take ownership as `HYD_DIRECT_CMD_STOP`
 - Completion condition: deceleration reaches zero and runtime marks `HYD_DIRECT_SESSION_DONE` / `HYD_FB_STATE_DONE`
 - Failure condition: invalid state, invalid context, or runtime fault
+- Deceleration source: a positive caller-supplied stop deceleration is used directly. If the caller supplies zero or a negative value, the runtime falls back to the active segment's `maxDeceleration`; if that field is zero, it falls back to `maxAcceleration` for legacy recipes.
 
 ### `Hold`
 
