@@ -200,6 +200,8 @@ typedef struct {
     HYD_RampController _rampController;
     HYD_MotionPlannerState _plannerState;
     HYD_PressureControllerState _pressureController;
+    HYD_TIME _completionCandidateStartTime;
+    HYD_BOOL _completionCandidateActive;
     HYD_BOOL _isDecelerating;
     HYD_TIME _decelStartTime;
     HYD_REAL _decelStartVel;
