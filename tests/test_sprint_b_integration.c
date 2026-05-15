@@ -175,12 +175,82 @@ static void test_gain_scheduling_transitions_smoothly(void) {
     printf("✓ Gain scheduling smooth transition test passed\n");
 }
 
+static void test_derate_reduces_runtime_pump_speed(void) {
+    HYD_MotionControlFB fb;
+    HYD_MotionSegment segment;
+    HYD_REAL nominalSpeed;
+    HYD_REAL deratedSpeed;
+    HYD_REAL expectedDeratedSpeed;
+
+    printf("Testing diagnostic derate reduces runtime pump speed...\n");
+
+    HYD_MotionControlFB_Init(&fb);
+    fb.FLOW_TO_PUMP_SPEED_GAIN = 10.0;
+    fb.PUMP_SPEED_LIMIT = 3000.0;
+    fb.USE_RECIPE = false;
+    fb.AXIS_REF.position = 0.0;
+    fb.AXIS_REF.velocity = 0.0;
+    fb.AXIS_REF.flow = 0.0;
+    fb.AXIS_REF.pressure = 10.0;
+    fb.AXIS_REF.timestamp = 0.0;
+
+    memset(&segment, 0, sizeof(segment));
+    segment.segmentTag = 9;
+    segment.segmentType = HYD_SEGMENT_TYPE_HOLDING;
+    segment.planner = HYD_PLANNER_TIME_BASED;
+    segment.mode = HYD_MODE_PRESSURE_CLOSED_LOOP;
+    segment.endCondition = HYD_END_TIME;
+    segment.direction = HYD_DIRECTION_HOLD;
+    segment.targetPressure = 20.0;
+    segment.targetFlow = 20.0;
+    segment.maxFlow = 100.0;
+    segment.duration = 5.0;
+    segment.pressureTolerance = 0.1;
+    segment.flowTolerance = 0.1;
+    segment.pressureRampRate = 100.0;
+    segment.pressureController = HYD_PRESSURE_CONTROLLER_P;
+    segment.pressureKp = 1.0;
+
+    assert(HYD_MotionControlFB_LoadDirectSegment(&fb, &segment));
+    assert(HYD_MotionControlFB_StartSegment(&fb, 0, 0.0));
+
+    fb.AXIS_REF.timestamp = 0.1;
+    fb.AXIS_REF.pressure = 20.0;
+    fb.AXIS_REF.flow = 20.0;
+    HYD_MotionControlFB_Cycle(&fb);
+    nominalSpeed = fb.PUMP_SPEED;
+    assert(nominalSpeed > 0.0);
+    assert(fb.STATE.status == HYD_STATUS_RUNNING);
+
+    fb.AXIS_REF.timestamp = 1.0;
+    fb.AXIS_REF.pressure = 20.0;
+    fb.AXIS_REF.flow = 0.0;
+    HYD_MotionControlFB_Cycle(&fb);
+
+    fb.AXIS_REF.timestamp = 1.2;
+    fb.AXIS_REF.pressure = 20.0;
+    fb.AXIS_REF.flow = 0.0;
+    HYD_MotionControlFB_Cycle(&fb);
+    deratedSpeed = fb.PUMP_SPEED;
+    expectedDeratedSpeed = fb.STATE.pressureLoop.outputFlow *
+        fb.FLOW_TO_PUMP_SPEED_GAIN * 0.5;
+
+    assert(deratedSpeed > 0.0);
+    assert(fabs(deratedSpeed - expectedDeratedSpeed) < 0.001);
+    assert(fb.DIAGNOSTIC.code == HYD_DIAG_CODE_FLOW_DEVIATION);
+    assert(fb.DIAGNOSTIC.protectionAction == HYD_PROTECTION_ACTION_DERATE);
+    assert(fb.STATE.status == HYD_STATUS_DEGRADED);
+
+    printf("✓ Diagnostic derate runtime pump speed test passed\n");
+}
+
 int main(void) {
     printf("Running Sprint B integration tests...\n\n");
 
     test_fb_accepts_and_starts_segments_with_new_features();
     test_trapezoid_planning_with_short_distance_triangular();
     test_gain_scheduling_transitions_smoothly();
+    test_derate_reduces_runtime_pump_speed();
 
     printf("\n✅ All Sprint B integration tests passed successfully!\n");
     return 0;

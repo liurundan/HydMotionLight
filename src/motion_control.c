@@ -10,6 +10,7 @@
 #include "state_reporter.h"
 #include "motion_utils.h"
 #include "motion_validator.h"
+#include "output_limiter.h"
 #include "segment_limits.h"
 #include "hyd_config.h"
 #include <math.h>
@@ -1241,6 +1242,8 @@ static void HYD_MotionControlFB_RunRunningState(HYD_MotionControlFB* fb) {
     HYD_MotionPlannerOutput plannerOutput;
     HYD_PressureControllerOutput pressureOutput;
     HYD_PumpConverterOutput pumpOutput;
+    HYD_OutputLimiterInput limiterInput;
+    HYD_OutputLimiterOutput limiterOutput;
     HYD_ExecutionReference executionReference;
     HYD_SegmentCompletionContext completionContext;
     HYD_BOOL segmentCompleted;
@@ -1322,6 +1325,18 @@ static void HYD_MotionControlFB_RunRunningState(HYD_MotionControlFB* fb) {
                                     &pumpOutput,
                                     &executionReference);
     HYD_UpdateExecutionDiagnostics(fb, segment, &executionReference, elapsed);
+
+    limiterInput.requestedFlow = pumpOutput.commandFlow;
+    limiterInput.requestedPumpSpeed = pumpOutput.pumpSpeed;
+    limiterInput.flowToPumpSpeedGain = fb->FLOW_TO_PUMP_SPEED_GAIN;
+    limiterInput.pumpSpeedLimit = fb->PUMP_SPEED_LIMIT;
+    limiterInput.protectionAction = fb->DIAGNOSTIC.protectionAction;
+    limiterInput.derateRatio = 0.5;
+    HYD_OutputLimiter_Execute(&limiterInput, &limiterOutput);
+    pumpOutput.commandFlow = limiterOutput.commandFlow;
+    pumpOutput.pumpSpeed = limiterOutput.pumpSpeed;
+    plannerOutput.targetFlow = limiterOutput.commandFlow;
+    executionReference.flowReference = limiterOutput.commandFlow;
 
     fb->_lastCommandedFlow = pumpOutput.commandFlow;
 
