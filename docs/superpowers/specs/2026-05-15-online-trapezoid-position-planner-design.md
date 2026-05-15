@@ -241,3 +241,12 @@ The implementation is accepted when:
 - near-target deceleration still prevents overshoot
 - no public IEC interface changes are required
 - offline trapezoid helper functions remain available and tested
+
+## Implementation Status
+
+Implemented after this design:
+
+- `HYD_PLANNER_POSITION_BASED` uses an online trapezoid velocity planner for `HYD_MODE_POSITION`.
+- The offline `HYD_PlanTrapezoid()` / `HYD_EvalTrapezoid()` helpers remain available and tested as utility functions.
+- Unit tests cover acceleration limiting, deceleration limiting, braking safety cap, short triangular moves, retract direction, position tolerance zero-output, and independent max deceleration.
+- Runtime integration coverage verifies smooth `STATE.plannedVelocity`, `STATE.plannedFlow`, and `PUMP_SPEED` ramping.

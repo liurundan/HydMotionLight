@@ -7,6 +7,7 @@
  * FB实例池管理
  * ====================================================================== */
 static HYD_REAL dfCycleTime = 0.001f;  /* 默认周期时间，单位秒；可通过外部接口调整以适配不同PLC扫描周期 */
+static HYD_TIME g_lastPublishTime = 0.0;
 
 static HYD_MotionControlFB HYD_MotionControlFB_inst[HYD_MAX_AXIS_MOTION];
 
@@ -421,6 +422,7 @@ int __HydMotion_framework_Init()
         memset(&HYD_MotionControlFB_inst[i], 0, sizeof(HYD_MotionControlFB));
     }
     nextAllocatedFB = 0;
+    g_lastPublishTime = 0.0;
     return 0;
 }
 
@@ -436,18 +438,16 @@ void __HydMotion_framework_Retrieve()
 
 void __HydMotion_framework_Publish()
 {
-    static HYD_TIME _lastPublishTime = 0.0;
-
     HYD_TIME currentTime = HYD_MotionControlFB_inst[0].AXIS_REF.timestamp;
 
     HYD_TIME deltaTime;
 
     /* Use the first allocated FB's timestamp as the master clock.
      * If no timestamp is set yet (first cycle), default to 0 delta. */
-    if (_lastPublishTime <= 0.0 || currentTime <= _lastPublishTime) {
-        deltaTime = (currentTime > _lastPublishTime) ? (currentTime - _lastPublishTime) : 0.0;
+    if (g_lastPublishTime <= 0.0 || currentTime <= g_lastPublishTime) {
+        deltaTime = (currentTime > g_lastPublishTime) ? (currentTime - g_lastPublishTime) : 0.0;
     } else {
-        deltaTime = currentTime - _lastPublishTime;
+        deltaTime = currentTime - g_lastPublishTime;
     }
 
     for (int i = 0; i < (int)nextAllocatedFB; i++) {
@@ -465,15 +465,11 @@ void __HydMotion_framework_Publish()
         }
     }
 
-    if( nextAllocatedFB > 0 )
-    {
-    	HYD_MotionControlFB* fb = &HYD_MotionControlFB_inst[0];
-		if( fb && fb->_useSimulation) {
-			fb->AXIS_REF.timestamp = fb->AXIS_REF.timestamp + dfCycleTime;
-		}
+    for (int i = 0; i < (int)nextAllocatedFB; i++) {
+        HYD_MotionControlFB_inst[i].AXIS_REF.timestamp += dfCycleTime;
     }
 
-    _lastPublishTime = currentTime;
+    g_lastPublishTime = currentTime;
 }
 
 void __mcl_cmd_CreateMotion(HYD_CREATEMOTION *data__)

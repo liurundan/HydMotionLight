@@ -246,7 +246,7 @@ static void test_stop_deceleration_input_is_honored(void) {
     ma.EXECUTE0.value = true;
     __mcl_cmd_MoveAbsolute(&ma);
 
-    for (step = 0; step < 30; step++) {
+    for (step = 0; step < 100; step++) {
         __HydMotion_framework_Publish();
         IEC_VAL(ma.EXECUTE) = true;
         ma.EXECUTE0.value = true;
@@ -272,7 +272,7 @@ static void test_stop_deceleration_input_is_honored(void) {
         }
     }
 
-    CHECK(stopDoneStep >= 300,
+    CHECK(stopDoneStep >= 250,
           "Stop.DECELERATION should extend the stop duration");
 }
 

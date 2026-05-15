@@ -428,8 +428,9 @@ static void test_two_moveabsolute_fbs_alternating_same_axis(void) {
     ASSERT_TRUE(IEC_VAL(maA.BUSY) || IEC_VAL(maA.ACTIVE),
                "FB_A should be active after first start");
 
-    /* 运行几个周期让运动建立 */
-    for (step = 0; step < 5; step++) {
+    /* Run long enough for the online position planner to move outside the
+     * position tolerance before FB_B starts a real retract-to-zero command. */
+    for (step = 0; step < 100; step++) {
         __HydMotion_framework_Publish();
         IEC_VAL(maA.EXECUTE) = true;
         maA.EXECUTE0.value = true;
