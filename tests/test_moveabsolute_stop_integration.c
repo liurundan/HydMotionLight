@@ -142,10 +142,67 @@ static void test_stop_without_deceleration_uses_segment_max_deceleration(void) {
           "Stop without DECELERATION should use segment maxDeceleration");
 }
 
+static void test_position_segment_ramps_velocity_flow_and_pump_speed(void) {
+    HYD_MotionControlFB fb;
+    HYD_MotionSegment segment;
+
+    HYD_MotionControlFB_Init(&fb);
+    fb.USE_RECIPE = false;
+    fb.FLOW_TO_PUMP_SPEED_GAIN = 10.0;
+    fb.PUMP_SPEED_LIMIT = 3000.0;
+    fb.AXIS_REF.position = 0.0;
+    fb.AXIS_REF.velocity = 0.0;
+    fb.AXIS_REF.flow = 0.0;
+    fb.AXIS_REF.pressure = 20.0;
+    fb.AXIS_REF.timestamp = 0.0;
+
+    memset(&segment, 0, sizeof(segment));
+    segment.segmentType = HYD_SEGMENT_TYPE_OTHER;
+    segment.planner = HYD_PLANNER_POSITION_BASED;
+    segment.mode = HYD_MODE_POSITION;
+    segment.endCondition = HYD_END_POSITION;
+    segment.direction = HYD_DIRECTION_EXTEND;
+    segment.targetPosition = 100.0;
+    segment.maxVelocity = 100.0;
+    segment.maxAcceleration = 10.0;
+    segment.maxDeceleration = 10.0;
+    segment.maxFlow = 500.0;
+    segment.positionTolerance = 0.01;
+    segment.velocityToFlowGain = 2.0;
+
+    CHECK(HYD_MotionControlFB_LoadDirectSegment(&fb, &segment),
+          "Direct position segment should load");
+    CHECK(HYD_MotionControlFB_StartSegment(&fb, 0, fb.AXIS_REF.timestamp),
+          "Direct position segment should start");
+    HYD_MotionControlFB_Scan(&fb);
+
+    fb.AXIS_REF.timestamp = 0.1;
+    HYD_MotionControlFB_Scan(&fb);
+    CHECK(fabs(fb.STATE.plannedVelocity - 1.0) < 0.001,
+          "Position segment should ramp planned velocity");
+    CHECK(fabs(fb.STATE.plannedFlow - 2.0) < 0.001,
+          "Position segment should ramp planned flow");
+    CHECK(fabs(fb.PUMP_SPEED - 20.0) < 0.001,
+          "Position segment should ramp pump speed");
+
+    fb.AXIS_REF.position += fb.STATE.plannedVelocity * 0.1;
+    fb.AXIS_REF.velocity = fb.STATE.plannedVelocity;
+    fb.AXIS_REF.flow = fb.STATE.plannedFlow;
+    fb.AXIS_REF.timestamp = 0.2;
+    HYD_MotionControlFB_Scan(&fb);
+    CHECK(fabs(fb.STATE.plannedVelocity - 2.0) < 0.001,
+          "Position segment should keep increasing planned velocity");
+    CHECK(fabs(fb.STATE.plannedFlow - 4.0) < 0.001,
+          "Position segment should keep increasing planned flow");
+    CHECK(fabs(fb.PUMP_SPEED - 40.0) < 0.001,
+          "Position segment should keep increasing pump speed");
+}
+
 int main(void) {
     printf("=== MoveAbsolute + Stop Integration ===\n");
     test_moveabsolute_stop_loop();
     test_stop_without_deceleration_uses_segment_max_deceleration();
+    test_position_segment_ramps_velocity_flow_and_pump_speed();
     printf("=== Results: %d/%d passed ===\n", tests_passed, tests_run);
     return (tests_passed == tests_run) ? 0 : 1;
 }
