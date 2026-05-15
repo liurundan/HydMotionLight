@@ -319,6 +319,20 @@ Archetypes should define parameter groups, not fixed machine values.
 
 Process-phase ownership, valve logic, interlocks, and transfer criteria remain defined by the boundary and integration documents, not by this archetype mapping.
 
+## Runtime Action Profile Helpers
+
+The runtime provides helper builders for common injection-machine motion segment defaults:
+
+- `HYD_ActionProfile_BuildClampClose`
+- `HYD_ActionProfile_BuildClampOpen`
+- `HYD_ActionProfile_BuildInjectionFill`
+- `HYD_ActionProfile_BuildHoldingPressure`
+- `HYD_ActionProfile_BuildEjectAdvance`
+- `HYD_ActionProfile_BuildEjectRetract`
+- `HYD_ActionProfile_BuildCarriageMove`
+
+These helpers populate `HYD_MotionSegment` defaults only. They do not start motion, switch valves, decide V/P transfer, or own machine sequencing. PLC process logic may still override generated segment values before loading the recipe.
+
 ## Override Rules
 
 1. PLC projects may override archetype parameter values.

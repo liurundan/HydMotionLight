@@ -53,6 +53,9 @@ target_link_libraries(test_output_limiter PRIVATE HydroMotionLib)
 add_executable(test_velocity_controller tests/test_velocity_controller.c)
 target_link_libraries(test_velocity_controller PRIVATE HydroMotionLib)
 
+add_executable(test_action_profile tests/test_action_profile.c)
+target_link_libraries(test_action_profile PRIVATE HydroMotionLib)
+
 add_executable(segment_completion_test tests/segment_completion_test.c)
 target_link_libraries(segment_completion_test PRIVATE HydroMotionLib)
 
@@ -127,6 +130,7 @@ add_test(NAME test_pressure_controller COMMAND test_pressure_controller)
 add_test(NAME test_pump_converter COMMAND test_pump_converter)
 add_test(NAME test_output_limiter COMMAND test_output_limiter)
 add_test(NAME test_velocity_controller COMMAND test_velocity_controller)
+add_test(NAME test_action_profile COMMAND test_action_profile)
 add_test(NAME test_segment_completion COMMAND segment_completion_test)
 add_test(NAME test_rbf_pid COMMAND rbf_pid_test)
 add_test(NAME test_ramp_controller COMMAND ramp_controller_test)

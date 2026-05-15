@@ -126,6 +126,23 @@ HYD_BOOL HYD_RecipeValidator_ValidateSegment(const HYD_MotionSegment* segment,
         return HYD_RecipeValidator_Fail(code, HYD_DIAG_CODE_SEGMENT_INVALID);
     }
 
+    if (segment->segmentType == HYD_SEGMENT_TYPE_INJECTION &&
+        segment->mode == HYD_MODE_POSITION) {
+        return HYD_RecipeValidator_Fail(code, HYD_DIAG_CODE_SEGMENT_INVALID);
+    }
+
+    if (segment->segmentType == HYD_SEGMENT_TYPE_HOLDING &&
+        segment->mode != HYD_MODE_PRESSURE_CLOSED_LOOP) {
+        return HYD_RecipeValidator_Fail(code, HYD_DIAG_CODE_SEGMENT_INVALID);
+    }
+
+    if ((segment->segmentType == HYD_SEGMENT_TYPE_CLAMPING ||
+         segment->segmentType == HYD_SEGMENT_TYPE_OPENING ||
+         segment->segmentType == HYD_SEGMENT_TYPE_EJECTION) &&
+        segment->mode == HYD_MODE_PRESSURE_CLOSED_LOOP) {
+        return HYD_RecipeValidator_Fail(code, HYD_DIAG_CODE_SEGMENT_INVALID);
+    }
+
     if (segment->tolerance < 0.0) {
         return HYD_RecipeValidator_Fail(code, HYD_DIAG_CODE_SEGMENT_INVALID);
     }
