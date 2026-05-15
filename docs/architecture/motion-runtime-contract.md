@@ -338,6 +338,7 @@ The current runtime contract does not define or fully support:
 
 Known examples to verify against implementation and documentation cleanup:
 
-- `DECELERATION`, `JERK`, and `CONTINUOUSUPDATE` on some IEC FBs do not yet imply full independent runtime semantics
+- `JERK` and `CONTINUOUSUPDATE` on some IEC FBs are still reserved compatibility pins and do not yet imply full runtime semantics
+- `DECELERATION` is independently consumed by `MoveAbsolute`, `MoveVelocity`, and `HYD_AXISMOTION`, but broader PLCopen motion-profile semantics are still not claimed beyond the current braking/deceleration behavior
 - `HYD_LOADPROFILE` is implemented as preload-only and is not an execution lifecycle owner
 - `PressureHandle` timed completion currently clears `BUSY/ACTIVE` without exposing a `DONE` pin like `MoveAbsolute` or `Stop`

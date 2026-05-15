@@ -154,6 +154,10 @@ HYD_BOOL HYD_RecipeValidator_ValidateSegment(const HYD_MotionSegment* segment,
         return HYD_RecipeValidator_Fail(code, HYD_DIAG_CODE_SEGMENT_INVALID);
     }
 
+    if (segment->maxDeceleration < 0.0) {
+        return HYD_RecipeValidator_Fail(code, HYD_DIAG_CODE_SEGMENT_INVALID);
+    }
+
     if (segment->maxVelocity < 0.0) {
         return HYD_RecipeValidator_Fail(code, HYD_DIAG_CODE_SEGMENT_INVALID);
     }

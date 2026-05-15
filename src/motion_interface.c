@@ -69,6 +69,7 @@ static HYD_MotionSegment buildPositionSegment(
     HYD_REAL targetPosition,
     HYD_REAL velocity,
     HYD_REAL acceleration,
+    HYD_REAL deceleration,
     HYD_MotionDirection direction,
     const HYD_MotionControlFB* fb)
 {
@@ -85,6 +86,7 @@ static HYD_MotionSegment buildPositionSegment(
     seg.targetPosition = targetPosition;
     seg.maxVelocity = velocity;
     seg.maxAcceleration = acceleration;
+    seg.maxDeceleration = (deceleration > 0.0f) ? deceleration : acceleration;
     seg.maxFlow = (velocity > 0.0f) ? velocity * fb->_params.velocityToFlowGain : fb->_params.maxFlow;
     seg.velocityToFlowGain = fb->_params.velocityToFlowGain;
 
@@ -98,6 +100,7 @@ static HYD_MotionSegment buildPositionSegment(
 static HYD_MotionSegment buildVelocitySegment(
     HYD_REAL velocity,
     HYD_REAL acceleration,
+    HYD_REAL deceleration,
     HYD_MotionDirection direction,
     const HYD_MotionControlFB* fb)
 {
@@ -113,6 +116,7 @@ static HYD_MotionSegment buildVelocitySegment(
 
     seg.maxVelocity = velocity;
     seg.maxAcceleration = acceleration;
+    seg.maxDeceleration = (deceleration > 0.0f) ? deceleration : acceleration;
     seg.maxFlow = (velocity > 0.0f) ? velocity * fb->_params.velocityToFlowGain : fb->_params.maxFlow;
     seg.velocityToFlowGain = fb->_params.velocityToFlowGain;
 
@@ -179,6 +183,9 @@ static HYD_MotionSegment buildSegmentFromMotion(const HYD_AXISMOTION* motion,
     seg.maxFlow = motion->SETFLOW;
     seg.targetPressure = motion->SETPRESSURE;
     seg.maxAcceleration = motion->ACCELERATION;
+    seg.maxDeceleration = (motion->DECELERATION > 0.0f)
+        ? motion->DECELERATION
+        : motion->ACCELERATION;
     seg.duration = motion->DURATION;
     seg.pressureRampRate = motion->PRESSURERAMPRATE;
 
@@ -216,7 +223,7 @@ static void writeMotionFromSegment(HYD_AXISMOTION* motion, const HYD_MotionContr
     motion->SETFLOW = (REAL)seg->targetFlow;
     motion->SETPRESSURE = (REAL)seg->targetPressure;
     motion->ACCELERATION = (REAL)seg->maxAcceleration;
-    motion->DECELERATION = (REAL)seg->maxAcceleration;
+    motion->DECELERATION = (REAL)seg->maxDeceleration;
     motion->DURATION = (REAL)seg->duration;
     motion->PRESSURERAMPRATE = (REAL)seg->pressureRampRate;
 }
@@ -993,6 +1000,7 @@ void __mcl_cmd_MoveAbsolute(HYD_MOVEABSOLUTE *data__)
             __GET_VAR(data__->POSITION),
             __GET_VAR(data__->VELOCITY),
             __GET_VAR(data__->ACCELERATION),
+            __GET_VAR(data__->DECELERATION),
             dir,
             fb);
 
@@ -1137,6 +1145,7 @@ void __mcl_cmd_MoveVelocity(HYD_MOVEVELOCITY *data__)
         HYD_MotionSegment segment = buildVelocitySegment(
             targetVelocity,
             __GET_VAR(data__->ACCELERATION),
+            __GET_VAR(data__->DECELERATION),
             dir,
             fb);
 

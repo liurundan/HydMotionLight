@@ -175,14 +175,18 @@ static HYD_REAL HYD_ComputePositionModeVelocityMagnitude(const HYD_MotionPlanner
     HYD_REAL remainingDistance;
     HYD_REAL brakeVelocityMagnitude;
     HYD_REAL rampVelocityMagnitude;
+    HYD_REAL brakingAcceleration;
 
     if (input == NULL || input->segment == NULL || input->axisRef == NULL) {
         return 0.0;
     }
 
     remainingDistance = HYD_ComputeRemainingDistance(input->segment, input->axisRef, direction);
+    brakingAcceleration = (input->segment->maxDeceleration > 0.0)
+        ? input->segment->maxDeceleration
+        : input->segment->maxAcceleration;
     brakeVelocityMagnitude = HYD_ComputePositionBasedVelocityMagnitude(remainingDistance,
-                                                                       input->segment->maxAcceleration,
+                                                                       brakingAcceleration,
                                                                        input->segment->maxVelocity);
 
     if (input->segment->planner == HYD_PLANNER_POSITION_BASED) {
@@ -201,6 +205,7 @@ static HYD_REAL HYD_ComputeSpeedRampVelocityMagnitude(const HYD_MotionPlannerInp
     HYD_REAL remainingDistance;
     HYD_REAL brakeVelocityMagnitude;
     HYD_REAL decelVelocity;
+    HYD_REAL brakingAcceleration;
 
     if (input == NULL || input->segment == NULL || input->axisRef == NULL) {
         return 0.0;
@@ -210,9 +215,12 @@ static HYD_REAL HYD_ComputeSpeedRampVelocityMagnitude(const HYD_MotionPlannerInp
                                                               input->segment->maxAcceleration,
                                                               input->segment->maxVelocity);
 
+    brakingAcceleration = (input->segment->maxDeceleration > 0.0)
+        ? input->segment->maxDeceleration
+        : input->segment->maxAcceleration;
     if (input->decelElapsed > 0.0 && input->decelStartVel > 0.0) {
         decelVelocity = input->decelStartVel -
-            input->segment->maxAcceleration * input->decelElapsed;
+            brakingAcceleration * input->decelElapsed;
         if (decelVelocity < 0.0) {
             decelVelocity = 0.0;
         }
@@ -226,8 +234,11 @@ static HYD_REAL HYD_ComputeSpeedRampVelocityMagnitude(const HYD_MotionPlannerInp
     remainingDistance = HYD_ComputeRemainingDistance(input->segment,
                                                      input->axisRef,
                                                      direction);
+    brakingAcceleration = (input->segment->maxDeceleration > 0.0)
+        ? input->segment->maxDeceleration
+        : input->segment->maxAcceleration;
     brakeVelocityMagnitude = HYD_ComputePositionBasedVelocityMagnitude(remainingDistance,
-                                                                       input->segment->maxAcceleration,
+                                                                       brakingAcceleration,
                                                                        input->segment->maxVelocity);
     return HYD_MinReal(velocityMagnitude, brakeVelocityMagnitude);
 }

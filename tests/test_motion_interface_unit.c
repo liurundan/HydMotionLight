@@ -333,6 +333,36 @@ static void test_moveabsolute_rejects_invalid_axis_index(void) {
     ASSERT_TRUE(IEC_VAL(ma.BUSY) == false, "BUSY should not be set for invalid AXISID");
 }
 
+static void test_moveabsolute_maps_deceleration_independently(void) {
+    HYD_MOVEABSOLUTE ma;
+    HYD_MotionControlFB* fb;
+
+    __HydMotion_framework_Init();
+    ensure_axes_allocated(1);
+    memset(&ma, 0, sizeof(ma));
+
+    IEC_VAL(ma.EN) = true;
+    IEC_VAL(ma.EXECUTE) = true;
+    ma.EXECUTE0.value = false;
+    IEC_VAL(ma.AXISID) = 0;
+    IEC_VAL(ma.POSITION) = 100.0f;
+    IEC_VAL(ma.VELOCITY) = 20.0f;
+    IEC_VAL(ma.ACCELERATION) = 50.0f;
+    IEC_VAL(ma.DECELERATION) = 7.0f;
+    IEC_VAL(ma.DIRECTION) = 1;
+
+    __mcl_cmd_MoveAbsolute(&ma);
+
+    fb = __MK_GetPublic_MotionControlFB(0);
+    ASSERT_TRUE(fb != NULL, "MoveAbsolute deceleration test should resolve an FB");
+    ASSERT_TRUE(fb->DIRECT_SEGMENT_VALID == true,
+               "MoveAbsolute should load a direct segment");
+    ASSERT_TRUE(fb->DIRECT_SEGMENT.maxAcceleration == 50.0f,
+               "MoveAbsolute should preserve ACCELERATION");
+    ASSERT_TRUE(fb->DIRECT_SEGMENT.maxDeceleration == 7.0f,
+               "MoveAbsolute should map DECELERATION independently");
+}
+
 static void test_loadprofile_preloads_single_recipe_segment(void) {
     HYD_CREATEMOTION cm;
     HYD_LOADPROFILE lp;
@@ -427,6 +457,51 @@ static void test_loadprofile_keeps_segment_tag_and_type_separate(void) {
                "SEGMENTTAG should remain the opaque process-layer tag");
     ASSERT_TRUE(fb->RECIPE[0].segmentType == HYD_SEGMENT_TYPE_HOLDING,
                "SEGMENTTYPE should define the domain segment type independently");
+}
+
+static void test_loadprofile_preserves_independent_accel_and_decel(void) {
+    HYD_CREATEMOTION cm;
+    HYD_LOADPROFILE lp;
+    HYD_MotionControlFB* fb;
+    HYD_AXISMOTION motion;
+
+    __HydMotion_framework_Init();
+
+    memset(&cm, 0, sizeof(cm));
+    IEC_VAL(cm.EN) = true;
+    IEC_VAL(cm.USE_RECIPE) = true;
+    IEC_VAL(cm.FLOW_TO_PUMPSPEED) = 1.2f;
+    IEC_VAL(cm.PUMPSPEED_LIMIT) = 3000.0f;
+    IEC_VAL(cm.USE_SIMULATION) = false;
+    __mcl_cmd_CreateMotion(&cm);
+
+    memset(&lp, 0, sizeof(lp));
+    memset(&motion, 0, sizeof(motion));
+    IEC_VAL(lp.EN) = true;
+    IEC_VAL(lp.EXECUTE) = true;
+    lp.EXECUTE0.value = false;
+    IEC_VAL(lp.AXISID) = IEC_VAL(cm.AXISID);
+
+    motion.SEGMENTTAG = 10;
+    motion.MODE = HYD_MODE_POSITION;
+    motion.ENDCONDITION = HYD_END_POSITION;
+    motion.DIRECTION = HYD_DIRECTION_EXTEND;
+    motion.SETPOSITION = 50.0f;
+    motion.SETVELOCITY = 12.0f;
+    motion.SETFLOW = 5.0f;
+    motion.ACCELERATION = 30.0f;
+    motion.DECELERATION = 4.0f;
+    __SET_VAR(lp., MOTION, , motion);
+
+    __mcl_cmd_LoadProfile(&lp);
+
+    fb = __MK_GetPublic_MotionControlFB((int)IEC_VAL(cm.AXISID));
+    ASSERT_TRUE(fb != NULL, "LoadProfile accel/decel test should resolve an FB");
+    ASSERT_TRUE(fb->RECIPE_SIZE == 1U, "LoadProfile should preload one recipe segment");
+    ASSERT_TRUE(fb->RECIPE[0].maxAcceleration == 30.0f,
+               "LoadProfile should preserve ACCELERATION");
+    ASSERT_TRUE(fb->RECIPE[0].maxDeceleration == 4.0f,
+               "LoadProfile should preserve DECELERATION independently");
 }
 
 static void test_loadprofile_preloads_direct_segment_on_direct_axis(void) {
@@ -656,6 +731,35 @@ static void test_movevelocity_rejects_invalid_axis_index(void) {
     ASSERT_TRUE(IEC_VAL(mv.ERROR) == true, "ERROR should be true for invalid AXISID");
     ASSERT_TRUE(IEC_VAL(mv.ERRORID) == HYD_DIAG_CODE_START_CONTEXT_INVALID,
                "ERRORID should be START_CONTEXT_INVALID");
+}
+
+static void test_movevelocity_maps_deceleration_independently(void) {
+    HYD_MOVEVELOCITY mv;
+    HYD_MotionControlFB* fb;
+
+    __HydMotion_framework_Init();
+    ensure_axes_allocated(1);
+    memset(&mv, 0, sizeof(mv));
+
+    IEC_VAL(mv.EN) = true;
+    IEC_VAL(mv.EXECUTE) = true;
+    mv.EXECUTE0.value = false;
+    IEC_VAL(mv.AXISID) = 0;
+    IEC_VAL(mv.VELOCITY) = 25.0f;
+    IEC_VAL(mv.ACCELERATION) = 100.0f;
+    IEC_VAL(mv.DECELERATION) = 6.0f;
+    IEC_VAL(mv.DIRECTION) = 1;
+
+    __mcl_cmd_MoveVelocity(&mv);
+
+    fb = __MK_GetPublic_MotionControlFB(0);
+    ASSERT_TRUE(fb != NULL, "MoveVelocity deceleration test should resolve an FB");
+    ASSERT_TRUE(fb->DIRECT_SEGMENT_VALID == true,
+               "MoveVelocity should load a direct segment");
+    ASSERT_TRUE(fb->DIRECT_SEGMENT.maxAcceleration == 100.0f,
+               "MoveVelocity should preserve ACCELERATION");
+    ASSERT_TRUE(fb->DIRECT_SEGMENT.maxDeceleration == 6.0f,
+               "MoveVelocity should map DECELERATION independently");
 }
 
 /* ==================================================================
@@ -1143,8 +1247,10 @@ int main(void) {
     test_moveabsolute_sustains_busy_active_across_calls();
     test_moveabsolute_owned_fault_sets_error_outputs();
     test_moveabsolute_rejects_invalid_axis_index();
+    test_moveabsolute_maps_deceleration_independently();
     test_loadprofile_preloads_single_recipe_segment();
     test_loadprofile_keeps_segment_tag_and_type_separate();
+    test_loadprofile_preserves_independent_accel_and_decel();
     test_loadprofile_preloads_direct_segment_on_direct_axis();
     test_loadprofile_keeps_recipe_preload_target_after_direct_override();
     test_moveabsolute_rejects_nonzero_jerk_until_supported();
@@ -1152,6 +1258,7 @@ int main(void) {
     test_moveabsolute_rejects_unsupported_buffer_mode_values();
     test_movevelocity_execute_rising_starts_velocity_control();
     test_movevelocity_rejects_invalid_axis_index();
+    test_movevelocity_maps_deceleration_independently();
     test_stop_on_idle_axis_immediate_done();
     test_stop_rejects_invalid_axis_index();
     test_reset_immediate_done_on_initialized_axis();

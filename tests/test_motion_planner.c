@@ -347,12 +347,50 @@ static void test_trapezoid_edge_cases(void) {
     printf("✓ Trapezoid edge cases test passed\n");
 }
 
+static void test_position_mode_uses_max_deceleration_for_braking(void) {
+    HYD_AxisRef axisRef;
+    HYD_MotionSegment segment;
+    HYD_MotionPlannerInput input;
+    HYD_MotionPlannerOutput output;
+    HYD_REAL remainingDistance;
+    HYD_REAL expectedVelocityMagnitude;
+
+    printf("Testing POSITION braking uses maxDeceleration...\n");
+
+    axisRef = create_test_axis_ref(90.0);
+    segment = create_test_segment();
+    segment.mode = HYD_MODE_POSITION;
+    segment.planner = HYD_PLANNER_POSITION_BASED;
+    segment.direction = HYD_DIRECTION_EXTEND;
+    segment.targetPosition = 100.0;
+    segment.maxVelocity = 50.0;
+    segment.maxAcceleration = 40.0;
+    segment.maxDeceleration = 5.0;
+
+    input.axisRef = &axisRef;
+    input.segment = &segment;
+    input.elapsedTime = 0.5;
+    input.rampedPressure = 0.0;
+    input.decelElapsed = 0.0;
+    input.decelStartVel = 0.0;
+
+    HYD_MotionPlanner_Execute(&input, &output);
+
+    remainingDistance = segment.targetPosition - axisRef.position;
+    expectedVelocityMagnitude = sqrt(2.0 * segment.maxDeceleration * remainingDistance);
+    if (expectedVelocityMagnitude > segment.maxVelocity) {
+        expectedVelocityMagnitude = segment.maxVelocity;
+    }
+
+    assert(fabs(output.targetVelocity - expectedVelocityMagnitude) < 0.001);
+    printf("✓ POSITION braking uses maxDeceleration\n");
+}
+
 static void test_speed_ramp_deceleration_on_stop(void) {
     HYD_AxisRef axisRef;
     HYD_MotionSegment segment;
     HYD_MotionPlannerInput input;
     HYD_MotionPlannerOutput output;
-    HYD_REAL acc;
     HYD_REAL startVel;
 
     printf("Testing SPEED_RAMP deceleration behavior...\n");
@@ -363,6 +401,7 @@ static void test_speed_ramp_deceleration_on_stop(void) {
     segment.planner = HYD_PLANNER_TIME_BASED;
     segment.endCondition = HYD_END_TIME;
     segment.maxAcceleration = 4.0;
+    segment.maxDeceleration = 2.0;
     segment.maxVelocity = 20.0;
     segment.duration = 10.0;
 
@@ -379,20 +418,19 @@ static void test_speed_ramp_deceleration_on_stop(void) {
     assert(fabs(output.targetVelocity - 20.0) < 0.001);
 
     /* Deceleration active: velocity should decrease from startVel */
-    acc = segment.maxAcceleration;
     startVel = 16.0;
 
     input.decelStartVel = startVel;
     input.decelElapsed = 1.0;
     HYD_MotionPlanner_Execute(&input, &output);
-    assert(fabs(output.targetVelocity - (startVel - acc * 1.0)) < 0.001);
+    assert(fabs(output.targetVelocity - (startVel - segment.maxDeceleration * 1.0)) < 0.001);
 
     input.decelElapsed = 2.0;
     HYD_MotionPlanner_Execute(&input, &output);
-    assert(fabs(output.targetVelocity - (startVel - acc * 2.0)) < 0.001);
+    assert(fabs(output.targetVelocity - (startVel - segment.maxDeceleration * 2.0)) < 0.001);
 
     /* Deceleration to zero: velocity clamped at 0 */
-    input.decelElapsed = 5.0;
+    input.decelElapsed = 8.0;
     HYD_MotionPlanner_Execute(&input, &output);
     assert(fabs(output.targetVelocity) < 0.001);
 
@@ -420,6 +458,7 @@ int main(void) {
     test_trapezoid_full_profile();
     test_trapezoid_triangular_profile();
     test_trapezoid_edge_cases();
+    test_position_mode_uses_max_deceleration_for_braking();
     test_speed_ramp_deceleration_on_stop();
 
     printf("\n✅ All MotionPlanner tests passed successfully!\n");

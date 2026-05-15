@@ -245,6 +245,7 @@ typedef struct {
     HYD_REAL targetFlow;      /* L/min, mode-dependent setpoint/cap/feedforward */
     HYD_REAL targetPressure;
     HYD_REAL maxAcceleration;
+    HYD_REAL maxDeceleration;
     HYD_REAL maxVelocity;     /* mm/s, velocity magnitude limit */
     HYD_REAL maxFlow;         /* L/min, flow magnitude limit before pump conversion */
     HYD_TIME duration;        /* s, used by HYD_END_TIME */

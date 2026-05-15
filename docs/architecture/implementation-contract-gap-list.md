@@ -31,7 +31,7 @@ against the current implementation in:
 
 ### High
 
-1. IEC FB surfaces expose parameters whose runtime semantics are not actually implemented end-to-end.
+1. IEC FB surfaces still expose a small set of compatibility pins whose runtime semantics are not yet implemented end-to-end.
 2. Recipe-side takeover semantics are weaker and less explicit than direct-side takeover semantics.
 
 ### Medium
@@ -58,14 +58,14 @@ Affected surface:
 
 Observed mismatch:
 
-- `HYD_MoveAbsolute` exposes `DECELERATION`, `JERK`, and `CONTINUOUSUPDATE`.
-- `HYD_MoveVelocity` exposes `DECELERATION`, `JERK`, and `CONTINUOUSUPDATE`.
+- `HYD_MoveAbsolute` still exposes `JERK` and `CONTINUOUSUPDATE`.
+- `HYD_MoveVelocity` still exposes `JERK` and `CONTINUOUSUPDATE`.
 - The direct segment builders for those FBs currently consume only a subset of the exposed fields.
 
 Evidence:
 
-- `buildPositionSegment()` uses `POSITION`, `VELOCITY`, `ACCELERATION`, and `DIRECTION`, but not `DECELERATION`, `JERK`, or `CONTINUOUSUPDATE`: [motion_interface.c](/home/dan/project/hdy-motion-light/src/motion_interface.c:66)
-- `buildVelocitySegment()` uses `VELOCITY`, `ACCELERATION`, and `DIRECTION`, but not `DECELERATION`, `JERK`, or `CONTINUOUSUPDATE`: [motion_interface.c](/home/dan/project/hdy-motion-light/src/motion_interface.c:96)
+- `buildPositionSegment()` now maps `DECELERATION` independently, but still does not consume `JERK` or `CONTINUOUSUPDATE`: [motion_interface.c](/home/dan/project/hdy-motion-light/src/motion_interface.c:66)
+- `buildVelocitySegment()` now maps `DECELERATION` independently, but still does not consume `JERK` or `CONTINUOUSUPDATE`: [motion_interface.c](/home/dan/project/hdy-motion-light/src/motion_interface.c:96)
 
 Impact:
 
