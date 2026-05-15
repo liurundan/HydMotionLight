@@ -32,17 +32,17 @@ against the current implementation in:
 ### High
 
 1. IEC FB surfaces still expose a small set of compatibility pins whose runtime semantics are not yet implemented end-to-end.
-2. Recipe-side takeover semantics are weaker and less explicit than direct-side takeover semantics.
 
 ### Medium
 
-3. `HYD_LOADPROFILE` is implemented as preload-only; PLC integration examples should make that boundary explicit.
-4. `Hold` and `Resume` now have dedicated IEC FB wrappers; PLC integration examples still need to be documented.
-5. `BufferMode` remains a very small subset of the apparent PLCopen surface.
-6. Some in-code comments and header contracts are narrower than the actual runtime behavior.
+2. `HYD_LOADPROFILE` is implemented as preload-only; PLC integration examples should make that boundary explicit.
+3. `Hold` and `Resume` now have dedicated IEC FB wrappers; PLC integration examples still need to be documented.
+4. `BufferMode` remains a very small subset of the apparent PLCopen surface.
+5. Some in-code comments and header contracts are narrower than the actual runtime behavior.
 
 ### Low
 
+6. Recipe-side ownership loss is now surfaced correctly, but its adapter-side derivation is still less explicit than the direct-session path.
 7. A few adapter/runtime naming and field-mirroring patterns still make the contract harder to maintain than necessary.
 
 ## Detailed Gaps
@@ -76,35 +76,7 @@ Recommended direction:
 
 - Either implement those semantics properly in the runtime and adapter path, or explicitly remove/deprecate/mark them unsupported at the interface level.
 
-### 2. Recipe Takeover Is Less Explicit Than Direct Takeover
-
-Severity: High
-
-Affected surface:
-
-- [motion-runtime-contract.md](/home/dan/project/hdy-motion-light/docs/architecture/motion-runtime-contract.md:237)
-- [motion_interface.c](/home/dan/project/hdy-motion-light/src/motion_interface.c:425)
-
-Observed mismatch:
-
-- Direct-side preemption is surfaced explicitly through `COMMANDABORTED`.
-- Recipe-side `MoveProfile` ownership loss is currently observed mostly through `ACTIVE/BUSY` changes rather than through a dedicated takeover signal.
-
-Evidence:
-
-- `MoveAbsolute`, `MoveVelocity`, and `PressureHandle` explicitly raise `COMMANDABORTED` on ownership loss: [motion_interface.c](/home/dan/project/hdy-motion-light/src/motion_interface.c:694), [motion_interface.c](/home/dan/project/hdy-motion-light/src/motion_interface.c:822), [motion_interface.c](/home/dan/project/hdy-motion-light/src/motion_interface.c:994)
-- `MoveProfile` does not expose a corresponding `COMMANDABORTED` output and instead falls back to execution-id/activity comparison: [motion_interface.c](/home/dan/project/hdy-motion-light/src/motion_interface.c:501)
-
-Impact:
-
-- The runtime contract now documents this asymmetry, but it remains a real implementation inconsistency.
-- Mixed recipe/direct projects must treat recipe takeover differently from direct takeover.
-
-Recommended direction:
-
-- Decide whether recipe-side takeover should remain implicitly observed or be surfaced as a first-class lifecycle signal.
-
-### 3. `HYD_LOADPROFILE` Is Preload-Only
+### 2. `HYD_LOADPROFILE` Is Preload-Only
 
 Severity: Medium
 
@@ -133,7 +105,7 @@ Recommended direction:
 
 - Keep this preload-only boundary explicit in the integration guide.
 
-### 4. `Hold` and `Resume` IEC Surface Added
+### 3. `Hold` and `Resume` IEC Surface Added
 
 Severity: Resolved implementation gap; documentation follow-up remains
 
@@ -167,7 +139,7 @@ Recommended direction:
 - Add PLC integration examples for `HYD_Hold` and `HYD_Resume`.
 - Keep `Hold`/`Resume` documented as runtime pause/resume semantics, not as machine phase sequencing.
 
-### 5. `BufferMode` Is Only a Small Subset of the Apparent Surface
+### 4. `BufferMode` Is Only a Small Subset of the Apparent Surface
 
 Severity: Medium
 
@@ -196,7 +168,7 @@ Recommended direction:
 
 - Keep the limited subset explicit, or narrow the visible surface until more modes are genuinely supported.
 
-### 6. In-Code Header Contract Does Not Fully Match Runtime Implementation
+### 5. In-Code Header Contract Does Not Fully Match Runtime Implementation
 
 Severity: Medium
 
@@ -221,6 +193,37 @@ Impact:
 Recommended direction:
 
 - Make the header contract and the code match exactly; do not leave legality comments as historical approximations.
+
+### 6. Recipe Ownership Derivation Is Still Adapter-Heavy
+
+Severity: Low
+
+Affected surface:
+
+- [motion_interface.h](/home/dan/project/hdy-motion-light/include/motion_interface.h:48)
+- [motion_interface.c](/home/dan/project/hdy-motion-light/src/motion_interface.c:291)
+- [tests/test_motion_interface_arbitration.c](/home/dan/project/hdy-motion-light/tests/test_motion_interface_arbitration.c:770)
+
+Observed mismatch:
+
+- Recipe-side takeover is now surfaced to PLC consumers through `MoveProfile.COMMANDABORTED`.
+- The adapter still derives recipe ownership loss through execution-id and activity heuristics rather than through a first-class runtime recipe-owner query path comparable to the direct-session helpers.
+
+Evidence:
+
+- `MoveProfile` exposes `COMMANDABORTED` in the public IEC surface: [motion_interface.h](/home/dan/project/hdy-motion-light/include/motion_interface.h:67)
+- The adapter raises `COMMANDABORTED` for recipe ownership loss in `__mcl_cmd_MoveProfile()`: [motion_interface.c](/home/dan/project/hdy-motion-light/src/motion_interface.c:684)
+- Regression coverage now asserts direct takeover and reset takeover on recipe lifecycles: [tests/test_motion_interface_arbitration.c](/home/dan/project/hdy-motion-light/tests/test_motion_interface_arbitration.c:770), [tests/test_motion_interface_arbitration.c](/home/dan/project/hdy-motion-light/tests/test_motion_interface_arbitration.c:832)
+
+Impact:
+
+- PLC-visible behavior is aligned, but the recipe path is still harder to reason about and maintain than the direct-session path.
+- Future lifecycle changes are more likely to drift in the recipe adapter path than in direct FBs.
+
+Recommended direction:
+
+- Keep the current PLC-visible contract.
+- Consider introducing minimal runtime-facing recipe ownership facts only if future lifecycle changes make the current adapter heuristics harder to maintain.
 
 ### 7. Configuration Source-of-Truth Is Still Duplicated
 

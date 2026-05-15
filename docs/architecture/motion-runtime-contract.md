@@ -221,7 +221,7 @@ Recipe execution does not currently expose a separate recipe-side owner-kind sig
 2. `INVELOCITY` and `INPRESSURE` are in-band achievement signals, not universal terminal signals.
 3. `COMMANDABORTED` indicates loss of execution ownership, not necessarily a fault.
 4. `ERROR` indicates fault or invalid-command handling, not normal preemption.
-5. Recipe-side observation of takeover is currently expressed mainly through runtime-state changes rather than through a dedicated recipe-side takeover signal.
+5. Recipe-side observation of takeover is exposed through the existing `MoveProfile.COMMANDABORTED` IEC output when ownership is lost.
 
 ## Completion Semantics
 
@@ -247,7 +247,7 @@ Recipe execution does not currently expose a separate recipe-side owner-kind sig
 7. Switching `USE_RECIPE` or editing `DIRECT_SEGMENT` while a segment is active does not retroactively change the current active segment.
 8. `HYD_AXISMOTION.SEGMENTTAG` is the opaque process-layer segment identifier.
 9. `HYD_AXISMOTION.SEGMENTTYPE` is the domain segment type and is mapped independently from `SEGMENTTAG`.
-10. If a direct command takes over a recipe execution, recipe-side observation is currently driven mainly by runtime-state changes rather than by a dedicated recipe-side `COMMANDABORTED` signal.
+10. If a direct command or `Reset` takes over a recipe execution, the displaced `MoveProfile` lifecycle may observe `COMMANDABORTED=true` while the runtime transitions ownership.
 
 ### `HYD_LOADPROFILE`
 

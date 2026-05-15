@@ -89,7 +89,7 @@ This table only summarizes what PLC code should typically watch during integrati
 | `PressureHandle` | `EXECUTE` rising edge | keep lifecycle stable while owned | observe `INPRESSURE`, `BUSY/ACTIVE` clear, `COMMANDABORTED`, and `ERROR` | drop `EXECUTE` when the surrounding action wrapper closes the lifecycle |
 | `Stop` | `EXECUTE` rising edge | keep lifecycle stable while decelerating | observe `DONE` after stop-to-zero | drop `EXECUTE` after `DONE` |
 | `Reset` | `EXECUTE` rising edge | typically immediate lifecycle | observe `DONE` or `ERROR` | drop `EXECUTE` after completion |
-| `MoveProfile` | `EXECUTE` rising edge | keep lifecycle stable while recipe execution is owned | observe `DONE`, runtime-state changes, or `ERROR` | drop `EXECUTE` when the action wrapper closes the lifecycle |
+| `MoveProfile` | `EXECUTE` rising edge | keep lifecycle stable while recipe execution is owned | observe `DONE`, `COMMANDABORTED`, or `ERROR` | drop `EXECUTE` after completion, takeover, or lifecycle invalidation |
 
 ## Recommended Usage by FB
 
@@ -192,7 +192,8 @@ Use it when:
 
 Do not assume:
 
-- recipe execution exposes the same takeover signal style as direct FBs
+- recipe execution can only terminate through normal `DONE`
+- recipe takeover should be inferred by recomputing ownership from unrelated runtime fields
 
 ## How to Consume Runtime Signals
 
