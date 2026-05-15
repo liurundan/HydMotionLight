@@ -34,6 +34,7 @@ static void HYD_PrimeSegmentControllers(HYD_MotionControlFB* fb,
 static void HYD_ExecuteActiveSegmentControl(HYD_MotionControlFB* fb,
                                             const HYD_MotionSegment* segment,
                                             HYD_REAL elapsed,
+                                            HYD_REAL deltaTime,
                                             HYD_RampControllerOutput* rampOutput,
                                             HYD_MotionPlannerOutput* plannerOutput,
                                             HYD_PressureControllerOutput* pressureOutput,
@@ -921,6 +922,7 @@ static void HYD_UpdateMonitorPositionError(HYD_ErrorMonitor* monitor,
 static void HYD_ExecuteActiveSegmentControl(HYD_MotionControlFB* fb,
                                             const HYD_MotionSegment* segment,
                                             HYD_REAL elapsed,
+                                            HYD_REAL deltaTime,
                                             HYD_RampControllerOutput* rampOutput,
                                             HYD_MotionPlannerOutput* plannerOutput,
                                             HYD_PressureControllerOutput* pressureOutput,
@@ -965,11 +967,7 @@ static void HYD_ExecuteActiveSegmentControl(HYD_MotionControlFB* fb,
         plannerInput.axisRef = &fb->AXIS_REF;
         plannerInput.segment = segment;
         plannerInput.elapsedTime = elapsed;
-        plannerInput.deltaTime = 0.0;
-        if (fb->_plannerState.initialized &&
-            fb->AXIS_REF.timestamp >= fb->_plannerState.lastTimestamp) {
-            plannerInput.deltaTime = fb->AXIS_REF.timestamp - fb->_plannerState.lastTimestamp;
-        }
+        plannerInput.deltaTime = (deltaTime > 0.0) ? deltaTime : 0.0;
         plannerInput.rampedPressure = rampOutput->rampedPressure;
         if (fb->_isDecelerating) {
             plannerInput.decelElapsed = fb->AXIS_REF.timestamp - fb->_decelStartTime;
@@ -1267,6 +1265,7 @@ static void HYD_MotionControlFB_RunRunningState(HYD_MotionControlFB* fb) {
     HYD_DiagnosticCode code = HYD_DIAG_CODE_NONE;
     const HYD_MotionSegment* segment;
     HYD_REAL elapsed;
+    HYD_REAL deltaTime;
     HYD_RampControllerOutput rampOutput;
     HYD_MotionPlannerOutput plannerOutput;
     HYD_PressureControllerOutput pressureOutput;
@@ -1324,7 +1323,9 @@ static void HYD_MotionControlFB_RunRunningState(HYD_MotionControlFB* fb) {
                         &fb->STATE.references);
         return;
     }
-    fb->_lastFeedbackTimestamp = fb->AXIS_REF.timestamp;
+    deltaTime = (fb->_lastFeedbackTimestamp >= 0.0)
+        ? fb->AXIS_REF.timestamp - fb->_lastFeedbackTimestamp
+        : 0.0;
 
     if (!HYD_PumpConverter_ValidateConfig(fb->FLOW_TO_PUMP_SPEED_GAIN,
                                           fb->PUMP_SPEED_LIMIT,
@@ -1348,11 +1349,13 @@ static void HYD_MotionControlFB_RunRunningState(HYD_MotionControlFB* fb) {
     HYD_ExecuteActiveSegmentControl(fb,
                                     segment,
                                     elapsed,
+                                    deltaTime,
                                     &rampOutput,
                                     &plannerOutput,
                                     &pressureOutput,
                                     &pumpOutput,
                                     &executionReference);
+    fb->_lastFeedbackTimestamp = fb->AXIS_REF.timestamp;
     HYD_UpdateExecutionDiagnostics(fb, segment, &executionReference, elapsed);
     {
         HYD_VpTransferResult vpResult;

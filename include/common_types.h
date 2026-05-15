@@ -268,7 +268,7 @@ typedef struct {
     HYD_REAL stableVelocityLimit; /* mm/s, 0 disables velocity-settled gate */
     HYD_REAL vpTransferPosition;        /* mm, 0 disables position transfer observation */
     HYD_REAL vpTransferPressure;        /* MPa, 0 disables pressure transfer observation */
-    HYD_TIME vpTransferMinTime;         /* s, 0 disables minimum-time gate */
+    HYD_TIME vpTransferMinTime;         /* s, 0 disables elapsed-time transfer observation */
     HYD_REAL vpTransferVelocityDrop;    /* mm/s, 0 disables velocity-drop observation */
 
     HYD_REAL velocityToFlowGain; /* L/min per mm/s, actuator flow gain */

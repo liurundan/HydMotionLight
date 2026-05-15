@@ -98,14 +98,18 @@ static void test_speed_ramp_runtime_applies_velocity_correction(void) {
 
     fb.AXIS_REF.timestamp = 0.1;
     HYD_MotionControlFB_Cycle(&fb);
+    assert(fabs(fb.STATE.plannedVelocity - 10.0) < 0.001);
+    assert(fabs(fb.STATE.plannedFlow - 30.0) < 0.001);
+    assert(fabs(fb.PUMP_SPEED - 300.0) < 0.001);
+
     fb.AXIS_REF.velocity = 0.0;
 
     fb.AXIS_REF.timestamp = 0.2;
     HYD_MotionControlFB_Cycle(&fb);
 
-    assert(fabs(fb.STATE.plannedVelocity - 10.0) < 0.001);
-    assert(fabs(fb.STATE.plannedFlow - 30.0) < 0.001);
-    assert(fabs(fb.PUMP_SPEED - 300.0) < 0.001);
+    assert(fabs(fb.STATE.plannedVelocity - 20.0) < 0.001);
+    assert(fabs(fb.STATE.plannedFlow - 40.0) < 0.001);
+    assert(fabs(fb.PUMP_SPEED - 400.0) < 0.001);
 }
 
 int main(void) {

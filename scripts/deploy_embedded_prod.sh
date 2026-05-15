@@ -98,6 +98,9 @@ CORE_HEADERS=(
     "action_profile.h"
     "motion_control.h"
     "common_types.h"
+    "accessor.h"
+    "iec_types.h"
+    "iec_types_all.h"
     "motion_planner.h"
     "output_limiter.h"
     "pressure_controller.h"
@@ -120,6 +123,9 @@ CORE_HEADERS=(
 
 for header in "${CORE_HEADERS[@]}"; do
     SRC_PATH="$INCLUDE_DIR/$header"
+    if [ ! -f "$SRC_PATH" ]; then
+        SRC_PATH="$INCLUDE_DIR/matiec/lib/C/$header"
+    fi
     if [ -f "$SRC_PATH" ]; then
         cp "$SRC_PATH" "$INSTALL_DIR/include/"
         print_success "头文件已复制: $header"
@@ -130,6 +136,7 @@ done
 
 # 复制必要的接口头文件
 INTERFACE_HEADERS=(
+    "hyd_config.h"
     "hydro_interfaces.h"
     "hydro_hardware.h"
     "hydro_config.h"
@@ -169,6 +176,22 @@ if command -v nm >/dev/null 2>&1; then
     # 统计符号数量
     TOTAL_SYMBOLS=$(nm "$INSTALL_DIR/libHydroMotionLib.a" 2>/dev/null | wc -l)
     print_success "库文件符号总数: $TOTAL_SYMBOLS"
+fi
+
+print_header "验证：安装包头文件自包含"
+
+if command -v gcc >/dev/null 2>&1; then
+    SMOKE_OBJ="$INSTALL_DIR/header_smoke.o"
+    if printf '#include "common_types.h"\nint main(void) { return 0; }\n' | \
+        gcc -std=c99 -I "$INSTALL_DIR/include" -x c -c - -o "$SMOKE_OBJ"; then
+        rm -f "$SMOKE_OBJ"
+        print_success "安装包头文件编译检查通过"
+    else
+        print_error "安装包头文件编译检查失败"
+        exit 1
+    fi
+else
+    print_warning "未找到 gcc，跳过安装包头文件编译检查"
 fi
 
 # ==================================================================
