@@ -88,6 +88,8 @@ This table only summarizes what PLC code should typically watch during integrati
 | `MoveVelocity` | `EXECUTE` rising edge | keep lifecycle stable while owned | observe `INVELOCITY`, `COMMANDABORTED`, and `ERROR` | drop `EXECUTE` when the surrounding action wrapper closes the lifecycle |
 | `PressureHandle` | `EXECUTE` rising edge | keep lifecycle stable while owned | observe `INPRESSURE`, `BUSY/ACTIVE` clear, `COMMANDABORTED`, and `ERROR` | drop `EXECUTE` when the surrounding action wrapper closes the lifecycle |
 | `Stop` | `EXECUTE` rising edge | keep lifecycle stable while decelerating | observe `DONE` after stop-to-zero | drop `EXECUTE` after `DONE` |
+| `Hold` | `EXECUTE` rising edge | hold current runtime context | observe `DONE` after hold state is reached or `ERROR` | drop `EXECUTE` after transition is acknowledged |
+| `Resume` | `EXECUTE` rising edge | resume a held runtime context | observe `DONE` after running state is restored or `ERROR` | drop `EXECUTE` after transition is acknowledged |
 | `Reset` | `EXECUTE` rising edge | typically immediate lifecycle | observe `DONE` or `ERROR` | drop `EXECUTE` after completion |
 | `MoveProfile` | `EXECUTE` rising edge | keep lifecycle stable while recipe execution is owned | observe `DONE`, `COMMANDABORTED`, or `ERROR` | drop `EXECUTE` after completion, takeover, or lifecycle invalidation |
 
@@ -163,6 +165,24 @@ Do not assume:
 
 - `Stop` is equivalent to immediate `Abort`
 - `DONE` is valid on the trigger cycle during active motion
+
+### `Hold` / `Resume`
+
+Recommended for:
+
+- temporarily pausing an active runtime context without declaring terminal completion
+- resuming the same runtime context after a process-layer pause condition clears
+
+Use them when:
+
+- the process layer wants runtime pause/resume semantics rather than a controlled stop
+- the active segment context should be preserved
+
+Do not assume:
+
+- `Hold` or `Resume` is a machine phase transition
+- `Hold.DONE` means the action completed normally
+- pause/resume replaces valve safety logic or interlocks
 
 ### `Reset`
 
@@ -277,6 +297,14 @@ The top-level process sequence should:
 - Library executes controlled deceleration
 - PLC waits for `Stop.DONE`
 - PLC then clears the stop lifecycle and determines the next machine action
+
+### Hold and Resume
+
+- PLC detects a process condition that requires a temporary pause
+- PLC triggers `Hold`
+- Library enters hold state and clears active actuation outputs
+- PLC keeps valve and machine outputs in a process-safe state
+- PLC triggers `Resume` only after interlocks and process conditions allow the motion to continue
 
 ## Error and Recovery Handling
 

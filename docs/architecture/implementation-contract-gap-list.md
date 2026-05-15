@@ -27,6 +27,24 @@ against the current implementation in:
 - [motion_control.c](/home/dan/project/hdy-motion-light/src/motion_control.c)
 - [motion_interface.c](/home/dan/project/hdy-motion-light/src/motion_interface.c)
 
+## Implemented Algorithm Gaps
+
+- Diagnostic derate now reduces command flow and pump speed before execution reporting.
+- Position and speed-ramp planning now support acceleration-limited target evolution.
+- Stop fallback deceleration now uses `maxDeceleration` before legacy `maxAcceleration`.
+- Speed-ramp segments may opt into velocity feedback correction through `velocityKp`.
+- Action profile helpers provide standard segment defaults for clamp, injection, holding, ejector, and carriage roles.
+- Segment completion may require a stable window and velocity-settled condition.
+- Injection fill segments may report V/P transfer readiness as an observation signal.
+
+## Still Outside Runtime Scope
+
+- Valve sequencing remains in PLC process logic.
+- Machine interlocks remain in PLC process logic.
+- The runtime reports V/P transfer readiness but does not automatically switch to holding pressure.
+- Multi-stage injection recipe scheduling remains a PLC or recipe composition responsibility.
+- Clamp force build-up and mold-protection workflow remain machine-process responsibilities unless a future approved design moves a bounded part into the control layer.
+
 ## Gap Summary
 
 ### High

@@ -40,9 +40,13 @@ print_error() {
 
 print_header "嵌入式部署 - HydroMotionLib (生产版本)"
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
 # 检查构建目录
-BUILD_DIR="out/build/unixgcc"
-INSTALL_DIR="out/install/embedded_prod"
+BUILD_DIR="$REPO_ROOT/out/build/unixgcc"
+INSTALL_DIR="$REPO_ROOT/out/install/embedded_prod"
+INCLUDE_DIR="$REPO_ROOT/include"
 
 if [ ! -d "$BUILD_DIR" ]; then
     print_error "构建目录不存在: $BUILD_DIR"
@@ -91,9 +95,11 @@ mkdir -p "$INSTALL_DIR/include"
 
 # 复制核心头文件（排除仿真器相关）
 CORE_HEADERS=(
+    "action_profile.h"
     "motion_control.h"
     "common_types.h"
     "motion_planner.h"
+    "output_limiter.h"
     "pressure_controller.h"
     "pump_converter.h"
     "segment_completion.h"
@@ -108,10 +114,12 @@ CORE_HEADERS=(
     "rbf_pid.h"
     "recipe_validator.h"
     "segment_limits.h"
+    "velocity_controller.h"
+    "vp_transfer.h"
 )
 
 for header in "${CORE_HEADERS[@]}"; do
-    SRC_PATH="../../include/$header"
+    SRC_PATH="$INCLUDE_DIR/$header"
     if [ -f "$SRC_PATH" ]; then
         cp "$SRC_PATH" "$INSTALL_DIR/include/"
         print_success "头文件已复制: $header"
@@ -128,7 +136,7 @@ INTERFACE_HEADERS=(
 )
 
 for header in "${INTERFACE_HEADERS[@]}"; do
-    SRC_PATH="../../include/$header"
+    SRC_PATH="$INCLUDE_DIR/$header"
     if [ -f "$SRC_PATH" ]; then
         cp "$SRC_PATH" "$INSTALL_DIR/include/"
         print_success "接口头文件已复制: $header"

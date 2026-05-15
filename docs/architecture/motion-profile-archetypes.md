@@ -15,7 +15,7 @@ These archetypes are intended to:
 This document does not define:
 
 - machine phase sequencing
-- V/P transfer logic
+- V/P transfer decisions or automatic transfer execution
 - solenoid-valve behavior
 - machine-specific interlocks
 - product- or mold-specific process decisions
@@ -201,8 +201,10 @@ Recommended structure:
 | `planner` | `HYD_PLANNER_TIME_BASED` |
 | Common end conditions | `HYD_END_POSITION`, `HYD_END_TIME`, or process-layer phase switch |
 | Required values | `maxVelocity`, `maxAcceleration`, `maxFlow`, `velocityToFlowGain` |
-| Optional values | `targetPosition`, `targetFlow`, `duration` |
+| Optional values | `targetPosition`, `targetFlow`, `duration`, V/P observation thresholds |
 | Recommended safeguards | `velocityTolerance`, `flowTolerance`, `timeoutLimit` |
+
+V/P transfer thresholds on this segment are observation criteria only. They may set `STATE.vpTransferReady` during runtime, but the PLC process layer still decides when to close the fill lifecycle, start holding pressure, and switch valves.
 
 ### `HoldPressureSegment`
 
@@ -333,6 +335,8 @@ The runtime provides helper builders for common injection-machine motion segment
 
 These helpers populate `HYD_MotionSegment` defaults only. They do not start motion, switch valves, decide V/P transfer, or own machine sequencing. PLC process logic may still override generated segment values before loading the recipe.
 
+If a project configures V/P observation fields on an injection-fill segment, the helper output remains a segment template. The observation result is a runtime recommendation, not a process transition.
+
 ## Override Rules
 
 1. PLC projects may override archetype parameter values.
@@ -347,7 +351,7 @@ This archetype set does not currently define:
 - jerk-shaped control archetypes
 - continuous-update archetype semantics
 - true blending-mode archetypes beyond the currently supported runtime subset
-- automatic V/P transfer archetypes
+- automatic V/P transfer or holding-pressure transition archetypes
 - valve-pattern archetypes
 - machine-sequence archetypes
 
@@ -362,6 +366,7 @@ planner = HYD_PLANNER_TIME_BASED
 endCondition = HYD_END_POSITION or HYD_END_TIME
 required = maxVelocity, maxAcceleration, maxFlow, velocityToFlowGain
 optional = targetPosition, targetFlow, duration
+optional_observation = vpTransferPosition, vpTransferPressure, vpTransferMinTime, vpTransferVelocityDrop
 ```
 
 ### Example: Hold Pressure Template
