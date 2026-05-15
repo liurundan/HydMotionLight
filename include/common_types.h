@@ -256,6 +256,8 @@ typedef struct {
     HYD_REAL flowTolerance;      /* L/min */
     HYD_REAL velocityTolerance;  /* mm/s */
     HYD_TIME timeoutLimit;       /* s, 0 means disabled or auto-derived for time-ended segments */
+    HYD_TIME stableWindow;       /* s, 0 means immediate completion */
+    HYD_REAL stableVelocityLimit; /* mm/s, 0 disables velocity-settled gate */
 
     HYD_REAL velocityToFlowGain; /* L/min per mm/s, actuator flow gain */
     HYD_REAL velocityKp;        /* L/min per mm/s, 0 disables velocity feedback correction */

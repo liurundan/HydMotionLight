@@ -366,6 +366,8 @@ static void HYD_PrimeSegmentControllers(HYD_MotionControlFB* fb,
     fb->_isDecelerating = false;
     fb->_decelStartTime = 0.0;
     fb->_decelStartVel = 0.0;
+    fb->_completionCandidateStartTime = 0.0;
+    fb->_completionCandidateActive = false;
     fb->_lastFeedbackTimestamp = timestamp;
     HYD_RampController_Init(&fb->_rampController, fb->AXIS_REF.pressure, timestamp);
     memset(&fb->_plannerState, 0, sizeof(fb->_plannerState));
@@ -1433,6 +1435,9 @@ static void HYD_MotionControlFB_RunRunningState(HYD_MotionControlFB* fb) {
     completionContext.segment = segment;
     completionContext.axisRef = &fb->AXIS_REF;
     completionContext.references = &executionReference;
+    completionContext.timestamp = fb->AXIS_REF.timestamp;
+    completionContext.candidateStartTime = &fb->_completionCandidateStartTime;
+    completionContext.candidateActive = &fb->_completionCandidateActive;
     segmentCompleted = HYD_SegmentCompletion_CheckWithContext(&completionContext);
     if (segmentCompleted) {
         if (!fb->_isDecelerating &&

@@ -1,5 +1,6 @@
 #include <assert.h>
 #include <stdio.h>
+#include <string.h>
 #include "segment_completion.h"
 
 static HYD_AxisRef create_axis_ref(HYD_REAL position, HYD_REAL pressure, HYD_REAL flow) {
@@ -148,6 +149,84 @@ static void test_runtime_reference_context_overrides_segment_targets(void) {
     printf("✓ Runtime reference context override test passed\n");
 }
 
+static void test_position_completion_requires_stable_window(void) {
+    HYD_MotionSegment segment;
+    HYD_AxisRef axisRef;
+    HYD_ExecutionReference references;
+    HYD_SegmentCompletionContext context;
+    HYD_TIME candidateStart = 0.0;
+    HYD_BOOL candidateActive = false;
+
+    memset(&segment, 0, sizeof(segment));
+    segment.mode = HYD_MODE_POSITION;
+    segment.endCondition = HYD_END_POSITION;
+    segment.direction = HYD_DIRECTION_EXTEND;
+    segment.targetPosition = 10.0;
+    segment.positionTolerance = 0.1;
+    segment.stableWindow = 0.2;
+    segment.stableVelocityLimit = 0.5;
+
+    memset(&axisRef, 0, sizeof(axisRef));
+    axisRef.position = 9.95;
+    axisRef.velocity = 0.1;
+    axisRef.timestamp = 1.0;
+
+    memset(&references, 0, sizeof(references));
+    references.elapsedTime = 1.0;
+
+    context.segment = &segment;
+    context.axisRef = &axisRef;
+    context.references = &references;
+    context.timestamp = 1.0;
+    context.candidateStartTime = &candidateStart;
+    context.candidateActive = &candidateActive;
+
+    assert(!HYD_SegmentCompletion_CheckWithContext(&context));
+    assert(candidateActive);
+
+    axisRef.timestamp = 1.1;
+    context.timestamp = 1.1;
+    assert(!HYD_SegmentCompletion_CheckWithContext(&context));
+
+    axisRef.timestamp = 1.25;
+    context.timestamp = 1.25;
+    assert(HYD_SegmentCompletion_CheckWithContext(&context));
+    printf("✓ Stable window completion test passed\n");
+}
+
+static void test_position_completion_resets_when_velocity_not_settled(void) {
+    HYD_MotionSegment segment;
+    HYD_AxisRef axisRef;
+    HYD_SegmentCompletionContext context;
+    HYD_TIME candidateStart = 0.0;
+    HYD_BOOL candidateActive = false;
+
+    memset(&segment, 0, sizeof(segment));
+    segment.mode = HYD_MODE_POSITION;
+    segment.endCondition = HYD_END_POSITION;
+    segment.direction = HYD_DIRECTION_EXTEND;
+    segment.targetPosition = 10.0;
+    segment.positionTolerance = 0.1;
+    segment.stableWindow = 0.2;
+    segment.stableVelocityLimit = 0.5;
+
+    memset(&axisRef, 0, sizeof(axisRef));
+    axisRef.position = 9.95;
+    axisRef.velocity = 2.0;
+    axisRef.timestamp = 1.0;
+
+    context.segment = &segment;
+    context.axisRef = &axisRef;
+    context.references = NULL;
+    context.timestamp = 1.0;
+    context.candidateStartTime = &candidateStart;
+    context.candidateActive = &candidateActive;
+
+    assert(!HYD_SegmentCompletion_CheckWithContext(&context));
+    assert(!candidateActive);
+    printf("✓ Stable velocity gate completion reset test passed\n");
+}
+
 int main(void) {
     printf("Running SegmentCompletion tests...\n\n");
     test_position_completion_extend();
@@ -157,6 +236,8 @@ int main(void) {
     test_flow_completion();
     test_manual_completion();
     test_runtime_reference_context_overrides_segment_targets();
+    test_position_completion_requires_stable_window();
+    test_position_completion_resets_when_velocity_not_settled();
     printf("\n✅ All SegmentCompletion tests passed successfully!\n");
     return 0;
 }

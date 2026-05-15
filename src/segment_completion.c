@@ -2,6 +2,47 @@
 #include "segment_limits.h"
 #include <math.h>
 
+static HYD_BOOL HYD_SegmentCompletion_ApplyStableWindow(
+    const HYD_SegmentCompletionContext* context,
+    HYD_BOOL rawComplete) {
+    HYD_TIME elapsedStable;
+
+    if (context == NULL || context->segment == NULL) {
+        return false;
+    }
+
+    if (!rawComplete) {
+        if (context->candidateActive != NULL) {
+            *context->candidateActive = false;
+        }
+        return false;
+    }
+
+    if (context->segment->stableVelocityLimit > 0.0 &&
+        context->axisRef != NULL &&
+        fabs(context->axisRef->velocity) > context->segment->stableVelocityLimit) {
+        if (context->candidateActive != NULL) {
+            *context->candidateActive = false;
+        }
+        return false;
+    }
+
+    if (context->segment->stableWindow <= 0.0 ||
+        context->candidateStartTime == NULL ||
+        context->candidateActive == NULL) {
+        return true;
+    }
+
+    if (!*context->candidateActive) {
+        *context->candidateActive = true;
+        *context->candidateStartTime = context->timestamp;
+        return false;
+    }
+
+    elapsedStable = context->timestamp - *context->candidateStartTime;
+    return elapsedStable >= context->segment->stableWindow;
+}
+
 HYD_BOOL HYD_SegmentCompletion_CheckWithContext(const HYD_SegmentCompletionContext* context) {
     const HYD_MotionSegment* segment;
     const HYD_AxisRef* axisRef;
@@ -13,6 +54,7 @@ HYD_BOOL HYD_SegmentCompletion_CheckWithContext(const HYD_SegmentCompletionConte
     HYD_REAL pressureReference;
     HYD_REAL flowReference;
     HYD_REAL elapsedTime;
+    HYD_BOOL rawComplete;
 
     if (context == NULL || context->segment == NULL || context->axisRef == NULL) {
         return false;
@@ -36,23 +78,33 @@ HYD_BOOL HYD_SegmentCompletion_CheckWithContext(const HYD_SegmentCompletionConte
         case HYD_END_POSITION:
             direction = HYD_Segment_ResolveDirection(segment, axisRef);
             if (direction == HYD_DIRECTION_EXTEND) {
-                return axisRef->position >= segment->targetPosition - positionTolerance;
+                rawComplete = axisRef->position >= segment->targetPosition - positionTolerance;
+                break;
             }
             if (direction == HYD_DIRECTION_RETRACT) {
-                return axisRef->position <= segment->targetPosition + positionTolerance;
+                rawComplete = axisRef->position <= segment->targetPosition + positionTolerance;
+                break;
             }
-            return fabs(axisRef->position - segment->targetPosition) <= positionTolerance;
+            rawComplete = fabs(axisRef->position - segment->targetPosition) <= positionTolerance;
+            break;
         case HYD_END_TIME:
-            return elapsedTime >= segment->duration;
+            rawComplete = elapsedTime >= segment->duration;
+            break;
         case HYD_END_PRESSURE:
-            return fabs(axisRef->pressure - pressureReference) <= pressureTolerance;
+            rawComplete = fabs(axisRef->pressure - pressureReference) <= pressureTolerance;
+            break;
         case HYD_END_FLOW:
-            return fabs(fabs(axisRef->flow) - fabs(flowReference)) <= flowTolerance;
+            rawComplete = fabs(fabs(axisRef->flow) - fabs(flowReference)) <= flowTolerance;
+            break;
         case HYD_END_MANUAL:
-            return false;
+            rawComplete = false;
+            break;
         default:
-            return false;
+            rawComplete = false;
+            break;
     }
+
+    return HYD_SegmentCompletion_ApplyStableWindow(context, rawComplete);
 }
 
 HYD_BOOL HYD_SegmentCompletion_Check(const HYD_MotionSegment* segment,
@@ -68,5 +120,8 @@ HYD_BOOL HYD_SegmentCompletion_Check(const HYD_MotionSegment* segment,
     context.segment = segment;
     context.axisRef = axisRef;
     context.references = &references;
+    context.timestamp = (axisRef != NULL) ? axisRef->timestamp : 0.0;
+    context.candidateStartTime = NULL;
+    context.candidateActive = NULL;
     return HYD_SegmentCompletion_CheckWithContext(&context);
 }
