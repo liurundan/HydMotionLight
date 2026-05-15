@@ -258,6 +258,9 @@ typedef struct {
     HYD_TIME timeoutLimit;       /* s, 0 means disabled or auto-derived for time-ended segments */
 
     HYD_REAL velocityToFlowGain; /* L/min per mm/s, actuator flow gain */
+    HYD_REAL velocityKp;        /* L/min per mm/s, 0 disables velocity feedback correction */
+    HYD_REAL velocityDeadband;  /* mm/s, 0 means no deadband */
+    HYD_REAL velocityCorrectionLimit; /* L/min absolute correction limit, 0 uses maxFlow */
     HYD_REAL pressureRampRate;   /* MPa/s, target pressure ramp rate */
 
     /* Pressure-controller tuning. Zero values keep legacy-compatible defaults.
@@ -421,6 +424,9 @@ typedef enum {
     HYD_PARAM_PRESSURE_DEADBAND,
     HYD_PARAM_PRESSURE_FILTER_ALPHA,
     HYD_PARAM_PRESSURE_DERIVATIVE_FILTER_ALPHA,
+    HYD_PARAM_VELOCITY_KP,
+    HYD_PARAM_VELOCITY_DEADBAND,
+    HYD_PARAM_VELOCITY_CORRECTION_LIMIT,
     HYD_PARAM_FLOW_TO_PUMP_SPEED_GAIN,
     HYD_PARAM_PUMP_SPEED_LIMIT,
     HYD_PARAM_PRESSURE_CONTROLLER_TYPE,
@@ -450,6 +456,9 @@ typedef struct {
     HYD_REAL pressureDeadband;
     HYD_REAL pressureFilterAlpha;
     HYD_REAL pressureDerivativeFilterAlpha;
+    HYD_REAL velocityKp;
+    HYD_REAL velocityDeadband;
+    HYD_REAL velocityCorrectionLimit;
     HYD_REAL flowToPumpSpeedGain;
     HYD_REAL pumpSpeedLimit;
     HYD_REAL pressureControllerType;

@@ -53,6 +53,10 @@ static void test_init_sets_defaults(void) {
     ASSERT_TRUE(ok, "Read pumpSpeedLimit should succeed");
     ASSERT_FLOAT_EQ(val, 1800.0f, 0.001f, "Default pumpSpeedLimit should be 1800.0");
 
+    ok = HYD_MotionControlFB_ReadParameter(&fb, HYD_PARAM_VELOCITY_KP, &val);
+    ASSERT_TRUE(ok, "Read velocityKp should succeed");
+    ASSERT_FLOAT_EQ(val, 0.0f, 0.001f, "Default velocityKp should be disabled");
+
     HYD_BOOL bval;
     ok = HYD_MotionControlFB_ReadBoolParameter(&fb, HYD_PARAM_USE_SIMULATION, &bval);
     ASSERT_TRUE(ok, "ReadBool useSimulation should succeed");
@@ -84,6 +88,24 @@ static void test_write_read_roundtrip(void) {
     ok = HYD_MotionControlFB_ReadParameter(&fb, HYD_PARAM_PRESSURE_CONTROLLER_TYPE, &val);
     ASSERT_TRUE(ok, "Read pressureControllerType should succeed");
     ASSERT_EQ((int)val, (int)HYD_PRESSURE_CONTROLLER_PID, "pressureControllerType should be PID(3)");
+
+    ok = HYD_MotionControlFB_WriteParameter(&fb, HYD_PARAM_VELOCITY_KP, 2.0f);
+    ASSERT_TRUE(ok, "Write velocityKp should succeed");
+    ok = HYD_MotionControlFB_ReadParameter(&fb, HYD_PARAM_VELOCITY_KP, &val);
+    ASSERT_TRUE(ok, "Read velocityKp should succeed");
+    ASSERT_FLOAT_EQ(val, 2.0f, 0.001f, "velocityKp should round-trip");
+
+    ok = HYD_MotionControlFB_WriteParameter(&fb, HYD_PARAM_VELOCITY_DEADBAND, 0.1f);
+    ASSERT_TRUE(ok, "Write velocityDeadband should succeed");
+    ok = HYD_MotionControlFB_ReadParameter(&fb, HYD_PARAM_VELOCITY_DEADBAND, &val);
+    ASSERT_TRUE(ok, "Read velocityDeadband should succeed");
+    ASSERT_FLOAT_EQ(val, 0.1f, 0.001f, "velocityDeadband should round-trip");
+
+    ok = HYD_MotionControlFB_WriteParameter(&fb, HYD_PARAM_VELOCITY_CORRECTION_LIMIT, 20.0f);
+    ASSERT_TRUE(ok, "Write velocityCorrectionLimit should succeed");
+    ok = HYD_MotionControlFB_ReadParameter(&fb, HYD_PARAM_VELOCITY_CORRECTION_LIMIT, &val);
+    ASSERT_TRUE(ok, "Read velocityCorrectionLimit should succeed");
+    ASSERT_FLOAT_EQ(val, 20.0f, 0.001f, "velocityCorrectionLimit should round-trip");
 }
 
 /* Test: Write then Read Bool round-trip */

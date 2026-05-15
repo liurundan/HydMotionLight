@@ -8,6 +8,7 @@
 #include "recipe_validator.h"
 #include "segment_completion.h"
 #include "state_reporter.h"
+#include "velocity_controller.h"
 #include "motion_utils.h"
 #include "motion_validator.h"
 #include "output_limiter.h"
@@ -924,6 +925,8 @@ static void HYD_ExecuteActiveSegmentControl(HYD_MotionControlFB* fb,
     HYD_MotionPlannerInput plannerInput;
     HYD_PressureControllerInput pressureInput;
     HYD_PumpConverterInput pumpInput;
+    HYD_VelocityControllerInput velocityInput;
+    HYD_VelocityControllerOutput velocityOutput;
 
     if (fb == NULL || segment == NULL || rampOutput == NULL || plannerOutput == NULL ||
         pressureOutput == NULL || pumpOutput == NULL || executionReference == NULL) {
@@ -972,6 +975,20 @@ static void HYD_ExecuteActiveSegmentControl(HYD_MotionControlFB* fb,
         }
         plannerInput.state = &fb->_plannerState;
         HYD_MotionPlanner_Execute(&plannerInput, plannerOutput);
+
+        if (segment->mode == HYD_MODE_SPEED_RAMP && segment->velocityKp > 0.0) {
+            velocityInput.targetVelocity = plannerOutput->targetVelocity;
+            velocityInput.actualVelocity = fb->AXIS_REF.velocity;
+            velocityInput.feedforwardFlow = plannerOutput->targetFlow;
+            velocityInput.kp = segment->velocityKp;
+            velocityInput.deadband = segment->velocityDeadband;
+            velocityInput.correctionLimit = segment->velocityCorrectionLimit;
+            velocityInput.outputMin = 0.0;
+            velocityInput.outputMax = segment->maxFlow;
+
+            HYD_VelocityController_Execute(&velocityInput, &velocityOutput);
+            plannerOutput->targetFlow = velocityOutput.correctedFlow;
+        }
     }
 
     pumpInput.requestedFlow = plannerOutput->targetFlow;
@@ -1644,6 +1661,9 @@ void HYD_MotionControlFB_Init(HYD_MotionControlFB* fb) {
     fb->_params.pressureDeadband = 0.5f;
     fb->_params.pressureFilterAlpha = 0.5f;
     fb->_params.pressureDerivativeFilterAlpha = 0.5f;
+    fb->_params.velocityKp = 0.0f;
+    fb->_params.velocityDeadband = 0.0f;
+    fb->_params.velocityCorrectionLimit = 0.0f;
     fb->_params.flowToPumpSpeedGain = 20.0f;
     fb->_params.pumpSpeedLimit = 1800.0f;
     fb->_params.pressureControllerType = (HYD_REAL)HYD_PRESSURE_CONTROLLER_PI;
@@ -1980,6 +2000,9 @@ HYD_BOOL HYD_MotionControlFB_ReadParameter(const HYD_MotionControlFB* fb, int pa
         case HYD_PARAM_PRESSURE_DEADBAND:              *value = fb->_params.pressureDeadband; break;
         case HYD_PARAM_PRESSURE_FILTER_ALPHA:          *value = fb->_params.pressureFilterAlpha; break;
         case HYD_PARAM_PRESSURE_DERIVATIVE_FILTER_ALPHA: *value = fb->_params.pressureDerivativeFilterAlpha; break;
+        case HYD_PARAM_VELOCITY_KP:                    *value = fb->_params.velocityKp; break;
+        case HYD_PARAM_VELOCITY_DEADBAND:              *value = fb->_params.velocityDeadband; break;
+        case HYD_PARAM_VELOCITY_CORRECTION_LIMIT:      *value = fb->_params.velocityCorrectionLimit; break;
         case HYD_PARAM_FLOW_TO_PUMP_SPEED_GAIN:        *value = fb->_params.flowToPumpSpeedGain; break;
         case HYD_PARAM_PUMP_SPEED_LIMIT:               *value = fb->_params.pumpSpeedLimit; break;
         case HYD_PARAM_PRESSURE_CONTROLLER_TYPE:       *value = fb->_params.pressureControllerType; break;
@@ -2016,6 +2039,9 @@ HYD_BOOL HYD_MotionControlFB_WriteParameter(HYD_MotionControlFB* fb, int paramNu
         case HYD_PARAM_PRESSURE_DEADBAND:              fb->_params.pressureDeadband = value; break;
         case HYD_PARAM_PRESSURE_FILTER_ALPHA:          fb->_params.pressureFilterAlpha = value; break;
         case HYD_PARAM_PRESSURE_DERIVATIVE_FILTER_ALPHA: fb->_params.pressureDerivativeFilterAlpha = value; break;
+        case HYD_PARAM_VELOCITY_KP:                    fb->_params.velocityKp = value; break;
+        case HYD_PARAM_VELOCITY_DEADBAND:              fb->_params.velocityDeadband = value; break;
+        case HYD_PARAM_VELOCITY_CORRECTION_LIMIT:      fb->_params.velocityCorrectionLimit = value; break;
         case HYD_PARAM_FLOW_TO_PUMP_SPEED_GAIN:
             fb->_params.flowToPumpSpeedGain = value;
             fb->FLOW_TO_PUMP_SPEED_GAIN = value;
