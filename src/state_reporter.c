@@ -1,6 +1,7 @@
 #include "state_reporter.h"
 #include "diagnostics.h"
 #include "protection_manager.h"
+#include "vp_transfer.h"
 #include <string.h>
 
 static HYD_BOOL HYD_StateReporter_HasSelectedStartSource(const HYD_MotionControlFB* fb) {
@@ -280,6 +281,8 @@ void HYD_StateReporter_ApplySafeOutputs(HYD_MotionControlFB* fb) {
     fb->STATE.plannedVelocity = 0.0;
     fb->STATE.plannedFlow = 0.0;
     fb->STATE.commandedPumpSpeed = 0.0;
+    fb->STATE.vpTransferReady = false;
+    fb->STATE.vpTransferReason = (HYD_UINT8)HYD_VP_TRANSFER_REASON_NONE;
     /* Clear simulation feedback to prevent stale velocity from driving
      * the simulated axis after segment completion, abort, fault, or hold.
      * Keep valid=true so Publish() updates AXIS_REF with zeroed values,

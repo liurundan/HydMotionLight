@@ -114,6 +114,14 @@ typedef enum {
 } HYD_ProtectionAction;
 
 typedef enum {
+    HYD_VP_TRANSFER_REASON_NONE = 0,
+    HYD_VP_TRANSFER_REASON_POSITION = 1,
+    HYD_VP_TRANSFER_REASON_PRESSURE = 2,
+    HYD_VP_TRANSFER_REASON_TIME = 3,
+    HYD_VP_TRANSFER_REASON_VELOCITY_DROP = 4
+} HYD_VpTransferReason;
+
+typedef enum {
     HYD_DIAG_CODE_NONE,
     HYD_DIAG_CODE_RECIPE_EMPTY,
     HYD_DIAG_CODE_RECIPE_TOO_LARGE,
@@ -258,6 +266,10 @@ typedef struct {
     HYD_TIME timeoutLimit;       /* s, 0 means disabled or auto-derived for time-ended segments */
     HYD_TIME stableWindow;       /* s, 0 means immediate completion */
     HYD_REAL stableVelocityLimit; /* mm/s, 0 disables velocity-settled gate */
+    HYD_REAL vpTransferPosition;        /* mm, 0 disables position transfer observation */
+    HYD_REAL vpTransferPressure;        /* MPa, 0 disables pressure transfer observation */
+    HYD_TIME vpTransferMinTime;         /* s, 0 disables minimum-time gate */
+    HYD_REAL vpTransferVelocityDrop;    /* mm/s, 0 disables velocity-drop observation */
 
     HYD_REAL velocityToFlowGain; /* L/min per mm/s, actuator flow gain */
     HYD_REAL velocityKp;        /* L/min per mm/s, 0 disables velocity feedback correction */
@@ -377,6 +389,8 @@ typedef struct {
     HYD_SegmentSource segmentSource;       /* Latched source of the active/last executed segment. */
     HYD_ControllerStatus status;
     HYD_UINT8 currentSegmentTag;
+    HYD_BOOL vpTransferReady;
+    HYD_UINT8 vpTransferReason;
 } HYD_MotionState;
 
 /* ============================================================================

@@ -210,6 +210,8 @@ This section does not redefine signal semantics. It only translates those semant
 | `ERROR` | fault/invalid lifecycle handling | treating it as equivalent to preemption |
 | `INVELOCITY` | velocity-in-band observation | treating it as universal terminal completion |
 | `INPRESSURE` | pressure-in-band observation | treating it as universal terminal completion |
+| `STATE.vpTransferReady` | observing a library-computed injection fill transfer recommendation | allowing the runtime to switch phases or valves automatically |
+| `STATE.vpTransferReason` | identifying which transfer criterion raised the recommendation | using it without process interlock validation |
 
 ### Signal Consumption Rules
 
@@ -258,7 +260,9 @@ The top-level process sequence should:
 - PLC decides fill-phase entry
 - PLC triggers `MoveVelocity`
 - Library executes the speed-ramp behavior
-- PLC decides V/P transfer externally
+- Library may report `STATE.vpTransferReady` and `STATE.vpTransferReason`
+- PLC treats V/P readiness as a transfer recommendation
+- PLC validates interlocks, stops or closes the fill lifecycle, commands holding pressure, and switches valves explicitly
 
 ### Hold Pressure
 
@@ -299,6 +303,7 @@ Avoid these integration errors:
 5. Letting the top-level machine state machine call raw FBs everywhere without an action-wrapper layer.
 6. Treating `COMMANDABORTED` as equivalent to `ERROR`.
 7. Letting the library decide V/P transfer or machine phase transitions.
+8. Treating `STATE.vpTransferReady` as permission to bypass machine interlocks.
 
 ## Must Remain in PLC
 

@@ -13,6 +13,7 @@
 #include "motion_validator.h"
 #include "output_limiter.h"
 #include "segment_limits.h"
+#include "vp_transfer.h"
 #include "hyd_config.h"
 #include <math.h>
 #include <string.h>
@@ -368,6 +369,8 @@ static void HYD_PrimeSegmentControllers(HYD_MotionControlFB* fb,
     fb->_decelStartVel = 0.0;
     fb->_completionCandidateStartTime = 0.0;
     fb->_completionCandidateActive = false;
+    fb->STATE.vpTransferReady = false;
+    fb->STATE.vpTransferReason = (HYD_UINT8)HYD_VP_TRANSFER_REASON_NONE;
     fb->_lastFeedbackTimestamp = timestamp;
     HYD_RampController_Init(&fb->_rampController, fb->AXIS_REF.pressure, timestamp);
     memset(&fb->_plannerState, 0, sizeof(fb->_plannerState));
@@ -1351,6 +1354,12 @@ static void HYD_MotionControlFB_RunRunningState(HYD_MotionControlFB* fb) {
                                     &pumpOutput,
                                     &executionReference);
     HYD_UpdateExecutionDiagnostics(fb, segment, &executionReference, elapsed);
+    {
+        HYD_VpTransferResult vpResult;
+        HYD_VpTransfer_Evaluate(segment, &fb->AXIS_REF, &executionReference, &vpResult);
+        fb->STATE.vpTransferReady = vpResult.ready;
+        fb->STATE.vpTransferReason = (HYD_UINT8)vpResult.reason;
+    }
 
     limiterInput.requestedFlow = pumpOutput.commandFlow;
     limiterInput.requestedPumpSpeed = pumpOutput.pumpSpeed;

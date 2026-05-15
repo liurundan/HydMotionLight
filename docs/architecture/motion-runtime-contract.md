@@ -20,7 +20,7 @@ It does not specify:
 
 - valve control
 - machine process sequencing
-- V/P transfer decision logic
+- V/P transfer decision logic or automatic transfer execution
 - machine-specific hydraulic interlocks
 - product-specific molding process rules
 
@@ -78,6 +78,8 @@ PLC logic should depend on official outputs and documented runtime state, not on
 | `STATE.faultActive` | Runtime fault/protected-stop marker | Drives `ERROR` semantics |
 | `STATE.status` | Aggregated status for upper layers | Mirrors controller-level view, not raw ownership |
 | `SEGMENT_COMPLETED` | End condition met for current segment | May be true before full recipe completion |
+| `STATE.vpTransferReady` | V/P transfer observation for injection fill | Recommendation signal only; does not change runtime ownership |
+| `STATE.vpTransferReason` | Criterion that raised `vpTransferReady` | `0` none, `1` position, `2` pressure, `3` time, `4` velocity drop |
 
 ### State Rules
 
@@ -85,6 +87,7 @@ PLC logic should depend on official outputs and documented runtime state, not on
 2. `STATE.status` is an aggregated controller status projection.
 3. `STATE.finished` is not equivalent to `SEGMENT_COMPLETED`.
 4. `DONE` is derived from terminal completion semantics, not from generic in-band tracking.
+5. `STATE.vpTransferReady` is cleared outside active execution and never commands a phase transition by itself.
 
 ## Execution Ownership Model
 
@@ -261,6 +264,21 @@ Recipe execution does not currently expose a separate recipe-side owner-kind sig
 
 Execution still begins through `MoveProfile`/`Start` or through direct command FBs.
 
+## V/P Transfer Observation
+
+The runtime may report `STATE.vpTransferReady=true` and `STATE.vpTransferReason` for injection fill segments whose `segmentType` is `HYD_SEGMENT_TYPE_INJECTION` and whose mode is `HYD_MODE_SPEED_RAMP`.
+
+This is an observation signal only. The PLC process layer remains responsible for deciding whether to stop the fill segment, command the holding-pressure segment, switch valves, and enforce machine-specific interlocks.
+
+Supported observation criteria are:
+
+- configured transfer position reached
+- configured transfer pressure reached
+- configured transfer elapsed time reached
+- measured velocity dropped below the runtime velocity reference by the configured amount
+
+Zero-valued criteria are disabled. Non-injection segments and non-speed-ramp segments do not report V/P transfer readiness.
+
 ## Error and Protection Contract
 
 ### Error Semantics
@@ -287,7 +305,7 @@ Execution still begins through `MoveProfile`/`Start` or through direct command F
 | Field Class | Safe for PLC Logic? | Examples |
 | --- | --- | --- |
 | Official FB outputs | Yes | `DONE`, `BUSY`, `ACTIVE`, `ERROR`, `COMMANDABORTED`, `INVELOCITY`, `INPRESSURE` |
-| Reported runtime state | Yes | `FB_STATE`, `STATE.status`, `SEGMENT_COMPLETED`, `DIAGNOSTIC`, `DIAGNOSTIC_HISTORY`, `LAST_FAULT_SNAPSHOT` |
+| Reported runtime state | Yes | `FB_STATE`, `STATE.status`, `STATE.vpTransferReady`, `STATE.vpTransferReason`, `SEGMENT_COMPLETED`, `DIAGNOSTIC`, `DIAGNOSTIC_HISTORY`, `LAST_FAULT_SNAPSHOT` |
 | Internal bookkeeping | No | underscored ownership, pending-command, stop, and controller-state fields |
 
 PLC logic should consume formal outputs and documented runtime state. It should not inspect underscored internal fields to infer completion, preemption, or stop status.
@@ -332,7 +350,7 @@ The current runtime contract does not define or fully support:
 
 - direct valve control
 - machine phase sequencing
-- V/P transfer decision logic
+- V/P transfer decision logic and automatic holding-pressure transition
 - machine-specific hydraulic interlocks
 - PLCopen blending modes beyond the currently supported buffer-mode subset
 - full end-to-end semantics for all exposed IEC pins that are present only for compatibility or extension
