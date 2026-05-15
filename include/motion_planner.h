@@ -4,12 +4,21 @@
 #include "common_types.h"
 
 typedef struct {
+    HYD_BOOL initialized;
+    HYD_REAL lastTargetVelocity;
+    HYD_REAL lastTargetFlow;
+    HYD_TIME lastTimestamp;
+} HYD_MotionPlannerState;
+
+typedef struct {
     const HYD_AxisRef* axisRef;
     const HYD_MotionSegment* segment;
     HYD_REAL elapsedTime;
+    HYD_REAL deltaTime;
     HYD_REAL rampedPressure;
     HYD_REAL decelElapsed;
     HYD_REAL decelStartVel;
+    HYD_MotionPlannerState* state;
 } HYD_MotionPlannerInput;
 
 typedef struct {

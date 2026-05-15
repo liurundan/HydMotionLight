@@ -367,6 +367,7 @@ static void HYD_PrimeSegmentControllers(HYD_MotionControlFB* fb,
     fb->_decelStartVel = 0.0;
     fb->_lastFeedbackTimestamp = timestamp;
     HYD_RampController_Init(&fb->_rampController, fb->AXIS_REF.pressure, timestamp);
+    memset(&fb->_plannerState, 0, sizeof(fb->_plannerState));
 
     trackingFlowReference = HYD_MotionUtils_AbsReal(fb->AXIS_REF.flow);
     if (trackingFlowReference <= 0.0 && allowFlowCarryover) {
@@ -956,6 +957,11 @@ static void HYD_ExecuteActiveSegmentControl(HYD_MotionControlFB* fb,
         plannerInput.axisRef = &fb->AXIS_REF;
         plannerInput.segment = segment;
         plannerInput.elapsedTime = elapsed;
+        plannerInput.deltaTime = 0.0;
+        if (fb->_plannerState.initialized &&
+            fb->AXIS_REF.timestamp >= fb->_plannerState.lastTimestamp) {
+            plannerInput.deltaTime = fb->AXIS_REF.timestamp - fb->_plannerState.lastTimestamp;
+        }
         plannerInput.rampedPressure = rampOutput->rampedPressure;
         if (fb->_isDecelerating) {
             plannerInput.decelElapsed = fb->AXIS_REF.timestamp - fb->_decelStartTime;
@@ -964,6 +970,7 @@ static void HYD_ExecuteActiveSegmentControl(HYD_MotionControlFB* fb,
             plannerInput.decelElapsed = 0.0;
             plannerInput.decelStartVel = 0.0;
         }
+        plannerInput.state = &fb->_plannerState;
         HYD_MotionPlanner_Execute(&plannerInput, plannerOutput);
     }
 
@@ -1595,6 +1602,7 @@ void HYD_MotionControlFB_Init(HYD_MotionControlFB* fb) {
     HYD_StateReporter_ClearSegmentTag(fb);
     HYD_StateReporter_ResetDiagnosticRetention(fb);
     HYD_RampController_Init(&fb->_rampController, 0.0, 0.0);
+    memset(&fb->_plannerState, 0, sizeof(fb->_plannerState));
     HYD_PressureController_ClearState(&fb->_pressureController);
     HYD_ClearPendingCommand(fb);
     HYD_StateReporter_RefreshStandardOutputs(fb);
@@ -1729,6 +1737,7 @@ void HYD_MotionControlFB_SoftReset(HYD_MotionControlFB* fb) {
     HYD_StateReporter_ClearSegmentTag(fb);
     HYD_StateReporter_ResetDiagnosticRetention(fb);
     HYD_RampController_Init(&fb->_rampController, 0.0, 0.0);
+    memset(&fb->_plannerState, 0, sizeof(fb->_plannerState));
     HYD_PressureController_ClearState(&fb->_pressureController);
     HYD_ClearPendingCommand(fb);
 

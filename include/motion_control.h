@@ -6,6 +6,7 @@
 #include "ramp_controller.h"
 #include "diagnostics_monitor.h"
 #include "diagnostics_criteria.h"
+#include "motion_planner.h"
 
 /*
  * PLCopen-style motion control function block lifecycle:
@@ -197,6 +198,7 @@ typedef struct {
     HYD_SegmentSource _activeSegmentSource;
     HYD_TIME _holdStateTime;
     HYD_RampController _rampController;
+    HYD_MotionPlannerState _plannerState;
     HYD_PressureControllerState _pressureController;
     HYD_BOOL _isDecelerating;
     HYD_TIME _decelStartTime;
