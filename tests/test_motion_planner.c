@@ -766,6 +766,83 @@ static void test_position_based_online_trapezoid_decelerates_inside_position_tol
     printf("✓ Position-based online trapezoid deceleration inside position tolerance test passed\n");
 }
 
+static void test_position_based_online_trapezoid_auto_direction_decelerates_inside_tolerance(void) {
+    HYD_AxisRef axisRef;
+    HYD_MotionSegment segment;
+    HYD_MotionPlannerState state;
+    HYD_MotionPlannerInput input;
+    HYD_MotionPlannerOutput output;
+
+    printf("Testing position-based online trapezoid AUTO direction tolerance deceleration...\n");
+
+    memset(&state, 0, sizeof(state));
+    state.initialized = true;
+    state.lastTargetVelocity = 6.5;
+    axisRef = create_test_axis_ref(399.95);
+    axisRef.velocity = 6.5;
+    segment = create_test_segment();
+    segment.planner = HYD_PLANNER_POSITION_BASED;
+    segment.direction = HYD_DIRECTION_AUTO;
+    segment.targetPosition = 400.0;
+    segment.positionTolerance = 0.1;
+    segment.maxVelocity = 20.0;
+    segment.maxAcceleration = 200.0;
+    segment.maxDeceleration = 200.0;
+    segment.maxFlow = 500.0;
+
+    memset(&input, 0, sizeof(input));
+    input.axisRef = &axisRef;
+    input.segment = &segment;
+    input.deltaTime = 0.001;
+    input.elapsedTime = 0.001;
+    input.state = &state;
+
+    HYD_MotionPlanner_Execute(&input, &output);
+
+    assert(output.targetVelocity > 0.0);
+    assert(fabs(output.targetVelocity - 6.3) < 0.001);
+    printf("✓ Position-based online trapezoid AUTO direction tolerance deceleration test passed\n");
+}
+
+static void test_position_based_explicit_hold_stays_zero_with_previous_velocity(void) {
+    HYD_AxisRef axisRef;
+    HYD_MotionSegment segment;
+    HYD_MotionPlannerState state;
+    HYD_MotionPlannerInput input;
+    HYD_MotionPlannerOutput output;
+
+    printf("Testing position-based explicit HOLD remains zero with previous velocity...\n");
+
+    memset(&state, 0, sizeof(state));
+    state.initialized = true;
+    state.lastTargetVelocity = 6.5;
+    axisRef = create_test_axis_ref(399.95);
+    axisRef.velocity = 6.5;
+    segment = create_test_segment();
+    segment.planner = HYD_PLANNER_POSITION_BASED;
+    segment.direction = HYD_DIRECTION_HOLD;
+    segment.targetPosition = 400.0;
+    segment.positionTolerance = 0.1;
+    segment.maxVelocity = 20.0;
+    segment.maxAcceleration = 200.0;
+    segment.maxDeceleration = 200.0;
+    segment.maxFlow = 500.0;
+
+    memset(&input, 0, sizeof(input));
+    input.axisRef = &axisRef;
+    input.segment = &segment;
+    input.deltaTime = 0.001;
+    input.elapsedTime = 0.001;
+    input.state = &state;
+
+    HYD_MotionPlanner_Execute(&input, &output);
+
+    assert(output.direction == HYD_DIRECTION_HOLD);
+    assert(fabs(output.targetVelocity) < 0.001);
+    assert(fabs(output.targetFlow) < 0.001);
+    printf("✓ Position-based explicit HOLD zero output test passed\n");
+}
+
 static void test_position_based_online_trapezoid_direction_reversal_is_continuous(void) {
     HYD_AxisRef axisRef;
     HYD_MotionSegment segment;
@@ -825,6 +902,8 @@ int main(void) {
     test_position_based_online_trapezoid_short_move_is_triangular();
     test_position_based_online_trapezoid_position_tolerance_decelerates();
     test_position_based_online_trapezoid_decelerates_inside_position_tolerance();
+    test_position_based_online_trapezoid_auto_direction_decelerates_inside_tolerance();
+    test_position_based_explicit_hold_stays_zero_with_previous_velocity();
     test_position_based_online_trapezoid_direction_reversal_is_continuous();
 
     printf("\n✅ All MotionPlanner tests passed successfully!\n");

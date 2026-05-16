@@ -379,8 +379,25 @@ void HYD_MotionPlanner_Execute(const HYD_MotionPlannerInput* input, HYD_MotionPl
     direction = HYD_Segment_ResolveDirection(input->segment, input->axisRef);
     output->direction = direction;
 
-    if (input->segment->mode == HYD_MODE_PRESSURE_CLOSED_LOOP ||
-        direction == HYD_DIRECTION_HOLD) {
+    if (input->segment->mode == HYD_MODE_PRESSURE_CLOSED_LOOP) {
+        return;
+    }
+
+    previousVelocity = (input->state != NULL && input->state->initialized)
+        ? input->state->lastTargetVelocity
+        : 0.0;
+    previousDirectionSign = (previousVelocity > 0.0) ? 1.0 : ((previousVelocity < 0.0) ? -1.0 : 0.0);
+
+    if (direction == HYD_DIRECTION_HOLD &&
+        input->segment->mode == HYD_MODE_POSITION &&
+        input->segment->planner == HYD_PLANNER_POSITION_BASED &&
+        input->segment->direction == HYD_DIRECTION_AUTO &&
+        previousDirectionSign != 0.0) {
+        direction = (previousDirectionSign > 0.0) ? HYD_DIRECTION_EXTEND : HYD_DIRECTION_RETRACT;
+        output->direction = direction;
+    }
+
+    if (direction == HYD_DIRECTION_HOLD) {
         return;
     }
 
@@ -395,8 +412,6 @@ void HYD_MotionPlanner_Execute(const HYD_MotionPlannerInput* input, HYD_MotionPl
 
     directionSign = HYD_GetDirectionSign(direction);
     if (input->segment->planner == HYD_PLANNER_POSITION_BASED && input->state != NULL) {
-        previousVelocity = input->state->initialized ? input->state->lastTargetVelocity : 0.0;
-        previousDirectionSign = (previousVelocity > 0.0) ? 1.0 : ((previousVelocity < 0.0) ? -1.0 : 0.0);
         currentDirectionSign = directionSign;
         brakingAcceleration = HYD_ResolveBrakingAcceleration(input->segment);
 
