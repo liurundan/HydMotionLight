@@ -149,14 +149,19 @@ static HYD_REAL HYD_ComputeOnlineTrapezoidVelocityMagnitude(const HYD_MotionPlan
     }
 
     remainingDistance = HYD_ComputeRemainingDistance(segment, input->axisRef, direction);
-    positionTolerance = HYD_Segment_GetPositionTolerance(segment);
-    if (remainingDistance <= positionTolerance) {
-        return 0.0;
-    }
-
     previousMagnitude = 0.0;
     if (input->state != NULL && input->state->initialized) {
         previousMagnitude = fabs(input->state->lastTargetVelocity);
+    }
+
+    positionTolerance = HYD_Segment_GetPositionTolerance(segment);
+    if (remainingDistance <= positionTolerance) {
+        if (input->deltaTime <= 0.0) {
+            return previousMagnitude;
+        }
+        return HYD_MaxReal(0.0,
+                           previousMagnitude -
+                           brakingAcceleration * input->deltaTime);
     }
 
     if (input->deltaTime <= 0.0) {

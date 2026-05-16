@@ -690,14 +690,14 @@ static void test_position_based_online_trapezoid_short_move_is_triangular(void) 
     printf("✓ Position-based online trapezoid short triangular move test passed\n");
 }
 
-static void test_position_based_online_trapezoid_position_tolerance_outputs_zero(void) {
+static void test_position_based_online_trapezoid_position_tolerance_decelerates(void) {
     HYD_AxisRef axisRef;
     HYD_MotionSegment segment;
     HYD_MotionPlannerState state;
     HYD_MotionPlannerInput input;
     HYD_MotionPlannerOutput output;
 
-    printf("Testing position-based online trapezoid tolerance zero output...\n");
+    printf("Testing position-based online trapezoid tolerance deceleration...\n");
 
     memset(&state, 0, sizeof(state));
     state.initialized = true;
@@ -722,9 +722,48 @@ static void test_position_based_online_trapezoid_position_tolerance_outputs_zero
 
     HYD_MotionPlanner_Execute(&input, &output);
 
-    assert(fabs(output.targetVelocity) < 0.001);
-    assert(fabs(output.targetFlow) < 0.001);
-    printf("✓ Position-based online trapezoid tolerance zero output test passed\n");
+    assert(output.targetVelocity > 0.0);
+    assert(fabs(output.targetVelocity - 4.0) < 0.001);
+    assert(fabs(output.targetFlow - 4.0 * segment.velocityToFlowGain) < 0.001);
+    printf("✓ Position-based online trapezoid tolerance deceleration test passed\n");
+}
+
+static void test_position_based_online_trapezoid_decelerates_inside_position_tolerance(void) {
+    HYD_AxisRef axisRef;
+    HYD_MotionSegment segment;
+    HYD_MotionPlannerState state;
+    HYD_MotionPlannerInput input;
+    HYD_MotionPlannerOutput output;
+
+    printf("Testing position-based online trapezoid deceleration inside position tolerance...\n");
+
+    memset(&state, 0, sizeof(state));
+    state.initialized = true;
+    state.lastTargetVelocity = -20.0;
+    axisRef = create_test_axis_ref(6.5);
+    axisRef.velocity = -20.0;
+    segment = create_test_segment();
+    segment.planner = HYD_PLANNER_POSITION_BASED;
+    segment.direction = HYD_DIRECTION_RETRACT;
+    segment.targetPosition = 0.0;
+    segment.positionTolerance = 10.0;
+    segment.maxVelocity = 20.0;
+    segment.maxAcceleration = 200.0;
+    segment.maxDeceleration = 200.0;
+    segment.maxFlow = 500.0;
+
+    memset(&input, 0, sizeof(input));
+    input.axisRef = &axisRef;
+    input.segment = &segment;
+    input.deltaTime = 0.001;
+    input.elapsedTime = 0.001;
+    input.state = &state;
+
+    HYD_MotionPlanner_Execute(&input, &output);
+
+    assert(output.targetVelocity < 0.0);
+    assert(fabs(output.targetVelocity + 19.8) < 0.001);
+    printf("✓ Position-based online trapezoid deceleration inside position tolerance test passed\n");
 }
 
 static void test_position_based_online_trapezoid_direction_reversal_is_continuous(void) {
@@ -784,7 +823,8 @@ int main(void) {
     test_position_based_online_trapezoid_deceleration_limit();
     test_position_based_online_trapezoid_braking_cap();
     test_position_based_online_trapezoid_short_move_is_triangular();
-    test_position_based_online_trapezoid_position_tolerance_outputs_zero();
+    test_position_based_online_trapezoid_position_tolerance_decelerates();
+    test_position_based_online_trapezoid_decelerates_inside_position_tolerance();
     test_position_based_online_trapezoid_direction_reversal_is_continuous();
 
     printf("\n✅ All MotionPlanner tests passed successfully!\n");
