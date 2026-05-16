@@ -198,11 +198,81 @@ static void test_position_segment_ramps_velocity_flow_and_pump_speed(void) {
           "Position segment should keep increasing pump speed");
 }
 
+static void test_position_segment_does_not_complete_until_velocity_settles(void) {
+    HYD_MotionControlFB fb;
+    HYD_MotionSegment segment;
+    int doneStep = 0;
+    int step;
+
+    HYD_MotionControlFB_Init(&fb);
+    fb.USE_RECIPE = false;
+    fb.FLOW_TO_PUMP_SPEED_GAIN = 10.0;
+    fb.PUMP_SPEED_LIMIT = 3000.0;
+    fb.AXIS_REF.position = 99.95;
+    fb.AXIS_REF.velocity = 6.5;
+    fb.AXIS_REF.flow = 6.5;
+    fb.AXIS_REF.pressure = 20.0;
+    fb.AXIS_REF.timestamp = 0.0;
+
+    memset(&segment, 0, sizeof(segment));
+    segment.segmentType = HYD_SEGMENT_TYPE_OTHER;
+    segment.planner = HYD_PLANNER_POSITION_BASED;
+    segment.mode = HYD_MODE_POSITION;
+    segment.endCondition = HYD_END_POSITION;
+    segment.direction = HYD_DIRECTION_EXTEND;
+    segment.targetPosition = 100.0;
+    segment.maxVelocity = 100.0;
+    segment.maxAcceleration = 200.0;
+    segment.maxDeceleration = 200.0;
+    segment.maxFlow = 500.0;
+    segment.positionTolerance = 0.1;
+    segment.velocityTolerance = 1.0;
+    segment.velocityToFlowGain = 1.0;
+
+    CHECK(HYD_MotionControlFB_LoadDirectSegment(&fb, &segment),
+          "Near-target direct position segment should load");
+    CHECK(HYD_MotionControlFB_StartSegment(&fb, 0, fb.AXIS_REF.timestamp),
+          "Near-target direct position segment should start");
+
+    HYD_MotionControlFB_Scan(&fb);
+    CHECK(!HYD_MotionControlFB_IsDone(&fb),
+          "Position segment should not complete immediately while actual velocity is unsettled");
+
+    fb._plannerState.initialized = true;
+    fb._plannerState.lastTargetVelocity = 6.5;
+
+    fb.AXIS_REF.timestamp = 0.001;
+    HYD_MotionControlFB_Scan(&fb);
+    CHECK(!HYD_MotionControlFB_IsDone(&fb),
+          "Position segment should not be DONE while planned and actual velocity are unsettled");
+    CHECK(fabs(fb.STATE.plannedVelocity) > 1.0,
+          "Planned velocity should still be above settled threshold inside position tolerance");
+
+    for (step = 0; step < 100; step++) {
+        fb.AXIS_REF.velocity = fb.STATE.plannedVelocity;
+        fb.AXIS_REF.flow = fabs(fb.STATE.plannedFlow);
+        fb.AXIS_REF.position += fb.AXIS_REF.velocity * 0.001;
+        fb.AXIS_REF.timestamp += 0.001;
+
+        HYD_MotionControlFB_Scan(&fb);
+        if (HYD_MotionControlFB_IsDone(&fb)) {
+            doneStep = step + 1;
+            break;
+        }
+    }
+
+    CHECK(doneStep > 5,
+          "Position segment should require multiple cycles before velocity-settled DONE");
+    CHECK(fabs(fb.AXIS_REF.velocity) <= segment.velocityTolerance,
+          "Actual velocity should be settled when position segment completes");
+}
+
 int main(void) {
     printf("=== MoveAbsolute + Stop Integration ===\n");
     test_moveabsolute_stop_loop();
     test_stop_without_deceleration_uses_segment_max_deceleration();
     test_position_segment_ramps_velocity_flow_and_pump_speed();
+    test_position_segment_does_not_complete_until_velocity_settles();
     printf("=== Results: %d/%d passed ===\n", tests_passed, tests_run);
     return (tests_passed == tests_run) ? 0 : 1;
 }
