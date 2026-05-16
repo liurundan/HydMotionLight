@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 #include "segment_completion.h"
@@ -25,6 +26,32 @@ static HYD_MotionSegment create_segment(void) {
     segment.timeoutLimit = 5.0;
     segment.duration = 5.0;
     return segment;
+}
+
+static HYD_BOOL check_position_with_velocities(const HYD_MotionSegment* segment,
+                                               HYD_REAL position,
+                                               HYD_REAL actualVelocity,
+                                               HYD_REAL plannedVelocity,
+                                               HYD_TIME timestamp,
+                                               HYD_TIME* candidateStart,
+                                               HYD_BOOL* candidateActive) {
+    HYD_AxisRef axisRef = {0};
+    HYD_ExecutionReference references = {0};
+    HYD_SegmentCompletionContext context = {0};
+
+    axisRef.position = position;
+    axisRef.velocity = actualVelocity;
+    axisRef.timestamp = timestamp;
+    references.elapsedTime = timestamp;
+    references.velocityReference = plannedVelocity;
+
+    context.segment = segment;
+    context.axisRef = &axisRef;
+    context.references = &references;
+    context.timestamp = timestamp;
+    context.candidateStartTime = candidateStart;
+    context.candidateActive = candidateActive;
+    return HYD_SegmentCompletion_CheckWithContext(&context);
 }
 
 static void test_position_completion_extend(void) {
@@ -149,6 +176,131 @@ static void test_runtime_reference_context_overrides_segment_targets(void) {
     printf("✓ Runtime reference context override test passed\n");
 }
 
+static void test_position_completion_rejects_unsettled_planned_velocity(void) {
+    HYD_MotionSegment segment = create_segment();
+
+    printf("Testing position completion rejects unsettled planned velocity...\n");
+    segment.endCondition = HYD_END_POSITION;
+    segment.direction = HYD_DIRECTION_EXTEND;
+    segment.targetPosition = 100.0;
+    segment.positionTolerance = 0.1;
+    segment.velocityTolerance = 1.0;
+
+    assert(!check_position_with_velocities(&segment, 99.95, 0.2, 6.5, 1.0, NULL, NULL));
+    printf("✓ Planned velocity settled gate test passed\n");
+}
+
+static void test_position_completion_rejects_unsettled_actual_velocity(void) {
+    HYD_MotionSegment segment = create_segment();
+
+    printf("Testing position completion rejects unsettled actual velocity...\n");
+    segment.endCondition = HYD_END_POSITION;
+    segment.direction = HYD_DIRECTION_EXTEND;
+    segment.targetPosition = 100.0;
+    segment.positionTolerance = 0.1;
+    segment.velocityTolerance = 1.0;
+
+    assert(!check_position_with_velocities(&segment, 99.95, 6.5, 0.2, 1.0, NULL, NULL));
+    printf("✓ Actual velocity settled gate test passed\n");
+}
+
+static void test_position_completion_accepts_settled_planned_and_actual_velocity(void) {
+    HYD_MotionSegment segment = create_segment();
+
+    printf("Testing position completion accepts settled planned and actual velocity...\n");
+    segment.endCondition = HYD_END_POSITION;
+    segment.direction = HYD_DIRECTION_EXTEND;
+    segment.targetPosition = 100.0;
+    segment.positionTolerance = 0.1;
+    segment.velocityTolerance = 1.0;
+
+    assert(check_position_with_velocities(&segment, 99.95, 0.5, 0.4, 1.0, NULL, NULL));
+    printf("✓ Settled position completion test passed\n");
+}
+
+static void test_position_completion_stable_velocity_limit_overrides_velocity_tolerance(void) {
+    HYD_MotionSegment segment = create_segment();
+
+    printf("Testing stableVelocityLimit overrides velocityTolerance for position completion...\n");
+    segment.endCondition = HYD_END_POSITION;
+    segment.direction = HYD_DIRECTION_EXTEND;
+    segment.targetPosition = 100.0;
+    segment.positionTolerance = 0.1;
+    segment.velocityTolerance = 5.0;
+    segment.stableVelocityLimit = 0.5;
+
+    assert(!check_position_with_velocities(&segment, 99.95, 0.8, 0.8, 1.0, NULL, NULL));
+    assert(check_position_with_velocities(&segment, 99.95, 0.4, 0.4, 1.0, NULL, NULL));
+    printf("✓ Stable velocity override test passed\n");
+}
+
+static void test_position_completion_uses_default_velocity_tolerance_when_unconfigured(void) {
+    HYD_MotionSegment segment = create_segment();
+
+    printf("Testing default settled velocity tolerance for position completion...\n");
+    segment.endCondition = HYD_END_POSITION;
+    segment.direction = HYD_DIRECTION_EXTEND;
+    segment.targetPosition = 100.0;
+    segment.positionTolerance = 0.1;
+    segment.velocityTolerance = 0.0;
+    segment.stableVelocityLimit = 0.0;
+
+    assert(!check_position_with_velocities(&segment, 99.95, 1.2, 0.8, 1.0, NULL, NULL));
+    assert(!check_position_with_velocities(&segment, 99.95, 0.8, 1.2, 1.0, NULL, NULL));
+    assert(check_position_with_velocities(&segment, 99.95, 0.8, 0.8, 1.0, NULL, NULL));
+    printf("✓ Default settled velocity tolerance test passed\n");
+}
+
+static void test_position_completion_stable_window_resets_on_unsettled_planned_velocity(void) {
+    HYD_MotionSegment segment = create_segment();
+    HYD_TIME candidateStart = 0.0;
+    HYD_BOOL candidateActive = false;
+
+    printf("Testing stable window resets on unsettled planned velocity...\n");
+    segment.endCondition = HYD_END_POSITION;
+    segment.direction = HYD_DIRECTION_EXTEND;
+    segment.targetPosition = 100.0;
+    segment.positionTolerance = 0.1;
+    segment.velocityTolerance = 1.0;
+    segment.stableWindow = 0.2;
+
+    assert(!check_position_with_velocities(&segment, 99.95, 0.2, 2.0, 1.0,
+                                           &candidateStart, &candidateActive));
+    assert(!candidateActive);
+
+    assert(!check_position_with_velocities(&segment, 99.95, 0.2, 0.2, 1.1,
+                                           &candidateStart, &candidateActive));
+    assert(candidateActive);
+    assert(fabs(candidateStart - 1.1) < 0.000001);
+
+    assert(check_position_with_velocities(&segment, 99.95, 0.2, 0.2, 1.35,
+                                          &candidateStart, &candidateActive));
+    printf("✓ Stable window planned velocity reset test passed\n");
+}
+
+static void test_pressure_completion_ignores_velocity_reference_gate(void) {
+    HYD_MotionSegment segment = create_segment();
+    HYD_AxisRef axisRef;
+    HYD_ExecutionReference references = {0};
+    HYD_SegmentCompletionContext context = {0};
+
+    printf("Testing non-position completion ignores velocity reference gate...\n");
+    segment.endCondition = HYD_END_PRESSURE;
+    segment.targetPressure = 50.0;
+    axisRef = create_axis_ref(0.0, 50.0, 0.0);
+    axisRef.velocity = 10.0;
+    references.velocityReference = 10.0;
+    references.pressureReference = 50.0;
+
+    context.segment = &segment;
+    context.axisRef = &axisRef;
+    context.references = &references;
+    context.timestamp = 1.0;
+
+    assert(HYD_SegmentCompletion_CheckWithContext(&context));
+    printf("✓ Non-position compatibility test passed\n");
+}
+
 static void test_position_completion_requires_stable_window(void) {
     HYD_MotionSegment segment;
     HYD_AxisRef axisRef;
@@ -236,6 +388,13 @@ int main(void) {
     test_flow_completion();
     test_manual_completion();
     test_runtime_reference_context_overrides_segment_targets();
+    test_position_completion_rejects_unsettled_planned_velocity();
+    test_position_completion_rejects_unsettled_actual_velocity();
+    test_position_completion_accepts_settled_planned_and_actual_velocity();
+    test_position_completion_stable_velocity_limit_overrides_velocity_tolerance();
+    test_position_completion_uses_default_velocity_tolerance_when_unconfigured();
+    test_position_completion_stable_window_resets_on_unsettled_planned_velocity();
+    test_pressure_completion_ignores_velocity_reference_gate();
     test_position_completion_requires_stable_window();
     test_position_completion_resets_when_velocity_not_settled();
     printf("\n✅ All SegmentCompletion tests passed successfully!\n");
