@@ -1016,6 +1016,7 @@ static void HYD_ExecuteActiveSegmentControl(HYD_MotionControlFB* fb,
         plannerOutput->targetFlow = pressureOutput->outputFlow;
         plannerOutput->direction = segment->direction;
     } else {
+        memset(&plannerInput, 0, sizeof(plannerInput));
         plannerInput.axisRef = &fb->AXIS_REF;
         plannerInput.segment = segment;
         plannerInput.elapsedTime = elapsed;

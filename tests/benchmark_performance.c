@@ -11,6 +11,7 @@
 #include <stdlib.h>
 #include <time.h>
 #include <stdint.h>
+#include <string.h>
 #include "motion_control.h"
 #include "motion_utils.h"
 #include "motion_planner.h"
@@ -140,6 +141,7 @@ static void benchmark_motion_planner(void) {
     create_test_axis_ref(&axis_ref, 1.0);
     create_test_segment(&segment, HYD_MODE_POSITION);
     
+    memset(&input, 0, sizeof(input));
     input.axisRef = &axis_ref;
     input.segment = &segment;
     input.elapsedTime = 0.5;
