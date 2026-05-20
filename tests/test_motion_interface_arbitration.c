@@ -689,6 +689,26 @@ static void test_blending_modes_select_distinct_through_velocities(void) {
                "BlendingHigh should use the higher velocity");
 }
 
+static void test_blended_front_segment_keeps_nonzero_velocity_near_switch(void) {
+    HYD_MotionControlFB* fb;
+
+    fb = start_blend_pair(HYD_BUFFER_MODE_BLENDING_NEXT, 20.0f, 8.0f);
+    ASSERT_TRUE(fb != NULL, "Axis 0 control FB should exist for blend output test");
+    ASSERT_TRUE(fb->_directBlendContext.active,
+               "Blend context should be active before near-switch cycle");
+
+    fb->AXIS_REF.position = 99.0f;
+    fb->AXIS_REF.velocity = 8.0f;
+    fb->AXIS_REF.timestamp += 0.1f;
+    fb->_plannerState.initialized = true;
+    fb->_plannerState.lastTargetVelocity = 8.0f;
+
+    __HydMotion_framework_Publish();
+
+    ASSERT_TRUE(fb->STATE.references.velocityReference > 0.1f,
+               "Blended front segment should not plan zero velocity near switch");
+}
+
 /* ==================================================================
  * Test 8: Reset 后旧命令失去所有权
  * ================================================================== */
@@ -1185,6 +1205,7 @@ int main(void) {
     test_buffered_moveabsolute_waits_without_preempting_active_owner();
     test_buffered_endless_movevelocity_degrades_to_abort_takeover();
     test_blending_modes_select_distinct_through_velocities();
+    test_blended_front_segment_keeps_nonzero_velocity_near_switch();
     test_previous_command_loses_ownership_after_reset();
     test_preemption_chain_three_commands();
     test_never_activated_fb_no_false_commandaborted();
