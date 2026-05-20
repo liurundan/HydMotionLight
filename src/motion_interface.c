@@ -263,11 +263,11 @@ static HYD_BOOL directExecutionWasPreempted(const HYD_MotionControlFB* fb,
     return HYD_MotionControlFB_WasExecutionPreempted(fb, (uint16_t)execId, kind);
 }
 
-static HYD_BOOL directExecutionWasCompleted(const HYD_MotionControlFB* fb,
+static HYD_BOOL directExecutionWasCompleted(HYD_MotionControlFB* fb,
                                             IEC_WORD execId,
                                             HYD_DirectCommandKind kind)
 {
-    return HYD_MotionControlFB_WasExecutionCompleted(fb, (uint16_t)execId, kind);
+    return HYD_MotionControlFB_ConsumeExecutionCompleted(fb, (uint16_t)execId, kind);
 }
 
 static HYD_BOOL directExecutionIsCurrentOwner(const HYD_MotionControlFB* fb,

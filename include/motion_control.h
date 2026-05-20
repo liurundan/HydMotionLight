@@ -372,6 +372,9 @@ HYD_BOOL HYD_MotionControlFB_WasExecutionPreempted(const HYD_MotionControlFB* fb
 HYD_BOOL HYD_MotionControlFB_WasExecutionCompleted(const HYD_MotionControlFB* fb,
                                                    uint16_t executionId,
                                                    HYD_DirectCommandKind kind);
+HYD_BOOL HYD_MotionControlFB_ConsumeExecutionCompleted(HYD_MotionControlFB* fb,
+                                                       uint16_t executionId,
+                                                       HYD_DirectCommandKind kind);
 HYD_BOOL HYD_MotionControlFB_ApplyLiveUpdate(HYD_MotionControlFB* fb,
                                              const HYD_LiveUpdateRequest* request);
 HYD_BOOL HYD_MotionControlFB_StartDirectCommand(HYD_MotionControlFB* fb,

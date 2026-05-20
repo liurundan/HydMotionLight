@@ -2428,6 +2428,20 @@ HYD_BOOL HYD_MotionControlFB_WasExecutionCompleted(const HYD_MotionControlFB* fb
            fb->_lastCompletedKind == kind;
 }
 
+HYD_BOOL HYD_MotionControlFB_ConsumeExecutionCompleted(HYD_MotionControlFB* fb,
+                                                       uint16_t executionId,
+                                                       HYD_DirectCommandKind kind) {
+    if (fb == NULL ||
+        fb->_lastCompletedExecutionId != executionId ||
+        fb->_lastCompletedKind != kind) {
+        return false;
+    }
+
+    fb->_lastCompletedExecutionId = 0U;
+    fb->_lastCompletedKind = HYD_DIRECT_CMD_NONE;
+    return true;
+}
+
 HYD_BOOL HYD_MotionControlFB_ApplyLiveUpdate(HYD_MotionControlFB* fb,
                                              const HYD_LiveUpdateRequest* request) {
     HYD_MotionSegment updated;

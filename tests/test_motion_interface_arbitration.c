@@ -716,6 +716,7 @@ static void test_blended_cutover_preserves_planner_state(void) {
     HYD_MotionControlFB* fb;
     HYD_MOVEABSOLUTE first;
     HYD_MOVEABSOLUTE second;
+    IEC_WORD firstExecId;
 
     __HydMotion_framework_Init();
     ensure_axes_allocated(1);
@@ -741,6 +742,7 @@ static void test_blended_cutover_preserves_planner_state(void) {
     __mcl_cmd_MoveAbsolute(&first);
     ASSERT_TRUE(IEC_VAL(first._EXEC_ID) != 0,
                "Front MoveAbsolute should latch direct ownership before blend cutover");
+    firstExecId = IEC_VAL(first._EXEC_ID);
 
     memset(&second, 0, sizeof(second));
     IEC_VAL(second.EN) = true;
@@ -778,6 +780,10 @@ static void test_blended_cutover_preserves_planner_state(void) {
                "Front MoveAbsolute should clear BUSY after blended cutover");
     ASSERT_TRUE(IEC_VAL(first.ACTIVE) == false,
                "Front MoveAbsolute should clear ACTIVE after blended cutover");
+    ASSERT_TRUE(!HYD_MotionControlFB_WasExecutionCompleted(fb,
+                                                           (uint16_t)firstExecId,
+                                                           HYD_DIRECT_CMD_MOVE_ABSOLUTE),
+               "Front MoveAbsolute completion marker should be consumed after reporting DONE");
 
     IEC_VAL(second.EXECUTE) = true;
     second.EXECUTE0.value = true;
