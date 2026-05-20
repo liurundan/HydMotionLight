@@ -949,7 +949,7 @@ static void test_position_based_blend_terminal_velocity_cap(void) {
     segment.planner = HYD_PLANNER_POSITION_BASED;
     segment.mode = HYD_MODE_POSITION;
     segment.direction = HYD_DIRECTION_EXTEND;
-    segment.targetPosition = 100.0;
+    segment.targetPosition = 120.0;
     segment.positionTolerance = 0.0;
     segment.maxVelocity = 50.0;
     segment.maxAcceleration = 100.0;
@@ -976,7 +976,10 @@ static void test_position_based_blend_terminal_velocity_cap(void) {
     expectedCap = sqrt((blend.blendVelocity * blend.blendVelocity) +
                        (2.0 * segment.maxDeceleration *
                         (blend.switchPosition - axisRef.position)));
+    assert(output.direction == HYD_DIRECTION_EXTEND);
     assert(fabs(output.targetVelocity - expectedCap) < 0.001);
+    assert(fabs(output.targetFlow -
+                (output.targetVelocity * segment.velocityToFlowGain)) < 0.001);
     printf("✓ Position blend terminal velocity cap test passed\n");
 }
 
