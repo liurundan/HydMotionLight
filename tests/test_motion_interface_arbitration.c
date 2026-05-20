@@ -697,16 +697,18 @@ static void test_blended_front_segment_keeps_nonzero_velocity_near_switch(void) 
     ASSERT_TRUE(fb->_directBlendContext.active,
                "Blend context should be active before near-switch cycle");
 
-    fb->AXIS_REF.position = 99.0f;
+    fb->_activeSegment.positionTolerance = 0.05f;
+    fb->_directBlendContext.switchTolerance = 0.05f;
+    fb->AXIS_REF.position = 99.98f;
     fb->AXIS_REF.velocity = 8.0f;
-    fb->AXIS_REF.timestamp += 0.1f;
     fb->_plannerState.initialized = true;
     fb->_plannerState.lastTargetVelocity = 8.0f;
+    fb->AXIS_REF.timestamp += 0.1f;
 
     __HydMotion_framework_Publish();
 
-    ASSERT_TRUE(fb->STATE.references.velocityReference > 0.1f,
-               "Blended front segment should not plan zero velocity near switch");
+    ASSERT_TRUE(fabs(fb->STATE.references.velocityReference - 8.0f) < 0.001f,
+               "Blended front segment should hold the selected through velocity inside switch tolerance");
 }
 
 /* ==================================================================
