@@ -880,6 +880,106 @@ static void test_position_based_online_trapezoid_direction_reversal_is_continuou
     printf("✓ Position-based online trapezoid direction reversal continuity test passed\n");
 }
 
+static void test_position_based_blend_terminal_velocity_inside_tolerance(void) {
+    HYD_AxisRef axisRef;
+    HYD_MotionSegment segment;
+    HYD_MotionPlannerState state;
+    HYD_MotionPlannerInput input;
+    HYD_MotionPlannerOutput output;
+    HYD_MotionBlendContext blend;
+
+    printf("Testing position blend terminal velocity inside tolerance...\n");
+
+    memset(&state, 0, sizeof(state));
+    state.initialized = true;
+    state.lastTargetVelocity = 8.0;
+
+    axisRef = create_test_axis_ref(99.98);
+    segment = create_test_segment();
+    segment.planner = HYD_PLANNER_POSITION_BASED;
+    segment.mode = HYD_MODE_POSITION;
+    segment.direction = HYD_DIRECTION_EXTEND;
+    segment.targetPosition = 100.0;
+    segment.positionTolerance = 0.05;
+    segment.maxVelocity = 20.0;
+    segment.maxAcceleration = 10.0;
+    segment.maxDeceleration = 10.0;
+    segment.maxFlow = 100.0;
+
+    memset(&blend, 0, sizeof(blend));
+    blend.active = true;
+    blend.bufferMode = HYD_BUFFER_MODE_BLENDING_NEXT;
+    blend.blendVelocity = 5.0;
+    blend.switchPosition = 100.0;
+    blend.switchTolerance = 0.05;
+
+    memset(&input, 0, sizeof(input));
+    input.axisRef = &axisRef;
+    input.segment = &segment;
+    input.deltaTime = 0.1;
+    input.elapsedTime = 1.0;
+    input.state = &state;
+    input.blend = &blend;
+
+    HYD_MotionPlanner_Execute(&input, &output);
+
+    assert(output.targetVelocity > 0.0);
+    assert(fabs(output.targetVelocity - 7.0) < 0.001);
+    assert(fabs(output.targetFlow - 7.0 * segment.velocityToFlowGain) < 0.001);
+    printf("✓ Position blend terminal velocity inside tolerance test passed\n");
+}
+
+static void test_position_based_blend_terminal_velocity_cap(void) {
+    HYD_AxisRef axisRef;
+    HYD_MotionSegment segment;
+    HYD_MotionPlannerState state;
+    HYD_MotionPlannerInput input;
+    HYD_MotionPlannerOutput output;
+    HYD_MotionBlendContext blend;
+    HYD_REAL expectedCap;
+
+    printf("Testing position blend terminal velocity cap...\n");
+
+    memset(&state, 0, sizeof(state));
+    state.initialized = true;
+    state.lastTargetVelocity = 20.0;
+
+    axisRef = create_test_axis_ref(99.5);
+    segment = create_test_segment();
+    segment.planner = HYD_PLANNER_POSITION_BASED;
+    segment.mode = HYD_MODE_POSITION;
+    segment.direction = HYD_DIRECTION_EXTEND;
+    segment.targetPosition = 100.0;
+    segment.positionTolerance = 0.0;
+    segment.maxVelocity = 50.0;
+    segment.maxAcceleration = 100.0;
+    segment.maxDeceleration = 10.0;
+    segment.maxFlow = 100.0;
+
+    memset(&blend, 0, sizeof(blend));
+    blend.active = true;
+    blend.bufferMode = HYD_BUFFER_MODE_BLENDING_LOW;
+    blend.blendVelocity = 5.0;
+    blend.switchPosition = 100.0;
+    blend.switchTolerance = 0.0;
+
+    memset(&input, 0, sizeof(input));
+    input.axisRef = &axisRef;
+    input.segment = &segment;
+    input.deltaTime = 0.1;
+    input.elapsedTime = 1.0;
+    input.state = &state;
+    input.blend = &blend;
+
+    HYD_MotionPlanner_Execute(&input, &output);
+
+    expectedCap = sqrt((blend.blendVelocity * blend.blendVelocity) +
+                       (2.0 * segment.maxDeceleration *
+                        (blend.switchPosition - axisRef.position)));
+    assert(fabs(output.targetVelocity - expectedCap) < 0.001);
+    printf("✓ Position blend terminal velocity cap test passed\n");
+}
+
 int main(void) {
     printf("Running MotionPlanner tests...\n\n");
 
@@ -905,6 +1005,8 @@ int main(void) {
     test_position_based_online_trapezoid_auto_direction_decelerates_inside_tolerance();
     test_position_based_explicit_hold_stays_zero_with_previous_velocity();
     test_position_based_online_trapezoid_direction_reversal_is_continuous();
+    test_position_based_blend_terminal_velocity_inside_tolerance();
+    test_position_based_blend_terminal_velocity_cap();
 
     printf("\n✅ All MotionPlanner tests passed successfully!\n");
     return 0;

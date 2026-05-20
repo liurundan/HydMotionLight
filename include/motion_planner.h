@@ -11,6 +11,14 @@ typedef struct {
 } HYD_MotionPlannerState;
 
 typedef struct {
+    HYD_BOOL active;
+    HYD_BufferMode bufferMode;
+    HYD_REAL blendVelocity;
+    HYD_REAL switchPosition;
+    HYD_REAL switchTolerance;
+} HYD_MotionBlendContext;
+
+typedef struct {
     const HYD_AxisRef* axisRef;
     const HYD_MotionSegment* segment;
     HYD_REAL elapsedTime;
@@ -19,6 +27,7 @@ typedef struct {
     HYD_REAL decelElapsed;
     HYD_REAL decelStartVel;
     HYD_MotionPlannerState* state;
+    const HYD_MotionBlendContext* blend;
 } HYD_MotionPlannerInput;
 
 typedef struct {
