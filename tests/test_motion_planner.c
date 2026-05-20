@@ -899,7 +899,7 @@ static void test_position_based_blend_terminal_velocity_inside_tolerance(void) {
     segment.planner = HYD_PLANNER_POSITION_BASED;
     segment.mode = HYD_MODE_POSITION;
     segment.direction = HYD_DIRECTION_EXTEND;
-    segment.targetPosition = 100.0;
+    segment.targetPosition = 120.0;
     segment.positionTolerance = 0.05;
     segment.maxVelocity = 20.0;
     segment.maxAcceleration = 10.0;
