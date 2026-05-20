@@ -636,8 +636,9 @@ static void test_moveabsolute_rejects_nonzero_jerk_until_supported(void) {
                "Unsupported JERK should surface COMMAND_NOT_ALLOWED");
 }
 
-static void test_movevelocity_rejects_continuousupdate_until_supported(void) {
+static void test_movevelocity_accepts_continuousupdate_and_updates_active_target(void) {
     HYD_MOVEVELOCITY mv;
+    HYD_MotionControlFB* fb;
 
     __HydMotion_framework_Init();
     ensure_axes_allocated(1);
@@ -649,23 +650,61 @@ static void test_movevelocity_rejects_continuousupdate_until_supported(void) {
     IEC_VAL(mv.AXISID) = 0;
     IEC_VAL(mv.VELOCITY) = 25.0f;
     IEC_VAL(mv.ACCELERATION) = 100.0f;
+    IEC_VAL(mv.DIRECTION) = 1;
     IEC_VAL(mv.CONTINUOUSUPDATE) = true;
 
     __mcl_cmd_MoveVelocity(&mv);
 
-    ASSERT_TRUE(IEC_VAL(mv.ERROR) == true,
-               "MoveVelocity should reject unsupported CONTINUOUSUPDATE");
-    ASSERT_TRUE(IEC_VAL(mv.ERRORID) == HYD_DIAG_CODE_COMMAND_NOT_ALLOWED,
-               "Unsupported CONTINUOUSUPDATE should surface COMMAND_NOT_ALLOWED");
+    ASSERT_TRUE(IEC_VAL(mv.ERROR) == false,
+               "MoveVelocity should accept supported CONTINUOUSUPDATE");
+
+    __HydMotion_framework_Publish();
+    mv.EXECUTE0.value = true;
+    __mcl_cmd_MoveVelocity(&mv);
+
+    fb = __MK_GetPublic_MotionControlFB(0);
+    ASSERT_TRUE(fb != NULL, "Allocated FB should exist");
+    ASSERT_TRUE(fb->_activeSegmentValid, "MoveVelocity should have an active segment");
+    ASSERT_TRUE(fabs(fb->_activeSegment.maxVelocity - 25.0f) < 0.001f,
+               "MoveVelocity should latch initial velocity target");
+
+    IEC_VAL(mv.VELOCITY) = 35.0f;
+    __mcl_cmd_MoveVelocity(&mv);
+
+    ASSERT_TRUE(IEC_VAL(mv.ERROR) == false,
+               "MoveVelocity continuous update should not raise ERROR");
+    ASSERT_TRUE(fabs(fb->_activeSegment.maxVelocity - 35.0f) < 0.001f,
+               "MoveVelocity continuous update should update active maxVelocity");
 }
 
-static void test_moveabsolute_rejects_unsupported_buffer_mode_values(void) {
+static void test_moveabsolute_accepts_beckhoff_buffer_modes(void) {
     HYD_MOVEABSOLUTE ma;
+    int mode;
+
+    for (mode = 0; mode <= 5; ++mode) {
+        __HydMotion_framework_Init();
+        ensure_axes_allocated(1);
+        memset(&ma, 0, sizeof(ma));
+
+        IEC_VAL(ma.EN) = true;
+        IEC_VAL(ma.EXECUTE) = true;
+        ma.EXECUTE0.value = false;
+        IEC_VAL(ma.AXISID) = 0;
+        IEC_VAL(ma.POSITION) = 50.0f;
+        IEC_VAL(ma.VELOCITY) = 10.0f;
+        IEC_VAL(ma.ACCELERATION) = 40.0f;
+        IEC_VAL(ma.DIRECTION) = 1;
+        IEC_VAL(ma.BUFFERMODE) = mode;
+
+        __mcl_cmd_MoveAbsolute(&ma);
+
+        ASSERT_TRUE(IEC_VAL(ma.ERROR) == false,
+                   "MoveAbsolute should accept Beckhoff BUFFERMODE values 0..5");
+    }
 
     __HydMotion_framework_Init();
     ensure_axes_allocated(1);
     memset(&ma, 0, sizeof(ma));
-
     IEC_VAL(ma.EN) = true;
     IEC_VAL(ma.EXECUTE) = true;
     ma.EXECUTE0.value = false;
@@ -673,14 +712,14 @@ static void test_moveabsolute_rejects_unsupported_buffer_mode_values(void) {
     IEC_VAL(ma.POSITION) = 50.0f;
     IEC_VAL(ma.VELOCITY) = 10.0f;
     IEC_VAL(ma.ACCELERATION) = 40.0f;
-    IEC_VAL(ma.BUFFERMODE) = 2;
+    IEC_VAL(ma.DIRECTION) = 1;
+    IEC_VAL(ma.BUFFERMODE) = 6;
 
     __mcl_cmd_MoveAbsolute(&ma);
-
     ASSERT_TRUE(IEC_VAL(ma.ERROR) == true,
-               "MoveAbsolute should reject unsupported BUFFERMODE values");
+               "MoveAbsolute should reject BUFFERMODE values outside 0..5");
     ASSERT_TRUE(IEC_VAL(ma.ERRORID) == HYD_DIAG_CODE_COMMAND_NOT_ALLOWED,
-               "Unsupported BUFFERMODE should surface COMMAND_NOT_ALLOWED");
+               "Invalid BUFFERMODE should surface COMMAND_NOT_ALLOWED");
 }
 
 /* ==================================================================
@@ -936,6 +975,48 @@ static void test_pressurehandle_execute_rising_starts_pressure_control(void) {
                "INPRESSURE should be false initially (pressure=0)");
     ASSERT_TRUE(IEC_VAL(ph.COMMANDABORTED) == false,
                "COMMANDABORTED should be false initially");
+}
+
+static void test_pressurehandle_accepts_continuousupdate_and_updates_active_target(void) {
+    HYD_PRESSUREHANDLE ph;
+    HYD_MotionControlFB* fb;
+
+    __HydMotion_framework_Init();
+    ensure_axes_allocated(1);
+    memset(&ph, 0, sizeof(ph));
+
+    IEC_VAL(ph.EN) = true;
+    IEC_VAL(ph.EXECUTE) = true;
+    ph.EXECUTE0.value = false;
+    IEC_VAL(ph.AXISID) = 0;
+    IEC_VAL(ph.PRESSURE) = 8.0f;
+    IEC_VAL(ph.PRESSURERAMPRATE) = 2.0f;
+    IEC_VAL(ph.DURATION) = 1.0f;
+    IEC_VAL(ph.CONTINUOUSUPDATE) = true;
+
+    __mcl_cmd_PressureHandle(&ph);
+
+    ASSERT_TRUE(IEC_VAL(ph.ERROR) == false,
+               "PressureHandle should expose and accept CONTINUOUSUPDATE");
+
+    __HydMotion_framework_Publish();
+    ph.EXECUTE0.value = true;
+    __mcl_cmd_PressureHandle(&ph);
+
+    fb = __MK_GetPublic_MotionControlFB(0);
+    ASSERT_TRUE(fb != NULL, "PressureHandle continuous update test should resolve FB");
+    ASSERT_TRUE(fb->_activeSegmentValid, "PressureHandle should have an active segment before update");
+
+    IEC_VAL(ph.PRESSURE) = 12.0f;
+    IEC_VAL(ph.PRESSURERAMPRATE) = 4.0f;
+    __mcl_cmd_PressureHandle(&ph);
+
+    ASSERT_TRUE(IEC_VAL(ph.ERROR) == false,
+               "PressureHandle continuous update should not raise ERROR");
+    ASSERT_TRUE(fabs(fb->_activeSegment.targetPressure - 12.0f) < 0.001f,
+               "PressureHandle continuous update should update active targetPressure");
+    ASSERT_TRUE(fabs(fb->_activeSegment.pressureRampRate - 4.0f) < 0.001f,
+               "PressureHandle continuous update should update active pressureRampRate");
 }
 
 /* ==================================================================
@@ -1254,8 +1335,8 @@ int main(void) {
     test_loadprofile_preloads_direct_segment_on_direct_axis();
     test_loadprofile_keeps_recipe_preload_target_after_direct_override();
     test_moveabsolute_rejects_nonzero_jerk_until_supported();
-    test_movevelocity_rejects_continuousupdate_until_supported();
-    test_moveabsolute_rejects_unsupported_buffer_mode_values();
+    test_movevelocity_accepts_continuousupdate_and_updates_active_target();
+    test_moveabsolute_accepts_beckhoff_buffer_modes();
     test_movevelocity_execute_rising_starts_velocity_control();
     test_movevelocity_rejects_invalid_axis_index();
     test_movevelocity_maps_deceleration_independently();
@@ -1265,6 +1346,7 @@ int main(void) {
     test_reset_immediate_done_on_uninitialized_axis();
     test_reset_preserves_direct_segment_configuration();
     test_pressurehandle_execute_rising_starts_pressure_control();
+    test_pressurehandle_accepts_continuousupdate_and_updates_active_target();
     test_pressurehandle_en_false_clears_outputs();
     test_pressurehandle_rejects_invalid_axis_index();
     test_pressurehandle_completion_keeps_completion_semantics();

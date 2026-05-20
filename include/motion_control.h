@@ -161,6 +161,27 @@ typedef enum {
     HYD_DIRECT_SESSION_FAULT
 } HYD_DirectSessionState;
 
+typedef enum {
+    HYD_LIVE_UPDATE_TARGET_POSITION = 1U << 0,
+    HYD_LIVE_UPDATE_MAX_VELOCITY = 1U << 1,
+    HYD_LIVE_UPDATE_ACCELERATION = 1U << 2,
+    HYD_LIVE_UPDATE_DECELERATION = 1U << 3,
+    HYD_LIVE_UPDATE_TARGET_PRESSURE = 1U << 4,
+    HYD_LIVE_UPDATE_PRESSURE_RAMP_RATE = 1U << 5
+} HYD_LiveUpdateFlags;
+
+typedef struct {
+    HYD_UINT16 flags;
+    HYD_DirectCommandKind ownerKind;
+    uint16_t ownerExecutionId;
+    HYD_REAL targetPosition;
+    HYD_REAL maxVelocity;
+    HYD_REAL maxAcceleration;
+    HYD_REAL maxDeceleration;
+    HYD_REAL targetPressure;
+    HYD_REAL pressureRampRate;
+} HYD_LiveUpdateRequest;
+
 typedef struct {
     HYD_BOOL RESET;
     HYD_BOOL START_SEGMENT;
@@ -210,6 +231,10 @@ typedef struct {
     uint16_t _directOwnerExecutionId;
     uint16_t _lastPreemptedExecutionId;
     HYD_DirectCommandKind _lastPreemptedKind;
+    HYD_BOOL _directPendingValid;
+    HYD_MotionSegment _directPendingSegment;
+    HYD_DirectCommandKind _directPendingKind;
+    HYD_BufferMode _directPendingBufferMode;
     HYD_BOOL _isStopping;
     HYD_TIME _stopStartTime;
     HYD_REAL _stopStartVel;
@@ -341,6 +366,12 @@ uint16_t HYD_MotionControlFB_GetDirectOwnerExecutionId(const HYD_MotionControlFB
 HYD_BOOL HYD_MotionControlFB_WasExecutionPreempted(const HYD_MotionControlFB* fb,
                                                    uint16_t executionId,
                                                    HYD_DirectCommandKind kind);
+HYD_BOOL HYD_MotionControlFB_ApplyLiveUpdate(HYD_MotionControlFB* fb,
+                                             const HYD_LiveUpdateRequest* request);
+HYD_BOOL HYD_MotionControlFB_StartDirectCommand(HYD_MotionControlFB* fb,
+                                                const HYD_MotionSegment* segment,
+                                                HYD_BufferMode bufferMode,
+                                                HYD_TIME timestamp);
 
 /* Executes the already-sampled pending command and the explicit state machine. */
 void HYD_MotionControlFB_Cycle(HYD_MotionControlFB* fb);

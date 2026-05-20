@@ -168,13 +168,18 @@ typedef enum {
     HYD_PRESSURE_CONTROLLER_RBF_PID
 } HYD_PressureControllerType;
 
-/* BufferMode: currently supported IEC buffering subset.
- * ABORT  (0): preempt current motion and execute immediately.
- * BUFFER (1): preserve current command if immediate takeover is not requested.
- * Values 2-5 are reserved and currently rejected by the IEC adapter layer. */
+/* BufferMode values follow Beckhoff / PLCopen MC2 ordering.
+ * ABORT (0): preempt current motion and execute immediately.
+ * BUFFER (1): queue one following command after the active command.
+ * BLENDING_* (2..5): queue one following command with a continuous transition
+ * policy selected from the previous/next segment limits. */
 typedef enum {
-    HYD_BUFFER_MODE_ABORT  = 0,
-    HYD_BUFFER_MODE_BUFFER = 1
+    HYD_BUFFER_MODE_ABORT = 0,
+    HYD_BUFFER_MODE_BUFFER = 1,
+    HYD_BUFFER_MODE_BLENDING_LOW = 2,
+    HYD_BUFFER_MODE_BLENDING_PREVIOUS = 3,
+    HYD_BUFFER_MODE_BLENDING_NEXT = 4,
+    HYD_BUFFER_MODE_BLENDING_HIGH = 5
 } HYD_BufferMode;
 
 typedef struct {

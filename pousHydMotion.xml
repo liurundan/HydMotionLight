@@ -772,6 +772,11 @@
 								<BOOL />
 							</type>
 						</variable>
+						<variable name="CONTINUOUSUPDATE">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
 						<variable name="PRESSURE">
 							<type>
 								<REAL />

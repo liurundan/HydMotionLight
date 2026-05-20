@@ -235,16 +235,6 @@ typedef enum {
     HYD_DIRECT_PENDING_ABORTED
 } HYD_DirectPendingStatus;
 
-static void directBufferModeAbortIfRequested(HYD_MotionControlFB* fb, IEC_INT bufferMode)
-{
-    if (fb == NULL || bufferMode != HYD_BUFFER_MODE_ABORT) {
-        return;
-    }
-
-    HYD_MotionControlFB_Abort(fb);
-    HYD_MotionControlFB_Scan(fb);
-}
-
 static HYD_DirectPendingStatus resolveDirectPendingOwnership(HYD_MotionControlFB* fb,
                                                              IEC_WORD* execId)
 {
@@ -350,7 +340,8 @@ static IEC_WORD commandFailureErrorId(const HYD_MotionControlFB* fb)
 
 static HYD_BOOL validateSupportedBufferMode(IEC_INT bufferMode, IEC_WORD* errorId)
 {
-    if (bufferMode == HYD_BUFFER_MODE_ABORT || bufferMode == HYD_BUFFER_MODE_BUFFER) {
+    if (bufferMode >= HYD_BUFFER_MODE_ABORT &&
+        bufferMode <= HYD_BUFFER_MODE_BLENDING_HIGH) {
         return true;
     }
 
@@ -364,7 +355,8 @@ static HYD_BOOL validateUnsupportedMotionOptions(IEC_BOOL continuousUpdate,
                                                  IEC_REAL jerk,
                                                  IEC_WORD* errorId)
 {
-    if (!continuousUpdate && fabs((double)jerk) <= 1e-6) {
+    (void)continuousUpdate;
+    if (fabs((double)jerk) <= 1e-6) {
         return true;
     }
 
@@ -374,12 +366,77 @@ static HYD_BOOL validateUnsupportedMotionOptions(IEC_BOOL continuousUpdate,
     return false;
 }
 
+static HYD_BOOL applyMoveAbsoluteLiveUpdate(HYD_MotionControlFB* fb,
+                                            IEC_WORD execId,
+                                            HYD_MOVEABSOLUTE* data__)
+{
+    HYD_LiveUpdateRequest request;
+
+    if (fb == NULL || data__ == NULL || !__GET_VAR(data__->CONTINUOUSUPDATE)) {
+        return true;
+    }
+
+    memset(&request, 0, sizeof(request));
+    request.flags = HYD_LIVE_UPDATE_TARGET_POSITION |
+                    HYD_LIVE_UPDATE_MAX_VELOCITY |
+                    HYD_LIVE_UPDATE_ACCELERATION |
+                    HYD_LIVE_UPDATE_DECELERATION;
+    request.ownerKind = HYD_DIRECT_CMD_MOVE_ABSOLUTE;
+    request.ownerExecutionId = (uint16_t)execId;
+    request.targetPosition = __GET_VAR(data__->POSITION);
+    request.maxVelocity = __GET_VAR(data__->VELOCITY);
+    request.maxAcceleration = __GET_VAR(data__->ACCELERATION);
+    request.maxDeceleration = __GET_VAR(data__->DECELERATION);
+    return HYD_MotionControlFB_ApplyLiveUpdate(fb, &request);
+}
+
+static HYD_BOOL applyMoveVelocityLiveUpdate(HYD_MotionControlFB* fb,
+                                            IEC_WORD execId,
+                                            HYD_MOVEVELOCITY* data__)
+{
+    HYD_LiveUpdateRequest request;
+
+    if (fb == NULL || data__ == NULL || !__GET_VAR(data__->CONTINUOUSUPDATE)) {
+        return true;
+    }
+
+    memset(&request, 0, sizeof(request));
+    request.flags = HYD_LIVE_UPDATE_MAX_VELOCITY |
+                    HYD_LIVE_UPDATE_ACCELERATION |
+                    HYD_LIVE_UPDATE_DECELERATION;
+    request.ownerKind = HYD_DIRECT_CMD_MOVE_VELOCITY;
+    request.ownerExecutionId = (uint16_t)execId;
+    request.maxVelocity = __GET_VAR(data__->VELOCITY);
+    request.maxAcceleration = __GET_VAR(data__->ACCELERATION);
+    request.maxDeceleration = __GET_VAR(data__->DECELERATION);
+    return HYD_MotionControlFB_ApplyLiveUpdate(fb, &request);
+}
+
+static HYD_BOOL applyPressureHandleLiveUpdate(HYD_MotionControlFB* fb,
+                                              IEC_WORD execId,
+                                              HYD_PRESSUREHANDLE* data__)
+{
+    HYD_LiveUpdateRequest request;
+
+    if (fb == NULL || data__ == NULL || !__GET_VAR(data__->CONTINUOUSUPDATE)) {
+        return true;
+    }
+
+    memset(&request, 0, sizeof(request));
+    request.flags = HYD_LIVE_UPDATE_TARGET_PRESSURE |
+                    HYD_LIVE_UPDATE_PRESSURE_RAMP_RATE;
+    request.ownerKind = HYD_DIRECT_CMD_PRESSURE_HANDLE;
+    request.ownerExecutionId = (uint16_t)execId;
+    request.targetPressure = __GET_VAR(data__->PRESSURE);
+    request.pressureRampRate = __GET_VAR(data__->PRESSURERAMPRATE);
+    return HYD_MotionControlFB_ApplyLiveUpdate(fb, &request);
+}
+
 static HYD_BOOL startDirectSegmentExecution(HYD_MotionControlFB* fb,
+                                            IEC_INT bufferMode,
                                             const HYD_MotionSegment* segment,
                                             IEC_WORD* errorId)
 {
-    HYD_BOOL savedUseRecipe;
-
     if (errorId != NULL) {
         *errorId = (IEC_WORD)0;
     }
@@ -391,23 +448,15 @@ static HYD_BOOL startDirectSegmentExecution(HYD_MotionControlFB* fb,
         return false;
     }
 
-    if (!HYD_MotionControlFB_LoadDirectSegment(fb, segment)) {
+    if (!HYD_MotionControlFB_StartDirectCommand(fb,
+                                                segment,
+                                                (HYD_BufferMode)bufferMode,
+                                                fb->AXIS_REF.timestamp)) {
         if (errorId != NULL) {
-            *errorId = (IEC_WORD)HYD_DIAG_CODE_SEGMENT_INVALID;
+            *errorId = commandFailureErrorId(fb);
         }
         return false;
     }
-
-    savedUseRecipe = fb->USE_RECIPE;
-    fb->USE_RECIPE = false;
-    if (!HYD_MotionControlFB_StartSegment(fb, 0, fb->AXIS_REF.timestamp)) {
-        fb->USE_RECIPE = savedUseRecipe;
-        if (errorId != NULL) {
-            *errorId = (IEC_WORD)fb->ERROR_ID;
-        }
-        return false;
-    }
-    fb->USE_RECIPE = savedUseRecipe;
 
     return true;
 }
@@ -989,7 +1038,6 @@ void __mcl_cmd_MoveAbsolute(HYD_MOVEABSOLUTE *data__)
         }
 
         fb->USE_RECIPE = false;
-        directBufferModeAbortIfRequested(fb, bufferMode);
 
         HYD_MotionDirection dir = mapPlcOpenDirection(__GET_VAR(data__->DIRECTION));
         HYD_MotionSegment segment = buildPositionSegment(
@@ -1000,7 +1048,7 @@ void __mcl_cmd_MoveAbsolute(HYD_MOVEABSOLUTE *data__)
             dir,
             fb);
 
-        if (!startDirectSegmentExecution(fb, &segment, &errorId))
+        if (!startDirectSegmentExecution(fb, bufferMode, &segment, &errorId))
         {
             __SET_VAR(data__->, ERROR, , true);
             __SET_VAR(data__->, ERRORID, , errorId);
@@ -1046,6 +1094,13 @@ void __mcl_cmd_MoveAbsolute(HYD_MOVEABSOLUTE *data__)
             __SET_VAR(data__->, ACTIVE, , false);
             __SET_VAR(data__->, DONE, , false);
         } else if (directExecutionIsCurrentOwner(fb, myExecId, HYD_DIRECT_CMD_MOVE_ABSOLUTE)) {
+            if (!applyMoveAbsoluteLiveUpdate(fb, myExecId, data__)) {
+                __SET_VAR(data__->, ERROR, , true);
+                __SET_VAR(data__->, ERRORID, , commandFailureErrorId(fb));
+                __SET_VAR(data__->, BUSY, , false);
+                __SET_VAR(data__->, ACTIVE, , false);
+            }
+            else
             if (HYD_MotionControlFB_IsError(fb))
             {
                 __SET_VAR(data__->, ERROR, , true);
@@ -1135,7 +1190,6 @@ void __mcl_cmd_MoveVelocity(HYD_MOVEVELOCITY *data__)
         }
 
         fb->USE_RECIPE = false;
-        directBufferModeAbortIfRequested(fb, bufferMode);
 
         HYD_MotionDirection dir = mapPlcOpenDirection(__GET_VAR(data__->DIRECTION));
         HYD_MotionSegment segment = buildVelocitySegment(
@@ -1145,7 +1199,7 @@ void __mcl_cmd_MoveVelocity(HYD_MOVEVELOCITY *data__)
             dir,
             fb);
 
-        if (!startDirectSegmentExecution(fb, &segment, &errorId))
+        if (!startDirectSegmentExecution(fb, bufferMode, &segment, &errorId))
         {
             __SET_VAR(data__->, ERROR, , true);
             __SET_VAR(data__->, ERRORID, , errorId);
@@ -1192,6 +1246,14 @@ void __mcl_cmd_MoveVelocity(HYD_MOVEVELOCITY *data__)
             __SET_VAR(data__->, ACTIVE, , false);
             __SET_VAR(data__->, INVELOCITY, , false);
         } else if (directExecutionIsCurrentOwner(fb, myExecId, HYD_DIRECT_CMD_MOVE_VELOCITY)) {
+            if (!applyMoveVelocityLiveUpdate(fb, myExecId, data__)) {
+                __SET_VAR(data__->, ERROR, , true);
+                __SET_VAR(data__->, ERRORID, , commandFailureErrorId(fb));
+                __SET_VAR(data__->, BUSY, , false);
+                __SET_VAR(data__->, ACTIVE, , false);
+                __SET_VAR(data__->, INVELOCITY, , false);
+            }
+            else
             if (HYD_MotionControlFB_IsError(fb))
             {
                 __SET_VAR(data__->, ERROR, , true);
@@ -1296,7 +1358,7 @@ void __mcl_cmd_PressureHandle(HYD_PRESSUREHANDLE *data__)
     IEC_WORD myExecId = __GET_VAR(data__->_EXEC_ID);
     HYD_REAL targetPressure = __GET_VAR(data__->PRESSURE);
 
-    if (!execute)
+    if (!__GET_VAR(data__->EN) || !execute)
     {
         __SET_VAR(data__->, INPRESSURE, , false);
         __SET_VAR(data__->, COMMANDABORTED, , false);
@@ -1323,7 +1385,6 @@ void __mcl_cmd_PressureHandle(HYD_PRESSUREHANDLE *data__)
         }
 
         fb->USE_RECIPE = false;
-        directBufferModeAbortIfRequested(fb, bufferMode);
 
         HYD_MotionSegment segment = buildPressureSegment(
             targetPressure,
@@ -1331,7 +1392,7 @@ void __mcl_cmd_PressureHandle(HYD_PRESSUREHANDLE *data__)
             __GET_VAR(data__->DURATION),
             fb);
 
-        if (!startDirectSegmentExecution(fb, &segment, &errorId))
+        if (!startDirectSegmentExecution(fb, bufferMode, &segment, &errorId))
         {
             __SET_VAR(data__->, ERROR, , true);
             __SET_VAR(data__->, ERRORID, , errorId);
@@ -1378,6 +1439,14 @@ void __mcl_cmd_PressureHandle(HYD_PRESSUREHANDLE *data__)
             __SET_VAR(data__->, ACTIVE, , false);
             __SET_VAR(data__->, INPRESSURE, , false);
         } else if (directExecutionIsCurrentOwner(fb, myExecId, HYD_DIRECT_CMD_PRESSURE_HANDLE)) {
+            if (!applyPressureHandleLiveUpdate(fb, myExecId, data__)) {
+                __SET_VAR(data__->, ERROR, , true);
+                __SET_VAR(data__->, ERRORID, , commandFailureErrorId(fb));
+                __SET_VAR(data__->, BUSY, , false);
+                __SET_VAR(data__->, ACTIVE, , false);
+                __SET_VAR(data__->, INPRESSURE, , false);
+            }
+            else
             if (HYD_MotionControlFB_IsError(fb))
             {
                 __SET_VAR(data__->, ERROR, , true);

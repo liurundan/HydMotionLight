@@ -536,6 +536,89 @@ static void test_self_preemption_same_fb_twice(void) {
                "Same FB should be active after re-trigger");
 }
 
+static void test_buffered_moveabsolute_waits_without_preempting_active_owner(void) {
+    HYD_MOVEABSOLUTE first;
+    HYD_MOVEABSOLUTE second;
+
+    __HydMotion_framework_Init();
+    ensure_axes_allocated(1);
+
+    start_moveabsolute_on_axis(0, &first);
+    ASSERT_TRUE(IEC_VAL(first.ACTIVE) || IEC_VAL(first.BUSY),
+               "First MoveAbsolute should be active before buffered command");
+
+    memset(&second, 0, sizeof(second));
+    IEC_VAL(second.EN) = true;
+    IEC_VAL(second.EXECUTE) = true;
+    second.EXECUTE0.value = false;
+    IEC_VAL(second.AXISID) = 0;
+    IEC_VAL(second.POSITION) = 200.0f;
+    IEC_VAL(second.VELOCITY) = 40.0f;
+    IEC_VAL(second.ACCELERATION) = 100.0f;
+    IEC_VAL(second.DIRECTION) = 1;
+    IEC_VAL(second.BUFFERMODE) = HYD_BUFFER_MODE_BUFFER;
+    __mcl_cmd_MoveAbsolute(&second);
+
+    ASSERT_TRUE(IEC_VAL(second.ERROR) == false,
+               "Buffered MoveAbsolute should be accepted while another direct command is active");
+    ASSERT_TRUE(IEC_VAL(second.BUSY) == true,
+               "Buffered MoveAbsolute should report BUSY while waiting for ownership");
+
+    __HydMotion_framework_Publish();
+
+    IEC_VAL(first.EXECUTE) = true;
+    first.EXECUTE0.value = true;
+    __mcl_cmd_MoveAbsolute(&first);
+    ASSERT_TRUE(IEC_VAL(first.COMMANDABORTED) == false,
+               "Buffered command should not preempt the active MoveAbsolute owner");
+    ASSERT_TRUE(IEC_VAL(first.ACTIVE) || IEC_VAL(first.BUSY),
+               "Active MoveAbsolute should keep ownership while buffered command waits");
+
+    IEC_VAL(second.EXECUTE) = true;
+    second.EXECUTE0.value = true;
+    __mcl_cmd_MoveAbsolute(&second);
+    ASSERT_TRUE(IEC_VAL(second.COMMANDABORTED) == false,
+               "Waiting buffered MoveAbsolute should not report COMMANDABORTED");
+}
+
+static void test_buffered_endless_movevelocity_degrades_to_abort_takeover(void) {
+    HYD_MOVEVELOCITY first;
+    HYD_MOVEABSOLUTE second;
+
+    __HydMotion_framework_Init();
+    ensure_axes_allocated(1);
+
+    start_movevelocity_on_axis(0, &first);
+    ASSERT_TRUE(IEC_VAL(first.ACTIVE) || IEC_VAL(first.BUSY),
+               "MoveVelocity should be active before buffered takeover");
+
+    memset(&second, 0, sizeof(second));
+    IEC_VAL(second.EN) = true;
+    IEC_VAL(second.EXECUTE) = true;
+    second.EXECUTE0.value = false;
+    IEC_VAL(second.AXISID) = 0;
+    IEC_VAL(second.POSITION) = 120.0f;
+    IEC_VAL(second.VELOCITY) = 45.0f;
+    IEC_VAL(second.ACCELERATION) = 100.0f;
+    IEC_VAL(second.DIRECTION) = 1;
+    IEC_VAL(second.BUFFERMODE) = HYD_BUFFER_MODE_BUFFER;
+    __mcl_cmd_MoveAbsolute(&second);
+    __HydMotion_framework_Publish();
+
+    IEC_VAL(first.EXECUTE) = true;
+    first.EXECUTE0.value = true;
+    __mcl_cmd_MoveVelocity(&first);
+
+    ASSERT_TRUE(IEC_VAL(first.COMMANDABORTED) == true,
+               "Buffered command after endless MoveVelocity should degrade to abort takeover");
+
+    IEC_VAL(second.EXECUTE) = true;
+    second.EXECUTE0.value = true;
+    __mcl_cmd_MoveAbsolute(&second);
+    ASSERT_TRUE(IEC_VAL(second.ACTIVE) || IEC_VAL(second.BUSY),
+               "Buffered command should become active after endless MoveVelocity takeover");
+}
+
 /* ==================================================================
  * Test 8: Reset 后旧命令失去所有权
  * ================================================================== */
@@ -1029,6 +1112,8 @@ int main(void) {
     test_multi_axis_isolation();
     test_stop_success_then_new_command_starts();
     test_self_preemption_same_fb_twice();
+    test_buffered_moveabsolute_waits_without_preempting_active_owner();
+    test_buffered_endless_movevelocity_degrades_to_abort_takeover();
     test_previous_command_loses_ownership_after_reset();
     test_preemption_chain_three_commands();
     test_never_activated_fb_no_false_commandaborted();

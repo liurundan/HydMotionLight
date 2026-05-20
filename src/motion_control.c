@@ -232,6 +232,35 @@ static void HYD_ClearPendingCommand(HYD_MotionControlFB* fb) {
     fb->_pendingCommandTimestamp = 0.0;
 }
 
+static void HYD_ClearDirectPendingSlot(HYD_MotionControlFB* fb) {
+    if (fb == NULL) {
+        return;
+    }
+
+    fb->_directPendingValid = false;
+    memset(&fb->_directPendingSegment, 0, sizeof(fb->_directPendingSegment));
+    fb->_directPendingKind = HYD_DIRECT_CMD_NONE;
+    fb->_directPendingBufferMode = HYD_BUFFER_MODE_ABORT;
+}
+
+static HYD_BOOL HYD_IsSegmentEndlessForBuffering(const HYD_MotionSegment* segment) {
+    if (segment == NULL) {
+        return true;
+    }
+
+    if (segment->mode == HYD_MODE_SPEED_RAMP &&
+        segment->endCondition == HYD_END_MANUAL) {
+        return true;
+    }
+
+    if (segment->mode == HYD_MODE_PRESSURE_CLOSED_LOOP &&
+        segment->endCondition == HYD_END_MANUAL) {
+        return true;
+    }
+
+    return false;
+}
+
 static HYD_BOOL HYD_QueuePendingCommand(HYD_MotionControlFB* fb,
                                         HYD_FbCommand command,
                                         HYD_UINT segmentIndex,
@@ -271,6 +300,7 @@ static void HYD_PrepareRecipeLoadState(HYD_MotionControlFB* fb) {
     fb->_startSegmentSignalPrev = false;
     HYD_ProtectionManager_ResetRuntimeActuation(fb);
     HYD_ClearPendingCommand(fb);
+    HYD_ClearDirectPendingSlot(fb);
     HYD_ClearStartCommandInput(fb);
     HYD_StateReporter_SetIdleState(fb, false, false);
     HYD_StateReporter_SetSegmentSource(fb, HYD_SEGMENT_SOURCE_NONE);
@@ -564,6 +594,27 @@ static HYD_BOOL HYD_AdvanceToNextSegment(HYD_MotionControlFB* fb,
     return true;
 }
 
+static HYD_BOOL HYD_StartPendingDirectSlot(HYD_MotionControlFB* fb,
+                                           HYD_TIME timestamp) {
+    HYD_MotionSegment segment;
+    HYD_BOOL savedUseRecipe;
+
+    if (fb == NULL || !fb->_directPendingValid) {
+        return false;
+    }
+
+    segment = fb->_directPendingSegment;
+    HYD_ClearDirectPendingSlot(fb);
+
+    savedUseRecipe = fb->USE_RECIPE;
+    fb->DIRECT_SEGMENT = segment;
+    fb->DIRECT_SEGMENT_VALID = true;
+    fb->USE_RECIPE = false;
+    (void)HYD_BeginSegment(fb, 0U, timestamp);
+    fb->USE_RECIPE = savedUseRecipe;
+    return true;
+}
+
 static void HYD_EnterHoldNow(HYD_MotionControlFB* fb,
                              HYD_TIME timestamp) {
     if (fb == NULL) {
@@ -657,6 +708,7 @@ static void HYD_AbortNow(HYD_MotionControlFB* fb,
     HYD_StateReporter_ClearSegmentTag(fb);
     HYD_StateReporter_SetSegmentSource(fb, HYD_SEGMENT_SOURCE_NONE);
     fb->_directSessionState = HYD_DIRECT_SESSION_ABORTED;
+    HYD_ClearDirectPendingSlot(fb);
     HYD_StateReporter_SetFbState(fb, HYD_FB_STATE_ABORTED);
     HYD_StateReporter_ReportDiagnostic(fb,
                                        HYD_DIAG_CODE_ABORTED,
@@ -1436,6 +1488,11 @@ static void HYD_MotionControlFB_RunRunningState(HYD_MotionControlFB* fb) {
 
     if (fb->_isDecelerating && fabs(plannerOutput.targetVelocity) < 0.001) {
         completedSegmentSource = fb->_activeSegmentSource;
+        if (completedSegmentSource == HYD_SEGMENT_SOURCE_DIRECT &&
+            fb->_directPendingValid) {
+            (void)HYD_StartPendingDirectSlot(fb, fb->AXIS_REF.timestamp);
+            return;
+        }
         recipeFinished = (completedSegmentSource == HYD_SEGMENT_SOURCE_DIRECT) ||
             (fb->STATE.currentSegmentIndex + 1U >= fb->RECIPE_SIZE);
         HYD_ProtectionManager_ApplyIdleState(fb, recipeFinished, true);
@@ -1461,6 +1518,11 @@ static void HYD_MotionControlFB_RunRunningState(HYD_MotionControlFB* fb) {
             /* continue execution to let deceleration take effect */
         } else {
             completedSegmentSource = fb->_activeSegmentSource;
+            if (completedSegmentSource == HYD_SEGMENT_SOURCE_DIRECT &&
+                fb->_directPendingValid) {
+                (void)HYD_StartPendingDirectSlot(fb, fb->AXIS_REF.timestamp);
+                return;
+            }
             recipeFinished = (completedSegmentSource == HYD_SEGMENT_SOURCE_DIRECT) ||
                 (fb->STATE.currentSegmentIndex + 1U >= fb->RECIPE_SIZE);
             HYD_ProtectionManager_ApplyIdleState(fb, recipeFinished, true);
@@ -1640,6 +1702,7 @@ void HYD_MotionControlFB_Init(HYD_MotionControlFB* fb) {
     memset(&fb->_plannerState, 0, sizeof(fb->_plannerState));
     HYD_PressureController_ClearState(&fb->_pressureController);
     HYD_ClearPendingCommand(fb);
+    HYD_ClearDirectPendingSlot(fb);
     HYD_StateReporter_RefreshStandardOutputs(fb);
 
     /* Initialize diagnostic criteria layer */
@@ -1778,6 +1841,7 @@ void HYD_MotionControlFB_SoftReset(HYD_MotionControlFB* fb) {
     memset(&fb->_plannerState, 0, sizeof(fb->_plannerState));
     HYD_PressureController_ClearState(&fb->_pressureController);
     HYD_ClearPendingCommand(fb);
+    HYD_ClearDirectPendingSlot(fb);
 
     /* 5. Reinitialize diagnostic criteria states (but keep the criteria configs) */
     HYD_ErrorMonitor_Init(&fb->_errorMonitor);
@@ -1860,6 +1924,87 @@ HYD_BOOL HYD_MotionControlFB_LoadDirectSegment(HYD_MotionControlFB* fb,
         HYD_StateReporter_SetIdleState(fb, false, false);
     }
     HYD_StateReporter_ClearCurrentDiagnostic(fb);
+    return true;
+}
+
+HYD_BOOL HYD_MotionControlFB_StartDirectCommand(HYD_MotionControlFB* fb,
+                                                const HYD_MotionSegment* segment,
+                                                HYD_BufferMode bufferMode,
+                                                HYD_TIME timestamp) {
+    HYD_DiagnosticCode code = HYD_DIAG_CODE_NONE;
+    HYD_BOOL savedUseRecipe;
+    HYD_BOOL activeDirect;
+    HYD_BOOL shouldAbort;
+
+    if (fb == NULL || segment == NULL) {
+        return false;
+    }
+
+    if (!HYD_RecipeValidator_ValidateSegment(segment, HYD_MAX_SEGMENTS, &code)) {
+        HYD_StateReporter_ReportDiagnostic(fb,
+                                           code,
+                                           HYD_DIAG_SEVERITY_WARNING,
+                                           timestamp,
+                                           NULL,
+                                           NULL);
+        return false;
+    }
+
+    activeDirect = fb->STATE.active &&
+                   fb->_activeSegmentValid &&
+                   fb->_activeSegmentSource == HYD_SEGMENT_SOURCE_DIRECT;
+    shouldAbort = (bufferMode == HYD_BUFFER_MODE_ABORT &&
+                   (fb->STATE.active || HYD_MotionControlFB_IsBusy(fb))) ||
+                  (activeDirect && HYD_IsSegmentEndlessForBuffering(&fb->_activeSegment));
+
+    if (shouldAbort) {
+        if (activeDirect) {
+            fb->_lastPreemptedExecutionId = fb->_directOwnerExecutionId;
+            fb->_lastPreemptedKind = fb->_directOwnerKind;
+        } else {
+            fb->_lastPreemptedExecutionId = 0U;
+            fb->_lastPreemptedKind = HYD_DIRECT_CMD_NONE;
+        }
+        HYD_ClearDirectPendingSlot(fb);
+        fb->DIRECT_SEGMENT = *segment;
+        fb->DIRECT_SEGMENT_VALID = true;
+        savedUseRecipe = fb->USE_RECIPE;
+        fb->USE_RECIPE = false;
+        if (activeDirect || fb->STATE.active || HYD_MotionControlFB_IsBusy(fb)) {
+            HYD_AbortNow(fb, timestamp);
+        }
+        (void)HYD_BeginSegment(fb, 0U, timestamp);
+        fb->USE_RECIPE = savedUseRecipe;
+        return true;
+    }
+
+    if (bufferMode != HYD_BUFFER_MODE_ABORT &&
+        (activeDirect || fb->STATE.active || HYD_MotionControlFB_IsBusy(fb))) {
+        if (fb->_directPendingValid) {
+            HYD_StateReporter_ReportDiagnostic(fb,
+                                               HYD_DIAG_CODE_COMMAND_NOT_ALLOWED,
+                                               HYD_DIAG_SEVERITY_WARNING,
+                                               timestamp,
+                                               &fb->_activeSegment,
+                                               &fb->STATE.references);
+            return false;
+        }
+        fb->_directPendingSegment = *segment;
+        fb->_directPendingKind = HYD_InferDirectCommandKindFromSegment(segment);
+        fb->_directPendingBufferMode = bufferMode;
+        fb->_directPendingValid = true;
+        return true;
+    }
+
+    fb->DIRECT_SEGMENT = *segment;
+    fb->DIRECT_SEGMENT_VALID = true;
+    savedUseRecipe = fb->USE_RECIPE;
+    fb->USE_RECIPE = false;
+    if (!HYD_MotionControlFB_StartSegment(fb, 0U, timestamp)) {
+        fb->USE_RECIPE = savedUseRecipe;
+        return false;
+    }
+    fb->USE_RECIPE = savedUseRecipe;
     return true;
 }
 
@@ -2092,6 +2237,101 @@ HYD_BOOL HYD_MotionControlFB_WasExecutionPreempted(const HYD_MotionControlFB* fb
     return (fb != NULL) &&
            fb->_lastPreemptedExecutionId == executionId &&
            fb->_lastPreemptedKind == kind;
+}
+
+HYD_BOOL HYD_MotionControlFB_ApplyLiveUpdate(HYD_MotionControlFB* fb,
+                                             const HYD_LiveUpdateRequest* request) {
+    HYD_MotionSegment updated;
+    HYD_DiagnosticCode code = HYD_DIAG_CODE_NONE;
+
+    if (fb == NULL || request == NULL || request->flags == 0U) {
+        return false;
+    }
+
+    if (!fb->_activeSegmentValid ||
+        !fb->STATE.active ||
+        fb->_activeSegmentSource != HYD_SEGMENT_SOURCE_DIRECT ||
+        fb->_directOwnerKind != request->ownerKind ||
+        fb->_directOwnerExecutionId != request->ownerExecutionId) {
+        HYD_StateReporter_ReportDiagnostic(fb,
+                                           HYD_DIAG_CODE_COMMAND_NOT_ALLOWED,
+                                           HYD_DIAG_SEVERITY_WARNING,
+                                           fb->AXIS_REF.timestamp,
+                                           fb->_activeSegmentValid ? &fb->_activeSegment : NULL,
+                                           &fb->STATE.references);
+        return false;
+    }
+
+    updated = fb->_activeSegment;
+
+    if ((request->flags & HYD_LIVE_UPDATE_TARGET_POSITION) != 0U) {
+        if (updated.mode != HYD_MODE_POSITION) {
+            return false;
+        }
+        updated.targetPosition = request->targetPosition;
+    }
+
+    if ((request->flags & HYD_LIVE_UPDATE_MAX_VELOCITY) != 0U) {
+        if (updated.mode != HYD_MODE_POSITION &&
+            updated.mode != HYD_MODE_SPEED_RAMP) {
+            return false;
+        }
+        updated.maxVelocity = request->maxVelocity;
+        updated.maxFlow = (request->maxVelocity > 0.0f)
+            ? request->maxVelocity * updated.velocityToFlowGain
+            : updated.maxFlow;
+    }
+
+    if ((request->flags & HYD_LIVE_UPDATE_ACCELERATION) != 0U) {
+        if (updated.mode != HYD_MODE_POSITION &&
+            updated.mode != HYD_MODE_SPEED_RAMP) {
+            return false;
+        }
+        updated.maxAcceleration = request->maxAcceleration;
+    }
+
+    if ((request->flags & HYD_LIVE_UPDATE_DECELERATION) != 0U) {
+        if (updated.mode != HYD_MODE_POSITION &&
+            updated.mode != HYD_MODE_SPEED_RAMP) {
+            return false;
+        }
+        updated.maxDeceleration = (request->maxDeceleration > 0.0f)
+            ? request->maxDeceleration
+            : updated.maxAcceleration;
+    }
+
+    if ((request->flags & HYD_LIVE_UPDATE_TARGET_PRESSURE) != 0U) {
+        if (updated.mode != HYD_MODE_PRESSURE_CLOSED_LOOP) {
+            return false;
+        }
+        updated.targetPressure = request->targetPressure;
+    }
+
+    if ((request->flags & HYD_LIVE_UPDATE_PRESSURE_RAMP_RATE) != 0U) {
+        if (updated.mode != HYD_MODE_PRESSURE_CLOSED_LOOP) {
+            return false;
+        }
+        updated.pressureRampRate = request->pressureRampRate;
+    }
+
+    if (!HYD_RecipeValidator_ValidateSegment(&updated,
+                                             fb->STATE.currentSegmentIndex,
+                                             &code)) {
+        HYD_StateReporter_ReportDiagnostic(fb,
+                                           code,
+                                           HYD_DIAG_SEVERITY_WARNING,
+                                           fb->AXIS_REF.timestamp,
+                                           &fb->_activeSegment,
+                                           &fb->STATE.references);
+        return false;
+    }
+
+    fb->_activeSegment = updated;
+    HYD_StateReporter_SetPlannedDirection(fb, fb->_activeSegment.direction);
+    HYD_StateReporter_SetSegmentTag(fb, fb->_activeSegment.segmentTag);
+    HYD_StateReporter_SetSegmentSource(fb, fb->_activeSegmentSource);
+    HYD_StateReporter_ClearCurrentDiagnostic(fb);
+    return true;
 }
 
 HYD_BOOL HYD_MotionControlFB_ReadBoolParameter(const HYD_MotionControlFB* fb, int paramNumber, HYD_BOOL* value)
