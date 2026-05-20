@@ -231,6 +231,8 @@ typedef struct {
     uint16_t _directOwnerExecutionId;
     uint16_t _lastPreemptedExecutionId;
     HYD_DirectCommandKind _lastPreemptedKind;
+    uint16_t _lastCompletedExecutionId;
+    HYD_DirectCommandKind _lastCompletedKind;
     HYD_BOOL _directPendingValid;
     HYD_MotionSegment _directPendingSegment;
     HYD_DirectCommandKind _directPendingKind;
@@ -365,6 +367,9 @@ HYD_DirectCommandKind HYD_MotionControlFB_GetDirectOwnerKind(const HYD_MotionCon
 HYD_DirectSessionState HYD_MotionControlFB_GetDirectSessionState(const HYD_MotionControlFB* fb);
 uint16_t HYD_MotionControlFB_GetDirectOwnerExecutionId(const HYD_MotionControlFB* fb);
 HYD_BOOL HYD_MotionControlFB_WasExecutionPreempted(const HYD_MotionControlFB* fb,
+                                                   uint16_t executionId,
+                                                   HYD_DirectCommandKind kind);
+HYD_BOOL HYD_MotionControlFB_WasExecutionCompleted(const HYD_MotionControlFB* fb,
                                                    uint16_t executionId,
                                                    HYD_DirectCommandKind kind);
 HYD_BOOL HYD_MotionControlFB_ApplyLiveUpdate(HYD_MotionControlFB* fb,

@@ -263,6 +263,13 @@ static HYD_BOOL directExecutionWasPreempted(const HYD_MotionControlFB* fb,
     return HYD_MotionControlFB_WasExecutionPreempted(fb, (uint16_t)execId, kind);
 }
 
+static HYD_BOOL directExecutionWasCompleted(const HYD_MotionControlFB* fb,
+                                            IEC_WORD execId,
+                                            HYD_DirectCommandKind kind)
+{
+    return HYD_MotionControlFB_WasExecutionCompleted(fb, (uint16_t)execId, kind);
+}
+
 static HYD_BOOL directExecutionIsCurrentOwner(const HYD_MotionControlFB* fb,
                                               IEC_WORD execId,
                                               HYD_DirectCommandKind kind)
@@ -1088,7 +1095,12 @@ void __mcl_cmd_MoveAbsolute(HYD_MOVEABSOLUTE *data__)
 
     if (myExecId != 0)
     {
-        if (directExecutionWasPreempted(fb, myExecId, HYD_DIRECT_CMD_MOVE_ABSOLUTE)) {
+        if (directExecutionWasCompleted(fb, myExecId, HYD_DIRECT_CMD_MOVE_ABSOLUTE)) {
+            __SET_VAR(data__->, DONE, , true);
+            __SET_VAR(data__->, BUSY, , false);
+            __SET_VAR(data__->, ACTIVE, , false);
+            __SET_VAR(data__->, COMMANDABORTED, , false);
+        } else if (directExecutionWasPreempted(fb, myExecId, HYD_DIRECT_CMD_MOVE_ABSOLUTE)) {
             __SET_VAR(data__->, COMMANDABORTED, , true);
             __SET_VAR(data__->, BUSY, , false);
             __SET_VAR(data__->, ACTIVE, , false);

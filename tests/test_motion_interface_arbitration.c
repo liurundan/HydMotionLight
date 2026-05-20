@@ -714,11 +714,50 @@ static void test_blended_front_segment_keeps_nonzero_velocity_near_switch(void) 
 
 static void test_blended_cutover_preserves_planner_state(void) {
     HYD_MotionControlFB* fb;
+    HYD_MOVEABSOLUTE first;
+    HYD_MOVEABSOLUTE second;
 
-    fb = start_blend_pair(HYD_BUFFER_MODE_BLENDING_NEXT, 20.0f, 8.0f);
+    __HydMotion_framework_Init();
+    ensure_axes_allocated(1);
+    fb = __MK_GetPublic_MotionControlFB(0);
     ASSERT_TRUE(fb != NULL, "Axis 0 control FB should exist for cutover test");
+
+    memset(&first, 0, sizeof(first));
+    IEC_VAL(first.EN) = true;
+    IEC_VAL(first.EXECUTE) = true;
+    first.EXECUTE0.value = false;
+    IEC_VAL(first.AXISID) = 0;
+    IEC_VAL(first.POSITION) = 100.0f;
+    IEC_VAL(first.VELOCITY) = 20.0f;
+    IEC_VAL(first.ACCELERATION) = 100.0f;
+    IEC_VAL(first.DECELERATION) = 100.0f;
+    IEC_VAL(first.DIRECTION) = 1;
+    IEC_VAL(first.BUFFERMODE) = HYD_BUFFER_MODE_ABORT;
+    __mcl_cmd_MoveAbsolute(&first);
+    __HydMotion_framework_Publish();
+
+    IEC_VAL(first.EXECUTE) = true;
+    first.EXECUTE0.value = true;
+    __mcl_cmd_MoveAbsolute(&first);
+    ASSERT_TRUE(IEC_VAL(first._EXEC_ID) != 0,
+               "Front MoveAbsolute should latch direct ownership before blend cutover");
+
+    memset(&second, 0, sizeof(second));
+    IEC_VAL(second.EN) = true;
+    IEC_VAL(second.EXECUTE) = true;
+    second.EXECUTE0.value = false;
+    IEC_VAL(second.AXISID) = 0;
+    IEC_VAL(second.POSITION) = 200.0f;
+    IEC_VAL(second.VELOCITY) = 8.0f;
+    IEC_VAL(second.ACCELERATION) = 100.0f;
+    IEC_VAL(second.DECELERATION) = 100.0f;
+    IEC_VAL(second.DIRECTION) = 1;
+    IEC_VAL(second.BUFFERMODE) = HYD_BUFFER_MODE_BLENDING_NEXT;
+    __mcl_cmd_MoveAbsolute(&second);
     ASSERT_TRUE(fb->_directPendingValid,
                "Pending direct command should be present before cutover");
+    ASSERT_TRUE(IEC_VAL(second.BUSY),
+               "Buffered MoveAbsolute should wait busy before blend cutover");
 
     fb->AXIS_REF.position = 100.0f;
     fb->AXIS_REF.velocity = 8.0f;
@@ -727,6 +766,28 @@ static void test_blended_cutover_preserves_planner_state(void) {
     fb->_plannerState.lastTargetVelocity = 8.0f;
 
     __HydMotion_framework_Publish();
+
+    IEC_VAL(first.EXECUTE) = true;
+    first.EXECUTE0.value = true;
+    __mcl_cmd_MoveAbsolute(&first);
+    ASSERT_TRUE(IEC_VAL(first.DONE) == true,
+               "Front MoveAbsolute should report DONE after blended cutover");
+    ASSERT_TRUE(IEC_VAL(first.COMMANDABORTED) == false,
+               "Front MoveAbsolute should not report COMMANDABORTED after blended cutover");
+    ASSERT_TRUE(IEC_VAL(first.BUSY) == false,
+               "Front MoveAbsolute should clear BUSY after blended cutover");
+    ASSERT_TRUE(IEC_VAL(first.ACTIVE) == false,
+               "Front MoveAbsolute should clear ACTIVE after blended cutover");
+
+    IEC_VAL(second.EXECUTE) = true;
+    second.EXECUTE0.value = true;
+    __mcl_cmd_MoveAbsolute(&second);
+    ASSERT_TRUE(IEC_VAL(second.COMMANDABORTED) == false,
+               "Second MoveAbsolute should not report COMMANDABORTED after blended cutover");
+    ASSERT_TRUE(IEC_VAL(second.BUSY) || IEC_VAL(second.ACTIVE),
+               "Second MoveAbsolute should be busy or active after blended cutover");
+    ASSERT_TRUE(IEC_VAL(second._EXEC_ID) != 0,
+               "Second MoveAbsolute should latch direct ownership after blended cutover");
 
     ASSERT_TRUE(!fb->_directPendingValid,
                "Pending direct command should be consumed by blended cutover");

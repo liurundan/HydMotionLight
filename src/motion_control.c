@@ -348,6 +348,15 @@ static HYD_BOOL HYD_TryCreateDirectBlendContext(HYD_MotionControlFB* fb,
     return true;
 }
 
+static void HYD_RecordDirectExecutionCompleted(HYD_MotionControlFB* fb) {
+    if (fb == NULL) {
+        return;
+    }
+
+    fb->_lastCompletedExecutionId = fb->_directOwnerExecutionId;
+    fb->_lastCompletedKind = fb->_directOwnerKind;
+}
+
 static HYD_BOOL HYD_ShouldCutoverDirectBlend(const HYD_MotionControlFB* fb,
                                              const HYD_MotionSegment* segment) {
     HYD_MotionDirection direction;
@@ -1648,6 +1657,7 @@ static void HYD_MotionControlFB_RunRunningState(HYD_MotionControlFB* fb) {
     }
 
     if (HYD_ShouldCutoverDirectBlend(fb, segment)) {
+        HYD_RecordDirectExecutionCompleted(fb);
         (void)HYD_StartPendingDirectSlot(fb, fb->AXIS_REF.timestamp, true);
         return;
     }
@@ -1926,6 +1936,8 @@ void HYD_MotionControlFB_Init(HYD_MotionControlFB* fb) {
     fb->_directOwnerExecutionId = 0U;
     fb->_lastPreemptedExecutionId = 0U;
     fb->_lastPreemptedKind = HYD_DIRECT_CMD_NONE;
+    fb->_lastCompletedExecutionId = 0U;
+    fb->_lastCompletedKind = HYD_DIRECT_CMD_NONE;
     fb->_isStopping = false;
     fb->_stopStartTime = 0.0;
     fb->_stopStartVel = 0.0;
@@ -1991,6 +2003,8 @@ void HYD_MotionControlFB_SoftReset(HYD_MotionControlFB* fb) {
     fb->_directOwnerExecutionId = 0U;
     fb->_lastPreemptedExecutionId = 0U;
     fb->_lastPreemptedKind = HYD_DIRECT_CMD_NONE;
+    fb->_lastCompletedExecutionId = 0U;
+    fb->_lastCompletedKind = HYD_DIRECT_CMD_NONE;
     fb->_isStopping = false;
     fb->_stopStartTime = 0.0;
     fb->_stopStartVel = 0.0;
@@ -2404,6 +2418,14 @@ HYD_BOOL HYD_MotionControlFB_WasExecutionPreempted(const HYD_MotionControlFB* fb
     return (fb != NULL) &&
            fb->_lastPreemptedExecutionId == executionId &&
            fb->_lastPreemptedKind == kind;
+}
+
+HYD_BOOL HYD_MotionControlFB_WasExecutionCompleted(const HYD_MotionControlFB* fb,
+                                                   uint16_t executionId,
+                                                   HYD_DirectCommandKind kind) {
+    return (fb != NULL) &&
+           fb->_lastCompletedExecutionId == executionId &&
+           fb->_lastCompletedKind == kind;
 }
 
 HYD_BOOL HYD_MotionControlFB_ApplyLiveUpdate(HYD_MotionControlFB* fb,
