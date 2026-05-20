@@ -348,6 +348,37 @@ static HYD_BOOL HYD_TryCreateDirectBlendContext(HYD_MotionControlFB* fb,
     return true;
 }
 
+static HYD_BOOL HYD_ShouldCutoverDirectBlend(const HYD_MotionControlFB* fb,
+                                             const HYD_MotionSegment* segment) {
+    HYD_MotionDirection direction;
+    HYD_REAL tolerance;
+
+    if (fb == NULL || segment == NULL ||
+        !fb->_directBlendContext.active ||
+        !fb->_directPendingValid ||
+        fb->_activeSegmentSource != HYD_SEGMENT_SOURCE_DIRECT ||
+        fb->_directOwnerKind != HYD_DIRECT_CMD_MOVE_ABSOLUTE) {
+        return false;
+    }
+
+    direction = HYD_Segment_ResolveDirection(segment, &fb->AXIS_REF);
+    tolerance = fb->_directBlendContext.switchTolerance;
+    if (tolerance <= 0.0) {
+        tolerance = HYD_Segment_GetPositionTolerance(segment);
+    }
+
+    switch (direction) {
+        case HYD_DIRECTION_EXTEND:
+            return fb->AXIS_REF.position >=
+                fb->_directBlendContext.switchPosition - tolerance;
+        case HYD_DIRECTION_RETRACT:
+            return fb->AXIS_REF.position <=
+                fb->_directBlendContext.switchPosition + tolerance;
+        default:
+            return false;
+    }
+}
+
 static void HYD_ClearDirectPendingSlot(HYD_MotionControlFB* fb) {
     if (fb == NULL) {
         return;
@@ -712,22 +743,31 @@ static HYD_BOOL HYD_AdvanceToNextSegment(HYD_MotionControlFB* fb,
 }
 
 static HYD_BOOL HYD_StartPendingDirectSlot(HYD_MotionControlFB* fb,
-                                           HYD_TIME timestamp) {
+                                           HYD_TIME timestamp,
+                                           HYD_BOOL preservePlannerState) {
     HYD_MotionSegment segment;
     HYD_BOOL savedUseRecipe;
+    HYD_MotionPlannerState preservedPlannerState;
 
     if (fb == NULL || !fb->_directPendingValid) {
         return false;
     }
 
     segment = fb->_directPendingSegment;
+    preservedPlannerState = fb->_plannerState;
     HYD_ClearDirectPendingSlot(fb);
 
     savedUseRecipe = fb->USE_RECIPE;
     fb->DIRECT_SEGMENT = segment;
     fb->DIRECT_SEGMENT_VALID = true;
     fb->USE_RECIPE = false;
-    (void)HYD_BeginSegment(fb, 0U, timestamp);
+    if (!HYD_BeginSegment(fb, 0U, timestamp)) {
+        fb->USE_RECIPE = savedUseRecipe;
+        return false;
+    }
+    if (preservePlannerState) {
+        fb->_plannerState = preservedPlannerState;
+    }
     fb->USE_RECIPE = savedUseRecipe;
     return true;
 }
@@ -1607,11 +1647,16 @@ static void HYD_MotionControlFB_RunRunningState(HYD_MotionControlFB* fb) {
         return;
     }
 
+    if (HYD_ShouldCutoverDirectBlend(fb, segment)) {
+        (void)HYD_StartPendingDirectSlot(fb, fb->AXIS_REF.timestamp, true);
+        return;
+    }
+
     if (fb->_isDecelerating && fabs(plannerOutput.targetVelocity) < 0.001) {
         completedSegmentSource = fb->_activeSegmentSource;
         if (completedSegmentSource == HYD_SEGMENT_SOURCE_DIRECT &&
             fb->_directPendingValid) {
-            (void)HYD_StartPendingDirectSlot(fb, fb->AXIS_REF.timestamp);
+            (void)HYD_StartPendingDirectSlot(fb, fb->AXIS_REF.timestamp, false);
             return;
         }
         recipeFinished = (completedSegmentSource == HYD_SEGMENT_SOURCE_DIRECT) ||
@@ -1641,7 +1686,7 @@ static void HYD_MotionControlFB_RunRunningState(HYD_MotionControlFB* fb) {
             completedSegmentSource = fb->_activeSegmentSource;
             if (completedSegmentSource == HYD_SEGMENT_SOURCE_DIRECT &&
                 fb->_directPendingValid) {
-                (void)HYD_StartPendingDirectSlot(fb, fb->AXIS_REF.timestamp);
+                (void)HYD_StartPendingDirectSlot(fb, fb->AXIS_REF.timestamp, false);
                 return;
             }
             recipeFinished = (completedSegmentSource == HYD_SEGMENT_SOURCE_DIRECT) ||

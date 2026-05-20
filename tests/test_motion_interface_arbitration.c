@@ -699,6 +699,7 @@ static void test_blended_front_segment_keeps_nonzero_velocity_near_switch(void) 
 
     fb->_activeSegment.positionTolerance = 0.05f;
     fb->_directBlendContext.switchTolerance = 0.05f;
+    fb->_directPendingValid = false;
     fb->AXIS_REF.position = 99.98f;
     fb->AXIS_REF.velocity = 8.0f;
     fb->_plannerState.initialized = true;
@@ -709,6 +710,34 @@ static void test_blended_front_segment_keeps_nonzero_velocity_near_switch(void) 
 
     ASSERT_TRUE(fabs(fb->STATE.references.velocityReference - 8.0f) < 0.001f,
                "Blended front segment should hold the selected through velocity inside switch tolerance");
+}
+
+static void test_blended_cutover_preserves_planner_state(void) {
+    HYD_MotionControlFB* fb;
+
+    fb = start_blend_pair(HYD_BUFFER_MODE_BLENDING_NEXT, 20.0f, 8.0f);
+    ASSERT_TRUE(fb != NULL, "Axis 0 control FB should exist for cutover test");
+    ASSERT_TRUE(fb->_directPendingValid,
+               "Pending direct command should be present before cutover");
+
+    fb->AXIS_REF.position = 100.0f;
+    fb->AXIS_REF.velocity = 8.0f;
+    fb->AXIS_REF.timestamp += 0.1f;
+    fb->_plannerState.initialized = true;
+    fb->_plannerState.lastTargetVelocity = 8.0f;
+
+    __HydMotion_framework_Publish();
+
+    ASSERT_TRUE(!fb->_directPendingValid,
+               "Pending direct command should be consumed by blended cutover");
+    ASSERT_TRUE(!fb->_directBlendContext.active,
+               "Blend context should be cleared after blended cutover");
+    ASSERT_TRUE(fabs(fb->_activeSegment.targetPosition - 200.0f) < 0.001f,
+               "Pending MoveAbsolute should become active segment after cutover");
+    ASSERT_TRUE(fb->_plannerState.initialized,
+               "Planner state should remain initialized across blended cutover");
+    ASSERT_TRUE(fabs(fb->_plannerState.lastTargetVelocity) > 0.1f,
+               "Planner velocity should remain nonzero across blended cutover");
 }
 
 /* ==================================================================
@@ -1208,6 +1237,7 @@ int main(void) {
     test_buffered_endless_movevelocity_degrades_to_abort_takeover();
     test_blending_modes_select_distinct_through_velocities();
     test_blended_front_segment_keeps_nonzero_velocity_near_switch();
+    test_blended_cutover_preserves_planner_state();
     test_previous_command_loses_ownership_after_reset();
     test_preemption_chain_three_commands();
     test_never_activated_fb_no_false_commandaborted();
