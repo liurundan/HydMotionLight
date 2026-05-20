@@ -235,6 +235,7 @@ typedef struct {
     HYD_MotionSegment _directPendingSegment;
     HYD_DirectCommandKind _directPendingKind;
     HYD_BufferMode _directPendingBufferMode;
+    HYD_MotionBlendContext _directBlendContext;
     HYD_BOOL _isStopping;
     HYD_TIME _stopStartTime;
     HYD_REAL _stopStartVel;

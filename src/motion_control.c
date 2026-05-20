@@ -232,6 +232,122 @@ static void HYD_ClearPendingCommand(HYD_MotionControlFB* fb) {
     fb->_pendingCommandTimestamp = 0.0;
 }
 
+static HYD_REAL HYD_ResolveSegmentBrakingAccelerationForBlend(const HYD_MotionSegment* segment) {
+    if (segment == NULL) {
+        return 0.0;
+    }
+    return (segment->maxDeceleration > 0.0)
+        ? segment->maxDeceleration
+        : segment->maxAcceleration;
+}
+
+static void HYD_ClearDirectBlendContext(HYD_MotionControlFB* fb) {
+    if (fb == NULL) {
+        return;
+    }
+    memset(&fb->_directBlendContext, 0, sizeof(fb->_directBlendContext));
+    fb->_directBlendContext.bufferMode = HYD_BUFFER_MODE_ABORT;
+}
+
+static HYD_BOOL HYD_IsDirectBlendMode(HYD_BufferMode bufferMode) {
+    return bufferMode >= HYD_BUFFER_MODE_BLENDING_LOW &&
+           bufferMode <= HYD_BUFFER_MODE_BLENDING_HIGH;
+}
+
+static HYD_BOOL HYD_IsFinitePositionSegment(const HYD_MotionSegment* segment) {
+    return segment != NULL &&
+           segment->mode == HYD_MODE_POSITION &&
+           segment->endCondition == HYD_END_POSITION &&
+           segment->maxVelocity > 0.0 &&
+           segment->maxAcceleration > 0.0 &&
+           HYD_ResolveSegmentBrakingAccelerationForBlend(segment) > 0.0;
+}
+
+static HYD_BOOL HYD_AreBlendDirectionsCompatible(const HYD_MotionControlFB* fb,
+                                                 const HYD_MotionSegment* activeSegment,
+                                                 const HYD_MotionSegment* pendingSegment) {
+    HYD_MotionDirection activeDirection;
+    HYD_MotionDirection pendingDirection;
+
+    if (fb == NULL || activeSegment == NULL || pendingSegment == NULL) {
+        return false;
+    }
+
+    activeDirection = HYD_Segment_ResolveDirection(activeSegment, &fb->AXIS_REF);
+    pendingDirection = HYD_Segment_ResolveDirection(pendingSegment, &fb->AXIS_REF);
+
+    return (activeDirection == HYD_DIRECTION_EXTEND ||
+            activeDirection == HYD_DIRECTION_RETRACT) &&
+           activeDirection == pendingDirection;
+}
+
+static HYD_REAL HYD_SelectDirectBlendVelocity(HYD_BufferMode bufferMode,
+                                              const HYD_MotionSegment* activeSegment,
+                                              const HYD_MotionSegment* pendingSegment) {
+    HYD_REAL previousVelocity;
+    HYD_REAL nextVelocity;
+
+    if (activeSegment == NULL || pendingSegment == NULL) {
+        return 0.0;
+    }
+
+    previousVelocity = activeSegment->maxVelocity;
+    nextVelocity = pendingSegment->maxVelocity;
+
+    switch (bufferMode) {
+        case HYD_BUFFER_MODE_BLENDING_LOW:
+            return HYD_MotionUtils_MinReal(previousVelocity, nextVelocity);
+        case HYD_BUFFER_MODE_BLENDING_PREVIOUS:
+            return previousVelocity;
+        case HYD_BUFFER_MODE_BLENDING_NEXT:
+            return nextVelocity;
+        case HYD_BUFFER_MODE_BLENDING_HIGH:
+            return (previousVelocity > nextVelocity) ? previousVelocity : nextVelocity;
+        default:
+            return 0.0;
+    }
+}
+
+static HYD_BOOL HYD_TryCreateDirectBlendContext(HYD_MotionControlFB* fb,
+                                                HYD_BufferMode bufferMode,
+                                                const HYD_MotionSegment* pendingSegment) {
+    HYD_REAL selectedVelocity;
+    HYD_REAL tolerance;
+
+    if (fb == NULL || pendingSegment == NULL) {
+        return false;
+    }
+
+    HYD_ClearDirectBlendContext(fb);
+
+    if (!HYD_IsDirectBlendMode(bufferMode) ||
+        !fb->_activeSegmentValid ||
+        fb->_activeSegmentSource != HYD_SEGMENT_SOURCE_DIRECT ||
+        fb->_directOwnerKind != HYD_DIRECT_CMD_MOVE_ABSOLUTE ||
+        HYD_InferDirectCommandKindFromSegment(pendingSegment) != HYD_DIRECT_CMD_MOVE_ABSOLUTE ||
+        !HYD_IsFinitePositionSegment(&fb->_activeSegment) ||
+        !HYD_IsFinitePositionSegment(pendingSegment) ||
+        !HYD_AreBlendDirectionsCompatible(fb, &fb->_activeSegment, pendingSegment)) {
+        return false;
+    }
+
+    selectedVelocity = HYD_SelectDirectBlendVelocity(bufferMode,
+                                                    &fb->_activeSegment,
+                                                    pendingSegment);
+    if (selectedVelocity <= 0.0) {
+        return false;
+    }
+
+    tolerance = HYD_Segment_GetPositionTolerance(&fb->_activeSegment);
+
+    fb->_directBlendContext.active = true;
+    fb->_directBlendContext.bufferMode = bufferMode;
+    fb->_directBlendContext.blendVelocity = selectedVelocity;
+    fb->_directBlendContext.switchPosition = fb->_activeSegment.targetPosition;
+    fb->_directBlendContext.switchTolerance = tolerance;
+    return true;
+}
+
 static void HYD_ClearDirectPendingSlot(HYD_MotionControlFB* fb) {
     if (fb == NULL) {
         return;
@@ -241,6 +357,7 @@ static void HYD_ClearDirectPendingSlot(HYD_MotionControlFB* fb) {
     memset(&fb->_directPendingSegment, 0, sizeof(fb->_directPendingSegment));
     fb->_directPendingKind = HYD_DIRECT_CMD_NONE;
     fb->_directPendingBufferMode = HYD_BUFFER_MODE_ABORT;
+    HYD_ClearDirectBlendContext(fb);
 }
 
 static HYD_BOOL HYD_IsSegmentEndlessForBuffering(const HYD_MotionSegment* segment) {
@@ -1994,6 +2111,7 @@ HYD_BOOL HYD_MotionControlFB_StartDirectCommand(HYD_MotionControlFB* fb,
         fb->_directPendingKind = HYD_InferDirectCommandKindFromSegment(segment);
         fb->_directPendingBufferMode = bufferMode;
         fb->_directPendingValid = true;
+        (void)HYD_TryCreateDirectBlendContext(fb, bufferMode, segment);
         return true;
     }
 

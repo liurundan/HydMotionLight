@@ -91,6 +91,48 @@ static void start_movevelocity_on_axis(int axisIndex, HYD_MOVEVELOCITY* mv) {
     __mcl_cmd_MoveVelocity(mv);
 }
 
+static HYD_MotionControlFB* start_blend_pair(HYD_BufferMode mode,
+                                             HYD_REAL firstVelocity,
+                                             HYD_REAL secondVelocity) {
+    HYD_MOVEABSOLUTE first;
+    HYD_MOVEABSOLUTE second;
+    HYD_MotionControlFB* fb;
+
+    __HydMotion_framework_Init();
+    ensure_axes_allocated(1);
+    fb = __MK_GetPublic_MotionControlFB(0);
+    ASSERT_TRUE(fb != NULL, "Axis 0 control FB should exist");
+
+    memset(&first, 0, sizeof(first));
+    IEC_VAL(first.EN) = true;
+    IEC_VAL(first.EXECUTE) = true;
+    first.EXECUTE0.value = false;
+    IEC_VAL(first.AXISID) = 0;
+    IEC_VAL(first.POSITION) = 100.0f;
+    IEC_VAL(first.VELOCITY) = firstVelocity;
+    IEC_VAL(first.ACCELERATION) = 100.0f;
+    IEC_VAL(first.DECELERATION) = 100.0f;
+    IEC_VAL(first.DIRECTION) = 1;
+    IEC_VAL(first.BUFFERMODE) = HYD_BUFFER_MODE_ABORT;
+    __mcl_cmd_MoveAbsolute(&first);
+    __HydMotion_framework_Publish();
+
+    memset(&second, 0, sizeof(second));
+    IEC_VAL(second.EN) = true;
+    IEC_VAL(second.EXECUTE) = true;
+    second.EXECUTE0.value = false;
+    IEC_VAL(second.AXISID) = 0;
+    IEC_VAL(second.POSITION) = 200.0f;
+    IEC_VAL(second.VELOCITY) = secondVelocity;
+    IEC_VAL(second.ACCELERATION) = 100.0f;
+    IEC_VAL(second.DECELERATION) = 100.0f;
+    IEC_VAL(second.DIRECTION) = 1;
+    IEC_VAL(second.BUFFERMODE) = mode;
+    __mcl_cmd_MoveAbsolute(&second);
+
+    return fb;
+}
+
 static int drive_stop_until_done(int axisIndex, HYD_STOP* stop, int maxSteps) {
     HYD_MotionControlFB* fb = __MK_GetPublic_MotionControlFB(axisIndex);
 
@@ -619,6 +661,34 @@ static void test_buffered_endless_movevelocity_degrades_to_abort_takeover(void) 
                "Buffered command should become active after endless MoveVelocity takeover");
 }
 
+static void test_blending_modes_select_distinct_through_velocities(void) {
+    HYD_MotionControlFB* fb;
+
+    fb = start_blend_pair(HYD_BUFFER_MODE_BLENDING_LOW, 20.0f, 8.0f);
+    ASSERT_TRUE(fb->_directBlendContext.active,
+               "BlendingLow should create an active direct blend context");
+    ASSERT_TRUE(fabs(fb->_directBlendContext.blendVelocity - 8.0f) < 0.001f,
+               "BlendingLow should use the lower velocity");
+
+    fb = start_blend_pair(HYD_BUFFER_MODE_BLENDING_PREVIOUS, 20.0f, 8.0f);
+    ASSERT_TRUE(fb->_directBlendContext.active,
+               "BlendingPrevious should create an active direct blend context");
+    ASSERT_TRUE(fabs(fb->_directBlendContext.blendVelocity - 20.0f) < 0.001f,
+               "BlendingPrevious should use the previous velocity");
+
+    fb = start_blend_pair(HYD_BUFFER_MODE_BLENDING_NEXT, 20.0f, 8.0f);
+    ASSERT_TRUE(fb->_directBlendContext.active,
+               "BlendingNext should create an active direct blend context");
+    ASSERT_TRUE(fabs(fb->_directBlendContext.blendVelocity - 8.0f) < 0.001f,
+               "BlendingNext should use the next velocity");
+
+    fb = start_blend_pair(HYD_BUFFER_MODE_BLENDING_HIGH, 20.0f, 8.0f);
+    ASSERT_TRUE(fb->_directBlendContext.active,
+               "BlendingHigh should create an active direct blend context");
+    ASSERT_TRUE(fabs(fb->_directBlendContext.blendVelocity - 20.0f) < 0.001f,
+               "BlendingHigh should use the higher velocity");
+}
+
 /* ==================================================================
  * Test 8: Reset 后旧命令失去所有权
  * ================================================================== */
@@ -1114,6 +1184,7 @@ int main(void) {
     test_self_preemption_same_fb_twice();
     test_buffered_moveabsolute_waits_without_preempting_active_owner();
     test_buffered_endless_movevelocity_degrades_to_abort_takeover();
+    test_blending_modes_select_distinct_through_velocities();
     test_previous_command_loses_ownership_after_reset();
     test_preemption_chain_three_commands();
     test_never_activated_fb_no_false_commandaborted();
