@@ -807,6 +807,51 @@ static void test_blended_cutover_preserves_planner_state(void) {
                "Planner velocity should remain nonzero across blended cutover");
 }
 
+static void test_reverse_moveabsolute_does_not_create_blend_context(void) {
+    HYD_MOVEABSOLUTE first;
+    HYD_MOVEABSOLUTE second;
+    HYD_MotionControlFB* fb;
+
+    __HydMotion_framework_Init();
+    ensure_axes_allocated(1);
+    fb = __MK_GetPublic_MotionControlFB(0);
+    ASSERT_TRUE(fb != NULL, "Axis 0 control FB should exist for reverse fallback test");
+
+    memset(&first, 0, sizeof(first));
+    IEC_VAL(first.EN) = true;
+    IEC_VAL(first.EXECUTE) = true;
+    first.EXECUTE0.value = false;
+    IEC_VAL(first.AXISID) = 0;
+    IEC_VAL(first.POSITION) = 100.0f;
+    IEC_VAL(first.VELOCITY) = 20.0f;
+    IEC_VAL(first.ACCELERATION) = 100.0f;
+    IEC_VAL(first.DECELERATION) = 100.0f;
+    IEC_VAL(first.DIRECTION) = 1;
+    IEC_VAL(first.BUFFERMODE) = HYD_BUFFER_MODE_ABORT;
+    __mcl_cmd_MoveAbsolute(&first);
+    __HydMotion_framework_Publish();
+
+    fb->AXIS_REF.position = 10.0f;
+
+    memset(&second, 0, sizeof(second));
+    IEC_VAL(second.EN) = true;
+    IEC_VAL(second.EXECUTE) = true;
+    second.EXECUTE0.value = false;
+    IEC_VAL(second.AXISID) = 0;
+    IEC_VAL(second.POSITION) = 0.0f;
+    IEC_VAL(second.VELOCITY) = 8.0f;
+    IEC_VAL(second.ACCELERATION) = 100.0f;
+    IEC_VAL(second.DECELERATION) = 100.0f;
+    IEC_VAL(second.DIRECTION) = -1;
+    IEC_VAL(second.BUFFERMODE) = HYD_BUFFER_MODE_BLENDING_HIGH;
+    __mcl_cmd_MoveAbsolute(&second);
+
+    ASSERT_TRUE(fb->_directPendingValid,
+               "Reverse MoveAbsolute should still be accepted into pending slot");
+    ASSERT_TRUE(!fb->_directBlendContext.active,
+               "Reverse MoveAbsolute should not create a nonzero blend context");
+}
+
 /* ==================================================================
  * Test 8: Reset 后旧命令失去所有权
  * ================================================================== */
@@ -1305,6 +1350,7 @@ int main(void) {
     test_blending_modes_select_distinct_through_velocities();
     test_blended_front_segment_keeps_nonzero_velocity_near_switch();
     test_blended_cutover_preserves_planner_state();
+    test_reverse_moveabsolute_does_not_create_blend_context();
     test_previous_command_loses_ownership_after_reset();
     test_preemption_chain_three_commands();
     test_never_activated_fb_no_false_commandaborted();
