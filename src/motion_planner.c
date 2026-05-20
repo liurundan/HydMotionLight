@@ -98,6 +98,67 @@ static HYD_REAL HYD_ComputeRemainingDistance(const HYD_MotionSegment* segment,
     return remainingDistance;
 }
 
+static HYD_BOOL HYD_IsBlendMode(HYD_BufferMode bufferMode) {
+    return bufferMode >= HYD_BUFFER_MODE_BLENDING_LOW &&
+           bufferMode <= HYD_BUFFER_MODE_BLENDING_HIGH;
+}
+
+static HYD_BOOL HYD_IsActiveBlendContext(const HYD_MotionPlannerInput* input,
+                                         HYD_MotionDirection direction) {
+    if (input == NULL || input->blend == NULL || input->segment == NULL ||
+        input->axisRef == NULL) {
+        return false;
+    }
+    if (!input->blend->active || !HYD_IsBlendMode(input->blend->bufferMode)) {
+        return false;
+    }
+    if (input->segment->mode != HYD_MODE_POSITION ||
+        input->segment->endCondition != HYD_END_POSITION) {
+        return false;
+    }
+    return direction == HYD_DIRECTION_EXTEND ||
+           direction == HYD_DIRECTION_RETRACT;
+}
+
+static HYD_REAL HYD_ComputeRemainingDistanceToPosition(HYD_REAL targetPosition,
+                                                       const HYD_AxisRef* axisRef,
+                                                       HYD_MotionDirection direction) {
+    HYD_REAL remainingDistance;
+
+    if (axisRef == NULL) {
+        return 0.0;
+    }
+
+    switch (direction) {
+        case HYD_DIRECTION_EXTEND:
+            remainingDistance = targetPosition - axisRef->position;
+            break;
+        case HYD_DIRECTION_RETRACT:
+            remainingDistance = axisRef->position - targetPosition;
+            break;
+        default:
+            remainingDistance = 0.0;
+            break;
+    }
+
+    return (remainingDistance > 0.0) ? remainingDistance : 0.0;
+}
+
+static HYD_REAL HYD_ApplyTerminalVelocityRateLimit(HYD_REAL previousMagnitude,
+                                                   HYD_REAL terminalMagnitude,
+                                                   HYD_REAL acceleration,
+                                                   HYD_REAL deceleration,
+                                                   HYD_REAL deltaTime) {
+    if (deltaTime <= 0.0) {
+        return previousMagnitude;
+    }
+    return HYD_ApplyVelocityRateLimit(previousMagnitude,
+                                      terminalMagnitude,
+                                      acceleration,
+                                      deceleration,
+                                      deltaTime);
+}
+
 static HYD_REAL HYD_ComputePositionBasedVelocityMagnitude(HYD_REAL remainingDistance,
                                                           HYD_REAL acceleration,
                                                           HYD_REAL maxVelocity) {
@@ -135,6 +196,8 @@ static HYD_REAL HYD_ComputeOnlineTrapezoidVelocityMagnitude(const HYD_MotionPlan
     HYD_REAL safetyVelocityMagnitude;
     HYD_REAL brakeDistance;
     HYD_REAL brakeDecisionTolerance;
+    HYD_REAL terminalVelocity;
+    HYD_BOOL blendActive;
 
     if (input == NULL || input->segment == NULL || input->axisRef == NULL) {
         return 0.0;
@@ -148,33 +211,54 @@ static HYD_REAL HYD_ComputeOnlineTrapezoidVelocityMagnitude(const HYD_MotionPlan
         return 0.0;
     }
 
+    blendActive = HYD_IsActiveBlendContext(input, direction);
+    terminalVelocity = 0.0;
     remainingDistance = HYD_ComputeRemainingDistance(segment, input->axisRef, direction);
+    positionTolerance = HYD_Segment_GetPositionTolerance(segment);
+
+    if (blendActive) {
+        terminalVelocity = HYD_ClampReal(input->blend->blendVelocity,
+                                         0.0,
+                                         segment->maxVelocity);
+        remainingDistance = HYD_ComputeRemainingDistanceToPosition(input->blend->switchPosition,
+                                                                   input->axisRef,
+                                                                   direction);
+        if (input->blend->switchTolerance > 0.0) {
+            positionTolerance = input->blend->switchTolerance;
+        }
+    }
+
     previousMagnitude = 0.0;
     if (input->state != NULL && input->state->initialized) {
         previousMagnitude = fabs(input->state->lastTargetVelocity);
     }
 
-    positionTolerance = HYD_Segment_GetPositionTolerance(segment);
     if (remainingDistance <= positionTolerance) {
-        if (input->deltaTime <= 0.0) {
-            return previousMagnitude;
-        }
-        return HYD_MaxReal(0.0,
-                           previousMagnitude -
-                           brakingAcceleration * input->deltaTime);
+        return HYD_ApplyTerminalVelocityRateLimit(previousMagnitude,
+                                                 terminalVelocity,
+                                                 segment->maxAcceleration,
+                                                 brakingAcceleration,
+                                                 input->deltaTime);
     }
 
     if (input->deltaTime <= 0.0) {
         velocityMagnitude = previousMagnitude;
     } else {
-        brakeDistance = (previousMagnitude * previousMagnitude) /
-            (2.0 * brakingAcceleration);
+        if (previousMagnitude <= terminalVelocity) {
+            brakeDistance = 0.0;
+        } else {
+            brakeDistance = ((previousMagnitude * previousMagnitude) -
+                             (terminalVelocity * terminalVelocity)) /
+                (2.0 * brakingAcceleration);
+        }
         brakeDecisionTolerance = HYD_CompareTolerance(HYD_MaxReal(remainingDistance,
                                                                   brakeDistance));
         if (remainingDistance <= brakeDistance + brakeDecisionTolerance) {
-            velocityMagnitude = HYD_MaxReal(0.0,
-                                            previousMagnitude -
-                                            brakingAcceleration * input->deltaTime);
+            velocityMagnitude = HYD_ApplyTerminalVelocityRateLimit(previousMagnitude,
+                                                                  terminalVelocity,
+                                                                  segment->maxAcceleration,
+                                                                  brakingAcceleration,
+                                                                  input->deltaTime);
         } else {
             velocityMagnitude = HYD_MinReal(segment->maxVelocity,
                                             previousMagnitude +
@@ -182,9 +266,11 @@ static HYD_REAL HYD_ComputeOnlineTrapezoidVelocityMagnitude(const HYD_MotionPlan
         }
     }
 
-    safetyVelocityMagnitude = HYD_ComputePositionBasedVelocityMagnitude(remainingDistance,
-                                                                        brakingAcceleration,
-                                                                        segment->maxVelocity);
+    safetyVelocityMagnitude = sqrt((terminalVelocity * terminalVelocity) +
+                                   (2.0 * brakingAcceleration * remainingDistance));
+    safetyVelocityMagnitude = HYD_ClampReal(safetyVelocityMagnitude,
+                                            terminalVelocity,
+                                            segment->maxVelocity);
     return HYD_MinReal(velocityMagnitude, safetyVelocityMagnitude);
 }
 
