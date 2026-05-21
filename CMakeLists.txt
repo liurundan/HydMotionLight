@@ -121,6 +121,9 @@ target_link_libraries(test_ramp_controller PRIVATE HydroMotionLib)
 add_executable(test_fault_recovery tests/test_fault_recovery.c)
 target_link_libraries(test_fault_recovery PRIVATE HydroMotionLib)
 
+add_executable(test_stop_diagnostics_retained tests/test_stop_diagnostics_retained.c)
+target_link_libraries(test_stop_diagnostics_retained PRIVATE HydroMotionLib)
+
 add_executable(main tests/main.c)
 target_link_libraries(main PRIVATE HydroMotionLib)
 
@@ -161,6 +164,9 @@ add_test(NAME test_stop_immediate_done COMMAND test_stop_immediate_done)
 add_test(NAME test_ramp_controller_detailed COMMAND test_ramp_controller)
 add_test(NAME test_fault_recovery
          COMMAND test_fault_recovery
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+add_test(NAME test_stop_diagnostics_retained
+         COMMAND test_stop_diagnostics_retained
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 add_test(NAME test_interface_layout_consistency
          COMMAND ${CMAKE_COMMAND} -E env PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}

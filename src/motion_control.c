@@ -1660,6 +1660,23 @@ static void HYD_MotionControlFB_RunRunningState(HYD_MotionControlFB* fb) {
             HYD_ClearDirectPendingSlot(fb);
             HYD_ProtectionManager_ApplyIdleState(fb, true, false);
             HYD_StateReporter_SetFbState(fb, HYD_FB_STATE_DONE);
+        } else if (stopDeceleration > 0.0f) {
+            /* C-4: stop-timeout safety net.
+             * If the commanded deceleration ramp completes (decelMag ~= 0)
+             * but feedback velocity never drops below the completion threshold
+             * (stuck encoder / actuator), this branch would hang forever.
+             * Threshold = 5x ideal-stop time + 1.0 s slack. */
+            HYD_REAL idealStopTime = stopMag / stopDeceleration;
+            HYD_REAL stopTimeoutLimit = 5.0f * idealStopTime + 1.0f;
+            if (stopElapsed > stopTimeoutLimit) {
+                fb->_directSessionState = HYD_DIRECT_SESSION_FAULT;
+                HYD_StateReporter_ReportFault(fb,
+                                              HYD_DIAG_CODE_TIMEOUT,
+                                              fb->AXIS_REF.timestamp,
+                                              segment,
+                                              &fb->STATE.references);
+                HYD_ProtectionManager_EnterFaultStop(fb);
+            }
         }
         return;
     }
