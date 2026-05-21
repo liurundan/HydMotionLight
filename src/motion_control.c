@@ -1449,6 +1449,30 @@ static void HYD_UpdateExecutionDiagnostics(HYD_MotionControlFB* fb,
                 (ceilingCriteria->enableStartupSuppress && ceilingStartupActive) ||
                 (ceilingCriteria->enableSwitchSuppress && ceilingSwitchActive);
 
+            /* Latch: once the criteria has escalated to FAULT, keep the
+             * pressureCeilingViolated BOOL set regardless of where the
+             * current cycle's pressure sits relative to ceiling+tol. This
+             * must be hoisted OUT of the breach branch below: if pressure
+             * dips into the hysteresis band [ceiling, ceiling+tol] while
+             * already escalated, control falls into the "hold" branch
+             * which does not set the BOOL — without this hoist the latch
+             * would drop on those cycles. Today the FAULT freeze in
+             * PublishOutputs short-circuits UpdateExecutionDiagnostics
+             * after the transition cycle, but the latch is still claimed
+             * as an invariant (defense-in-depth).
+             *
+             * The criteria state's faultEscalated flag is cleared by the
+             * ResetState calls in the strict-below-ceiling branch (line
+             * below), the window-exit branch, and the no-ceiling branch —
+             * so this latch correctly clears on recovery. ceilingResult
+             * is a transient I/O struct passed to CheckFaultEscalation;
+             * downstream priority logic reads pressureCeilingViolated and
+             * the spec table in HYD_Diagnostics_SetEvent, not
+             * ceilingResult, so we don't write FAULT severity here. */
+            if (ceilingState->faultEscalated) {
+                pressureCeilingViolated = true;
+            }
+
             ceilingErrorValue = fb->AXIS_REF.pressure - (pressureCeilingValue + pressureCeilingTolerance);
 
             memset(&ceilingResult, 0, sizeof(ceilingResult));
@@ -1466,51 +1490,39 @@ static void HYD_UpdateExecutionDiagnostics(HYD_MotionControlFB* fb,
                 if ((fb->AXIS_REF.timestamp - ceilingState->triggerStartTime) >= ceilingCriteria->debounceTime) {
                     /* Debounce passed: WARNING (DERATE) latched. */
                     pressureCeilingExceeded = true;
+                    /* Seed ceilingResult as INPUT to CheckFaultEscalation:
+                     * the helper reads result->triggered (criteria.c:597)
+                     * and result->severity (criteria.c:604) to decide
+                     * whether to advance the warning timer. */
                     ceilingResult.triggered = true;
-                    ceilingResult.code = ceilingCriteria->diagnosticCode;
                     ceilingResult.severity = HYD_DIAG_SEVERITY_WARNING;
-                    ceilingResult.action = ceilingCriteria->protectionAction;
 
                     /* WARNING -> FAULT escalation after faultEscalationTime
-                     * of sustained breach. CheckFaultEscalation updates
-                     * ceilingResult in place AND sets state->faultEscalated
-                     * on the transition cycle. The bookkeeping call is
-                     * REQUIRED — its return value is only true on the
-                     * transition cycle, so we cannot use it to gate the
-                     * pressureCeilingViolated BOOL or we get a one-cycle
-                     * pulse (cycle N reports FAULT/STOP; cycle N+1 falls
-                     * back to WARNING/DERATE while pressure is still above
-                     * ceiling). */
+                     * of sustained breach. The call updates state->
+                     * faultEscalated on the transition cycle; the hoisted
+                     * latch above turns that into the sticky
+                     * pressureCeilingViolated BOOL across subsequent
+                     * cycles (including hysteresis-band hold). */
                     (void)HYD_DiagnosticCriteria_CheckFaultEscalation(&ceilingResult,
                                                                        ceilingCriteria,
                                                                        ceilingState,
                                                                        fb->AXIS_REF.timestamp);
-
-                    /* Latch: while criteria state remains escalated, keep
-                     * the BOOL + severity at FAULT. The criteria state is
-                     * cleared by HYD_DiagnosticCriteria_ResetState in the
-                     * hysteresis branch (pressure < ceiling), the window-
-                     * exit branch, and the no-ceiling branch — so this
-                     * latch correctly clears when any of those happen. */
-                    if (ceilingState->faultEscalated) {
-                        pressureCeilingViolated = true;
-                        ceilingResult.severity = HYD_DIAG_SEVERITY_FAULT;
-                        ceilingResult.action = HYD_PROTECTION_ACTION_STOP;
-                        if (ceilingCriteria->faultCode != HYD_DIAG_CODE_NONE) {
-                            ceilingResult.code = ceilingCriteria->faultCode;
-                        }
-                    }
                 }
             } else if (fb->AXIS_REF.pressure < pressureCeilingValue) {
                 /* Pressure dipped strictly below ceiling (not just into the
                  * tolerance band). Use this stricter threshold for hysteresis
-                 * so jitter near ceiling+tol does not toggle the diagnostic. */
+                 * so jitter near ceiling+tol does not toggle the diagnostic.
+                 * ResetState clears state->faultEscalated, which in turn
+                 * drops the hoisted pressureCeilingViolated latch on the
+                 * next cycle. */
                 HYD_DiagnosticCriteria_ResetState(ceilingState);
             }
             /* If pressure is between ceiling and ceiling+tol, we hold state:
              * an already-armed debounce does not reset, but we also do not
              * count toward escalation. This produces the desired hysteresis
-             * band [ceiling, ceiling+tol]. */
+             * band [ceiling, ceiling+tol]. The hoisted latch above keeps
+             * pressureCeilingViolated set on these hold cycles when the
+             * criteria is already escalated. */
         } else {
             /* Position is outside the configured window: reset state so the
              * next entry starts fresh and does not carry stale duration. */
