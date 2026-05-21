@@ -356,3 +356,18 @@ Use this guide together with:
 The runtime contract defines signal and ownership semantics.
 The boundary document defines responsibility ownership.
 This guide explains how the PLC process layer should consume both. 
+
+## Fault Recovery Path
+
+When the runtime enters `HYD_FB_STATE_FAULT`, the PLC process layer has three recovery options:
+
+1. **Abort then Restart** (recommended for transient sensor faults):
+   - Drive `HYD_Abort.EXECUTE` rising edge. Runtime clears `STATE.faultActive` and transitions to `HYD_FB_STATE_ABORTED`.
+   - PLC may then re-issue `MoveProfile` / `MoveAbsolute` / `MoveVelocity` / `PressureHandle` to start a fresh execution.
+
+2. **Reset then Restart** (recommended for configuration-corrupting faults):
+   - Drive `HYD_Reset.EXECUTE` rising edge. Runtime clears all runtime state and returns to `HYD_FB_STATE_READY` (if recipe/direct is preloaded) or `HYD_FB_STATE_IDLE`.
+   - PLC reloads recipe / direct segment if needed.
+
+3. **Acknowledge diagnostics** is **not** a fault recovery path. `HYD_AcknowledgeDiagnostics.EXECUTE` only clears retained WARNING-level diagnostics after the live event has cleared; it never transitions the FB out of `FAULT`.
+

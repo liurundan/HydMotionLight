@@ -78,7 +78,8 @@ static const HYD_FbStateMask HYD_COMMAND_ALLOWED_STATE_MASKS[HYD_CMD_ACK + 1U] =
         HYD_FB_STATE_MASK_BIT(HYD_FB_STATE_SEGMENT_COMPLETE) |
         HYD_FB_STATE_MASK_BIT(HYD_FB_STATE_DONE) |
         HYD_FB_STATE_MASK_BIT(HYD_FB_STATE_ABORTED) |
-        HYD_FB_STATE_MASK_BIT(HYD_FB_STATE_HOLD),
+        HYD_FB_STATE_MASK_BIT(HYD_FB_STATE_HOLD) |
+        HYD_FB_STATE_MASK_BIT(HYD_FB_STATE_FAULT),
     [HYD_CMD_RESET] = (HYD_FbStateMask)0U,
     [HYD_CMD_ACK] = HYD_FB_STATE_MASK_BIT(HYD_FB_STATE_DISABLED) |
         HYD_FB_STATE_MASK_BIT(HYD_FB_STATE_IDLE) |
@@ -1012,6 +1013,11 @@ static HYD_BOOL HYD_MotionControlFB_ConsumePendingCommand(HYD_MotionControlFB* f
         case HYD_CMD_RESUME:
             return HYD_ResumeHeldSegment(fb, timestamp);
         case HYD_CMD_ABORT:
+            /* C-3: clear faultActive so FAULT->ABORTED transition is clean.
+             * Diagnostic retention is preserved (LAST_FAULT_SNAPSHOT + history). */
+            if (fb->STATE.faultActive) {
+                fb->STATE.faultActive = false;
+            }
             HYD_AbortNow(fb, timestamp);
             return false;
         default:
@@ -1815,7 +1821,7 @@ static HYD_BOOL HYD_RequestAbortCommand(HYD_MotionControlFB* fb,
                                         HYD_TIME timestamp) {
     HYD_FbState effectiveState;
 
-    if (fb == NULL || fb->STATE.faultActive) {
+    if (fb == NULL) {
         return false;
     }
 

@@ -186,8 +186,9 @@ Recipe execution does not currently expose a separate recipe-side owner-kind sig
 ### `Abort`
 
 - Trigger: command request
-- Allowed runtime states: `HYD_FB_STATE_IDLE`, `HYD_FB_STATE_READY`, `HYD_FB_STATE_STARTING`, `HYD_FB_STATE_RUNNING`, `HYD_FB_STATE_SEGMENT_COMPLETE`, `HYD_FB_STATE_DONE`, `HYD_FB_STATE_ABORTED`, `HYD_FB_STATE_HOLD`
+- Allowed runtime states: `HYD_FB_STATE_IDLE`, `HYD_FB_STATE_READY`, `HYD_FB_STATE_STARTING`, `HYD_FB_STATE_RUNNING`, `HYD_FB_STATE_SEGMENT_COMPLETE`, `HYD_FB_STATE_DONE`, `HYD_FB_STATE_ABORTED`, `HYD_FB_STATE_HOLD`, `HYD_FB_STATE_FAULT`
 - Immediate effect: runtime clears active execution and enters abort semantics immediately on command consumption
+- From `HYD_FB_STATE_FAULT`, `Abort` clears the fault state and transitions to `HYD_FB_STATE_ABORTED`. This is the recommended PLC-driven recovery path for transient faults.
 - Completion condition: runtime reaches `HYD_FB_STATE_ABORTED`
 - Failure condition: invalid command context or fault suppression path
 
