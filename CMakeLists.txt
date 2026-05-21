@@ -65,9 +65,6 @@ target_link_libraries(segment_completion_test PRIVATE HydroMotionLib)
 add_executable(rbf_pid_test tests/rbf_pid_test.c)
 target_link_libraries(rbf_pid_test PRIVATE HydroMotionLib)
 
-add_executable(ramp_controller_test tests/ramp_controller_test.c)
-target_link_libraries(ramp_controller_test PRIVATE HydroMotionLib)
-
 add_executable(test_diagnostic_monitor tests/test_diagnostic_monitor.c)
 target_link_libraries(test_diagnostic_monitor PRIVATE HydroMotionLib)
 
@@ -85,6 +82,8 @@ target_link_libraries(test_direct_mode PRIVATE HydroMotionLib)
 
 add_executable(test_direct_mode_simple tests/test_direct_mode_simple.c)
 target_link_libraries(test_direct_mode_simple PRIVATE HydroMotionLib)
+# add_test registration for test_direct_mode_simple lives in the test
+# registration block below (after enable_testing()).
 
 add_executable(test_parameter_access tests/test_parameter_access.c)
 target_link_libraries(test_parameter_access PRIVATE HydroMotionLib)
@@ -119,12 +118,36 @@ target_link_libraries(test_stop_immediate_done PRIVATE HydroMotionLib)
 add_executable(test_ramp_controller tests/test_ramp_controller.c)
 target_link_libraries(test_ramp_controller PRIVATE HydroMotionLib)
 
+add_executable(test_fault_recovery tests/test_fault_recovery.c)
+target_link_libraries(test_fault_recovery PRIVATE HydroMotionLib)
+
+add_executable(test_stop_diagnostics_retained tests/test_stop_diagnostics_retained.c)
+target_link_libraries(test_stop_diagnostics_retained PRIVATE HydroMotionLib)
+
+add_executable(test_state_reporter tests/test_state_reporter.c)
+target_link_libraries(test_state_reporter PRIVATE HydroMotionLib)
+
+add_executable(test_protection_manager tests/test_protection_manager.c)
+target_link_libraries(test_protection_manager PRIVATE HydroMotionLib)
+
+add_executable(test_diagnostics tests/test_diagnostics.c)
+target_link_libraries(test_diagnostics PRIVATE HydroMotionLib)
+
+add_executable(test_axismotion_setpoint_isolation tests/test_axismotion_setpoint_isolation.c)
+target_link_libraries(test_axismotion_setpoint_isolation PRIVATE HydroMotionLib)
+
+add_executable(test_recipe_multi_segment_ownership tests/test_recipe_multi_segment_ownership.c)
+target_link_libraries(test_recipe_multi_segment_ownership PRIVATE HydroMotionLib)
+
 add_executable(main tests/main.c)
 target_link_libraries(main PRIVATE HydroMotionLib)
 
 # Performance benchmark executable
 add_executable(benchmark_performance tests/benchmark_performance.c)
 target_link_libraries(benchmark_performance PRIVATE HydroMotionLib)
+# benchmark_performance intentionally NOT registered with add_test():
+# performance benchmarks should be run in a separate, non-blocking CI job
+# to avoid flakiness in the main test suite.
 
 enable_testing()
 add_test(NAME test_motion_planner COMMAND test_motion_planner)
@@ -137,12 +160,14 @@ add_test(NAME test_action_profile COMMAND test_action_profile)
 add_test(NAME test_vp_transfer COMMAND test_vp_transfer)
 add_test(NAME test_segment_completion COMMAND segment_completion_test)
 add_test(NAME test_rbf_pid COMMAND rbf_pid_test)
-add_test(NAME test_ramp_controller COMMAND ramp_controller_test)
 add_test(NAME test_diagnostic_monitor COMMAND test_diagnostic_monitor)
 add_test(NAME test_diagnostic_criteria COMMAND test_diagnostic_criteria)
 add_test(NAME test_sprint3_integration COMMAND test_sprint3_integration)
 add_test(NAME test_sprint_b_integration COMMAND test_sprint_b_integration)
 add_test(NAME test_direct_mode COMMAND test_direct_mode)
+add_test(NAME test_direct_mode_simple
+         COMMAND test_direct_mode_simple
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 add_test(NAME test_parameter_access COMMAND test_parameter_access)
 add_test(NAME test_parameter_iec COMMAND test_parameter_iec)
 add_test(NAME test_hydro_sim_fb COMMAND test_hydro_sim_fb)
@@ -152,6 +177,27 @@ add_test(NAME test_motion_interface_done_signals COMMAND test_motion_interface_d
 add_test(NAME test_moveabsolute_stop_integration COMMAND test_moveabsolute_stop_integration)
 add_test(NAME test_stop_immediate_done COMMAND test_stop_immediate_done)
 add_test(NAME test_ramp_controller_detailed COMMAND test_ramp_controller)
+add_test(NAME test_fault_recovery
+         COMMAND test_fault_recovery
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+add_test(NAME test_stop_diagnostics_retained
+         COMMAND test_stop_diagnostics_retained
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+add_test(NAME test_state_reporter
+         COMMAND test_state_reporter
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+add_test(NAME test_protection_manager
+         COMMAND test_protection_manager
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+add_test(NAME test_diagnostics
+         COMMAND test_diagnostics
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+add_test(NAME test_axismotion_setpoint_isolation
+         COMMAND test_axismotion_setpoint_isolation
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+add_test(NAME test_recipe_multi_segment_ownership
+         COMMAND test_recipe_multi_segment_ownership
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 add_test(NAME test_interface_layout_consistency
          COMMAND ${CMAKE_COMMAND} -E env PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}
                  python3 ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_interface_layout_consistency.py)

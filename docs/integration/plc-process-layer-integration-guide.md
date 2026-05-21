@@ -356,3 +356,63 @@ Use this guide together with:
 The runtime contract defines signal and ownership semantics.
 The boundary document defines responsibility ownership.
 This guide explains how the PLC process layer should consume both. 
+
+## Fault Recovery Path
+
+When the runtime enters `HYD_FB_STATE_FAULT`, the PLC process layer has three recovery options:
+
+1. **Abort then Restart** (recommended for transient sensor faults):
+   - Drive `HYD_Abort.EXECUTE` rising edge. Runtime clears `STATE.faultActive` and transitions to `HYD_FB_STATE_ABORTED`.
+   - PLC may then re-issue `MoveProfile` / `MoveAbsolute` / `MoveVelocity` / `PressureHandle` to start a fresh execution.
+
+2. **Reset then Restart** (recommended for configuration-corrupting faults):
+   - Drive `HYD_Reset.EXECUTE` rising edge. Runtime clears all runtime state and returns to `HYD_FB_STATE_READY` (if recipe/direct is preloaded) or `HYD_FB_STATE_IDLE`.
+   - PLC reloads recipe / direct segment if needed.
+
+3. **Acknowledge diagnostics** is **not** a fault recovery path. `HYD_AcknowledgeDiagnostics.EXECUTE` only clears retained WARNING-level diagnostics after the live event has cleared; it never transitions the FB out of `FAULT`.
+
+## HYD_AXISMOTION Half-Region Ownership
+
+`HYD_AXISMOTION` is a bidirectional shared structure between the PLC
+process layer and the HydroMotionLib runtime. To keep multi-FB
+deployments safe, field ownership is partitioned into halves. The
+runtime treats this as a contract and never writes the Setpoint half
+on its own scan pass.
+
+### Setpoint half -- owned by PLC
+
+`SEGMENTTAG`, `SEGMENTTYPE`, `PLANNER`, `MODE`, `ENDCONDITION`,
+`DIRECTION`, `SETPOSITION`, `SETVELOCITY`, `SETFLOW`, `SETPRESSURE`,
+`ACCELERATION`, `DECELERATION`, `DURATION`, `PRESSURERAMPRATE`.
+
+The runtime reads these fields on the `EXECUTE` rising edge of a
+MoveProfile FB to build the active segment descriptor. After that, it
+does not look at them again until the next rising edge. The active
+segment is owned by `fb->_activeSegment` -- it is decoupled from the
+`HYD_AXISMOTION` buffer, so the PLC can stage the next segment's
+setpoint via `MOTION` between scans without disturbing the current run.
+
+### Actual half -- owned by runtime / sensors
+
+`ACTPOSITION`, `ACTVELOCITY`, `ACTFLOW`, `ACTPRESSURE`, `TIMESTAMP`.
+
+In non-simulation deployments the PLC writes these fields from sensor
+I/O each scan before invoking any `MoveProfile` / `MoveAbsolute` /
+`MoveVelocity` / `PressureHandle` FB; the runtime ingests them as input
+to `fb->AXIS_REF`.
+
+In simulation deployments the runtime publishes ACT* + TIMESTAMP back
+into `MOTION` from `fb->AXIS_REF` each scan so the PLC can see the
+simulated feedback through the same channel.
+
+### Multi-FB safety
+
+If multiple FB instances bind to the same physical `HYD_AXISMOTION`
+(several MoveProfile FBs sharing an axis, or a PressureHandle stacked
+on top of a MoveProfile), PLC programs must ensure that at most one FB
+writes Setpoint values per scan. The runtime cannot detect a Setpoint
+half data race between two PLC actors, but its own pass is guaranteed
+not to contribute to one -- the runtime will never silently revive an
+old segment's setpoint by reflecting `fb->_activeSegment` back into
+`MOTION`.
+

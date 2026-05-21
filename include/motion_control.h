@@ -108,10 +108,32 @@
  * - STOP: STARTING / RUNNING
  * - HOLD: STARTING / RUNNING
  * - RESUME: HOLD only
- * - ABORT: IDLE / READY / STARTING / RUNNING / SEGMENT_COMPLETE / HOLD / DONE / ABORTED
+ * - ABORT: IDLE / READY / STARTING / RUNNING / SEGMENT_COMPLETE / HOLD / DONE / ABORTED / FAULT
  * - ACK: DISABLED / IDLE / READY / SEGMENT_COMPLETE / HOLD / DONE / ABORTED
  * - RESET: handled by RESET input and consumed on the next Cycle()/Scan()/Execute()
  *
+ * Execution identity contract (IEC adapter ownership tracking):
+ * The FB exposes two distinct uint16_t epochs that the IEC adapter
+ * (motion_interface.c) uses to detect command takeover.
+ * - _executionId:
+ *   Per-segment execution epoch. Advances on EVERY successful
+ *   HYD_BeginSegment, including recipe NextSegment. Used by
+ *   direct-command paths (MoveAbsolute / MoveVelocity / PressureHandle /
+ *   Stop) where each new segment represents a brand-new direct session.
+ *   NOT used by the recipe-side MoveProfile FB.
+ * - _recipeBatchId:
+ *   Recipe-side batch identity. Advances on:
+ *     - HYD_CMD_START consumption (initial recipe Start)
+ *     - HYD_CMD_STOP consumption (external Stop preemption)
+ *     - HYD_AbortNow() (external Abort)
+ *     - HYD_StartPendingDirectSlot() (direct takeover of an active recipe)
+ *     - SoftReset memset zeroes it (a re-issued Start then advances it to 1)
+ *   Does NOT advance on recipe NextSegment. The IEC MoveProfile adapter
+ *   latches _recipeBatchId into its _EXEC_ID field and uses batch-id
+ *   mismatch as the trigger for COMMANDABORTED, which preserves ownership
+ *   stability across multi-segment recipe progression.
+ *
+
  * Hold / Resume semantics in the current minimal skeleton:
  * - HOLD drives safe zero outputs, preserves the active segment context, and freezes
  *   elapsed segment time until RESUME is consumed.
@@ -259,7 +281,8 @@ typedef struct {
     HYD_BOOL _isSwitchPhase;            /* True during segment transition window for switch suppress */
     HYD_TIME _switchSuppressEndTime;    /* Elapsed time at which switch suppress phase expires */
     HYD_UINT8 _index;
-    uint16_t _executionId;   /* incremented on BeginSegment success; IEC layer uses for ownership tracking */
+    uint16_t _executionId;   /* Per-segment execution epoch. Advances on every successful HYD_BeginSegment, including recipe NextSegment. Used by direct-command ownership tracking. NOT used by IEC MoveProfile adapter — see _recipeBatchId. */
+    uint16_t _recipeBatchId; /* Per-recipe-batch epoch. Advances ONLY on initial Start, external ABORT/STOP, Reset, and direct takeover. Does NOT advance on recipe NextSegment. Used by IEC MoveProfile adapter to detect external recipe takeover separately from per-segment progress. */
     HYD_BOOL _useSimulation;           /* If true, the FB simulates motion without real hardware interaction for testing purposes. */
     HYD_BOOL _configuredUseRecipe;     /* Stable preload/source preference from axis setup; not the transient start selector. */
     HYD_MotionFBParams _params;        /* Tunable parameter defaults for segment builders */

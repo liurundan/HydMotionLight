@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <assert.h>
 #include <math.h>
+#include <string.h>
 
 #define EPSILON 1e-6
 
@@ -46,7 +47,7 @@ void test_error_monitor_pressure_error() {
     references.velocityReference = 12.0;
     references.elapsedTime = 0.1;
 
-    HYD_ErrorMonitor_Update(&monitor, &axisRef, &references, currentTime);
+    HYD_ErrorMonitor_Update(&monitor, &axisRef, &references, NULL, currentTime);
 
     /* 验证压力误差 = 12.0 - 10.0 = 2.0 */
     assert(fabs(monitor.pressureError - 2.0) < EPSILON);
@@ -75,7 +76,7 @@ void test_error_monitor_flow_error() {
     references.velocityReference = 12.0;
     references.elapsedTime = 0.1;
 
-    HYD_ErrorMonitor_Update(&monitor, &axisRef, &references, currentTime);
+    HYD_ErrorMonitor_Update(&monitor, &axisRef, &references, NULL, currentTime);
 
     /* 验证流量误差 = 10.0 - |-5.0| = 5.0 */
     assert(fabs(monitor.flowError - 5.0) < EPSILON);
@@ -104,7 +105,7 @@ void test_error_monitor_velocity_error() {
     references.velocityReference = 15.0;  /* 参考速度 */
     references.elapsedTime = 0.1;
 
-    HYD_ErrorMonitor_Update(&monitor, &axisRef, &references, currentTime);
+    HYD_ErrorMonitor_Update(&monitor, &axisRef, &references, NULL, currentTime);
 
     /* 验证速度误差 = 15.0 - 10.0 = 5.0 */
     assert(fabs(monitor.velocityError - 5.0) < EPSILON);
@@ -137,7 +138,7 @@ void test_error_monitor_duration_tracking() {
     /* 模拟10个周期的误差持续 */
     for (i = 0; i < 10; i++) {
         currentTime += 0.05;
-        HYD_ErrorMonitor_Update(&monitor, &axisRef, &references, currentTime);
+        HYD_ErrorMonitor_Update(&monitor, &axisRef, &references, NULL, currentTime);
     }
 
     /* 验证持续时间 = 0.5秒 */
@@ -170,14 +171,14 @@ void test_error_monitor_statistics() {
     /* 第一批采样：压力误差2.0 */
     for (i = 0; i < 5; i++) {
         currentTime += 0.01;
-        HYD_ErrorMonitor_Update(&monitor, &axisRef, &references, currentTime);
+        HYD_ErrorMonitor_Update(&monitor, &axisRef, &references, NULL, currentTime);
     }
 
     /* 第二批采样：压力误差1.0 */
     axisRef.pressure = 11.0;
     for (i = 0; i < 5; i++) {
         currentTime += 0.01;
-        HYD_ErrorMonitor_Update(&monitor, &axisRef, &references, currentTime);
+        HYD_ErrorMonitor_Update(&monitor, &axisRef, &references, NULL, currentTime);
     }
 
     /* 验证统计信息 */
@@ -212,7 +213,7 @@ void test_error_monitor_reset_statistics() {
 
     for (i = 0; i < 10; i++) {
         currentTime += 0.01;
-        HYD_ErrorMonitor_Update(&monitor, &axisRef, &references, currentTime);
+        HYD_ErrorMonitor_Update(&monitor, &axisRef, &references, NULL, currentTime);
     }
 
     assert(monitor.sampleCount > 0);
@@ -254,7 +255,7 @@ void test_error_monitor_reset() {
 
     for (i = 0; i < 10; i++) {
         currentTime += 0.01;
-        HYD_ErrorMonitor_Update(&monitor, &axisRef, &references, currentTime);
+        HYD_ErrorMonitor_Update(&monitor, &axisRef, &references, NULL, currentTime);
     }
 
     assert(monitor.sampleCount > 0);
@@ -274,6 +275,59 @@ void test_error_monitor_reset() {
     printf("✅ test_error_monitor_reset passed\n");
 }
 
+static void test_pressure_jitter_does_not_accumulate_duration(void) {
+    HYD_ErrorMonitor monitor;
+    HYD_AxisRef axisRef;
+    HYD_ExecutionReference refs;
+    HYD_ErrorMonitorTolerances tolerances;
+    HYD_TIME t;
+    int i;
+
+    HYD_ErrorMonitor_Init(&monitor);
+
+    /* Set 0.1 MPa pressure tolerance */
+    memset(&tolerances, 0, sizeof(tolerances));
+    tolerances.pressure = 0.1;
+
+    /* Reference 10.0 MPa, actual oscillates 9.95 / 10.05 (jitter under tolerance) */
+    memset(&axisRef, 0, sizeof(axisRef));
+    memset(&refs, 0, sizeof(refs));
+    refs.pressureReference = 10.0;
+
+    for (i = 0; i < 100; i++) {
+        t = (HYD_TIME)(i * 0.01);
+        axisRef.pressure = (i % 2 == 0) ? 10.05 : 9.95;  /* alternating jitter */
+        HYD_ErrorMonitor_Update(&monitor, &axisRef, &refs, &tolerances, t);
+        assert(!monitor.pressureErrorActive);
+        assert(monitor.pressureErrorDuration == 0.0);
+    }
+    printf("test_pressure_jitter_does_not_accumulate_duration PASSED\n");
+}
+
+static void test_pressure_real_excursion_accumulates_duration(void) {
+    HYD_ErrorMonitor monitor;
+    HYD_AxisRef axisRef;
+    HYD_ExecutionReference refs;
+    HYD_ErrorMonitorTolerances tolerances;
+    int i;
+
+    HYD_ErrorMonitor_Init(&monitor);
+    memset(&tolerances, 0, sizeof(tolerances));
+    tolerances.pressure = 0.1;
+    memset(&axisRef, 0, sizeof(axisRef));
+    memset(&refs, 0, sizeof(refs));
+
+    refs.pressureReference = 10.0;
+    axisRef.pressure = 8.0;  /* 2.0 MPa under reference, way above tolerance */
+
+    for (i = 0; i < 50; i++) {
+        HYD_ErrorMonitor_Update(&monitor, &axisRef, &refs, &tolerances, (HYD_TIME)(i * 0.01));
+    }
+    assert(monitor.pressureErrorActive);
+    assert(monitor.pressureErrorDuration > 0.4);  /* ~0.49 expected */
+    printf("test_pressure_real_excursion_accumulates_duration PASSED\n");
+}
+
 int main() {
     printf("=== Error Monitor Tests ===\n\n");
 
@@ -285,6 +339,8 @@ int main() {
     test_error_monitor_statistics();
     test_error_monitor_reset_statistics();
     test_error_monitor_reset();
+    test_pressure_jitter_does_not_accumulate_duration();
+    test_pressure_real_excursion_accumulates_duration();
 
     printf("\n=== All Error Monitor Tests Passed ===\n");
     return 0;

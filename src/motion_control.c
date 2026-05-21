@@ -78,7 +78,8 @@ static const HYD_FbStateMask HYD_COMMAND_ALLOWED_STATE_MASKS[HYD_CMD_ACK + 1U] =
         HYD_FB_STATE_MASK_BIT(HYD_FB_STATE_SEGMENT_COMPLETE) |
         HYD_FB_STATE_MASK_BIT(HYD_FB_STATE_DONE) |
         HYD_FB_STATE_MASK_BIT(HYD_FB_STATE_ABORTED) |
-        HYD_FB_STATE_MASK_BIT(HYD_FB_STATE_HOLD),
+        HYD_FB_STATE_MASK_BIT(HYD_FB_STATE_HOLD) |
+        HYD_FB_STATE_MASK_BIT(HYD_FB_STATE_FAULT),
     [HYD_CMD_RESET] = (HYD_FbStateMask)0U,
     [HYD_CMD_ACK] = HYD_FB_STATE_MASK_BIT(HYD_FB_STATE_DISABLED) |
         HYD_FB_STATE_MASK_BIT(HYD_FB_STATE_IDLE) |
@@ -770,6 +771,11 @@ static HYD_BOOL HYD_StartPendingDirectSlot(HYD_MotionControlFB* fb,
     fb->DIRECT_SEGMENT = segment;
     fb->DIRECT_SEGMENT_VALID = true;
     fb->USE_RECIPE = false;
+    /* Direct takeover invalidates any outer recipe MoveProfile's ownership
+     * batch — bump _recipeBatchId BEFORE BeginSegment so that the IEC adapter
+     * sees the recipe batch id change in the same scan that the source
+     * transitions to DIRECT. */
+    fb->_recipeBatchId++;
     if (!HYD_BeginSegment(fb, 0U, timestamp)) {
         fb->USE_RECIPE = savedUseRecipe;
         return false;
@@ -883,6 +889,10 @@ static void HYD_AbortNow(HYD_MotionControlFB* fb,
                                        NULL,
                                        &fb->STATE.references);
     fb->_executionId++;
+    /* External ABORT terminates the current recipe batch — bump
+     * _recipeBatchId so the IEC adapter detects ownership loss on any
+     * outer MoveProfile FB. */
+    fb->_recipeBatchId++;
 }
 
 static void HYD_MaintainNonExecutingState(HYD_MotionControlFB* fb,
@@ -982,6 +992,13 @@ static HYD_BOOL HYD_MotionControlFB_ConsumePendingCommand(HYD_MotionControlFB* f
 
     switch (command) {
         case HYD_CMD_START:
+            /* Initial Start opens a fresh recipe batch (or a fresh direct
+             * session). Bump _recipeBatchId so a re-issued MoveProfile after
+             * Reset / Done observes a distinct batch identity from the
+             * previous run. NextSegment (HYD_CMD_NEXT) deliberately does
+             * NOT bump _recipeBatchId — multi-segment recipe progress must
+             * not look like external takeover. */
+            fb->_recipeBatchId++;
             (void)HYD_BeginSegment(fb, segmentIndex, timestamp);
             return true;
         case HYD_CMD_NEXT:
@@ -996,6 +1013,10 @@ static HYD_BOOL HYD_MotionControlFB_ConsumePendingCommand(HYD_MotionControlFB* f
                 fb->_lastPreemptedKind = HYD_DIRECT_CMD_NONE;
             }
             fb->_executionId++;
+            /* STOP preempts any active recipe segment — bump
+             * _recipeBatchId so the outer MoveProfile observes ownership
+             * loss even though _activeSegmentSource stays RECIPE. */
+            fb->_recipeBatchId++;
             fb->_directOwnerExecutionId = fb->_executionId;
             fb->_directOwnerKind = HYD_DIRECT_CMD_STOP;
             fb->_directSessionState = HYD_DIRECT_SESSION_STOPPING;
@@ -1012,6 +1033,11 @@ static HYD_BOOL HYD_MotionControlFB_ConsumePendingCommand(HYD_MotionControlFB* f
         case HYD_CMD_RESUME:
             return HYD_ResumeHeldSegment(fb, timestamp);
         case HYD_CMD_ABORT:
+            /* C-3: clear faultActive so FAULT->ABORTED transition is clean.
+             * Diagnostic retention is preserved (LAST_FAULT_SNAPSHOT + history). */
+            if (fb->STATE.faultActive) {
+                fb->STATE.faultActive = false;
+            }
             HYD_AbortNow(fb, timestamp);
             return false;
         default:
@@ -1276,10 +1302,18 @@ static void HYD_UpdateExecutionDiagnostics(HYD_MotionControlFB* fb,
      * its own startupSuppressTime. Switch phase is shared across all channels. */
     isSwitchPhase = fb->_isSwitchPhase;
 
-    HYD_ErrorMonitor_Update(&fb->_errorMonitor,
-                            &fb->AXIS_REF,
-                            executionReference,
-                            fb->AXIS_REF.timestamp);
+    {
+        HYD_ErrorMonitorTolerances monitorTolerances;
+        monitorTolerances.position = positionTolerance;
+        monitorTolerances.velocity = velocityTolerance;
+        monitorTolerances.flow     = flowTolerance;
+        monitorTolerances.pressure = pressureTolerance;
+        HYD_ErrorMonitor_Update(&fb->_errorMonitor,
+                                &fb->AXIS_REF,
+                                executionReference,
+                                &monitorTolerances,
+                                fb->AXIS_REF.timestamp);
+    }
     HYD_UpdateMonitorPositionError(&fb->_errorMonitor,
                                    segment,
                                    &fb->AXIS_REF,
@@ -1646,6 +1680,23 @@ static void HYD_MotionControlFB_RunRunningState(HYD_MotionControlFB* fb) {
             HYD_ClearDirectPendingSlot(fb);
             HYD_ProtectionManager_ApplyIdleState(fb, true, false);
             HYD_StateReporter_SetFbState(fb, HYD_FB_STATE_DONE);
+        } else if (stopDeceleration > 0.0f) {
+            /* C-4: stop-timeout safety net.
+             * If the commanded deceleration ramp completes (decelMag ~= 0)
+             * but feedback velocity never drops below the completion threshold
+             * (stuck encoder / actuator), this branch would hang forever.
+             * Threshold = 5x ideal-stop time + 1.0 s slack. */
+            HYD_REAL idealStopTime = stopMag / stopDeceleration;
+            HYD_REAL stopTimeoutLimit = 5.0f * idealStopTime + 1.0f;
+            if (stopElapsed > stopTimeoutLimit) {
+                fb->_directSessionState = HYD_DIRECT_SESSION_FAULT;
+                HYD_StateReporter_ReportFault(fb,
+                                              HYD_DIAG_CODE_TIMEOUT,
+                                              fb->AXIS_REF.timestamp,
+                                              segment,
+                                              &fb->STATE.references);
+                HYD_ProtectionManager_EnterFaultStop(fb);
+            }
         }
         return;
     }
@@ -1815,7 +1866,7 @@ static HYD_BOOL HYD_RequestAbortCommand(HYD_MotionControlFB* fb,
                                         HYD_TIME timestamp) {
     HYD_FbState effectiveState;
 
-    if (fb == NULL || fb->STATE.faultActive) {
+    if (fb == NULL) {
         return false;
     }
 

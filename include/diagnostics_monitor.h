@@ -65,6 +65,14 @@ typedef struct {
  */
 void HYD_ErrorMonitor_Init(HYD_ErrorMonitor* monitor);
 
+/* 误差激活判据 — 仅当 |error| 超过 tolerance 时才视为"激活" */
+typedef struct {
+    HYD_REAL position;
+    HYD_REAL velocity;
+    HYD_REAL flow;
+    HYD_REAL pressure;
+} HYD_ErrorMonitorTolerances;
+
 /*
  * 更新误差监视器
  *
@@ -72,16 +80,19 @@ void HYD_ErrorMonitor_Init(HYD_ErrorMonitor* monitor);
  * - monitor: 误差监视器实例
  * - axisRef: 轴反馈数据
  * - references: 执行参考值
+ * - tolerances: 各通道激活门限。|error| <= tolerance 视为"未激活"，duration 重置。
+ *   传 NULL 等价于全 0 tolerance，回退到 != 0.0 行为（仅用于过渡兼容）。
  * - currentTime: 当前时间戳
  *
  * 说明：
  * - 计算各项误差并更新统计信息
- * - 跟踪误差持续时间
+ * - 跟踪误差持续时间（仅在 |error| > tolerance 时累加）
  * - 更新最大值/最小值/平均值
  */
 void HYD_ErrorMonitor_Update(HYD_ErrorMonitor* monitor,
                              const HYD_AxisRef* axisRef,
                              const HYD_ExecutionReference* references,
+                             const HYD_ErrorMonitorTolerances* tolerances,
                              HYD_TIME currentTime);
 
 /*
