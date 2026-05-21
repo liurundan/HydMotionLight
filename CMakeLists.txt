@@ -124,6 +124,15 @@ target_link_libraries(test_fault_recovery PRIVATE HydroMotionLib)
 add_executable(test_stop_diagnostics_retained tests/test_stop_diagnostics_retained.c)
 target_link_libraries(test_stop_diagnostics_retained PRIVATE HydroMotionLib)
 
+add_executable(test_state_reporter tests/test_state_reporter.c)
+target_link_libraries(test_state_reporter PRIVATE HydroMotionLib)
+
+add_executable(test_protection_manager tests/test_protection_manager.c)
+target_link_libraries(test_protection_manager PRIVATE HydroMotionLib)
+
+add_executable(test_diagnostics tests/test_diagnostics.c)
+target_link_libraries(test_diagnostics PRIVATE HydroMotionLib)
+
 add_executable(main tests/main.c)
 target_link_libraries(main PRIVATE HydroMotionLib)
 
@@ -167,6 +176,15 @@ add_test(NAME test_fault_recovery
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 add_test(NAME test_stop_diagnostics_retained
          COMMAND test_stop_diagnostics_retained
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+add_test(NAME test_state_reporter
+         COMMAND test_state_reporter
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+add_test(NAME test_protection_manager
+         COMMAND test_protection_manager
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+add_test(NAME test_diagnostics
+         COMMAND test_diagnostics
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 add_test(NAME test_interface_layout_consistency
          COMMAND ${CMAKE_COMMAND} -E env PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}
