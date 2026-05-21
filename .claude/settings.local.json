@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//mnt/c/Users/Administrator/AppData/Local/Microsoft/WindowsApps/**)",
+      "Read(///wsl.localhost/Ubuntu-22.04/home/dan/project/hdy-motion-light/docs/superpowers/plans/**)",
+      "Read(///wsl.localhost/Ubuntu-22.04/home/dan/project/**)",
+      "Bash(cmake --preset unixgcc)",
+      "Bash(wsl -d Ubuntu-22.04 -- bash -lc \"cd /home/dan/project/hdy-motion-light && cmake --preset unixgcc\")",
+      "Bash(wsl -d Ubuntu-22.04 -- bash -lc \"cd /home/dan/project/hdy-motion-light && rm -rf out/build/unixgcc && cmake --preset unixgcc\")",
+      "Bash(wsl *)"
+    ]
+  }
+}
