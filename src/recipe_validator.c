@@ -301,7 +301,18 @@ HYD_BOOL HYD_RecipeValidator_ValidateSegment(const HYD_MotionSegment* segment,
         return HYD_RecipeValidator_Fail(code, HYD_DIAG_CODE_SEGMENT_INVALID);
     }
 
-    /* Pressure ceiling configuration must be coherent. */
+    /* Pressure ceiling configuration must be coherent.
+     *
+     * The ceiling value itself must be finite and nonnegative. We check this
+     * BEFORE the `> 0.0` gate below so that NaN, +Inf, -Inf, and negative
+     * values are unconditionally rejected: NaN/-Inf would otherwise slip past
+     * `pressureCeiling > 0.0` (silently disabling the protection) and +Inf
+     * would pass through the coherence block despite being nonsensical for a
+     * safety limit.
+     */
+    if (!isfinite(segment->pressureCeiling) || segment->pressureCeiling < 0.0) {
+        return HYD_RecipeValidator_Fail(code, HYD_DIAG_CODE_SEGMENT_INVALID);
+    }
     if (segment->pressureCeiling > 0.0) {
         /* Tolerance must be finite and nonnegative (zero is allowed -> falls back to pressureTolerance). */
         if (!isfinite(segment->pressureCeilingTolerance) || segment->pressureCeilingTolerance < 0.0) {

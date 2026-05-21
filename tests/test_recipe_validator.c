@@ -1,7 +1,9 @@
 #include <assert.h>
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 #include "recipe_validator.h"
+#include "segment_limits.h"
 
 static HYD_MotionSegment make_valid_segment(void) {
     HYD_MotionSegment segment = {0};
@@ -146,6 +148,102 @@ static void test_invalid_ceiling_tolerance_rejected(void) {
     printf("test_invalid_ceiling_tolerance_rejected PASSED\n");
 }
 
+static void test_invalid_ceiling_value_rejected(void) {
+    HYD_MotionSegment seg;
+    HYD_DiagnosticCode code;
+    memset(&seg, 0, sizeof(seg));
+    seg.segmentTag = 1;
+    seg.segmentType = HYD_SEGMENT_TYPE_CLAMPING;
+    seg.mode = HYD_MODE_POSITION;
+    seg.planner = HYD_PLANNER_TIME_BASED;
+    seg.endCondition = HYD_END_POSITION;
+    seg.direction = HYD_DIRECTION_EXTEND;
+    seg.targetPosition = 100.0;
+    seg.maxVelocity = 50.0;
+    seg.maxAcceleration = 200.0;
+    seg.maxDeceleration = 200.0;
+    seg.maxFlow = 30.0;
+    seg.velocityToFlowGain = 0.25;
+    seg.positionTolerance = 0.5;
+
+    /* NaN ceiling: rejected (silent disablement is exactly what we forbid) */
+    seg.pressureCeiling = (HYD_REAL)NAN;
+    code = HYD_DIAG_CODE_NONE;
+    assert(!HYD_RecipeValidator_ValidateSegment(&seg, 0, &code));
+    assert(code == HYD_DIAG_CODE_SEGMENT_INVALID);
+
+    /* +Inf ceiling: rejected */
+    seg.pressureCeiling = (HYD_REAL)INFINITY;
+    code = HYD_DIAG_CODE_NONE;
+    assert(!HYD_RecipeValidator_ValidateSegment(&seg, 0, &code));
+    assert(code == HYD_DIAG_CODE_SEGMENT_INVALID);
+
+    /* -Inf ceiling: rejected */
+    seg.pressureCeiling = (HYD_REAL)(-INFINITY);
+    code = HYD_DIAG_CODE_NONE;
+    assert(!HYD_RecipeValidator_ValidateSegment(&seg, 0, &code));
+    assert(code == HYD_DIAG_CODE_SEGMENT_INVALID);
+
+    /* Negative ceiling: rejected */
+    seg.pressureCeiling = -5.0;
+    code = HYD_DIAG_CODE_NONE;
+    assert(!HYD_RecipeValidator_ValidateSegment(&seg, 0, &code));
+    assert(code == HYD_DIAG_CODE_SEGMENT_INVALID);
+
+    /* Zero ceiling: passes (disabled) */
+    seg.pressureCeiling = 0.0;
+    code = HYD_DIAG_CODE_NONE;
+    assert(HYD_RecipeValidator_ValidateSegment(&seg, 0, &code));
+    assert(code == HYD_DIAG_CODE_NONE);
+
+    printf("test_invalid_ceiling_value_rejected PASSED\n");
+}
+
+static void test_pressure_ceiling_active_at(void) {
+    HYD_MotionSegment seg;
+    memset(&seg, 0, sizeof(seg));
+
+    /* Ceiling disabled (ceiling <= 0): never active, regardless of position */
+    seg.pressureCeiling = 0.0;
+    seg.pressureCeilingPositionStart = 10.0;
+    seg.pressureCeilingPositionEnd = 90.0;
+    assert(!HYD_Segment_PressureCeilingActiveAt(&seg, 50.0));
+
+    seg.pressureCeiling = -1.0;
+    assert(!HYD_Segment_PressureCeilingActiveAt(&seg, 50.0));
+
+    /* Ceiling enabled, degenerate window (end <= start): always active */
+    seg.pressureCeiling = 5.0;
+    seg.pressureCeilingPositionStart = 0.0;
+    seg.pressureCeilingPositionEnd = 0.0;
+    assert(HYD_Segment_PressureCeilingActiveAt(&seg, -1000.0));
+    assert(HYD_Segment_PressureCeilingActiveAt(&seg, 0.0));
+    assert(HYD_Segment_PressureCeilingActiveAt(&seg, 1000.0));
+
+    seg.pressureCeilingPositionStart = 50.0;
+    seg.pressureCeilingPositionEnd = 50.0;  /* end == start: degenerate */
+    assert(HYD_Segment_PressureCeilingActiveAt(&seg, 0.0));
+    assert(HYD_Segment_PressureCeilingActiveAt(&seg, 100.0));
+
+    seg.pressureCeilingPositionStart = 60.0;
+    seg.pressureCeilingPositionEnd = 50.0;  /* end < start: degenerate (inverted) */
+    assert(HYD_Segment_PressureCeilingActiveAt(&seg, 0.0));
+
+    /* Ceiling enabled, proper window (end > start): active only inside [start, end] */
+    seg.pressureCeilingPositionStart = 70.0;
+    seg.pressureCeilingPositionEnd = 100.0;
+    assert(!HYD_Segment_PressureCeilingActiveAt(&seg, 69.9));
+    assert(HYD_Segment_PressureCeilingActiveAt(&seg, 70.0));   /* inclusive lower */
+    assert(HYD_Segment_PressureCeilingActiveAt(&seg, 85.0));
+    assert(HYD_Segment_PressureCeilingActiveAt(&seg, 100.0));  /* inclusive upper */
+    assert(!HYD_Segment_PressureCeilingActiveAt(&seg, 100.1));
+
+    /* NULL segment: returns false safely */
+    assert(!HYD_Segment_PressureCeilingActiveAt(NULL, 50.0));
+
+    printf("test_pressure_ceiling_active_at PASSED\n");
+}
+
 static void test_invalid_derate_ratio_rejected(void) {
     HYD_MotionSegment seg;
     HYD_DiagnosticCode code = HYD_DIAG_CODE_NONE;
@@ -195,6 +293,8 @@ int main(void) {
     test_validate_pressure_derivative_filter_alpha();
     test_validate_start_context_direction_conflict();
     test_invalid_ceiling_tolerance_rejected();
+    test_invalid_ceiling_value_rejected();
+    test_pressure_ceiling_active_at();
     test_invalid_derate_ratio_rejected();
 
     printf("\n✅ All RecipeValidator tests passed successfully!\n");
