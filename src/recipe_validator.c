@@ -2,6 +2,7 @@
 #include "rbf_pid.h"
 #include "segment_limits.h"
 #include "pump_converter.h"
+#include <math.h>
 
 static HYD_BOOL HYD_IsValidPlannerType(HYD_PlannerType planner) {
     return (planner == HYD_PLANNER_POSITION_BASED) ||
@@ -298,6 +299,28 @@ HYD_BOOL HYD_RecipeValidator_ValidateSegment(const HYD_MotionSegment* segment,
 
     if ((segment->endCondition == HYD_END_TIME) && (segment->duration <= 0.0)) {
         return HYD_RecipeValidator_Fail(code, HYD_DIAG_CODE_SEGMENT_INVALID);
+    }
+
+    /* Pressure ceiling configuration must be coherent. */
+    if (segment->pressureCeiling > 0.0) {
+        /* Tolerance must be finite and nonnegative (zero is allowed -> falls back to pressureTolerance). */
+        if (!isfinite(segment->pressureCeilingTolerance) || segment->pressureCeilingTolerance < 0.0) {
+            return HYD_RecipeValidator_Fail(code, HYD_DIAG_CODE_SEGMENT_INVALID);
+        }
+        /* Position window: either degenerate (both 0 / end<=start -> always-on)
+         * or strictly ordered. Reject NaN / -Inf. */
+        if (!isfinite(segment->pressureCeilingPositionStart) ||
+            !isfinite(segment->pressureCeilingPositionEnd)) {
+            return HYD_RecipeValidator_Fail(code, HYD_DIAG_CODE_SEGMENT_INVALID);
+        }
+    }
+    /* Derate ratio: 0 means default; otherwise must be strictly between 0 and 1. */
+    if (segment->derateRatio != 0.0) {
+        if (!isfinite(segment->derateRatio) ||
+            segment->derateRatio <= 0.0 ||
+            segment->derateRatio >= 1.0) {
+            return HYD_RecipeValidator_Fail(code, HYD_DIAG_CODE_SEGMENT_INVALID);
+        }
     }
 
     if (code != NULL) {

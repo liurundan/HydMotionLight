@@ -1,5 +1,6 @@
 #include <assert.h>
 #include <stdio.h>
+#include <string.h>
 #include "recipe_validator.h"
 
 static HYD_MotionSegment make_valid_segment(void) {
@@ -105,6 +106,86 @@ static void test_validate_start_context_direction_conflict(void) {
     printf("✓ Start context directional conflict test passed\n");
 }
 
+static void test_invalid_ceiling_tolerance_rejected(void) {
+    HYD_MotionSegment seg;
+    HYD_DiagnosticCode code = HYD_DIAG_CODE_NONE;
+    memset(&seg, 0, sizeof(seg));
+    seg.segmentTag = 1;
+    seg.segmentType = HYD_SEGMENT_TYPE_CLAMPING;
+    seg.mode = HYD_MODE_POSITION;
+    seg.planner = HYD_PLANNER_TIME_BASED;
+    seg.endCondition = HYD_END_POSITION;
+    seg.direction = HYD_DIRECTION_EXTEND;
+    seg.targetPosition = 100.0;
+    seg.maxVelocity = 50.0;
+    seg.maxAcceleration = 200.0;
+    seg.maxDeceleration = 200.0;
+    seg.maxFlow = 30.0;
+    seg.velocityToFlowGain = 0.25;
+    seg.positionTolerance = 0.5;
+
+    /* Valid ceiling: passes */
+    seg.pressureCeiling = 5.0;
+    seg.pressureCeilingTolerance = 0.2;
+    seg.pressureCeilingPositionStart = 70.0;
+    seg.pressureCeilingPositionEnd = 100.0;
+    assert(HYD_RecipeValidator_ValidateSegment(&seg, 0, &code));
+
+    /* Negative tolerance: rejected */
+    seg.pressureCeilingTolerance = -0.1;
+    code = HYD_DIAG_CODE_NONE;
+    assert(!HYD_RecipeValidator_ValidateSegment(&seg, 0, &code));
+    assert(code == HYD_DIAG_CODE_SEGMENT_INVALID);
+
+    /* Zero ceiling disables check — other fields irrelevant */
+    seg.pressureCeiling = 0.0;
+    seg.pressureCeilingTolerance = -1.0;  /* invalid but ignored */
+    code = HYD_DIAG_CODE_NONE;
+    assert(HYD_RecipeValidator_ValidateSegment(&seg, 0, &code));
+
+    printf("test_invalid_ceiling_tolerance_rejected PASSED\n");
+}
+
+static void test_invalid_derate_ratio_rejected(void) {
+    HYD_MotionSegment seg;
+    HYD_DiagnosticCode code = HYD_DIAG_CODE_NONE;
+    memset(&seg, 0, sizeof(seg));
+    seg.segmentTag = 1;
+    seg.segmentType = HYD_SEGMENT_TYPE_CLAMPING;
+    seg.mode = HYD_MODE_POSITION;
+    seg.planner = HYD_PLANNER_TIME_BASED;
+    seg.endCondition = HYD_END_POSITION;
+    seg.direction = HYD_DIRECTION_EXTEND;
+    seg.targetPosition = 100.0;
+    seg.maxVelocity = 50.0;
+    seg.maxAcceleration = 200.0;
+    seg.maxDeceleration = 200.0;
+    seg.maxFlow = 30.0;
+    seg.velocityToFlowGain = 0.25;
+    seg.positionTolerance = 0.5;
+
+    /* 0.0 = use default -> passes */
+    seg.derateRatio = 0.0;
+    assert(HYD_RecipeValidator_ValidateSegment(&seg, 0, &code));
+
+    /* Valid range (0,1) -> passes */
+    seg.derateRatio = 0.3;
+    assert(HYD_RecipeValidator_ValidateSegment(&seg, 0, &code));
+
+    /* Out of range -> rejected */
+    seg.derateRatio = 1.5;
+    code = HYD_DIAG_CODE_NONE;
+    assert(!HYD_RecipeValidator_ValidateSegment(&seg, 0, &code));
+    assert(code == HYD_DIAG_CODE_SEGMENT_INVALID);
+
+    seg.derateRatio = -0.1;
+    code = HYD_DIAG_CODE_NONE;
+    assert(!HYD_RecipeValidator_ValidateSegment(&seg, 0, &code));
+    assert(code == HYD_DIAG_CODE_SEGMENT_INVALID);
+
+    printf("test_invalid_derate_ratio_rejected PASSED\n");
+}
+
 int main(void) {
     printf("Running RecipeValidator tests...\n\n");
 
@@ -113,6 +194,8 @@ int main(void) {
     test_validate_runtime_config();
     test_validate_pressure_derivative_filter_alpha();
     test_validate_start_context_direction_conflict();
+    test_invalid_ceiling_tolerance_rejected();
+    test_invalid_derate_ratio_rejected();
 
     printf("\n✅ All RecipeValidator tests passed successfully!\n");
     return 0;

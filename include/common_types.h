@@ -296,6 +296,22 @@ typedef struct {
     HYD_REAL pressureDeadband;               /* MPa */
     HYD_REAL pressureFilterAlpha;            /* 0<alpha<=1, 1 means no measurement filtering */
     HYD_REAL pressureDerivativeFilterAlpha;  /* 0<alpha<=1, 1 means no derivative filtering */
+
+    /* Pressure ceiling - low-pressure mold-protect primitive.
+     * Activates when actual position is within [pressureCeilingPositionStart,
+     * pressureCeilingPositionEnd] AND |position end - start| > 0.
+     * When both position fields are 0, the ceiling is always-on.
+     * Zero pressureCeiling disables the check entirely. */
+    HYD_REAL pressureCeiling;                /* MPa, 0 disables ceiling check */
+    HYD_REAL pressureCeilingTolerance;       /* MPa, hysteresis above ceiling before DERATE; 0 uses pressureTolerance */
+    HYD_REAL pressureCeilingPositionStart;   /* mm, window lower bound; 0 means always-on with End */
+    HYD_REAL pressureCeilingPositionEnd;     /* mm, window upper bound; <=Start means always-on */
+
+    /* Per-segment derate ratio for protectionAction = DERATE.
+     * Range (0.0, 1.0). Zero or out-of-range falls back to library default 0.5.
+     * Replaces the hardcoded limiterInput.derateRatio = 0.5 in motion_control.c. */
+    HYD_REAL derateRatio;
+
     HYD_RbfPidConfig pressureRbfConfig;      /* Optional RBF-PID bounded tuning / learning profile. Zero uses library defaults. */
 } HYD_MotionSegment;
 
