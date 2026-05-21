@@ -36,12 +36,22 @@ HYD_MotionControlFB* __MK_GetPublic_MotionControlFB(int index)
  * 采用两阶段所有权模型:
  *
  * 阶段1 (_PENDING=true): execRising 后, FB 等待核心引擎确认为
- * DIRECT_SOURCE 活跃段。确认后将 _executionId 从 _EXEC_ID 写入,
- * 并清除 _PENDING。如果核心引擎报告 ABORTED, 则立即输出 COMMANDABORTED。
+ * 活跃段。确认后将 epoch (recipe 用 _recipeBatchId, direct 用
+ * _executionId) 写入 _EXEC_ID, 并清除 _PENDING。
+ * 如果核心引擎报告 ABORTED, 则立即输出 COMMANDABORTED。
  *
- * 阶段2 (_EXEC_ID != 0): 持有 executionId 比较值, 与 FB._executionId 比对:
+ * 阶段2 (_EXEC_ID != 0): 持有 epoch 比较值, 与 FB 对应 epoch 比对:
  *   - 匹配 → 仍是活跃命令, 正常读取核心 FB 输出
  *   - 不匹配 → 被其他命令取代, 输出 COMMANDABORTED
+ *
+ * Epoch 字段语义 (motion_control.h 详细描述):
+ *   - _executionId: per-segment epoch, 递增于每次 BeginSegment
+ *     (含 NextSegment)。用于 direct-command (MoveAbsolute / MoveVelocity /
+ *     PressureHandle / Stop) 的所有权追踪。
+ *   - _recipeBatchId: per-recipe-batch epoch, 仅在 initial Start /
+ *     ABORT / STOP / Reset / direct takeover 时递增, NextSegment 不递增。
+ *     用于 MoveProfile 的所有权追踪。
+ *   两者解耦避免了多段 recipe 推进时 MoveProfile 误报 COMMANDABORTED。
  *
  * 仲裁规则:
  *   - MoveProfile (Recipe模式) 与 Direct模式命令互斥
@@ -287,6 +297,12 @@ static HYD_BOOL directExecutionLostOwnership(const HYD_MotionControlFB* fb,
            HYD_MotionControlFB_GetDirectOwnerKind(fb) != kind;
 }
 
+/* Recipe-side ownership predicates use _recipeBatchId rather than the
+ * per-segment _executionId so that multi-segment recipe NextSegment
+ * progress is NOT mistaken for external takeover. _recipeBatchId advances
+ * only on initial Start / ABORT / STOP / Reset / direct takeover; it stays
+ * constant across recipe NextSegment. See HYD_MotionControlFB definition
+ * in motion_control.h for full contract. */
 static HYD_BOOL recipeExecutionLostOwnership(const HYD_MotionControlFB* fb,
                                              IEC_WORD execId)
 {
@@ -294,15 +310,17 @@ static HYD_BOOL recipeExecutionLostOwnership(const HYD_MotionControlFB* fb,
         return false;
     }
 
-    if (fb->_activeSegmentSource == HYD_SEGMENT_SOURCE_RECIPE) {
-        return false;
-    }
-
     if (HYD_MotionControlFB_IsDone(fb) && fb->STATE.finished) {
         return false;
     }
 
-    return execId != (IEC_WORD)fb->_executionId ||
+    /* Batch-id mismatch ⇒ a fresh recipe batch began (or external takeover
+     * fired). With the batch-id semantics, NextSegment within the same batch
+     * keeps execId equal — no false positive. The recipe-source short-circuit
+     * that used to live here was specifically masking external Stop/Abort
+     * preemption while the recipe source flag was still RECIPE; the batch-id
+     * change now provides the correct discrimination. */
+    return execId != (IEC_WORD)fb->_recipeBatchId ||
            (!fb->STATE.active &&
             !HYD_MotionControlFB_IsBusy(fb) &&
             !fb->STATE.finished &&
@@ -312,7 +330,7 @@ static HYD_BOOL recipeExecutionLostOwnership(const HYD_MotionControlFB* fb,
 static HYD_BOOL recipeExecutionCanAcquireOwnership(const HYD_MotionControlFB* fb)
 {
     return fb != NULL &&
-           fb->_executionId != 0U &&
+           fb->_recipeBatchId != 0U &&
            (HYD_MotionControlFB_GetDirectOwnerKind(fb) == HYD_DIRECT_CMD_NONE ||
             HYD_MotionControlFB_GetDirectOwnerExecutionId(fb) != fb->_executionId);
 }
@@ -320,7 +338,7 @@ static HYD_BOOL recipeExecutionCanAcquireOwnership(const HYD_MotionControlFB* fb
 static HYD_BOOL recipeExecutionWasTakenOverBeforeLatch(const HYD_MotionControlFB* fb)
 {
     return fb != NULL &&
-           fb->_executionId != 0U &&
+           fb->_recipeBatchId != 0U &&
            HYD_MotionControlFB_GetDirectOwnerKind(fb) != HYD_DIRECT_CMD_NONE &&
            HYD_MotionControlFB_GetDirectOwnerExecutionId(fb) == fb->_executionId;
 }
@@ -705,17 +723,20 @@ void __mcl_cmd_MoveProfile(HYD_MOVEPROFILE *data__)
         return;
     }
 
-    /* Ownership tracking */
+    /* Ownership tracking — MoveProfile uses _recipeBatchId (recipe-side
+     * batch epoch). _executionId is the per-segment epoch used by direct
+     * commands; using it here would falsely flag every NextSegment as a
+     * COMMANDABORTED event. See motion_control.h field comments. */
     if (isPending) {
         if (recipeExecutionCanAcquireOwnership(fb)) {
-            __SET_VAR(data__->, _EXEC_ID,, (IEC_WORD)fb->_executionId);
+            __SET_VAR(data__->, _EXEC_ID,, (IEC_WORD)fb->_recipeBatchId);
             __SET_VAR(data__->, _PENDING,, false);
-            myExecId = (IEC_WORD)fb->_executionId;
+            myExecId = (IEC_WORD)fb->_recipeBatchId;
         } else if (recipeExecutionWasTakenOverBeforeLatch(fb) ||
                    (fb->_pendingCommand != HYD_CMD_START &&
                     fb->FB_STATE == HYD_FB_STATE_ABORTED && !fb->STATE.active) ||
                    (fb->_pendingCommand != HYD_CMD_START &&
-                    fb->_executionId == 0U &&
+                    fb->_recipeBatchId == 0U &&
                     !fb->STATE.active &&
                     !HYD_MotionControlFB_IsBusy(fb) &&
                     !HYD_MotionControlFB_IsDone(fb) &&

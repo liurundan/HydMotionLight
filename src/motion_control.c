@@ -771,6 +771,11 @@ static HYD_BOOL HYD_StartPendingDirectSlot(HYD_MotionControlFB* fb,
     fb->DIRECT_SEGMENT = segment;
     fb->DIRECT_SEGMENT_VALID = true;
     fb->USE_RECIPE = false;
+    /* Direct takeover invalidates any outer recipe MoveProfile's ownership
+     * batch — bump _recipeBatchId BEFORE BeginSegment so that the IEC adapter
+     * sees the recipe batch id change in the same scan that the source
+     * transitions to DIRECT. */
+    fb->_recipeBatchId++;
     if (!HYD_BeginSegment(fb, 0U, timestamp)) {
         fb->USE_RECIPE = savedUseRecipe;
         return false;
@@ -884,6 +889,10 @@ static void HYD_AbortNow(HYD_MotionControlFB* fb,
                                        NULL,
                                        &fb->STATE.references);
     fb->_executionId++;
+    /* External ABORT terminates the current recipe batch — bump
+     * _recipeBatchId so the IEC adapter detects ownership loss on any
+     * outer MoveProfile FB. */
+    fb->_recipeBatchId++;
 }
 
 static void HYD_MaintainNonExecutingState(HYD_MotionControlFB* fb,
@@ -983,6 +992,13 @@ static HYD_BOOL HYD_MotionControlFB_ConsumePendingCommand(HYD_MotionControlFB* f
 
     switch (command) {
         case HYD_CMD_START:
+            /* Initial Start opens a fresh recipe batch (or a fresh direct
+             * session). Bump _recipeBatchId so a re-issued MoveProfile after
+             * Reset / Done observes a distinct batch identity from the
+             * previous run. NextSegment (HYD_CMD_NEXT) deliberately does
+             * NOT bump _recipeBatchId — multi-segment recipe progress must
+             * not look like external takeover. */
+            fb->_recipeBatchId++;
             (void)HYD_BeginSegment(fb, segmentIndex, timestamp);
             return true;
         case HYD_CMD_NEXT:
@@ -997,6 +1013,10 @@ static HYD_BOOL HYD_MotionControlFB_ConsumePendingCommand(HYD_MotionControlFB* f
                 fb->_lastPreemptedKind = HYD_DIRECT_CMD_NONE;
             }
             fb->_executionId++;
+            /* STOP preempts any active recipe segment — bump
+             * _recipeBatchId so the outer MoveProfile observes ownership
+             * loss even though _activeSegmentSource stays RECIPE. */
+            fb->_recipeBatchId++;
             fb->_directOwnerExecutionId = fb->_executionId;
             fb->_directOwnerKind = HYD_DIRECT_CMD_STOP;
             fb->_directSessionState = HYD_DIRECT_SESSION_STOPPING;
