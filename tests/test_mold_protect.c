@@ -13,6 +13,7 @@
 #include "action_profile.h"
 #include "segment_limits.h"
 #include <assert.h>
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -43,6 +44,17 @@ static void prime_clamp_close_with_ceiling(HYD_MotionControlFB* fb,
     fb->USE_RECIPE = true;
     fb->FLOW_TO_PUMP_SPEED_GAIN = 1.0;
     fb->PUMP_SPEED_LIMIT = 5000.0;
+}
+
+/* Drive one execution cycle with the given timestamp/position/pressure.
+ * Mirrors the velocity-derived flow that a real plant would report
+ * (matches velocityToFlowGain = 0.25 used in the tests below). */
+static void tick(HYD_MotionControlFB* fb, HYD_REAL t, HYD_REAL position, HYD_REAL pressure) {
+    fb->AXIS_REF.timestamp = t;
+    fb->AXIS_REF.position = position;
+    fb->AXIS_REF.pressure = pressure;
+    fb->AXIS_REF.flow = (HYD_REAL)(fabs((double)fb->AXIS_REF.velocity) * 0.25);
+    HYD_MotionControlFB_Execute(fb);
 }
 
 /* Task 3 placeholder: prove POSITION-mode ceiling detection raises
@@ -178,8 +190,191 @@ static void test_ceiling_violated_remains_sticky_across_cycles(void) {
     printf("test_ceiling_violated_remains_sticky_across_cycles PASSED\n");
 }
 
+/* Task 6 end-to-end DERATE test:
+ *
+ * Drive the clamp axis through the protect window with a sustained pressure
+ * breach. Verify that PUMP_SPEED collapses by the configured derateRatio
+ * relative to the un-derated baseline measured outside the window. */
+static void test_mold_protect_derate_reduces_pump_speed(void) {
+    HYD_MotionControlFB fb;
+    HYD_MotionFBParams params;
+    HYD_MotionSegment seg;
+    HYD_REAL normalPumpSpeed;
+    HYD_REAL deratedPumpSpeed;
+    int i;
+
+    HYD_MotionControlFB_Init(&fb);
+
+    /* derateRatio = 0.2 to make the post-DERATE drop unambiguous. */
+    memset(&params, 0, sizeof(params));
+    params.maxFlow = 30.0;
+    params.maxVelocity = 50.0;
+    params.maxAcceleration = 200.0;
+    params.maxDeceleration = 200.0;
+    params.velocityToFlowGain = 0.25;
+    params.positionTolerance = 0.5;
+    params.pressureTolerance = 0.3;
+    assert(HYD_ActionProfile_BuildClampCloseWithMoldProtect(
+        &seg, &params, 1, /*targetPosition*/ 100.0,
+        /*windowStart*/ 70.0, /*ceiling*/ 5.0, /*ceilingTol*/ (HYD_REAL)0.2,
+        /*derate*/ (HYD_REAL)0.2));
+    assert(HYD_MotionControlFB_LoadRecipe(&fb, &seg, 1));
+    fb.USE_RECIPE = true;
+    fb.FLOW_TO_PUMP_SPEED_GAIN = 100.0;  /* 1 L/min ~ 100 rpm */
+    fb.PUMP_SPEED_LIMIT = 10000.0;       /* generous to avoid cap (Hazard C) */
+
+    assert(HYD_MotionControlFB_StartSegment(&fb, 0, 0.0));
+
+    /* Phase 1: well below protect window — normal pump speed. Drive past
+     * the ~0.8 s switch-suppress window before sampling. */
+    normalPumpSpeed = 0.0;
+    for (i = 0; i < 100; i++) {
+        tick(&fb, (HYD_REAL)(0.01 * (i + 1)), (HYD_REAL)(30.0 + i * 0.1), 1.0);
+    }
+    for (i = 100; i < 130; i++) {
+        tick(&fb, (HYD_REAL)(0.01 * (i + 1)), (HYD_REAL)(30.0 + i * 0.1), 1.0);
+        normalPumpSpeed = fb.PUMP_SPEED;
+    }
+    assert(normalPumpSpeed > 0.0);
+    assert(!fb.DIAGNOSTIC.pressureCeilingExceeded);
+
+    /* Phase 2: enter window with sustained pressure above ceiling+tol.
+     * Use t starting at 1.30s to stay past the switch-suppress window.
+     * Cap the loop at 25 iterations: debounce clears around i=5 (t~1.36s)
+     * and faultEscalationTime is 0.30s, so escalation fires at i~37. We
+     * want to observe DERATE before VIOLATED, so we stop short of i=37. */
+    deratedPumpSpeed = 0.0;
+    for (i = 0; i < 25; i++) {
+        tick(&fb, (HYD_REAL)(1.30 + 0.01 * (i + 1)), 80.0, 6.0);
+    }
+    assert(fb.DIAGNOSTIC.pressureCeilingExceeded);
+    assert(!fb.DIAGNOSTIC.pressureCeilingViolated);
+    assert(fb.DIAGNOSTIC.code == HYD_DIAG_CODE_PRESSURE_CEILING_EXCEEDED);
+    assert(fb.DIAGNOSTIC.protectionAction == HYD_PROTECTION_ACTION_DERATE);
+    deratedPumpSpeed = fb.PUMP_SPEED;
+    assert(deratedPumpSpeed > 0.0);
+    /* Derate factor is 0.2; allow margin (0.25) for transient ramp dynamics. */
+    assert(deratedPumpSpeed < normalPumpSpeed * (HYD_REAL)0.25);
+
+    printf("test_mold_protect_derate_reduces_pump_speed PASSED\n");
+}
+
+/* Task 6 end-to-end STOP escalation + Abort recovery test.
+ *
+ * Hold pressure above ceiling beyond the 0.30 s fault-escalation window.
+ * Verify the FB transitions to FAULT, PUMP_SPEED collapses to zero, and
+ * the operator can recover via Abort (Sprint 0 C-3 mask). */
+static void test_mold_protect_escalates_to_stop(void) {
+    HYD_MotionControlFB fb;
+    HYD_MotionFBParams params;
+    HYD_MotionSegment seg;
+    int i;
+
+    HYD_MotionControlFB_Init(&fb);
+    memset(&params, 0, sizeof(params));
+    params.maxFlow = 30.0;
+    params.maxVelocity = 50.0;
+    params.maxAcceleration = 200.0;
+    params.maxDeceleration = 200.0;
+    params.velocityToFlowGain = 0.25;
+    params.positionTolerance = 0.5;
+    params.pressureTolerance = 0.3;
+    assert(HYD_ActionProfile_BuildClampCloseWithMoldProtect(
+        &seg, &params, 1, 100.0, 70.0, 5.0, (HYD_REAL)0.2, (HYD_REAL)0.2));
+    assert(HYD_MotionControlFB_LoadRecipe(&fb, &seg, 1));
+    fb.USE_RECIPE = true;
+    fb.FLOW_TO_PUMP_SPEED_GAIN = 100.0;
+    fb.PUMP_SPEED_LIMIT = 10000.0;
+
+    assert(HYD_MotionControlFB_StartSegment(&fb, 0, 0.0));
+
+    /* Pre-roll: outside the window, past switch-suppress. */
+    for (i = 0; i < 100; i++) {
+        tick(&fb, (HYD_REAL)(0.01 * (i + 1)), 30.0, 1.0);
+    }
+    /* Sustained breach inside the window. 300 * 10 ms = 3 s, well past the
+     * 0.30 s faultEscalationTime even after the 0.05 s debounce. */
+    for (i = 0; i < 300; i++) {
+        tick(&fb, (HYD_REAL)(1.0 + 0.01 * (i + 1)), 80.0, (HYD_REAL)6.5);
+        if (fb.FB_STATE == HYD_FB_STATE_FAULT) {
+            break;
+        }
+    }
+    assert(fb.FB_STATE == HYD_FB_STATE_FAULT);
+    assert(fb.DIAGNOSTIC.code == HYD_DIAG_CODE_PRESSURE_CEILING_VIOLATED);
+    assert(fb.DIAGNOSTIC.severity == HYD_DIAG_SEVERITY_FAULT);
+    assert(fb.DIAGNOSTIC.protectionAction == HYD_PROTECTION_ACTION_STOP);
+    assert(fb.PUMP_SPEED == 0.0);
+    assert(fb.STATE.faultActive);
+
+    /* Recovery via Abort (Sprint 0 C-3 path: FAULT mask includes ABORT). */
+    assert(HYD_MotionControlFB_Abort(&fb));
+    HYD_MotionControlFB_Execute(&fb);
+    assert(fb.FB_STATE == HYD_FB_STATE_ABORTED);
+    assert(!fb.STATE.faultActive);
+
+    printf("test_mold_protect_escalates_to_stop PASSED\n");
+}
+
+/* Task 6 end-to-end SPEED_RAMP mode test.
+ *
+ * Builds an injection-fill segment (HYD_MODE_SPEED_RAMP) and attaches the
+ * mold-protect ceiling fields manually. Verifies Task 3's contract that
+ * HYD_UpdateExecutionDiagnostics now evaluates the ceiling channel under
+ * all control modes (not just POSITION). */
+static void test_mold_protect_applies_under_speed_ramp_mode(void) {
+    HYD_MotionControlFB fb;
+    HYD_MotionFBParams params;
+    HYD_MotionSegment seg;
+    int i;
+
+    HYD_MotionControlFB_Init(&fb);
+    memset(&params, 0, sizeof(params));
+    params.maxFlow = 30.0;
+    params.maxVelocity = 50.0;
+    params.maxAcceleration = 200.0;
+    params.maxDeceleration = 200.0;
+    params.velocityToFlowGain = 0.25;
+    params.velocityTolerance = 1.0;
+    params.pressureTolerance = 0.3;
+    assert(HYD_ActionProfile_BuildInjectionFill(&seg, &params, 2,
+                                                /*transferPos*/ 100.0));
+    /* No dedicated builder for injection-mold-protect; attach manually. */
+    seg.pressureCeiling = 8.0;
+    seg.pressureCeilingTolerance = (HYD_REAL)0.2;
+    seg.pressureCeilingPositionStart = 70.0;
+    seg.pressureCeilingPositionEnd = 100.0;
+    seg.derateRatio = (HYD_REAL)0.4;
+
+    assert(HYD_MotionControlFB_LoadRecipe(&fb, &seg, 1));
+    fb.USE_RECIPE = true;
+    fb.FLOW_TO_PUMP_SPEED_GAIN = 100.0;
+    fb.PUMP_SPEED_LIMIT = 10000.0;
+    assert(HYD_MotionControlFB_StartSegment(&fb, 0, 0.0));
+
+    /* Pre-roll: outside the window, low pressure, past switch-suppress. */
+    for (i = 0; i < 100; i++) {
+        tick(&fb, (HYD_REAL)(0.01 * (i + 1)), 30.0, 1.0);
+    }
+    /* Sustain a breach inside the window. Stop short of the 0.30 s fault
+     * escalation: debounce clears at i~6 (t~1.07s); we want to assert the
+     * DERATE state, not VIOLATED. */
+    for (i = 0; i < 25; i++) {
+        tick(&fb, (HYD_REAL)(1.0 + 0.01 * (i + 1)), 80.0, (HYD_REAL)9.5);
+    }
+    assert(fb.DIAGNOSTIC.pressureCeilingExceeded);
+    assert(!fb.DIAGNOSTIC.pressureCeilingViolated);
+    assert(fb.DIAGNOSTIC.code == HYD_DIAG_CODE_PRESSURE_CEILING_EXCEEDED);
+    assert(fb.DIAGNOSTIC.protectionAction == HYD_PROTECTION_ACTION_DERATE);
+
+    printf("test_mold_protect_applies_under_speed_ramp_mode PASSED\n");
+}
+
 int main(void) {
     test_ceiling_exceeded_in_position_mode();
     test_ceiling_violated_remains_sticky_across_cycles();
+    test_mold_protect_derate_reduces_pump_speed();
+    test_mold_protect_escalates_to_stop();
+    test_mold_protect_applies_under_speed_ramp_mode();
     return 0;
 }
