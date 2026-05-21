@@ -1354,6 +1354,33 @@ static void test_moveprofile_does_not_self_abort_on_recipe_nextsegment(void) {
                "MoveProfile should remain in a live lifecycle on the next recipe segment");
 }
 
+static void test_stop_completion_clears_blend_pending_slot(void) {
+    HYD_MotionControlFB* fb;
+
+    fb = start_blend_pair(HYD_BUFFER_MODE_BLENDING_NEXT, 20.0f, 8.0f);
+    ASSERT_TRUE(fb != NULL, "Axis 0 control FB should exist for stop-teardown test");
+    ASSERT_TRUE(fb->_directPendingValid,
+               "Pending blend command should be present before Stop");
+    ASSERT_TRUE(fb->_directBlendContext.active,
+               "Blend context should be active before Stop");
+
+    ASSERT_TRUE(HYD_MotionControlFB_Stop(fb, fb->AXIS_REF.timestamp, 200.0),
+               "Stop request should be accepted while blended pending is queued");
+
+    fb->AXIS_REF.velocity = 0.0f;
+    fb->AXIS_REF.timestamp += 1.0f;
+    __HydMotion_framework_Publish();
+    fb->AXIS_REF.timestamp += 1.0f;
+    __HydMotion_framework_Publish();
+
+    ASSERT_TRUE(fb->FB_STATE == HYD_FB_STATE_DONE,
+               "Stop completion should reach DONE");
+    ASSERT_TRUE(!fb->_directPendingValid,
+               "Stop completion should clear pending direct slot");
+    ASSERT_TRUE(!fb->_directBlendContext.active,
+               "Stop completion should clear blend context");
+}
+
 int main(void) {
     printf("=== Motion Interface Arbitration Tests ===\n\n");
 
@@ -1379,6 +1406,7 @@ int main(void) {
     test_moveprofile_loses_activity_after_reset_takeover();
     test_direct_command_starts_cleanly_after_recipe_done();
     test_moveprofile_does_not_self_abort_on_recipe_nextsegment();
+    test_stop_completion_clears_blend_pending_slot();
 
     printf("\n=== Results: %d/%d passed ===\n", tests_passed, tests_run);
     return (tests_passed == tests_run) ? 0 : 1;

@@ -1643,6 +1643,7 @@ static void HYD_MotionControlFB_RunRunningState(HYD_MotionControlFB* fb) {
             fb->_stopStartVel = 0.0f;
             fb->_stopDeceleration = 0.0f;
             fb->_directSessionState = HYD_DIRECT_SESSION_DONE;
+            HYD_ClearDirectPendingSlot(fb);
             HYD_ProtectionManager_ApplyIdleState(fb, true, false);
             HYD_StateReporter_SetFbState(fb, HYD_FB_STATE_DONE);
         }
