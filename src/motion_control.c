@@ -1282,10 +1282,18 @@ static void HYD_UpdateExecutionDiagnostics(HYD_MotionControlFB* fb,
      * its own startupSuppressTime. Switch phase is shared across all channels. */
     isSwitchPhase = fb->_isSwitchPhase;
 
-    HYD_ErrorMonitor_Update(&fb->_errorMonitor,
-                            &fb->AXIS_REF,
-                            executionReference,
-                            fb->AXIS_REF.timestamp);
+    {
+        HYD_ErrorMonitorTolerances monitorTolerances;
+        monitorTolerances.position = positionTolerance;
+        monitorTolerances.velocity = velocityTolerance;
+        monitorTolerances.flow     = flowTolerance;
+        monitorTolerances.pressure = pressureTolerance;
+        HYD_ErrorMonitor_Update(&fb->_errorMonitor,
+                                &fb->AXIS_REF,
+                                executionReference,
+                                &monitorTolerances,
+                                fb->AXIS_REF.timestamp);
+    }
     HYD_UpdateMonitorPositionError(&fb->_errorMonitor,
                                    segment,
                                    &fb->AXIS_REF,

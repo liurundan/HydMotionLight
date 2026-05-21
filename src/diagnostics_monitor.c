@@ -17,14 +17,26 @@ static HYD_BOOL HYD_ErrorMonitor_IsFiniteReal(HYD_REAL value) {
 void HYD_ErrorMonitor_Update(HYD_ErrorMonitor* monitor,
                              const HYD_AxisRef* axisRef,
                              const HYD_ExecutionReference* references,
+                             const HYD_ErrorMonitorTolerances* tolerances,
                              HYD_TIME currentTime) {
     HYD_REAL newPositionError;
     HYD_REAL newVelocityError;
     HYD_REAL newFlowError;
     HYD_REAL newPressureError;
+    HYD_REAL posTol = 0.0;
+    HYD_REAL velTol = 0.0;
+    HYD_REAL flowTol = 0.0;
+    HYD_REAL pressTol = 0.0;
 
     if (monitor == NULL || axisRef == NULL || references == NULL) {
         return;
+    }
+
+    if (tolerances != NULL) {
+        posTol = tolerances->position;
+        velTol = tolerances->velocity;
+        flowTol = tolerances->flow;
+        pressTol = tolerances->pressure;
     }
 
     /* 计算实时误差 */
@@ -54,8 +66,8 @@ void HYD_ErrorMonitor_Update(HYD_ErrorMonitor* monitor,
         monitor->velocityError = newVelocityError;
     }
 
-    /* 更新压力误差激活状态和持续时间 */
-    if (monitor->pressureError != 0.0) {
+    /* 更新压力误差激活状态和持续时间：|error| > tolerance 才视为激活 */
+    if (fabs(monitor->pressureError) > pressTol) {
         if (!monitor->pressureErrorActive) {
             monitor->pressureErrorActive = true;
             monitor->pressureErrorStartTime = currentTime;
@@ -69,7 +81,7 @@ void HYD_ErrorMonitor_Update(HYD_ErrorMonitor* monitor,
     }
 
     /* 更新流量误差激活状态和持续时间 */
-    if (monitor->flowError != 0.0) {
+    if (fabs(monitor->flowError) > flowTol) {
         if (!monitor->flowErrorActive) {
             monitor->flowErrorActive = true;
             monitor->flowErrorStartTime = currentTime;
@@ -83,7 +95,7 @@ void HYD_ErrorMonitor_Update(HYD_ErrorMonitor* monitor,
     }
 
     /* 更新速度误差激活状态和持续时间 */
-    if (monitor->velocityError != 0.0) {
+    if (fabs(monitor->velocityError) > velTol) {
         if (!monitor->velocityErrorActive) {
             monitor->velocityErrorActive = true;
             monitor->velocityErrorStartTime = currentTime;
@@ -97,7 +109,7 @@ void HYD_ErrorMonitor_Update(HYD_ErrorMonitor* monitor,
     }
 
     /* 更新位置误差激活状态和持续时间 */
-    if (monitor->positionError != 0.0) {
+    if (fabs(monitor->positionError) > posTol) {
         if (!monitor->positionErrorActive) {
             monitor->positionErrorActive = true;
             monitor->positionErrorStartTime = currentTime;

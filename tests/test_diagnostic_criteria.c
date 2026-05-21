@@ -95,7 +95,7 @@ void test_diagnostic_criteria_pressure_basic() {
     references.velocityReference = 12.0;
     references.elapsedTime = 0.1;
 
-    HYD_ErrorMonitor_Update(&monitor, &axisRef, &references, 1.0);
+    HYD_ErrorMonitor_Update(&monitor, &axisRef, &references, NULL, 1.0);
 
     /* 不应该触发 */
     HYD_DiagnosticCriteria_CheckPressure(&result, &monitor, &criteria, &state,
@@ -104,7 +104,7 @@ void test_diagnostic_criteria_pressure_basic() {
 
     /* 创建压力误差1.5（超过阈值） */
     axisRef.pressure = 10.5;
-    HYD_ErrorMonitor_Update(&monitor, &axisRef, &references, 1.1);
+    HYD_ErrorMonitor_Update(&monitor, &axisRef, &references, NULL, 1.1);
 
     /* 应该触发 */
     HYD_DiagnosticCriteria_CheckPressure(&result, &monitor, &criteria, &state,
@@ -146,7 +146,7 @@ void test_diagnostic_criteria_pressure_with_startup_suppression() {
     references.velocityReference = 12.0;
     references.elapsedTime = 0.1;
 
-    HYD_ErrorMonitor_Update(&monitor, &axisRef, &references, 1.0);
+    HYD_ErrorMonitor_Update(&monitor, &axisRef, &references, NULL, 1.0);
 
     /* 启动阶段（t=0.1 < 0.5），应该被抑制 */
     HYD_DiagnosticCriteria_CheckPressure(&result, &monitor, &criteria, &state,
@@ -196,7 +196,7 @@ void test_diagnostic_criteria_pressure_with_debounce() {
     references.velocityReference = 12.0;
     references.elapsedTime = 0.1;
 
-    HYD_ErrorMonitor_Update(&monitor, &axisRef, &references, 1.0);
+    HYD_ErrorMonitor_Update(&monitor, &axisRef, &references, NULL, 1.0);
 
     /* t=1.0, 误差刚出现，不触发 */
     currentTime = 1.0;
@@ -251,7 +251,7 @@ void test_diagnostic_criteria_pressure_with_hysteresis() {
     references.velocityReference = 12.0;
     references.elapsedTime = 0.1;
 
-    HYD_ErrorMonitor_Update(&monitor, &axisRef, &references, 1.0);
+    HYD_ErrorMonitor_Update(&monitor, &axisRef, &references, NULL, 1.0);
 
     /* 应该触发 */
     HYD_DiagnosticCriteria_CheckPressure(&result, &monitor, &criteria, &state,
@@ -261,7 +261,7 @@ void test_diagnostic_criteria_pressure_with_hysteresis() {
 
     /* 滞回激活后，降低到0.85（仍在滞回范围内），应该保持触发 */
     axisRef.pressure = 11.15;  /* 误差 = 0.85 < 1.0, 但 > 1.0 * (1 - 0.2) = 0.8 */
-    HYD_ErrorMonitor_Update(&monitor, &axisRef, &references, 1.1);
+    HYD_ErrorMonitor_Update(&monitor, &axisRef, &references, NULL, 1.1);
 
     /* 注意：由于误差绝对值从1.5降到0.85，应该清除诊断，但滞回状态可能在清除时保留 */
     /* 这个测试主要验证滞回逻辑的存在，实际行为可能需要根据需求调整 */
@@ -300,7 +300,7 @@ void test_diagnostic_criteria_flow() {
     references.velocityReference = 12.0;
     references.elapsedTime = 0.1;
 
-    HYD_ErrorMonitor_Update(&monitor, &axisRef, &references, 1.0);
+    HYD_ErrorMonitor_Update(&monitor, &axisRef, &references, NULL, 1.0);
 
     /* 应该触发 */
     HYD_DiagnosticCriteria_CheckFlow(&result, &monitor, &criteria, &state,
@@ -340,7 +340,7 @@ void test_diagnostic_criteria_velocity() {
     references.velocityReference = 15.0;  /* 误差 = 15 - 5 = 10 */
     references.elapsedTime = 0.1;
 
-    HYD_ErrorMonitor_Update(&monitor, &axisRef, &references, 1.0);
+    HYD_ErrorMonitor_Update(&monitor, &axisRef, &references, NULL, 1.0);
 
     /* 应该触发 */
     HYD_DiagnosticCriteria_CheckVelocity(&result, &monitor, &criteria, &state,
