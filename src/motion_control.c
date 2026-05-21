@@ -1772,7 +1772,9 @@ static void HYD_MotionControlFB_RunRunningState(HYD_MotionControlFB* fb) {
     limiterInput.flowToPumpSpeedGain = fb->FLOW_TO_PUMP_SPEED_GAIN;
     limiterInput.pumpSpeedLimit = fb->PUMP_SPEED_LIMIT;
     limiterInput.protectionAction = fb->DIAGNOSTIC.protectionAction;
-    limiterInput.derateRatio = 0.5;
+    /* Per-segment derate ratio: 0 falls back to library default (0.5) inside
+     * HYD_OutputLimiter_Execute. See HYD_Segment_GetDerateRatio + segment->derateRatio. */
+    limiterInput.derateRatio = HYD_Segment_GetDerateRatio(segment);
     HYD_OutputLimiter_Execute(&limiterInput, &limiterOutput);
     pumpOutput.commandFlow = limiterOutput.commandFlow;
     pumpOutput.pumpSpeed = limiterOutput.pumpSpeed;
