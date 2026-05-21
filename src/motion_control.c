@@ -642,6 +642,7 @@ static HYD_BOOL HYD_BeginSegment(HYD_MotionControlFB* fb,
     /* Reset diagnostic criteria layer for new segment */
     HYD_ErrorMonitor_Reset(&fb->_errorMonitor);
     HYD_DiagnosticCriteria_ResetState(&fb->_pressureCriteriaState);
+    HYD_DiagnosticCriteria_ResetState(&fb->_pressureCeilingCriteriaState);
     HYD_DiagnosticCriteria_ResetState(&fb->_flowCriteriaState);
     HYD_DiagnosticCriteria_ResetState(&fb->_velocityCriteriaState);
     HYD_DiagnosticCriteria_ResetState(&fb->_positionCriteriaState);
@@ -1937,6 +1938,18 @@ void HYD_MotionControlFB_Init(HYD_MotionControlFB* fb) {
     HYD_ErrorMonitor_Init(&fb->_errorMonitor);
     HYD_DiagnosticCriteria_CreateDefaultPressureCriteria(&fb->_pressureCriteria);
     HYD_DiagnosticCriteria_InitState(&fb->_pressureCriteriaState);
+    /* Pressure ceiling criteria mirrors _pressureCriteria but uses a shorter
+     * debounce + faster fault escalation, since ceiling violations are
+     * already "above the safe envelope" and should react more promptly. */
+    HYD_DiagnosticCriteria_CreateDefaultPressureCriteria(&fb->_pressureCeilingCriteria);
+    fb->_pressureCeilingCriteria.debounceTime = 0.05;          /* 50 ms — react faster than normal pressure deviation */
+    fb->_pressureCeilingCriteria.startupSuppressTime = 0.10;
+    fb->_pressureCeilingCriteria.enableStartupSuppress = true;
+    fb->_pressureCeilingCriteria.faultEscalationTime = 0.30;   /* 300 ms above ceiling -> escalate to FAULT/STOP */
+    fb->_pressureCeilingCriteria.protectionAction = HYD_PROTECTION_ACTION_DERATE;
+    fb->_pressureCeilingCriteria.diagnosticCode = HYD_DIAG_CODE_PRESSURE_CEILING_EXCEEDED;
+    fb->_pressureCeilingCriteria.faultCode = HYD_DIAG_CODE_PRESSURE_CEILING_VIOLATED;
+    HYD_DiagnosticCriteria_InitState(&fb->_pressureCeilingCriteriaState);
     HYD_DiagnosticCriteria_CreateDefaultFlowCriteria(&fb->_flowCriteria);
     HYD_DiagnosticCriteria_InitState(&fb->_flowCriteriaState);
     HYD_DiagnosticCriteria_CreateDefaultVelocityCriteria(&fb->_velocityCriteria);
@@ -2007,6 +2020,7 @@ void HYD_MotionControlFB_SoftReset(HYD_MotionControlFB* fb) {
     HYD_BOOL savedConfiguredUseRecipe;
     HYD_MotionFBParams savedParams;
     HYD_DiagnosticCriteria savedPressureCriteria;
+    HYD_DiagnosticCriteria savedPressureCeilingCriteria;
     HYD_DiagnosticCriteria savedFlowCriteria;
     HYD_DiagnosticCriteria savedVelocityCriteria;
     HYD_DiagnosticCriteria savedPositionCriteria;
@@ -2025,6 +2039,7 @@ void HYD_MotionControlFB_SoftReset(HYD_MotionControlFB* fb) {
     savedConfiguredUseRecipe = fb->_configuredUseRecipe;
     savedParams = fb->_params;
     savedPressureCriteria = fb->_pressureCriteria;
+    savedPressureCeilingCriteria = fb->_pressureCeilingCriteria;
     savedFlowCriteria = fb->_flowCriteria;
     savedVelocityCriteria = fb->_velocityCriteria;
     savedPositionCriteria = fb->_positionCriteria;
@@ -2047,6 +2062,7 @@ void HYD_MotionControlFB_SoftReset(HYD_MotionControlFB* fb) {
     fb->_useSimulation = savedParams.useSimulation;
     fb->_configuredUseRecipe = savedConfiguredUseRecipe;
     fb->_pressureCriteria = savedPressureCriteria;
+    fb->_pressureCeilingCriteria = savedPressureCeilingCriteria;
     fb->_flowCriteria = savedFlowCriteria;
     fb->_velocityCriteria = savedVelocityCriteria;
     fb->_positionCriteria = savedPositionCriteria;
@@ -2078,6 +2094,7 @@ void HYD_MotionControlFB_SoftReset(HYD_MotionControlFB* fb) {
     /* 5. Reinitialize diagnostic criteria states (but keep the criteria configs) */
     HYD_ErrorMonitor_Init(&fb->_errorMonitor);
     HYD_DiagnosticCriteria_InitState(&fb->_pressureCriteriaState);
+    HYD_DiagnosticCriteria_InitState(&fb->_pressureCeilingCriteriaState);
     HYD_DiagnosticCriteria_InitState(&fb->_flowCriteriaState);
     HYD_DiagnosticCriteria_InitState(&fb->_velocityCriteriaState);
     HYD_DiagnosticCriteria_InitState(&fb->_positionCriteriaState);

@@ -270,6 +270,8 @@ typedef struct {
     HYD_ErrorMonitor _errorMonitor;
     HYD_DiagnosticCriteria _pressureCriteria;
     HYD_DiagnosticCriteriaState _pressureCriteriaState;
+    HYD_DiagnosticCriteria _pressureCeilingCriteria;
+    HYD_DiagnosticCriteriaState _pressureCeilingCriteriaState;
     HYD_DiagnosticCriteria _flowCriteria;
     HYD_DiagnosticCriteriaState _flowCriteriaState;
     HYD_DiagnosticCriteria _velocityCriteria;

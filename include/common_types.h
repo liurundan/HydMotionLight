@@ -143,6 +143,8 @@ typedef enum {
     HYD_DIAG_CODE_VELOCITY_DEVIATION,
     HYD_DIAG_CODE_SENSOR_FAULT,
     HYD_DIAG_CODE_TIMESTAMP_ROLLBACK,
+    HYD_DIAG_CODE_PRESSURE_CEILING_EXCEEDED,
+    HYD_DIAG_CODE_PRESSURE_CEILING_VIOLATED,
     HYD_DIAG_CODE_INTERNAL_ERROR
 } HYD_DiagnosticCode;
 
@@ -157,7 +159,9 @@ typedef enum {
     HYD_DIAG_FLAG_VELOCITY_DEVIATION = 1U << 4,
     HYD_DIAG_FLAG_TIMEOUT = 1U << 5,
     HYD_DIAG_FLAG_SENSOR_FAULT = 1U << 6,
-    HYD_DIAG_FLAG_TIMESTAMP_ROLLBACK = 1U << 7
+    HYD_DIAG_FLAG_TIMESTAMP_ROLLBACK = 1U << 7,
+    HYD_DIAG_FLAG_PRESSURE_CEILING_EXCEEDED = 1U << 8,
+    HYD_DIAG_FLAG_PRESSURE_CEILING_VIOLATED = 1U << 9
 } HYD_DiagnosticFlag;
 
 typedef enum {
@@ -332,6 +336,8 @@ typedef struct {
     HYD_BOOL timeout;
     HYD_BOOL sensorFault;
     HYD_BOOL timestampRollback;
+    HYD_BOOL pressureCeilingExceeded;
+    HYD_BOOL pressureCeilingViolated;
     HYD_REAL pressureError;
     HYD_REAL flowError;
     HYD_REAL velocityError;
