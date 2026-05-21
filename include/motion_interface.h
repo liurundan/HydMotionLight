@@ -22,6 +22,42 @@
 
 
 
+/*
+ * HYD_AXISMOTION ownership contract (Sprint 0 spec C-1):
+ *
+ * The structure is a bidirectional shared buffer between the PLC process
+ * layer and the HydroMotionLib runtime. Field ownership is partitioned
+ * into two halves; runtime and PLC each touch only their own half.
+ *
+ * Setpoint half -- PLC -> runtime, runtime MUST NOT write back:
+ *   SEGMENTTAG, SEGMENTTYPE, PLANNER, MODE, ENDCONDITION, DIRECTION,
+ *   SETPOSITION, SETVELOCITY, SETFLOW, SETPRESSURE, ACCELERATION,
+ *   DECELERATION, DURATION, PRESSURERAMPRATE.
+ *
+ * The runtime reads these fields once on the EXECUTE rising edge of a
+ * MoveProfile FB (via buildSegmentFromMotion) to build the active segment
+ * descriptor. After that, the segment lives in fb->_activeSegment and the
+ * runtime does not look at MOTION setpoint fields again until the next
+ * rising edge. This guarantees that staging the next segment's setpoint
+ * via MOTION between scans is safe even when several FB instances bind
+ * to the same physical HYD_AXISMOTION.
+ *
+ * Actual half -- runtime -> PLC, PLC MUST NOT write back:
+ *   ACTPOSITION, ACTVELOCITY, ACTFLOW, ACTPRESSURE, TIMESTAMP.
+ *
+ * In simulation deployments the runtime publishes ACT* + TIMESTAMP from
+ * fb->AXIS_REF every cycle. In non-simulation deployments the PLC writes
+ * ACT* + TIMESTAMP from sensor I/O before invoking any FB, and the
+ * runtime treats them as input.
+ *
+ * Multi-FB safety: PLC programs are responsible for ensuring at most
+ * one FB writes Setpoint values per scan when several FB instances are
+ * pointed at the same axis. The runtime guarantees that its own pass
+ * will not contribute to data races on Setpoint fields.
+ *
+ * See docs/integration/plc-process-layer-integration-guide.md
+ * "HYD_AXISMOTION Half-Region Ownership" for the full contract.
+ */
 __DECLARE_STRUCT_TYPE(HYD_AXISMOTION,
     USINT SEGMENTTAG;
     USINT SEGMENTTYPE;
@@ -46,9 +82,12 @@ __DECLARE_STRUCT_TYPE(HYD_AXISMOTION,
 
 // FUNCTION_BLOCK HYD_MOVEPROFILE
 // Recipe模式：配方驱动的多段运动控制
-// MOTION字段为双向通道：
-//   输入侧(ACT*): 轴反馈数据 → AXIS_REF
-//   输出侧(SET*, SEGMENTTAG, SEGMENTTYPE等): 当前活动段参数读回
+// MOTION字段为双向通道，但两半区单向语义 (见 HYD_AXISMOTION 上方契约):
+//   Setpoint半区 (PLC -> runtime, runtime 不回写):
+//     SET*, SEGMENT*, MODE, ENDCONDITION, DIRECTION, PLANNER,
+//     ACCELERATION, DECELERATION, DURATION, PRESSURERAMPRATE
+//     runtime 仅在 EXECUTE 上升沿读取一次以构建当前段。
+//   Actual半区 (runtime/sensor -> PLC, PLC 不回写): ACT*, TIMESTAMP
 // 配方来源:
 //   1. 从MOTION字段构建1段配方(EXECUTE时自动加载)
 //   2. 外部通过HDY_MotionControlFB_LoadRecipe()预加载多段配方

@@ -208,26 +208,27 @@ static HYD_MotionSegment buildSegmentFromMotion(const HYD_AXISMOTION* motion,
     return seg;
 }
 
-/* 将当前活动段参数写回MOTION结构体 */
-static void writeMotionFromSegment(HYD_AXISMOTION* motion, const HYD_MotionControlFB* fb)
-{
-    const HYD_MotionSegment* seg = &fb->_activeSegment;
-
-    motion->SEGMENTTAG = (USINT)seg->segmentTag;
-    motion->SEGMENTTYPE = (USINT)seg->segmentType;
-    motion->PLANNER = (USINT)seg->planner;
-    motion->MODE = (USINT)seg->mode;
-    motion->ENDCONDITION = (USINT)seg->endCondition;
-    motion->DIRECTION = (USINT)seg->direction;
-    motion->SETPOSITION = (REAL)seg->targetPosition;
-    motion->SETVELOCITY = (REAL)seg->maxVelocity;
-    motion->SETFLOW = (REAL)seg->targetFlow;
-    motion->SETPRESSURE = (REAL)seg->targetPressure;
-    motion->ACCELERATION = (REAL)seg->maxAcceleration;
-    motion->DECELERATION = (REAL)seg->maxDeceleration;
-    motion->DURATION = (REAL)seg->duration;
-    motion->PRESSURERAMPRATE = (REAL)seg->pressureRampRate;
-}
+/*
+ * HYD_AXISMOTION ownership contract (Sprint 0 spec C-1):
+ *
+ * The runtime MUST NOT write back to the Setpoint half of HYD_AXISMOTION
+ * (SEGMENTTAG, SEGMENTTYPE, PLANNER, MODE, ENDCONDITION, DIRECTION,
+ *  SET*, ACCELERATION, DECELERATION, DURATION, PRESSURERAMPRATE).
+ *
+ * Multiple MoveProfile / MoveAbsolute / MoveVelocity / PressureHandle FB
+ * instances may bind to the same physical HYD_AXISMOTION. Reflecting the
+ * currently active segment back into MOTION silently clobbers whatever
+ * setpoint the PLC has just queued for the next scan, leading to data
+ * races. The Setpoint half is therefore PLC-owned (and write-only from
+ * the runtime's perspective); the Actual half (ACT*, TIMESTAMP) remains
+ * runtime-owned. See:
+ *   - include/motion_interface.h HYD_AXISMOTION typedef header comment
+ *   - docs/integration/plc-process-layer-integration-guide.md
+ *     "HYD_AXISMOTION Half-Region Ownership"
+ *
+ * The previous writeMotionFromSegment() helper that projected the active
+ * segment back into MOTION has been removed for this reason.
+ */
 
 typedef enum {
     HYD_DIRECT_PENDING_WAITING = 0,
@@ -749,11 +750,12 @@ void __mcl_cmd_MoveProfile(HYD_MOVEPROFILE *data__)
             __SET_VAR(data__->, ERROR,, HYD_MotionControlFB_IsError(fb) ? true : false);
             __SET_VAR(data__->, ERRORID,, (IEC_WORD)fb->ERROR_ID);
 
-            if (fb->_activeSegmentValid) {
-                HYD_AXISMOTION motionOut = __GET_VAR(data__->MOTION);
-                writeMotionFromSegment(&motionOut, fb);
-                __SET_VAR(data__->, MOTION,, motionOut);
-            }
+            /* Setpoint half is PLC-owned -- runtime MUST NOT write back
+             * SEGMENT*, MODE, ENDCONDITION, DIRECTION, PLANNER, SET*,
+             * ACCELERATION, DECELERATION, DURATION, PRESSURERAMPRATE
+             * here. Doing so would clobber whatever the PLC has staged
+             * for a later FB on the same axis. See ownership contract
+             * note above writeMotionFromSegment() removal. */
         }
     }
 
