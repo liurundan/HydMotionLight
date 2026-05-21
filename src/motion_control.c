@@ -1271,6 +1271,7 @@ static void HYD_UpdateExecutionDiagnostics(HYD_MotionControlFB* fb,
     HYD_DiagnosticResult flowResult;
     HYD_DiagnosticResult velocityResult;
     HYD_DiagnosticResult positionResult;
+    HYD_DiagnosticResult ceilingResult;
     HYD_DiagnosticCode priorityCode = HYD_DIAG_CODE_NONE;
     HYD_DiagnosticSeverity prioritySeverity = HYD_DIAG_SEVERITY_NONE;
     HYD_BOOL overPressure = false;
@@ -1279,9 +1280,15 @@ static void HYD_UpdateExecutionDiagnostics(HYD_MotionControlFB* fb,
     HYD_BOOL positionDeviation = false;
     HYD_BOOL velocityDeviation = false;
     HYD_BOOL timeout = false;
+    HYD_BOOL pressureCeilingExceeded = false;
+    HYD_BOOL pressureCeilingViolated = false;
     HYD_REAL pressureError = 0.0;
     HYD_REAL flowError = 0.0;
     HYD_REAL velocityError = 0.0;
+    HYD_REAL pressureCeilingValue = 0.0;
+    HYD_REAL pressureCeilingTolerance = 0.0;
+    HYD_REAL ceilingErrorValue = 0.0;  /* actual - (ceiling + tol); only meaningful when > 0 */
+    HYD_BOOL ceilingActive = false;
 
     /* Derive suppress flags from segment elapsed time and criteria configuration.
      * isStartupPhase: determined per-criteria from its own startupSuppressTime.
@@ -1409,6 +1416,91 @@ static void HYD_UpdateExecutionDiagnostics(HYD_MotionControlFB* fb,
         HYD_DiagnosticCriteria_ResetState(&fb->_velocityCriteriaState);
     }
 
+    /* --- Pressure ceiling diagnostics (Sprint 1 spec 1.3) ---
+     * Evaluated under ALL HYD_ControlMode values whenever the segment
+     * configures pressureCeiling > 0 AND the current position lies inside
+     * the [pressureCeilingPositionStart, pressureCeilingPositionEnd] window
+     * (or the window is degenerate, in which case always-on).
+     *
+     * The legacy pressure criteria pipeline (CheckPressure) measures error
+     * against the closed-loop reference and only runs in PRESSURE_CLOSED_LOOP
+     * mode; it cannot serve as a fixed-ceiling watchdog. We drive the criteria
+     * state machine directly here using the same debounce + fault-escalation
+     * primitives as the standard channels:
+     *   - debounce via state->lastTriggered + state->triggerStartTime
+     *   - WARNING -> FAULT escalation via HYD_DiagnosticCriteria_CheckFaultEscalation
+     *     (state->warningActive + state->warningStartTime)
+     *
+     * IMPORTANT: We do NOT pass _pressureCeilingCriteria through
+     * HYD_ConfigureSegmentCriteria; that helper would clobber the
+     * diagnosticCode / protectionAction / severity fields that Task 2
+     * carefully configured. Ceiling criteria are static across segments.
+     */
+    pressureCeilingValue = HYD_Segment_GetPressureCeiling(segment);
+    if (pressureCeilingValue > 0.0) {
+        pressureCeilingTolerance = HYD_Segment_GetPressureCeilingTolerance(segment);
+        ceilingActive = HYD_Segment_PressureCeilingActiveAt(segment, fb->AXIS_REF.position);
+        if (ceilingActive) {
+            HYD_DiagnosticCriteriaState* ceilingState = &fb->_pressureCeilingCriteriaState;
+            HYD_DiagnosticCriteria* ceilingCriteria = &fb->_pressureCeilingCriteria;
+            HYD_BOOL ceilingStartupActive = HYD_IsStartupSuppressActive(elapsed, ceilingCriteria->startupSuppressTime);
+            HYD_BOOL ceilingSwitchActive = HYD_IsSwitchSuppressActive(isSwitchPhase, elapsed, ceilingCriteria->switchSuppressTime);
+            HYD_BOOL ceilingSuppressed =
+                (ceilingCriteria->enableStartupSuppress && ceilingStartupActive) ||
+                (ceilingCriteria->enableSwitchSuppress && ceilingSwitchActive);
+
+            ceilingErrorValue = fb->AXIS_REF.pressure - (pressureCeilingValue + pressureCeilingTolerance);
+
+            memset(&ceilingResult, 0, sizeof(ceilingResult));
+
+            if (ceilingSuppressed) {
+                /* Within startup/switch suppression window: do not arm the
+                 * trigger but also do not reset prior state. Just hold. */
+            } else if (ceilingErrorValue > 0.0) {
+                /* Pressure exceeds ceiling+tol — apply debounce semantics
+                 * matching the standard Check* functions. */
+                if (!ceilingState->lastTriggered) {
+                    ceilingState->lastTriggered = true;
+                    ceilingState->triggerStartTime = fb->AXIS_REF.timestamp;
+                }
+                if ((fb->AXIS_REF.timestamp - ceilingState->triggerStartTime) >= ceilingCriteria->debounceTime) {
+                    /* Debounce passed: WARNING (DERATE) latched. */
+                    pressureCeilingExceeded = true;
+                    ceilingResult.triggered = true;
+                    ceilingResult.code = ceilingCriteria->diagnosticCode;
+                    ceilingResult.severity = HYD_DIAG_SEVERITY_WARNING;
+                    ceilingResult.action = ceilingCriteria->protectionAction;
+
+                    /* WARNING -> FAULT escalation after faultEscalationTime
+                     * of sustained breach. CheckFaultEscalation updates
+                     * ceilingResult in place if escalation occurs. */
+                    if (HYD_DiagnosticCriteria_CheckFaultEscalation(&ceilingResult,
+                                                                     ceilingCriteria,
+                                                                     ceilingState,
+                                                                     fb->AXIS_REF.timestamp)) {
+                        pressureCeilingViolated = true;
+                    }
+                }
+            } else if (fb->AXIS_REF.pressure < pressureCeilingValue) {
+                /* Pressure dipped strictly below ceiling (not just into the
+                 * tolerance band). Use this stricter threshold for hysteresis
+                 * so jitter near ceiling+tol does not toggle the diagnostic. */
+                HYD_DiagnosticCriteria_ResetState(ceilingState);
+            }
+            /* If pressure is between ceiling and ceiling+tol, we hold state:
+             * an already-armed debounce does not reset, but we also do not
+             * count toward escalation. This produces the desired hysteresis
+             * band [ceiling, ceiling+tol]. */
+        } else {
+            /* Position is outside the configured window: reset state so the
+             * next entry starts fresh and does not carry stale duration. */
+            HYD_DiagnosticCriteria_ResetState(&fb->_pressureCeilingCriteriaState);
+        }
+    } else {
+        /* Segment did not configure a ceiling: keep state clean. */
+        HYD_DiagnosticCriteria_ResetState(&fb->_pressureCeilingCriteriaState);
+    }
+
     /* --- Position diagnostics --- */
     velocityReferenceAbs = fabs(executionReference->velocityReference);
     actualVelocityAbs = fabs(fb->AXIS_REF.velocity);
@@ -1468,14 +1560,34 @@ static void HYD_UpdateExecutionDiagnostics(HYD_MotionControlFB* fb,
     }
 
     /* Build priority diagnostic from active conditions.
-     * Fault-escalated results upgrade the severity from WARNING to FAULT. */
+     * Ordering rule: FAULT-level codes outrank WARNING-level codes; among
+     * the same severity, ceiling violations outrank legacy pressure
+     * deviations.  Concretely:
+     *   1. timeout (FAULT)
+     *   2. pressureCeilingViolated (FAULT)
+     *   3. overPressure when fault-escalated (FAULT)
+     *   4. pressureCeilingExceeded (WARNING)
+     *   5. overPressure (WARNING)
+     *   6. underPressure (WARNING or FAULT depending on escalation)
+     *   7. flowDeviation
+     *   8. positionDeviation
+     *   9. velocityDeviation
+     */
     if (timeout) {
         priorityCode = HYD_DIAG_CODE_TIMEOUT;
         prioritySeverity = HYD_DIAG_SEVERITY_FAULT;
+    } else if (pressureCeilingViolated) {
+        priorityCode = HYD_DIAG_CODE_PRESSURE_CEILING_VIOLATED;
+        prioritySeverity = HYD_DIAG_SEVERITY_FAULT;
+    } else if (overPressure && pressureResult.severity == HYD_DIAG_SEVERITY_FAULT) {
+        priorityCode = HYD_DIAG_CODE_OVER_PRESSURE;
+        prioritySeverity = HYD_DIAG_SEVERITY_FAULT;
+    } else if (pressureCeilingExceeded) {
+        priorityCode = HYD_DIAG_CODE_PRESSURE_CEILING_EXCEEDED;
+        prioritySeverity = HYD_DIAG_SEVERITY_WARNING;
     } else if (overPressure) {
         priorityCode = HYD_DIAG_CODE_OVER_PRESSURE;
-        prioritySeverity = (pressureResult.severity == HYD_DIAG_SEVERITY_FAULT)
-            ? HYD_DIAG_SEVERITY_FAULT : HYD_DIAG_SEVERITY_WARNING;
+        prioritySeverity = HYD_DIAG_SEVERITY_WARNING;
     } else if (underPressure) {
         priorityCode = HYD_DIAG_CODE_UNDER_PRESSURE;
         prioritySeverity = (pressureResult.severity == HYD_DIAG_SEVERITY_FAULT)
@@ -1506,6 +1618,8 @@ static void HYD_UpdateExecutionDiagnostics(HYD_MotionControlFB* fb,
     fb->DIAGNOSTIC.positionDeviation = positionDeviation;
     fb->DIAGNOSTIC.velocityDeviation = velocityDeviation;
     fb->DIAGNOSTIC.timeout = timeout;
+    fb->DIAGNOSTIC.pressureCeilingExceeded = pressureCeilingExceeded;
+    fb->DIAGNOSTIC.pressureCeilingViolated = pressureCeilingViolated;
     fb->DIAGNOSTIC.pressureError = pressureError;
     fb->DIAGNOSTIC.flowError = flowError;
     fb->DIAGNOSTIC.velocityError = velocityError;
