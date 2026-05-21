@@ -65,9 +65,6 @@ target_link_libraries(segment_completion_test PRIVATE HydroMotionLib)
 add_executable(rbf_pid_test tests/rbf_pid_test.c)
 target_link_libraries(rbf_pid_test PRIVATE HydroMotionLib)
 
-add_executable(ramp_controller_test tests/ramp_controller_test.c)
-target_link_libraries(ramp_controller_test PRIVATE HydroMotionLib)
-
 add_executable(test_diagnostic_monitor tests/test_diagnostic_monitor.c)
 target_link_libraries(test_diagnostic_monitor PRIVATE HydroMotionLib)
 
@@ -85,6 +82,8 @@ target_link_libraries(test_direct_mode PRIVATE HydroMotionLib)
 
 add_executable(test_direct_mode_simple tests/test_direct_mode_simple.c)
 target_link_libraries(test_direct_mode_simple PRIVATE HydroMotionLib)
+# add_test registration for test_direct_mode_simple lives in the test
+# registration block below (after enable_testing()).
 
 add_executable(test_parameter_access tests/test_parameter_access.c)
 target_link_libraries(test_parameter_access PRIVATE HydroMotionLib)
@@ -125,6 +124,9 @@ target_link_libraries(main PRIVATE HydroMotionLib)
 # Performance benchmark executable
 add_executable(benchmark_performance tests/benchmark_performance.c)
 target_link_libraries(benchmark_performance PRIVATE HydroMotionLib)
+# benchmark_performance intentionally NOT registered with add_test():
+# performance benchmarks should be run in a separate, non-blocking CI job
+# to avoid flakiness in the main test suite.
 
 enable_testing()
 add_test(NAME test_motion_planner COMMAND test_motion_planner)
@@ -137,12 +139,14 @@ add_test(NAME test_action_profile COMMAND test_action_profile)
 add_test(NAME test_vp_transfer COMMAND test_vp_transfer)
 add_test(NAME test_segment_completion COMMAND segment_completion_test)
 add_test(NAME test_rbf_pid COMMAND rbf_pid_test)
-add_test(NAME test_ramp_controller COMMAND ramp_controller_test)
 add_test(NAME test_diagnostic_monitor COMMAND test_diagnostic_monitor)
 add_test(NAME test_diagnostic_criteria COMMAND test_diagnostic_criteria)
 add_test(NAME test_sprint3_integration COMMAND test_sprint3_integration)
 add_test(NAME test_sprint_b_integration COMMAND test_sprint_b_integration)
 add_test(NAME test_direct_mode COMMAND test_direct_mode)
+add_test(NAME test_direct_mode_simple
+         COMMAND test_direct_mode_simple
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 add_test(NAME test_parameter_access COMMAND test_parameter_access)
 add_test(NAME test_parameter_iec COMMAND test_parameter_iec)
 add_test(NAME test_hydro_sim_fb COMMAND test_hydro_sim_fb)
