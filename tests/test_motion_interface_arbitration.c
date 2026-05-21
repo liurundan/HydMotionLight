@@ -1355,6 +1355,48 @@ static void test_moveprofile_does_not_self_abort_on_recipe_nextsegment(void) {
                "MoveProfile should remain in a live lifecycle on the next recipe segment");
 }
 
+static void test_reverse_blend_pending_completes_as_buffered(void) {
+    HYD_MotionControlFB* fb;
+    HYD_MOVEABSOLUTE second;
+
+    fb = start_active_moveabsolute_for_blend_fallback_test();
+    queue_pending_moveabsolute_for_blend_fallback_test(0.0f, -1);
+
+    ASSERT_TRUE(fb->_directPendingValid,
+               "Reverse MoveAbsolute should still occupy the pending slot");
+    ASSERT_TRUE(!fb->_directBlendContext.active,
+               "Reverse MoveAbsolute should not create a blend context");
+
+    fb->AXIS_REF.position = 100.0f;
+    fb->AXIS_REF.velocity = 0.0f;
+    fb->AXIS_REF.timestamp += 0.5f;
+    __HydMotion_framework_Publish();
+
+    ASSERT_TRUE(!fb->_directPendingValid,
+               "Reverse pending should be consumed via buffered completion path");
+    ASSERT_TRUE(fb->_activeSegmentValid,
+               "Active segment should be the reverse MoveAbsolute after buffered cutover");
+    ASSERT_TRUE(fabs(fb->_activeSegment.targetPosition - 0.0f) < 0.001f,
+               "Pending reverse MoveAbsolute should become active segment");
+    ASSERT_TRUE(!fb->_directBlendContext.active,
+               "Blend context should remain inactive across reverse buffered completion");
+
+    memset(&second, 0, sizeof(second));
+    IEC_VAL(second.EN) = true;
+    IEC_VAL(second.EXECUTE) = true;
+    second.EXECUTE0.value = true;
+    IEC_VAL(second.AXISID) = 0;
+    IEC_VAL(second.POSITION) = 0.0f;
+    IEC_VAL(second.VELOCITY) = 8.0f;
+    IEC_VAL(second.ACCELERATION) = 100.0f;
+    IEC_VAL(second.DECELERATION) = 100.0f;
+    IEC_VAL(second.DIRECTION) = -1;
+    IEC_VAL(second.BUFFERMODE) = HYD_BUFFER_MODE_BLENDING_HIGH;
+    __mcl_cmd_MoveAbsolute(&second);
+    ASSERT_TRUE(IEC_VAL(second.COMMANDABORTED) == false,
+               "Reverse buffered completion should not raise COMMANDABORTED for the second command");
+}
+
 static void test_live_update_refreshes_blend_context(void) {
     HYD_MotionControlFB* fb;
     HYD_LiveUpdateRequest request;
@@ -1520,6 +1562,7 @@ int main(void) {
     test_runtime_fault_clears_blend_pending_slot();
     test_blend_pending_rejected_while_stopping();
     test_live_update_refreshes_blend_context();
+    test_reverse_blend_pending_completes_as_buffered();
 
     printf("\n=== Results: %d/%d passed ===\n", tests_passed, tests_run);
     return (tests_passed == tests_run) ? 0 : 1;
