@@ -98,7 +98,88 @@ static void test_ceiling_exceeded_in_position_mode(void) {
     printf("test_ceiling_exceeded_in_position_mode PASSED\n");
 }
 
+/* Regression for the one-cycle-pulse bug originally in commit bcd19ef.
+ *
+ * HYD_DiagnosticCriteria_CheckFaultEscalation returns true only on the
+ * transition cycle where state->faultEscalated first flips false -> true.
+ * On subsequent cycles the function early-exits returning false even
+ * though state->faultEscalated remains true and pressure is still above
+ * ceiling. If pressureCeilingViolated is gated on the return value alone
+ * the BOOL pulses for exactly one cycle and the priority chain downgrades
+ * the protection action from STOP back to DERATE the cycle after escalation.
+ *
+ * This test asserts that once pressureCeilingViolated becomes true during
+ * a sustained breach it stays true until pressure drops below ceiling. */
+static void test_ceiling_violated_remains_sticky_across_cycles(void) {
+    HYD_MotionControlFB fb;
+    HYD_BOOL sawViolatedAtLeastOnce = false;
+    HYD_BOOL violatedStuckTrue = true;  /* Tracks whether BOOL stays true after first observed FAULT */
+    int i;
+
+    HYD_MotionControlFB_Init(&fb);
+    prime_clamp_close_with_ceiling(&fb, /*ceiling*/ 5.0, /*tol*/ 0.2,
+                                   /*windowStart*/ 70.0, /*windowEnd*/ 100.0);
+
+    fb.AXIS_REF.timestamp = 0.0;
+    fb.AXIS_REF.position = 0.0;
+    fb.AXIS_REF.pressure = 1.0;
+    assert(HYD_MotionControlFB_StartSegment(&fb, 0, 0.0));
+
+    /* Phase 1: pre-trigger ramp (run beyond switch-suppress, well below ceiling) */
+    for (i = 0; i < 100; i++) {
+        fb.AXIS_REF.timestamp = (HYD_TIME)(i * 0.01);
+        fb.AXIS_REF.position = 80.0;
+        fb.AXIS_REF.pressure = 1.0;     /* below ceiling — no trigger */
+        HYD_MotionControlFB_Execute(&fb);
+    }
+
+    /* Phase 2: sustained breach. Run long enough past faultEscalationTime
+     * (0.30s) to comfortably traverse the transition cycle and observe the
+     * latched behavior on subsequent cycles. */
+    for (i = 0; i < 100; i++) {
+        fb.AXIS_REF.timestamp = (HYD_TIME)(1.0 + i * 0.01);
+        fb.AXIS_REF.position = 80.0;
+        fb.AXIS_REF.pressure = 6.0;     /* above ceiling+tol */
+        HYD_MotionControlFB_Execute(&fb);
+
+        if (fb.DIAGNOSTIC.pressureCeilingViolated) {
+            sawViolatedAtLeastOnce = true;
+        } else if (sawViolatedAtLeastOnce) {
+            /* Once we've seen VIOLATED true, it must remain true while
+             * pressure is still above ceiling. Falling back to false here
+             * is the original bug. */
+            violatedStuckTrue = false;
+        }
+    }
+
+    assert(sawViolatedAtLeastOnce);        /* escalation actually happened */
+    assert(violatedStuckTrue);             /* BOOL was latched, not pulsed */
+    assert(fb.DIAGNOSTIC.code == HYD_DIAG_CODE_PRESSURE_CEILING_VIOLATED);
+    assert(fb.DIAGNOSTIC.severity == HYD_DIAG_SEVERITY_FAULT);
+    assert(fb.DIAGNOSTIC.protectionAction == HYD_PROTECTION_ACTION_STOP);
+
+    /* Phase 3: confirm the latch clears via operator RESET acknowledgment.
+     * Note: once the FB transitions to HYD_FB_STATE_FAULT the diagnostic
+     * pipeline (HYD_UpdateExecutionDiagnostics) is bypassed by the
+     * fault-hold branch in HYD_MotionControlFB_PublishOutputs, so the
+     * latch will not clear from a mere pressure drop while still in FAULT.
+     * This matches the safety contract: a fault requires explicit
+     * acknowledgment. The latch's underlying state (ceilingState->
+     * faultEscalated) is cleared by SoftReset, so after a RESET cycle the
+     * BOOL is guaranteed false. */
+    fb.RESET = true;
+    fb.AXIS_REF.timestamp = 2.5;
+    HYD_MotionControlFB_Execute(&fb);
+    fb.RESET = false;
+    assert(!fb.DIAGNOSTIC.pressureCeilingViolated);
+    assert(!fb.DIAGNOSTIC.pressureCeilingExceeded);
+    assert(fb.DIAGNOSTIC.severity != HYD_DIAG_SEVERITY_FAULT);
+
+    printf("test_ceiling_violated_remains_sticky_across_cycles PASSED\n");
+}
+
 int main(void) {
     test_ceiling_exceeded_in_position_mode();
+    test_ceiling_violated_remains_sticky_across_cycles();
     return 0;
 }

@@ -1473,12 +1473,32 @@ static void HYD_UpdateExecutionDiagnostics(HYD_MotionControlFB* fb,
 
                     /* WARNING -> FAULT escalation after faultEscalationTime
                      * of sustained breach. CheckFaultEscalation updates
-                     * ceilingResult in place if escalation occurs. */
-                    if (HYD_DiagnosticCriteria_CheckFaultEscalation(&ceilingResult,
-                                                                     ceilingCriteria,
-                                                                     ceilingState,
-                                                                     fb->AXIS_REF.timestamp)) {
+                     * ceilingResult in place AND sets state->faultEscalated
+                     * on the transition cycle. The bookkeeping call is
+                     * REQUIRED — its return value is only true on the
+                     * transition cycle, so we cannot use it to gate the
+                     * pressureCeilingViolated BOOL or we get a one-cycle
+                     * pulse (cycle N reports FAULT/STOP; cycle N+1 falls
+                     * back to WARNING/DERATE while pressure is still above
+                     * ceiling). */
+                    (void)HYD_DiagnosticCriteria_CheckFaultEscalation(&ceilingResult,
+                                                                       ceilingCriteria,
+                                                                       ceilingState,
+                                                                       fb->AXIS_REF.timestamp);
+
+                    /* Latch: while criteria state remains escalated, keep
+                     * the BOOL + severity at FAULT. The criteria state is
+                     * cleared by HYD_DiagnosticCriteria_ResetState in the
+                     * hysteresis branch (pressure < ceiling), the window-
+                     * exit branch, and the no-ceiling branch — so this
+                     * latch correctly clears when any of those happen. */
+                    if (ceilingState->faultEscalated) {
                         pressureCeilingViolated = true;
+                        ceilingResult.severity = HYD_DIAG_SEVERITY_FAULT;
+                        ceilingResult.action = HYD_PROTECTION_ACTION_STOP;
+                        if (ceilingCriteria->faultCode != HYD_DIAG_CODE_NONE) {
+                            ceilingResult.code = ceilingCriteria->faultCode;
+                        }
                     }
                 }
             } else if (fb->AXIS_REF.pressure < pressureCeilingValue) {
