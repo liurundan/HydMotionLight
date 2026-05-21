@@ -20,6 +20,7 @@
 
 #include "motion_interface.h"
 #include "motion_control.h"
+#include "state_reporter.h"
 
 extern HYD_MotionControlFB* __MK_GetPublic_MotionControlFB(int index);
 
@@ -1354,6 +1355,30 @@ static void test_moveprofile_does_not_self_abort_on_recipe_nextsegment(void) {
                "MoveProfile should remain in a live lifecycle on the next recipe segment");
 }
 
+static void test_runtime_fault_clears_blend_pending_slot(void) {
+    HYD_MotionControlFB* fb;
+
+    fb = start_blend_pair(HYD_BUFFER_MODE_BLENDING_NEXT, 20.0f, 8.0f);
+    ASSERT_TRUE(fb != NULL, "Axis 0 control FB should exist for fault-teardown test");
+    ASSERT_TRUE(fb->_directPendingValid,
+               "Pending blend command should be present before runtime fault");
+    ASSERT_TRUE(fb->_directBlendContext.active,
+               "Blend context should be active before runtime fault");
+
+    HYD_StateReporter_ReportFault(fb,
+                                  HYD_DIAG_CODE_SENSOR_FAULT,
+                                  fb->AXIS_REF.timestamp,
+                                  &fb->_activeSegment,
+                                  &fb->STATE.references);
+
+    ASSERT_TRUE(fb->FB_STATE == HYD_FB_STATE_FAULT,
+               "Runtime fault entry should drive FB_STATE to FAULT");
+    ASSERT_TRUE(!fb->_directPendingValid,
+               "Runtime fault entry should clear pending direct slot");
+    ASSERT_TRUE(!fb->_directBlendContext.active,
+               "Runtime fault entry should clear blend context");
+}
+
 static void test_stop_completion_clears_blend_pending_slot(void) {
     HYD_MotionControlFB* fb;
 
@@ -1407,6 +1432,7 @@ int main(void) {
     test_direct_command_starts_cleanly_after_recipe_done();
     test_moveprofile_does_not_self_abort_on_recipe_nextsegment();
     test_stop_completion_clears_blend_pending_slot();
+    test_runtime_fault_clears_blend_pending_slot();
 
     printf("\n=== Results: %d/%d passed ===\n", tests_passed, tests_run);
     return (tests_passed == tests_run) ? 0 : 1;

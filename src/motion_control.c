@@ -388,7 +388,7 @@ static HYD_BOOL HYD_ShouldCutoverDirectBlend(const HYD_MotionControlFB* fb,
     }
 }
 
-static void HYD_ClearDirectPendingSlot(HYD_MotionControlFB* fb) {
+void HYD_ClearDirectPendingSlot(HYD_MotionControlFB* fb) {
     if (fb == NULL) {
         return;
     }

@@ -2,6 +2,8 @@
 #include "state_reporter.h"
 #include "pressure_controller.h"
 
+extern void HYD_ClearDirectPendingSlot(HYD_MotionControlFB* fb);
+
 static HYD_BOOL HYD_ProtectionManager_HasSelectedStartSource(const HYD_MotionControlFB* fb) {
     if (fb == NULL) {
         return false;
@@ -85,5 +87,6 @@ void HYD_ProtectionManager_EnterFaultStop(HYD_MotionControlFB* fb) {
 
     HYD_ProtectionManager_ResetRuntimeActuation(fb);
     fb->_lastCommandedFlow = 0.0;
+    HYD_ClearDirectPendingSlot(fb);
     HYD_StateReporter_EnterFaultState(fb);
 }
