@@ -2131,6 +2131,16 @@ HYD_BOOL HYD_MotionControlFB_StartDirectCommand(HYD_MotionControlFB* fb,
         return false;
     }
 
+    if (fb->_isStopping && bufferMode != HYD_BUFFER_MODE_ABORT) {
+        HYD_StateReporter_ReportDiagnostic(fb,
+                                           HYD_DIAG_CODE_COMMAND_NOT_ALLOWED,
+                                           HYD_DIAG_SEVERITY_WARNING,
+                                           timestamp,
+                                           fb->_activeSegmentValid ? &fb->_activeSegment : NULL,
+                                           &fb->STATE.references);
+        return false;
+    }
+
     activeDirect = fb->STATE.active &&
                    fb->_activeSegmentValid &&
                    fb->_activeSegmentSource == HYD_SEGMENT_SOURCE_DIRECT;
