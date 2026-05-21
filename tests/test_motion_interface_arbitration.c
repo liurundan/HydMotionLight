@@ -1355,6 +1355,42 @@ static void test_moveprofile_does_not_self_abort_on_recipe_nextsegment(void) {
                "MoveProfile should remain in a live lifecycle on the next recipe segment");
 }
 
+static void test_live_update_refreshes_blend_context(void) {
+    HYD_MotionControlFB* fb;
+    HYD_LiveUpdateRequest request;
+
+    fb = start_blend_pair(HYD_BUFFER_MODE_BLENDING_PREVIOUS, 20.0f, 8.0f);
+    ASSERT_TRUE(fb != NULL, "Axis 0 control FB should exist for live-update refresh test");
+    ASSERT_TRUE(fb->_directBlendContext.active,
+               "Blend context should be active before live update");
+    ASSERT_TRUE(fabs(fb->_directBlendContext.switchPosition - 100.0f) < 0.001f,
+               "Initial blend switch position should match active target");
+    ASSERT_TRUE(fabs(fb->_directBlendContext.blendVelocity - 20.0f) < 0.001f,
+               "Initial blend velocity should match BlendingPrevious selection");
+
+    memset(&request, 0, sizeof(request));
+    request.flags = HYD_LIVE_UPDATE_TARGET_POSITION |
+                    HYD_LIVE_UPDATE_MAX_VELOCITY |
+                    HYD_LIVE_UPDATE_ACCELERATION |
+                    HYD_LIVE_UPDATE_DECELERATION;
+    request.ownerKind = HYD_DIRECT_CMD_MOVE_ABSOLUTE;
+    request.ownerExecutionId = fb->_directOwnerExecutionId;
+    request.targetPosition = 140.0f;
+    request.maxVelocity = 12.0f;
+    request.maxAcceleration = 100.0f;
+    request.maxDeceleration = 100.0f;
+
+    ASSERT_TRUE(HYD_MotionControlFB_ApplyLiveUpdate(fb, &request),
+               "Live update should succeed for active direct MoveAbsolute");
+
+    ASSERT_TRUE(fb->_directBlendContext.active,
+               "Blend context should remain active after live update");
+    ASSERT_TRUE(fabs(fb->_directBlendContext.switchPosition - 140.0f) < 0.001f,
+               "Blend switch position should follow updated target position");
+    ASSERT_TRUE(fabs(fb->_directBlendContext.blendVelocity - 12.0f) < 0.001f,
+               "BlendingPrevious blend velocity should follow updated active maxVelocity");
+}
+
 static void test_blend_pending_rejected_while_stopping(void) {
     HYD_MotionControlFB* fb;
     HYD_MOVEABSOLUTE first;
@@ -1483,6 +1519,7 @@ int main(void) {
     test_stop_completion_clears_blend_pending_slot();
     test_runtime_fault_clears_blend_pending_slot();
     test_blend_pending_rejected_while_stopping();
+    test_live_update_refreshes_blend_context();
 
     printf("\n=== Results: %d/%d passed ===\n", tests_passed, tests_run);
     return (tests_passed == tests_run) ? 0 : 1;

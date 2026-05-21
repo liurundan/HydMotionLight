@@ -2545,6 +2545,13 @@ HYD_BOOL HYD_MotionControlFB_ApplyLiveUpdate(HYD_MotionControlFB* fb,
     HYD_StateReporter_SetSegmentTag(fb, fb->_activeSegment.segmentTag);
     HYD_StateReporter_SetSegmentSource(fb, fb->_activeSegmentSource);
     HYD_StateReporter_ClearCurrentDiagnostic(fb);
+
+    if (fb->_directPendingValid && fb->_directBlendContext.active) {
+        (void)HYD_TryCreateDirectBlendContext(fb,
+                                              fb->_directPendingBufferMode,
+                                              &fb->_directPendingSegment);
+    }
+
     return true;
 }
 
