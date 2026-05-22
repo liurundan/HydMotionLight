@@ -319,10 +319,11 @@ typedef HYD_REAL HYD_TIME;
  * 原值：motion_control.c:1824 `0.01f`。 */
 #define HYD_THRESH_STOP_VEL_DONE_MAG         0.01f
 
-/* 停车减速完成后，主循环再次判定 decelerate-only 段完成时使用的速度阈值。
- * 单位：plannerOutput.targetVelocity 维度（mm/s）。
- * 原值：motion_control.c:1866 `0.001`。 */
-#define HYD_THRESH_DECEL_TARGET_VEL_DONE     0.001
+/* Stop-decel watchdog completion threshold for plannerOutput.targetVelocity.
+ * 停车减速完成后，主循环再次判定 decelerate-only 段完成时使用的速度阈值。
+ * 单位：mm/s（与 HYD_REAL targetVelocity 同维度）。
+ * 原值：motion_control.c:1866 `0.001`，已 f-typed 与同组 _MAG 常量保持一致。 */
+#define HYD_THRESH_DECEL_TARGET_VEL_DONE     0.001f
 
 /* 停车 watchdog：ideal-stop time × N + slack(s) 后强制升级 FAULT.
  * 原值：motion_control.c:1839 `5.0f * idealStopTime + 1.0f`. */
@@ -333,17 +334,20 @@ typedef HYD_REAL HYD_TIME;
 
 /* PRESSURE_CEILING_EXCEEDED 触发前的 debounce 时长。短于一般 pressure
  * deviation debounce，因为 ceiling 违规已超出安全包络，必须更快反应。
- * 单位：秒。原值：motion_control.c:2093 `0.05`. */
-#define HYD_THRESH_PRESSURE_CEILING_DEBOUNCE_S        0.05
+ * 单位：秒（与 HYD_TIME 字段同维度）。
+ * 原值：motion_control.c:2093 `0.05`，已 f-typed 与同组 _MAG 常量保持一致。 */
+#define HYD_THRESH_PRESSURE_CEILING_DEBOUNCE_S        0.05f
 
 /* 段启动后多久内抑制 PRESSURE_CEILING_EXCEEDED 误报（pressure 在压力建立
  * 阶段会有大幅瞬态）。
- * 单位：秒。原值：motion_control.c:2094 `0.10`. */
-#define HYD_THRESH_PRESSURE_CEILING_STARTUP_SUPPRESS_S 0.10
+ * 单位：秒（与 HYD_TIME 字段同维度）。
+ * 原值：motion_control.c:2094 `0.10`，已 f-typed 与同组 _MAG 常量保持一致。 */
+#define HYD_THRESH_PRESSURE_CEILING_STARTUP_SUPPRESS_S 0.10f
 
 /* PRESSURE_CEILING_EXCEEDED 持续多少秒后升级为 PRESSURE_CEILING_VIOLATED（FAULT）.
- * 单位：秒。原值：motion_control.c:2096 `0.30`. */
-#define HYD_THRESH_PRESSURE_CEILING_FAULT_ESCALATION_S 0.30
+ * 单位：秒（与 HYD_TIME 字段同维度）。
+ * 原值：motion_control.c:2096 `0.30`，已 f-typed 与同组 _MAG 常量保持一致。 */
+#define HYD_THRESH_PRESSURE_CEILING_FAULT_ESCALATION_S 0.30f
 
 /* --- RBF-PID 数值死区与滤波（src/rbf_pid.c） --- */
 
@@ -357,6 +361,8 @@ typedef HYD_REAL HYD_TIME;
 #define HYD_THRESH_RBF_FEEDBACK_ZERO_BAND    0.02f
 
 /* 前馈加速度补偿激活的最小压力二阶差分（绝对值）.
+ * 单位：归一化压力的二阶差分（无量纲）。fddPress 为 fActPress（即
+ * pid->Feedback，归一化压力）的二阶差分，量纲同为归一化（无量纲）。
  * 原值：rbf_pid.c:312,314 `0.0001f`. */
 #define HYD_THRESH_RBF_FF_ACCEL_DEAD_BAND    0.0001f
 
