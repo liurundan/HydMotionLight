@@ -26,6 +26,19 @@ static HYD_BOOL HYD_QueuePendingCommand(HYD_MotionControlFB* fb,
                                         HYD_UINT segmentIndex,
                                         HYD_TIME timestamp);
 static void HYD_MotionControlFB_RunRunningState(HYD_MotionControlFB* fb);
+static void HYD_RunRunningStateStopping(HYD_MotionControlFB* fb,
+                                        const HYD_MotionSegment* segment,
+                                        HYD_MotionPlannerOutput* plannerOutput,
+                                        HYD_PumpConverterOutput* pumpOutput,
+                                        HYD_ExecutionReference* executionReference,
+                                        HYD_PressureControllerOutput* pressureOutput);
+static HYD_BOOL HYD_RunRunningStateBlendCutover(HYD_MotionControlFB* fb,
+                                                const HYD_MotionSegment* segment,
+                                                const HYD_ExecutionReference* executionReference);
+static HYD_BOOL HYD_RunRunningStateCompletion(HYD_MotionControlFB* fb,
+                                              const HYD_MotionSegment* segment,
+                                              const HYD_MotionPlannerOutput* plannerOutput,
+                                              const HYD_ExecutionReference* executionReference);
 static HYD_DirectCommandKind HYD_InferDirectCommandKindFromSegment(const HYD_MotionSegment* segment);
 static void HYD_PrimeSegmentControllers(HYD_MotionControlFB* fb,
                                         const HYD_MotionSegment* segment,
@@ -1676,10 +1689,6 @@ static void HYD_MotionControlFB_RunRunningState(HYD_MotionControlFB* fb) {
     HYD_OutputLimiterInput limiterInput;
     HYD_OutputLimiterOutput limiterOutput;
     HYD_ExecutionReference executionReference;
-    HYD_SegmentCompletionContext completionContext;
-    HYD_BOOL segmentCompleted;
-    HYD_BOOL recipeFinished;
-    HYD_SegmentSource completedSegmentSource;
 
     if (fb == NULL) {
         return;
@@ -1784,129 +1793,17 @@ static void HYD_MotionControlFB_RunRunningState(HYD_MotionControlFB* fb) {
     fb->_lastCommandedFlow = pumpOutput.commandFlow;
 
     if (fb->_isStopping) {
-        HYD_REAL stopElapsed = fb->AXIS_REF.timestamp - fb->_stopStartTime;
-        HYD_REAL stopMag = fabs(fb->_stopStartVel);
-        HYD_REAL stopSign = (fb->_stopStartVel >= 0.0f) ? 1.0f : -1.0f;
-        HYD_REAL stopDeceleration = (fb->_stopDeceleration > 0.0f)
-            ? fb->_stopDeceleration
-            : ((segment->maxDeceleration > 0.0f) ? segment->maxDeceleration : segment->maxAcceleration);
-        HYD_REAL decelMag = stopMag - stopDeceleration * stopElapsed;
-
-        if (decelMag < 0.0f) {
-            decelMag = 0.0f;
-        }
-
-        plannerOutput.targetVelocity = decelMag * stopSign;
-        plannerOutput.targetFlow = HYD_ClampReal(decelMag * segment->velocityToFlowGain,
-                                                 0.0f,
-                                                 segment->maxFlow);
-        pumpOutput.commandFlow = plannerOutput.targetFlow;
-        pumpOutput.pumpSpeed = HYD_ClampReal(plannerOutput.targetFlow * fb->FLOW_TO_PUMP_SPEED_GAIN,
-                                             0.0f,
-                                             fb->PUMP_SPEED_LIMIT);
-        executionReference.flowReference = pumpOutput.commandFlow;
-        executionReference.velocityReference = plannerOutput.targetVelocity;
-
-        HYD_StateReporter_ReportExecution(fb,
-                                          &plannerOutput,
-                                          &pumpOutput,
-                                          &executionReference,
-                                          pressureOutput.appliedStrategy,
-                                          &pressureOutput,
-                                          &fb->DIAGNOSTIC);
-
-        fb->_simFeedback.targetPosition = segment->targetPosition;
-        fb->_simFeedback.targetVelocity = plannerOutput.targetVelocity;
-        fb->_simFeedback.targetFlow = pumpOutput.commandFlow;
-        fb->_simFeedback.targetPressure = executionReference.pressureReference;
-        fb->_simFeedback.valid = true;
-
-        if (decelMag < HYD_THRESH_STOP_DECEL_DONE_MAG && fabs(fb->AXIS_REF.velocity) < HYD_THRESH_STOP_VEL_DONE_MAG) {
-            fb->_isStopping = false;
-            fb->_stopStartVel = 0.0f;
-            fb->_stopDeceleration = 0.0f;
-            fb->_directSessionState = HYD_DIRECT_SESSION_DONE;
-            HYD_ClearDirectPendingSlot(fb);
-            HYD_SafetyStateManager_ApplyIdleState(fb, true, false);
-            HYD_StateReporter_SetFbState(fb, HYD_FB_STATE_DONE);
-        } else if (stopDeceleration > 0.0f) {
-            /* C-4: stop-timeout safety net.
-             * If the commanded deceleration ramp completes (decelMag ~= 0)
-             * but feedback velocity never drops below the completion threshold
-             * (stuck encoder / actuator), this branch would hang forever.
-             * Threshold = 5x ideal-stop time + 1.0 s slack. */
-            HYD_REAL idealStopTime = stopMag / stopDeceleration;
-            HYD_REAL stopTimeoutLimit = HYD_THRESH_STOP_TIMEOUT_IDEAL_MULT * idealStopTime + HYD_THRESH_STOP_TIMEOUT_SLACK_S;
-            if (stopElapsed > stopTimeoutLimit) {
-                fb->_directSessionState = HYD_DIRECT_SESSION_FAULT;
-                HYD_StateReporter_ReportFault(fb,
-                                              HYD_DIAG_CODE_TIMEOUT,
-                                              fb->AXIS_REF.timestamp,
-                                              segment,
-                                              &fb->STATE.references);
-                HYD_SafetyStateManager_EnterFaultStop(fb);
-            }
-        }
+        HYD_RunRunningStateStopping(fb, segment, &plannerOutput, &pumpOutput,
+                                    &executionReference, &pressureOutput);
         return;
     }
 
-    if (fb->DIAGNOSTIC.protectionAction == HYD_PROTECTION_ACTION_STOP) {
-        fb->_directSessionState = HYD_DIRECT_SESSION_FAULT;
-        HYD_SafetyStateManager_EnterFaultStop(fb);
-        HYD_StateReporter_RecordDiagnosticEvent(fb, fb->AXIS_REF.timestamp, segment, &executionReference);
+    if (HYD_RunRunningStateBlendCutover(fb, segment, &executionReference)) {
         return;
     }
 
-    if (HYD_ShouldCutoverDirectBlend(fb, segment)) {
-        HYD_RecordDirectExecutionCompleted(fb);
-        (void)HYD_StartPendingDirectSlot(fb, fb->AXIS_REF.timestamp, true);
+    if (HYD_RunRunningStateCompletion(fb, segment, &plannerOutput, &executionReference)) {
         return;
-    }
-
-    if (fb->_isDecelerating && fabs(plannerOutput.targetVelocity) < HYD_THRESH_DECEL_TARGET_VEL_DONE) {
-        completedSegmentSource = fb->_activeSegmentSource;
-        if (completedSegmentSource == HYD_SEGMENT_SOURCE_DIRECT &&
-            fb->_directPendingValid) {
-            (void)HYD_StartPendingDirectSlot(fb, fb->AXIS_REF.timestamp, false);
-            return;
-        }
-        recipeFinished = (completedSegmentSource == HYD_SEGMENT_SOURCE_DIRECT) ||
-            (fb->STATE.currentSegmentIndex + 1U >= fb->RECIPE_SIZE);
-        HYD_SafetyStateManager_ApplyIdleState(fb, recipeFinished, true);
-        HYD_StateReporter_SetSegmentSource(fb, completedSegmentSource);
-        HYD_StateReporter_RecordDiagnosticEvent(fb, fb->AXIS_REF.timestamp, segment, &executionReference);
-        return;
-    }
-
-    completionContext.segment = segment;
-    completionContext.axisRef = &fb->AXIS_REF;
-    completionContext.references = &executionReference;
-    completionContext.timestamp = fb->AXIS_REF.timestamp;
-    completionContext.candidateStartTime = &fb->_completionCandidateStartTime;
-    completionContext.candidateActive = &fb->_completionCandidateActive;
-    segmentCompleted = HYD_SegmentCompletion_CheckWithContext(&completionContext);
-    if (segmentCompleted) {
-        if (!fb->_isDecelerating &&
-            segment->mode == HYD_MODE_SPEED_RAMP &&
-            segment->endCondition != HYD_END_POSITION) {
-            fb->_isDecelerating = true;
-            fb->_decelStartTime = fb->AXIS_REF.timestamp;
-            fb->_decelStartVel = fabs(plannerOutput.targetVelocity);
-            /* continue execution to let deceleration take effect */
-        } else {
-            completedSegmentSource = fb->_activeSegmentSource;
-            if (completedSegmentSource == HYD_SEGMENT_SOURCE_DIRECT &&
-                fb->_directPendingValid) {
-                (void)HYD_StartPendingDirectSlot(fb, fb->AXIS_REF.timestamp, false);
-                return;
-            }
-            recipeFinished = (completedSegmentSource == HYD_SEGMENT_SOURCE_DIRECT) ||
-                (fb->STATE.currentSegmentIndex + 1U >= fb->RECIPE_SIZE);
-            HYD_SafetyStateManager_ApplyIdleState(fb, recipeFinished, true);
-            HYD_StateReporter_SetSegmentSource(fb, completedSegmentSource);
-            HYD_StateReporter_RecordDiagnosticEvent(fb, fb->AXIS_REF.timestamp, segment, &executionReference);
-            return;
-        }
     }
 
     HYD_StateReporter_ReportExecution(fb,
@@ -1926,6 +1823,159 @@ static void HYD_MotionControlFB_RunRunningState(HYD_MotionControlFB* fb) {
     fb->_simFeedback.valid          = true;
 
     fb->SEGMENT_COMPLETED = false;
+}
+
+static void HYD_RunRunningStateStopping(HYD_MotionControlFB* fb,
+                                        const HYD_MotionSegment* segment,
+                                        HYD_MotionPlannerOutput* plannerOutput,
+                                        HYD_PumpConverterOutput* pumpOutput,
+                                        HYD_ExecutionReference* executionReference,
+                                        HYD_PressureControllerOutput* pressureOutput) {
+    HYD_REAL stopElapsed = fb->AXIS_REF.timestamp - fb->_stopStartTime;
+    HYD_REAL stopMag = fabs(fb->_stopStartVel);
+    HYD_REAL stopSign = (fb->_stopStartVel >= 0.0f) ? 1.0f : -1.0f;
+    HYD_REAL stopDeceleration = (fb->_stopDeceleration > 0.0f)
+        ? fb->_stopDeceleration
+        : ((segment->maxDeceleration > 0.0f) ? segment->maxDeceleration : segment->maxAcceleration);
+    HYD_REAL decelMag = stopMag - stopDeceleration * stopElapsed;
+
+    if (decelMag < 0.0f) {
+        decelMag = 0.0f;
+    }
+
+    plannerOutput->targetVelocity = decelMag * stopSign;
+    plannerOutput->targetFlow = HYD_ClampReal(decelMag * segment->velocityToFlowGain,
+                                              0.0f,
+                                              segment->maxFlow);
+    pumpOutput->commandFlow = plannerOutput->targetFlow;
+    pumpOutput->pumpSpeed = HYD_ClampReal(plannerOutput->targetFlow * fb->FLOW_TO_PUMP_SPEED_GAIN,
+                                          0.0f,
+                                          fb->PUMP_SPEED_LIMIT);
+    executionReference->flowReference = pumpOutput->commandFlow;
+    executionReference->velocityReference = plannerOutput->targetVelocity;
+
+    HYD_StateReporter_ReportExecution(fb,
+                                      plannerOutput,
+                                      pumpOutput,
+                                      executionReference,
+                                      pressureOutput->appliedStrategy,
+                                      pressureOutput,
+                                      &fb->DIAGNOSTIC);
+
+    fb->_simFeedback.targetPosition = segment->targetPosition;
+    fb->_simFeedback.targetVelocity = plannerOutput->targetVelocity;
+    fb->_simFeedback.targetFlow = pumpOutput->commandFlow;
+    fb->_simFeedback.targetPressure = executionReference->pressureReference;
+    fb->_simFeedback.valid = true;
+
+    if (decelMag < HYD_THRESH_STOP_DECEL_DONE_MAG &&
+        fabs(fb->AXIS_REF.velocity) < HYD_THRESH_STOP_VEL_DONE_MAG) {
+        fb->_isStopping = false;
+        fb->_stopStartVel = 0.0f;
+        fb->_stopDeceleration = 0.0f;
+        fb->_directSessionState = HYD_DIRECT_SESSION_DONE;
+        HYD_ClearDirectPendingSlot(fb);
+        HYD_SafetyStateManager_ApplyIdleState(fb, true, false);
+        HYD_StateReporter_SetFbState(fb, HYD_FB_STATE_DONE);
+    } else if (stopDeceleration > 0.0f) {
+        /* C-4: stop-timeout safety net.
+         * If the commanded deceleration ramp completes (decelMag ~= 0)
+         * but feedback velocity never drops below the completion threshold
+         * (stuck encoder / actuator), this branch would hang forever.
+         * Threshold = HYD_THRESH_STOP_TIMEOUT_IDEAL_MULT * ideal-stop + slack. */
+        HYD_REAL idealStopTime = stopMag / stopDeceleration;
+        HYD_REAL stopTimeoutLimit = HYD_THRESH_STOP_TIMEOUT_IDEAL_MULT * idealStopTime +
+                                    HYD_THRESH_STOP_TIMEOUT_SLACK_S;
+        if (stopElapsed > stopTimeoutLimit) {
+            fb->_directSessionState = HYD_DIRECT_SESSION_FAULT;
+            HYD_StateReporter_ReportFault(fb,
+                                          HYD_DIAG_CODE_TIMEOUT,
+                                          fb->AXIS_REF.timestamp,
+                                          segment,
+                                          &fb->STATE.references);
+            HYD_SafetyStateManager_EnterFaultStop(fb);
+        }
+    }
+}
+
+/* Returns true if the caller should immediately return (cutover/fault transition occurred). */
+static HYD_BOOL HYD_RunRunningStateBlendCutover(HYD_MotionControlFB* fb,
+                                                const HYD_MotionSegment* segment,
+                                                const HYD_ExecutionReference* executionReference) {
+    if (fb->DIAGNOSTIC.protectionAction == HYD_PROTECTION_ACTION_STOP) {
+        fb->_directSessionState = HYD_DIRECT_SESSION_FAULT;
+        HYD_SafetyStateManager_EnterFaultStop(fb);
+        HYD_StateReporter_RecordDiagnosticEvent(fb, fb->AXIS_REF.timestamp, segment, executionReference);
+        return true;
+    }
+
+    if (HYD_ShouldCutoverDirectBlend(fb, segment)) {
+        HYD_RecordDirectExecutionCompleted(fb);
+        (void)HYD_StartPendingDirectSlot(fb, fb->AXIS_REF.timestamp, true);
+        return true;
+    }
+
+    return false;
+}
+
+/* Returns true if the segment completed and the caller should return immediately. */
+static HYD_BOOL HYD_RunRunningStateCompletion(HYD_MotionControlFB* fb,
+                                              const HYD_MotionSegment* segment,
+                                              const HYD_MotionPlannerOutput* plannerOutput,
+                                              const HYD_ExecutionReference* executionReference) {
+    HYD_SegmentCompletionContext completionContext;
+    HYD_BOOL segmentCompleted;
+    HYD_BOOL recipeFinished;
+    HYD_SegmentSource completedSegmentSource;
+
+    if (fb->_isDecelerating &&
+        fabs(plannerOutput->targetVelocity) < HYD_THRESH_DECEL_TARGET_VEL_DONE) {
+        completedSegmentSource = fb->_activeSegmentSource;
+        if (completedSegmentSource == HYD_SEGMENT_SOURCE_DIRECT &&
+            fb->_directPendingValid) {
+            (void)HYD_StartPendingDirectSlot(fb, fb->AXIS_REF.timestamp, false);
+            return true;
+        }
+        recipeFinished = (completedSegmentSource == HYD_SEGMENT_SOURCE_DIRECT) ||
+            (fb->STATE.currentSegmentIndex + 1U >= fb->RECIPE_SIZE);
+        HYD_SafetyStateManager_ApplyIdleState(fb, recipeFinished, true);
+        HYD_StateReporter_SetSegmentSource(fb, completedSegmentSource);
+        HYD_StateReporter_RecordDiagnosticEvent(fb, fb->AXIS_REF.timestamp, segment, executionReference);
+        return true;
+    }
+
+    completionContext.segment = segment;
+    completionContext.axisRef = &fb->AXIS_REF;
+    completionContext.references = executionReference;
+    completionContext.timestamp = fb->AXIS_REF.timestamp;
+    completionContext.candidateStartTime = &fb->_completionCandidateStartTime;
+    completionContext.candidateActive = &fb->_completionCandidateActive;
+    segmentCompleted = HYD_SegmentCompletion_CheckWithContext(&completionContext);
+    if (!segmentCompleted) {
+        return false;
+    }
+
+    if (!fb->_isDecelerating &&
+        segment->mode == HYD_MODE_SPEED_RAMP &&
+        segment->endCondition != HYD_END_POSITION) {
+        fb->_isDecelerating = true;
+        fb->_decelStartTime = fb->AXIS_REF.timestamp;
+        fb->_decelStartVel = fabs(plannerOutput->targetVelocity);
+        return false;   /* continue execution to let deceleration take effect */
+    }
+
+    completedSegmentSource = fb->_activeSegmentSource;
+    if (completedSegmentSource == HYD_SEGMENT_SOURCE_DIRECT &&
+        fb->_directPendingValid) {
+        (void)HYD_StartPendingDirectSlot(fb, fb->AXIS_REF.timestamp, false);
+        return true;
+    }
+    recipeFinished = (completedSegmentSource == HYD_SEGMENT_SOURCE_DIRECT) ||
+        (fb->STATE.currentSegmentIndex + 1U >= fb->RECIPE_SIZE);
+    HYD_SafetyStateManager_ApplyIdleState(fb, recipeFinished, true);
+    HYD_StateReporter_SetSegmentSource(fb, completedSegmentSource);
+    HYD_StateReporter_RecordDiagnosticEvent(fb, fb->AXIS_REF.timestamp, segment, executionReference);
+    return true;
 }
 
 static HYD_BOOL HYD_RequestStartCommand(HYD_MotionControlFB* fb,
