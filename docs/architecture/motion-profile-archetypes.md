@@ -374,6 +374,7 @@ Process-phase ownership, valve logic, interlocks, and transfer criteria remain d
 The runtime provides helper builders for common injection-machine motion segment defaults:
 
 - `HYD_ActionProfile_BuildClampClose`
+- `HYD_ActionProfile_BuildClampCloseWithMoldProtect`
 - `HYD_ActionProfile_BuildClampOpen`
 - `HYD_ActionProfile_BuildInjectionFill`
 - `HYD_ActionProfile_BuildHoldingPressure`
