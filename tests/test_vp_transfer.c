@@ -134,12 +134,105 @@ static void test_vp_transfer_latch_holds_after_trigger(void) {
     printf("✓ VP transfer latch unit test passed\n");
 }
 
+static void test_vp_transfer_by_time(void) {
+    HYD_MotionSegment segment = base_injection_segment();
+    HYD_AxisRef axisRef = {0};
+    HYD_ExecutionReference references = {0};
+    HYD_VpTransferResult result;
+
+    printf("Testing VP transfer by time...\n");
+
+    /* Disable position and pressure, only time should trigger */
+    segment.vpTransferPosition = 0.0;
+    segment.vpTransferPressure = 0.0;
+    segment.vpTransferMinTime = 0.5;
+    references.elapsedTime = 0.6;
+
+    HYD_VpTransfer_Evaluate(&segment, &axisRef, &references, &result);
+
+    assert(result.ready);
+    assert(result.reason == HYD_VP_TRANSFER_REASON_TIME);
+    printf("✓ VP transfer by time test passed\n");
+}
+
+static void test_vp_transfer_by_velocity_drop(void) {
+    HYD_MotionSegment segment = base_injection_segment();
+    HYD_AxisRef axisRef = {0};
+    HYD_ExecutionReference references = {0};
+    HYD_VpTransferResult result;
+
+    printf("Testing VP transfer by velocity drop...\n");
+
+    segment.vpTransferPosition = 0.0;
+    segment.vpTransferPressure = 0.0;
+    segment.vpTransferMinTime = 0.0;
+    segment.vpTransferVelocityDrop = 5.0;
+    axisRef.velocity = 20.0;
+#if HYD_ENABLE_EXECUTION_REFERENCE
+    references.velocityReference = 30.0;
+#endif
+
+    HYD_VpTransfer_Evaluate(&segment, &axisRef, &references, &result);
+
+    assert(result.ready);
+    assert(result.reason == HYD_VP_TRANSFER_REASON_VELOCITY_DROP);
+    printf("✓ VP transfer by velocity drop test passed\n");
+}
+
+static void test_vp_transfer_zero_threshold_disables_criterion(void) {
+    HYD_MotionSegment segment = base_injection_segment();
+    HYD_AxisRef axisRef = {0};
+    HYD_ExecutionReference references = {0};
+    HYD_VpTransferResult result;
+
+    printf("Testing VP transfer zero threshold disables criterion...\n");
+
+    segment.vpTransferPosition = 0.0;
+    segment.vpTransferPressure = 80.0;
+    segment.vpTransferMinTime = 0.0;
+    segment.vpTransferVelocityDrop = 0.0;
+    axisRef.position = 120.0;
+    axisRef.pressure = 85.0;
+    references.elapsedTime = 1.0;
+
+    HYD_VpTransfer_Evaluate(&segment, &axisRef, &references, &result);
+
+    assert(result.ready);
+    assert(result.reason == HYD_VP_TRANSFER_REASON_PRESSURE);
+    printf("✓ Zero-threshold disables criterion test passed\n");
+}
+
+static void test_vp_transfer_null_guards(void) {
+    HYD_MotionSegment segment = base_injection_segment();
+    HYD_AxisRef axisRef = {0};
+    HYD_VpTransferResult result;
+
+    printf("Testing VP transfer NULL guards...\n");
+
+    /* NULL segment */
+    HYD_VpTransfer_Evaluate(NULL, &axisRef, NULL, &result);
+    assert(!result.ready);
+
+    /* NULL axisRef */
+    HYD_VpTransfer_Evaluate(&segment, NULL, NULL, &result);
+    assert(!result.ready);
+
+    /* NULL result — should not crash */
+    HYD_VpTransfer_Evaluate(&segment, &axisRef, NULL, NULL);
+
+    printf("✓ VP transfer NULL guard test passed\n");
+}
+
 int main(void) {
     test_vp_transfer_by_position();
     test_vp_transfer_by_pressure();
     test_non_injection_segment_never_reports_transfer();
     test_vp_transfer_pressure_first_priority();
     test_vp_transfer_latch_holds_after_trigger();
+    test_vp_transfer_by_time();
+    test_vp_transfer_by_velocity_drop();
+    test_vp_transfer_zero_threshold_disables_criterion();
+    test_vp_transfer_null_guards();
     printf("V/P transfer tests passed\n");
     return 0;
 }
