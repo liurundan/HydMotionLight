@@ -15,13 +15,16 @@
 #define RBF_INPUT_DIM       3       // 输入维度：du_prev, Feedback, y_prev1
 #define RBF_MOMENTUM_STEPS  3       // 动量历史步数
 
-/* PID参数限幅（与ST代码一致） */
-#define PID_MIN_KP          0.8f
-#define PID_MAX_KP          0.85f
-#define PID_MIN_KI          0.018f
-#define PID_MAX_KI          0.03f
-#define PID_MIN_KD          1.2f
-#define PID_MAX_KD          1.5f
+/* PID 参数限幅 — 默认窗按"压力闭环 + 自适应学习"调参余量给出。
+ * Sprint 0 review C-6：原值窗宽 0.05，自适应增益几乎无空间。
+ * Sprint 3 扩展：KP/KD 窗宽 0.7+，KI 窗宽 0.045。
+ * 各项目可通过 HYD_RbfPidConfig 段字段进一步覆盖。 */
+#define PID_MIN_KP          0.5f
+#define PID_MAX_KP          1.2f
+#define PID_MIN_KI          0.005f
+#define PID_MAX_KI          0.050f
+#define PID_MIN_KD          0.5f
+#define PID_MAX_KD          2.0f
 
 /* 输出限幅 */
 #define MIN_OUTPUT          -0.05f

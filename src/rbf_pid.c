@@ -102,10 +102,10 @@ void RBF_PID_Init(RBF_PID_Handle *pid, float sampling_period,
     pid->alpha = 0.05f;
     pid->belte = 0.01f;
 
-    /* PID初始参数 */
-    pid->KP = 0.03f;
-    pid->KI = 0.02f;
-    pid->KD = 0.03f;
+    /* PID初始参数（取新默认窗的合理工作点）*/
+    pid->KP = 0.8f;   /* mid of [0.5, 1.2] */
+    pid->KI = 0.020f; /* near typical hydraulic-loop integral value */
+    pid->KD = 1.0f;   /* mid of [0.5, 2.0] */
     pid->min_KP = PID_MIN_KP;
     pid->max_KP = PID_MAX_KP;
     pid->min_KI = PID_MIN_KI;
@@ -136,9 +136,9 @@ void RBF_PID_Reset(RBF_PID_Handle *pid) {
     controller_reset_state(pid);
 
     /* 重置PID参数为初始值 */
-    pid->KP = 0.03f;
-    pid->KI = 0.02f;
-    pid->KD = 0.03f;
+    pid->KP = 0.8f;
+    pid->KI = 0.020f;
+    pid->KD = 1.0f;
 
     pid->FirstScan = false;
     pid->Status = 0;
@@ -225,9 +225,9 @@ float RBF_PID_Update(RBF_PID_Handle *pid, float setpoint, float feedback) {
     if (pid->FirstScan || pid->Reset) {
         rbf_init_network(pid);
         controller_reset_state(pid);
-        pid->KP = 0.03f;
-        pid->KI = 0.02f;
-        pid->KD = 0.03f;
+        pid->KP = 0.8f;
+        pid->KI = 0.020f;
+        pid->KD = 1.0f;
         pid->Status = 0;
         pid->FirstScan = false;
         pid->Reset = false;   // 清除复位标志
