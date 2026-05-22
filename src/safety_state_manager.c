@@ -21,6 +21,14 @@ void HYD_SafetyStateManager_ResetRuntimeActuation(HYD_MotionControlFB* fb) {
         return;
     }
 
+    /* Sprint 2: Capture previous segment mode before clearing runtime state,
+     * so that PrimeSegmentControllers can carry over velocity for bumpless
+     * P->V / S->S transitions. Must be done here because _activeSegmentValid
+     * is cleared by this function before the next HYD_BeginSegment call. */
+    if (fb->_activeSegmentValid) {
+        fb->_previousSegmentMode = fb->_activeSegment.mode;
+    }
+
     HYD_PressureController_ClearState(&fb->_pressureController);
     fb->_lastFeedbackTimestamp = -1.0;  /* negative sentinel: not yet valid */
     fb->_segmentStartTime = 0.0;

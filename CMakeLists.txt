@@ -148,6 +148,9 @@ target_link_libraries(test_rbf_pid_hil PRIVATE HydroMotionLib HydroSimLib)
 add_executable(test_pump_direction_conflict tests/test_pump_direction_conflict.c)
 target_link_libraries(test_pump_direction_conflict PRIVATE HydroMotionLib)
 
+add_executable(test_vp_bumpless_reverse tests/test_vp_bumpless_reverse.c)
+target_link_libraries(test_vp_bumpless_reverse PRIVATE HydroMotionLib)
+
 add_executable(main tests/main.c)
 target_link_libraries(main PRIVATE HydroMotionLib)
 
@@ -215,6 +218,9 @@ add_test(NAME test_rbf_pid_hil
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 add_test(NAME test_pump_direction_conflict
          COMMAND test_pump_direction_conflict
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+add_test(NAME test_vp_bumpless_reverse
+         COMMAND test_vp_bumpless_reverse
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 add_test(NAME test_interface_layout_consistency
          COMMAND ${CMAKE_COMMAND} -E env PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}

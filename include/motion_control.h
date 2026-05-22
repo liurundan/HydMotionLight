@@ -242,6 +242,7 @@ typedef struct {
     HYD_TIME _holdStateTime;
     HYD_RampController _rampController;
     HYD_MotionPlannerState _plannerState;
+    HYD_ControlMode _previousSegmentMode;  /* mode of the prior segment for bumpless carry-over (Sprint 2) */
     HYD_PressureControllerState _pressureController;
     HYD_TIME _completionCandidateStartTime;
     HYD_BOOL _completionCandidateActive;

@@ -575,7 +575,39 @@ static void HYD_PrimeSegmentControllers(HYD_MotionControlFB* fb,
     fb->STATE.vpTransferReason = (HYD_UINT8)HYD_VP_TRANSFER_REASON_NONE;
     fb->_lastFeedbackTimestamp = timestamp;
     HYD_RampController_Init(&fb->_rampController, fb->AXIS_REF.pressure, timestamp);
-    memset(&fb->_plannerState, 0, sizeof(fb->_plannerState));
+    /* Sprint 2: Carry over velocity state for bumpless transitions.
+     * P->V: seed with _lastCommandedFlow / velocityToFlowGain
+     * S->S: retain lastTargetVelocity from previous segment */
+    {
+        HYD_REAL carriedVelocity = 0.0;
+        HYD_REAL carriedFlow = 0.0;
+        HYD_BOOL doCarryover = false;
+
+        if (segment->mode == HYD_MODE_SPEED_RAMP) {
+            if (fb->_previousSegmentMode == HYD_MODE_PRESSURE_CLOSED_LOOP) {
+                HYD_REAL gain = segment->velocityToFlowGain;
+                if (gain <= 0.0) { gain = 1.0; }
+                if (fb->_lastCommandedFlow > 0.0) {
+                    carriedVelocity = fb->_lastCommandedFlow / gain;
+                    doCarryover = true;
+                }
+            } else if (fb->_previousSegmentMode == HYD_MODE_SPEED_RAMP) {
+                if (fabs(fb->_plannerState.lastTargetVelocity) > 0.0) {
+                    carriedVelocity = fabs(fb->_plannerState.lastTargetVelocity);
+                    carriedFlow = fb->_plannerState.lastTargetFlow;
+                    doCarryover = true;
+                }
+            }
+        }
+
+        memset(&fb->_plannerState, 0, sizeof(fb->_plannerState));
+
+        if (doCarryover) {
+            fb->_plannerState.lastTargetVelocity = carriedVelocity;
+            fb->_plannerState.lastTargetFlow = carriedFlow;
+            fb->_plannerState.initialized = true;
+        }
+    }
 
     trackingFlowReference = HYD_MotionUtils_AbsReal(fb->AXIS_REF.flow);
     if (trackingFlowReference <= 0.0 && allowFlowCarryover) {
@@ -642,6 +674,11 @@ static HYD_BOOL HYD_BeginSegment(HYD_MotionControlFB* fb,
     HYD_SafetyStateManager_ResetRuntimeActuation(fb);
     HYD_StateReporter_ApplySafeOutputs(fb);
     HYD_StateReporter_ResetTransitionFlags(fb);
+
+    /* Save previous segment mode for bumpless carry-over before overwriting */
+    if (fb->_activeSegmentValid) {
+        fb->_previousSegmentMode = fb->_activeSegment.mode;
+    }
 
     fb->_activeSegment = *sourceSegment;
     fb->_activeSegmentValid = true;
