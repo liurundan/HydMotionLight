@@ -93,6 +93,7 @@ IEC61131-3 PLC Program (matiec/Beremiz compiled)
 | `pressure_controller.c` | P/PI/PID with anti-windup, bumpless tracking, measurement filtering, derivative-rate filtering |
 | `segment_completion.c` | Single source of truth for end-condition evaluation (position/time/pressure/flow/manual) |
 | `ramp_controller.c` | Smooths pressure target changes at `rampRate * deltaTime` |
+| `vp_transfer.c` | V/P transfer observation — evaluates position/pressure/time/velocity-drop criteria with configurable priority and optional latch |
 | `safety_state_manager.c` | Preserves/restores runtime safety state (ResetRuntimeActuation, ApplyIdleState, ApplyDisabledState, ApplyFaultHold, EnterFaultStop) |
 | `diagnostics.c` | Diagnostic code table, code-to-string, alarm/fault severity classification |
 | `state_reporter.c` | Execution reporting, FB state transitions, diagnostic event recording |
@@ -152,7 +153,7 @@ The library uses matiec's IEC61131-3 type infrastructure from `include/matiec/li
 
 **End conditions**: `HYD_END_POSITION`, `HYD_END_TIME`, `HYD_END_PRESSURE`, `HYD_END_FLOW`, `HYD_END_MANUAL`
 
-**Pressure strategies**: P / PI / PID (via `pressure_controller.c`). `RBF_PID` (rbf_pid.c) exists as a standalone module, built and tested but NOT integrated into the main execution path.
+**Pressure strategies**: P / PI / PID / RBF_PID (via `pressure_controller.c`). RBF_PID is built, tested, and integrated through the pressure_controller segment-config path (Sprint 3).
 
 ### Repository Constraints
 
