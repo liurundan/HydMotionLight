@@ -5,6 +5,7 @@
  */
 
 #include "rbf_pid.h"
+#include "hyd_config.h"
 #include <math.h>
 #include <string.h>
 
@@ -270,7 +271,7 @@ float RBF_PID_Update(RBF_PID_Handle *pid, float setpoint, float feedback) {
     /* ----- 自适应学习率: 误差大时高学习率(快速跟踪)，误差小时低学习率(稳定保持) ----- */
     {
         float error_norm = ABS(error) / (ABS(pid->Setpoint) + 1e-6f);
-        pid->eta_scale = LIMIT(0.01f, error_norm * 4.0f, 1.0f);
+        pid->eta_scale = LIMIT(HYD_THRESH_RBF_ETA_SCALE_MIN, error_norm * HYD_THRESH_RBF_ETA_SCALE_GAIN, 1.0f);
     }
 
     /* ----- RBF网络参数更新 (在线学习) ----- */
@@ -294,7 +295,7 @@ float RBF_PID_Update(RBF_PID_Handle *pid, float setpoint, float feedback) {
     /* ----- 增量式PID计算 ----- */
     raw_de = error - 2*pid->e_prev1 + pid->e_prev2;
     /* 一阶低通滤波微分项 */
-    delta_temp = (1.0f - 0.12f) * pid->delta_temp_prev + 0.12f * raw_de;
+    delta_temp = (1.0f - HYD_THRESH_RBF_DERIV_FILTER_ALPHA) * pid->delta_temp_prev + HYD_THRESH_RBF_DERIV_FILTER_ALPHA * raw_de;
     pid->delta_temp_prev = delta_temp;
 
     du = pid->KP * (error - pid->e_prev1) + pid->KI * error + pid->KD * raw_de;
@@ -309,9 +310,9 @@ float RBF_PID_Update(RBF_PID_Handle *pid, float setpoint, float feedback) {
     pid->fLastActPress = fActPress;
 
     /* 根据加速度方向选择系数 */
-    if (fddPress < -0.0001f) {
+    if (fddPress < -HYD_THRESH_RBF_FF_ACCEL_DEAD_BAND) {
         pid->fUffAcc = pid->fKff_a_neg * fddPress;
-    } else if (fddPress > 0.0001f) {
+    } else if (fddPress > HYD_THRESH_RBF_FF_ACCEL_DEAD_BAND) {
         pid->fUffAcc = pid->fKff_a_pos * fddPress;
     } else {
         pid->fUffAcc = 0.0f;
@@ -324,7 +325,7 @@ float RBF_PID_Update(RBF_PID_Handle *pid, float setpoint, float feedback) {
     /* 输出限幅 */
     float max_out = pid->fMaxFlowRate;
     pid->Output = LIMIT(MIN_OUTPUT, pid->Output, max_out);
-    if (ABS(pid->Setpoint) < 1e-6f && pid->Feedback < 0.02f) {
+    if (ABS(pid->Setpoint) < HYD_THRESH_RBF_SETPOINT_ZERO_EPS && pid->Feedback < HYD_THRESH_RBF_FEEDBACK_ZERO_BAND) {
         pid->Output = 0.0f;
     }
 
@@ -342,7 +343,7 @@ float RBF_PID_Update(RBF_PID_Handle *pid, float setpoint, float feedback) {
 
     /* 最终限幅 */
     output_total = LIMIT(MIN_OUTPUT, output_total, max_out);
-    if (ABS(pid->Setpoint) < 1e-6f && pid->Feedback < 0.02f) {
+    if (ABS(pid->Setpoint) < HYD_THRESH_RBF_SETPOINT_ZERO_EPS && pid->Feedback < HYD_THRESH_RBF_FEEDBACK_ZERO_BAND) {
         output_total = 0.0f;
     }
 

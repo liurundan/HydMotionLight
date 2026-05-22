@@ -1821,7 +1821,7 @@ static void HYD_MotionControlFB_RunRunningState(HYD_MotionControlFB* fb) {
         fb->_simFeedback.targetPressure = executionReference.pressureReference;
         fb->_simFeedback.valid = true;
 
-        if (decelMag < 0.001f && fabs(fb->AXIS_REF.velocity) < 0.01f) {
+        if (decelMag < HYD_THRESH_STOP_DECEL_DONE_MAG && fabs(fb->AXIS_REF.velocity) < HYD_THRESH_STOP_VEL_DONE_MAG) {
             fb->_isStopping = false;
             fb->_stopStartVel = 0.0f;
             fb->_stopDeceleration = 0.0f;
@@ -1836,7 +1836,7 @@ static void HYD_MotionControlFB_RunRunningState(HYD_MotionControlFB* fb) {
              * (stuck encoder / actuator), this branch would hang forever.
              * Threshold = 5x ideal-stop time + 1.0 s slack. */
             HYD_REAL idealStopTime = stopMag / stopDeceleration;
-            HYD_REAL stopTimeoutLimit = 5.0f * idealStopTime + 1.0f;
+            HYD_REAL stopTimeoutLimit = HYD_THRESH_STOP_TIMEOUT_IDEAL_MULT * idealStopTime + HYD_THRESH_STOP_TIMEOUT_SLACK_S;
             if (stopElapsed > stopTimeoutLimit) {
                 fb->_directSessionState = HYD_DIRECT_SESSION_FAULT;
                 HYD_StateReporter_ReportFault(fb,
@@ -1863,7 +1863,7 @@ static void HYD_MotionControlFB_RunRunningState(HYD_MotionControlFB* fb) {
         return;
     }
 
-    if (fb->_isDecelerating && fabs(plannerOutput.targetVelocity) < 0.001) {
+    if (fb->_isDecelerating && fabs(plannerOutput.targetVelocity) < HYD_THRESH_DECEL_TARGET_VEL_DONE) {
         completedSegmentSource = fb->_activeSegmentSource;
         if (completedSegmentSource == HYD_SEGMENT_SOURCE_DIRECT &&
             fb->_directPendingValid) {
@@ -2090,10 +2090,10 @@ void HYD_MotionControlFB_Init(HYD_MotionControlFB* fb) {
      * debounce + faster fault escalation, since ceiling violations are
      * already "above the safe envelope" and should react more promptly. */
     HYD_DiagnosticCriteria_CreateDefaultPressureCriteria(&fb->_pressureCeilingCriteria);
-    fb->_pressureCeilingCriteria.debounceTime = 0.05;          /* 50 ms — react faster than normal pressure deviation */
-    fb->_pressureCeilingCriteria.startupSuppressTime = 0.10;
+    fb->_pressureCeilingCriteria.debounceTime = HYD_THRESH_PRESSURE_CEILING_DEBOUNCE_S;          /* 50 ms — react faster than normal pressure deviation */
+    fb->_pressureCeilingCriteria.startupSuppressTime = HYD_THRESH_PRESSURE_CEILING_STARTUP_SUPPRESS_S;
     fb->_pressureCeilingCriteria.enableStartupSuppress = true;
-    fb->_pressureCeilingCriteria.faultEscalationTime = 0.30;   /* 300 ms above ceiling -> escalate to FAULT/STOP */
+    fb->_pressureCeilingCriteria.faultEscalationTime = HYD_THRESH_PRESSURE_CEILING_FAULT_ESCALATION_S;   /* 300 ms above ceiling -> escalate to FAULT/STOP */
     fb->_pressureCeilingCriteria.protectionAction = HYD_PROTECTION_ACTION_DERATE;
     fb->_pressureCeilingCriteria.diagnosticCode = HYD_DIAG_CODE_PRESSURE_CEILING_EXCEEDED;
     fb->_pressureCeilingCriteria.faultCode = HYD_DIAG_CODE_PRESSURE_CEILING_VIOLATED;
