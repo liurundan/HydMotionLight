@@ -282,7 +282,8 @@ static void HYD_EnsureRbfPidInitialized(HYD_PressureControllerState* state,
 }
 
 static void HYD_ApplyRbfPidConfig(HYD_PressureControllerState* state,
-                                  const HYD_PressureResolvedConfig* config) {
+                                  const HYD_PressureResolvedConfig* config,
+                                  const HYD_MotionSegment* segment) {
     if (state == NULL || config == NULL) {
         return;
     }
@@ -311,34 +312,59 @@ static void HYD_ApplyRbfPidConfig(HYD_PressureControllerState* state,
     state->rbfPid.KD = (float)HYD_ClampReal((HYD_REAL)state->rbfPid.KD,
                                             config->rbf.minKd,
                                             config->rbf.maxKd);
+
+    /* Per-segment RBF pressure normalization scale. Prefer pressureCeiling
+     * (an explicit upper bound), else 2x targetPressure as a conservative
+     * envelope, else leave 0 (RBF falls back to MAX_PRESSURE default). */
+    {
+        HYD_REAL pressureScale = 0.0;
+        if (segment != NULL) {
+            if (segment->pressureCeiling > 0.0) {
+                pressureScale = segment->pressureCeiling;
+            } else if (segment->targetPressure > 0.0) {
+                pressureScale = segment->targetPressure * 2.0;
+            }
+        }
+        RBF_PID_SetPressureNormalization(&state->rbfPid, (float)pressureScale);
+    }
 }
 
 static void HYD_SynchronizeRbfPidState(HYD_PressureControllerState* state,
                                        HYD_REAL trackedOutputFlow,
                                        HYD_REAL targetPressure,
                                        HYD_REAL measuredPressure,
-                                       const HYD_PressureResolvedConfig* config) {
+                                       const HYD_PressureResolvedConfig* config,
+                                       const HYD_MotionSegment* segment) {
     HYD_REAL seededOutput;
+    HYD_REAL normScale;
 
     if (state == NULL || config == NULL) {
         return;
     }
 
     RBF_PID_Reset(&state->rbfPid);
-    HYD_ApplyRbfPidConfig(state, config);
+    HYD_ApplyRbfPidConfig(state, config, segment);
 
     seededOutput = HYD_ClampReal(trackedOutputFlow, config->outputMin, config->outputMax);
     if (seededOutput < (HYD_REAL)MIN_OUTPUT) {
         seededOutput = (HYD_REAL)MIN_OUTPUT;
     }
 
+    /* Use the same normalization scale that RBF_PID_Update will apply, so the
+     * seeded Setpoint/Feedback/last_ref values remain consistent across the
+     * sync→update boundary and bumpless tracking is preserved. Fallback to
+     * MAX_PRESSURE when the per-segment scale is unconfigured (0). */
+    normScale = (state->rbfPid.pressure_normalization_scale > 0.0f)
+                ? (HYD_REAL)state->rbfPid.pressure_normalization_scale
+                : (HYD_REAL)MAX_PRESSURE;
+
     state->rbfPid.Output = (float)seededOutput;
     state->rbfPid.u_prev = (float)seededOutput;
     state->rbfPid.n_out = (float)seededOutput;
     state->rbfPid.P_set = (float)targetPressure;
     state->rbfPid.P_actual = (float)measuredPressure;
-    state->rbfPid.Setpoint = (float)(targetPressure / MAX_PRESSURE);
-    state->rbfPid.Feedback = (float)(measuredPressure / MAX_PRESSURE);
+    state->rbfPid.Setpoint = (float)(targetPressure / normScale);
+    state->rbfPid.Feedback = (float)(measuredPressure / normScale);
     state->rbfPid.Error = state->rbfPid.Setpoint - state->rbfPid.Feedback;
     state->rbfPid.y_prev1 = state->rbfPid.Feedback;
     state->rbfPid.du = 0.0f;
@@ -467,7 +493,7 @@ void HYD_PressureController_Execute(const HYD_MotionSegment* segment,
         HYD_BOOL needsAdaptiveReset;
 
         needsAdaptiveReset = trackingRequested || !state->rbfInitialized;
-        HYD_ApplyRbfPidConfig(state, &config);
+        HYD_ApplyRbfPidConfig(state, &config, segment);
 
         if (needsAdaptiveReset) {
             output->trackingApplied = true;
@@ -475,7 +501,8 @@ void HYD_PressureController_Execute(const HYD_MotionSegment* segment,
                                        trackedOutputFlow,
                                        input->targetPressure,
                                        filteredPressure,
-                                       &config);
+                                       &config,
+                                       segment);
         }
 
         effectiveTargetPressure = (error == 0.0) ? filteredPressure : input->targetPressure;

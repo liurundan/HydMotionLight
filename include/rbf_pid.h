@@ -43,6 +43,11 @@ typedef struct {
     float fMaxFlowRate;             // 最大流量(0-1)
     bool Reset;                     // 复位信号
 
+    /* 压力归一化标量（MPa 等设定/反馈单位的满量程）.
+     * 0 或负值 -> 落回内置默认 MAX_PRESSURE. 调用 RBF_PID_SetPressureNormalization()
+     * 配置；推荐由 pressure_controller.c 在每段 Resolve 时根据段配置写入。 */
+    float pressure_normalization_scale;
+
     /* 系统模型参数(用于未来扩展) */
     float T_d;                      // 纯时滞时间
     float K;                        // 系统增益
@@ -175,6 +180,15 @@ void RBF_PID_SetParamLimits(RBF_PID_Handle *pid,
 void RBF_PID_SetLearningRates(RBF_PID_Handle *pid,
     float eta_w, float eta_c, float eta_b,
     float eta_p, float eta_i, float eta_d);
+
+/**
+ * @brief 配置压力归一化标量
+ * @param pid RBF_PID句柄指针
+ * @param scale 满量程标量（单位与 setpoint/feedback 相同，例如 MPa）
+ *              传 0 或负值会清回内部默认 MAX_PRESSURE.
+ * @note 推荐在每段开始时调用一次；运行中改变会导致归一化基准跳变。
+ */
+void RBF_PID_SetPressureNormalization(RBF_PID_Handle *pid, float scale);
 
 void RBF_PID_SetSeed(RBF_PID_Handle *pid, uint32_t seed);
 

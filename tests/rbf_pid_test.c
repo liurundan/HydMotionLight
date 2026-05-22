@@ -135,6 +135,36 @@ static void test_multi_axis_differentiated_seeds(void) {
     printf("✓ Multi-axis differentiated seeds test passed\n");
 }
 
+static void test_pressure_normalization_is_configurable(void) {
+    RBF_PID_Handle pid;
+
+    printf("Testing configurable pressure normalization scale...\n");
+    RBF_PID_Init(&pid, 0.01f, 1500.0f, 1.0f);
+    pid.enable = true;
+
+    /* Default: pressure_normalization_scale == 0 -> falls back to MAX_PRESSURE (250) */
+    (void)RBF_PID_Update(&pid, 250.0f, 125.0f);
+    assert(fabsf(pid.Setpoint - 1.0f) < 1e-4f);
+    assert(fabsf(pid.Feedback - 0.5f) < 1e-4f);
+
+    /* Configure custom scale = 800.0 MPa, then 400/200 should normalize to 0.5/0.25 */
+    RBF_PID_Reset(&pid);
+    RBF_PID_SetPressureNormalization(&pid, 800.0f);
+    pid.enable = true;
+    (void)RBF_PID_Update(&pid, 400.0f, 200.0f);
+    assert(fabsf(pid.Setpoint - 0.5f) < 1e-4f);
+    assert(fabsf(pid.Feedback - 0.25f) < 1e-4f);
+
+    /* Zero / negative scale must fall back to the macro default */
+    RBF_PID_Reset(&pid);
+    RBF_PID_SetPressureNormalization(&pid, 0.0f);
+    pid.enable = true;
+    (void)RBF_PID_Update(&pid, 250.0f, 125.0f);
+    assert(fabsf(pid.Setpoint - 1.0f) < 1e-4f);
+
+    printf("✓ Configurable pressure normalization test passed\n");
+}
+
 int main(void) {
     printf("Running RBF_PID tests...\n\n");
 
@@ -142,6 +172,7 @@ int main(void) {
     test_enabled_controller_respects_limits_and_drives_feedback();
     test_explicit_reset_restores_runtime_state();
     test_adaptive_learning_rate_scales_with_error();
+    test_pressure_normalization_is_configurable();
     test_multi_axis_differentiated_seeds();
 
     printf("\n✅ All RBF_PID tests passed successfully!\n");

@@ -80,6 +80,8 @@ void RBF_PID_Init(RBF_PID_Handle *pid, float sampling_period,
     /* 清空整个结构体为0 */
     memset(pid, 0, sizeof(RBF_PID_Handle));
 
+    pid->pressure_normalization_scale = 0.0f;  /* 0 -> fall back to MAX_PRESSURE */
+
     /* 配置基本参数 */
     pid->sampling_period = sampling_period;
     pid->fMaxMotorSpeed = max_motor_speed;
@@ -232,8 +234,13 @@ float RBF_PID_Update(RBF_PID_Handle *pid, float setpoint, float feedback) {
     }
 
     /* 归一化设定值和反馈值 */
-    pid->Setpoint = setpoint / MAX_PRESSURE;
-    pid->Feedback = feedback / MAX_PRESSURE;
+    {
+        float scale = (pid->pressure_normalization_scale > 0.0f)
+                      ? pid->pressure_normalization_scale
+                      : MAX_PRESSURE;
+        pid->Setpoint = setpoint / scale;
+        pid->Feedback = feedback / scale;
+    }
     /* Ts 直接使用 sampling_period (但本算法未显式使用，仅用于外部) */
     error = pid->Setpoint - pid->Feedback;
     pid->Error = error;
@@ -393,6 +400,14 @@ void RBF_PID_SetLearningRates(RBF_PID_Handle *pid,
     pid->eta_p = eta_p;
     pid->eta_i = eta_i;
     pid->eta_d = eta_d;
+}
+
+void RBF_PID_SetPressureNormalization(RBF_PID_Handle *pid, float scale) {
+    if (pid == NULL) {
+        return;
+    }
+    /* 0 or negative -> clear to default (RBF_PID_Update falls back to MAX_PRESSURE). */
+    pid->pressure_normalization_scale = (scale > 0.0f) ? scale : 0.0f;
 }
 
 void RBF_PID_SetSeed(RBF_PID_Handle *pid, uint32_t seed) {
