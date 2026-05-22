@@ -1396,6 +1396,7 @@ void __mcl_cmd_PressureHandle(HYD_PRESSUREHANDLE *data__)
     if (!__GET_VAR(data__->EN) || !execute)
     {
         __SET_VAR(data__->, INPRESSURE, , false);
+        __SET_VAR(data__->, DONE, , false);
         __SET_VAR(data__->, COMMANDABORTED, , false);
         __SET_VAR(data__->, ERROR, , false);
         __SET_VAR(data__->, ERRORID, , (IEC_WORD)0);
@@ -1440,6 +1441,7 @@ void __mcl_cmd_PressureHandle(HYD_PRESSUREHANDLE *data__)
         __SET_VAR(data__->, BUSY, , true);
         __SET_VAR(data__->, ACTIVE, , true);
         __SET_VAR(data__->, INPRESSURE, , false);
+        __SET_VAR(data__->, DONE, , false);
         __SET_VAR(data__->, COMMANDABORTED, , false);
         __SET_VAR(data__->, ACTIVE0, , true);
         __SET_VAR(data__->, EXECUTE0, , execute);
@@ -1458,6 +1460,7 @@ void __mcl_cmd_PressureHandle(HYD_PRESSUREHANDLE *data__)
             __SET_VAR(data__->, BUSY, , false);
             __SET_VAR(data__->, ACTIVE, , false);
             __SET_VAR(data__->, INPRESSURE, , false);
+            __SET_VAR(data__->, DONE, , false);
             __SET_VAR(data__->, _PENDING, , false);
             __SET_VAR(data__->, EXECUTE0, , execute);
             return;
@@ -1473,6 +1476,7 @@ void __mcl_cmd_PressureHandle(HYD_PRESSUREHANDLE *data__)
             __SET_VAR(data__->, BUSY, , false);
             __SET_VAR(data__->, ACTIVE, , false);
             __SET_VAR(data__->, INPRESSURE, , false);
+            __SET_VAR(data__->, DONE, , false);
         } else if (directExecutionIsCurrentOwner(fb, myExecId, HYD_DIRECT_CMD_PRESSURE_HANDLE)) {
             if (!applyPressureHandleLiveUpdate(fb, myExecId, data__)) {
                 __SET_VAR(data__->, ERROR, , true);
@@ -1480,6 +1484,7 @@ void __mcl_cmd_PressureHandle(HYD_PRESSUREHANDLE *data__)
                 __SET_VAR(data__->, BUSY, , false);
                 __SET_VAR(data__->, ACTIVE, , false);
                 __SET_VAR(data__->, INPRESSURE, , false);
+                __SET_VAR(data__->, DONE, , false);
             }
             else
             if (HYD_MotionControlFB_IsError(fb))
@@ -1489,11 +1494,14 @@ void __mcl_cmd_PressureHandle(HYD_PRESSUREHANDLE *data__)
                 __SET_VAR(data__->, BUSY, , false);
                 __SET_VAR(data__->, ACTIVE, , false);
                 __SET_VAR(data__->, INPRESSURE, , false);
+                __SET_VAR(data__->, DONE, , false);
             } else if (fb->FB_STATE == HYD_FB_STATE_HOLD) {
                 __SET_VAR(data__->, BUSY, , true);
                 __SET_VAR(data__->, ACTIVE, , false);
                 __SET_VAR(data__->, INPRESSURE, , false);
+                __SET_VAR(data__->, DONE, , false);
             } else if (fb->SEGMENT_COMPLETED || (HYD_MotionControlFB_IsDone(fb) && fb->STATE.finished)) {
+                __SET_VAR(data__->, DONE, , true);
                 __SET_VAR(data__->, BUSY, , false);
                 __SET_VAR(data__->, ACTIVE, , false);
                 __SET_VAR(data__->, INPRESSURE, , false);
@@ -1508,12 +1516,14 @@ void __mcl_cmd_PressureHandle(HYD_PRESSUREHANDLE *data__)
                 } else {
                     __SET_VAR(data__->, INPRESSURE, , false);
                 }
+                __SET_VAR(data__->, DONE, , false);
             }
         } else if (directExecutionLostOwnership(fb, myExecId, HYD_DIRECT_CMD_PRESSURE_HANDLE)) {
             __SET_VAR(data__->, COMMANDABORTED, , true);
             __SET_VAR(data__->, BUSY, , false);
             __SET_VAR(data__->, ACTIVE, , false);
             __SET_VAR(data__->, INPRESSURE, , false);
+            __SET_VAR(data__->, DONE, , false);
         }
     }
 

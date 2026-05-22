@@ -804,6 +804,11 @@
 								<BOOL />
 							</type>
 						</variable>
+						<variable name="DONE">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
 						<variable name="BUSY">
 							<type>
 								<BOOL />

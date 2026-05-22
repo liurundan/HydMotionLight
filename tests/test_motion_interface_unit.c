@@ -1043,6 +1043,7 @@ static void test_pressurehandle_en_false_clears_outputs(void) {
     __mcl_cmd_PressureHandle(&ph);
 
     ASSERT_TRUE(IEC_VAL(ph.INPRESSURE) == false, "INPRESSURE should be cleared when EN=false");
+    ASSERT_TRUE(IEC_VAL(ph.DONE) == false, "DONE should be cleared when EN=false");
     ASSERT_TRUE(IEC_VAL(ph.BUSY) == false, "BUSY should be cleared when EN=false");
     ASSERT_TRUE(IEC_VAL(ph.ACTIVE) == false, "ACTIVE should be cleared when EN=false");
 }
@@ -1117,6 +1118,8 @@ static void test_pressurehandle_completion_keeps_completion_semantics(void) {
                "PressureHandle should clear ACTIVE after timed completion");
     ASSERT_TRUE(IEC_VAL(ph.COMMANDABORTED) == false,
                "PressureHandle should not report COMMANDABORTED on normal completion");
+    ASSERT_TRUE(IEC_VAL(ph.DONE) == true,
+               "PressureHandle should set DONE on completion");
 }
 
 static void test_hold_resume_surface_transitions_active_motion(void) {

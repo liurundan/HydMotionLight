@@ -386,6 +386,8 @@ static void test_pressurehandle_timed_done(void) {
                "PressureHandle should clear ACTIVE after duration elapsed");
     ASSERT_TRUE(IEC_VAL(ph.COMMANDABORTED) == false,
                "PressureHandle should not be COMMANDABORTED on normal completion");
+    ASSERT_TRUE(IEC_VAL(ph.DONE) == true,
+               "PressureHandle should set DONE on completion");
 }
 
 /* ==================================================================
