@@ -504,6 +504,80 @@ HYD_MotionControlFB_StartSegment(&fb, 0, timestamp); // index 被忽略
 - 长周期回归
 - 最大段数边界回归
 
+## 覆盖率统计 (Code Coverage)
+
+本仓库提供基于 [gcovr](https://gcovr.com/) 的覆盖率工具链。
+
+### 安装 gcovr
+
+```bash
+pip install --user 'gcovr>=5.0'
+# 验证
+gcovr --version
+```
+
+### 本地运行
+
+```bash
+# 文本报告
+./scripts/coverage.sh
+
+# 文本 + HTML 报告（输出到 out/coverage/index.html）
+./scripts/coverage.sh --html
+```
+
+报告默认排除：`tests/`、`include/matiec/`（第三方）、`src/sim/`（仿真器，单独测）。
+
+### CI 接入示例
+
+**GitHub Actions** (`.github/workflows/coverage.yml`):
+
+```yaml
+name: coverage
+on: [push, pull_request]
+jobs:
+  coverage:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build deps
+        run: sudo apt-get install -y cmake gcc g++ python3-pip && pip install 'gcovr>=5.0'
+      - name: Run coverage
+        run: ./scripts/coverage.sh
+      - name: Upload report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: out/coverage/
+```
+
+**GitLab CI** (`.gitlab-ci.yml`):
+
+```yaml
+coverage:
+  image: gcc:12
+  before_script:
+    - apt-get update && apt-get install -y cmake python3-pip
+    - pip3 install 'gcovr>=5.0'
+  script:
+    - ./scripts/coverage.sh
+  coverage: '/^lines: \d+.\d+\% \(\d+ out of \d+\)$/'
+  artifacts:
+    paths:
+      - out/coverage/
+```
+
+**Jenkins** (Pipeline):
+
+```groovy
+stage('Coverage') {
+    steps {
+        sh './scripts/coverage.sh --html'
+        publishHTML(target: [reportDir: 'out/coverage', reportFiles: 'index.html', reportName: 'Coverage'])
+    }
+}
+```
+
 ## 嵌入式适配特性
 
 - **纯 C99**：无语言扩展，可移植性强

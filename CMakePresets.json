@@ -13,17 +13,37 @@
                 "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/cmake/unixgcc_toolchain.cmake",
                 "CMAKE_INSTALL_PREFIX": "${sourceDir}/out/install/${presetName}"
             }
-            
+
+        },
+        {
+            "name": "coverage",
+            "displayName": "Coverage build (gcov instrumentation)",
+            "description": "Same as unixgcc but with --coverage -O0 -g and linker --coverage",
+            "generator": "Unix Makefiles",
+            "binaryDir": "${sourceDir}/out/build/${presetName}",
+            "environment": {"PATH": "/usr/bin/"},
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/cmake/coverage_toolchain.cmake",
+                "CMAKE_INSTALL_PREFIX": "${sourceDir}/out/install/${presetName}"
+            }
         }
     ],
     "buildPresets": [
-    {
-        "name": "unixgcc",
-        "displayName": "unixgcc Debug",
-        "configurePreset": "unixgcc",
-        "targets": ["all"],
-        "configuration": "Debug"
-        
-    }
-    ]  
+        {
+            "name": "unixgcc",
+            "displayName": "unixgcc Debug",
+            "configurePreset": "unixgcc",
+            "targets": ["all"],
+            "configuration": "Debug"
+
+        },
+        {
+            "name": "coverage",
+            "displayName": "Coverage build",
+            "configurePreset": "coverage",
+            "targets": ["all"],
+            "configuration": "Debug"
+        }
+    ]
 }
