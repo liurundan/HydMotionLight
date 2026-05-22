@@ -42,7 +42,7 @@ against the current implementation in:
 - `Abort` is now allowed from `HYD_FB_STATE_FAULT` and transitions the runtime to `HYD_FB_STATE_ABORTED`, giving PLC integrations a clean recovery path that does not require a Reset FB instance (C-3).
 - `HYD_ErrorMonitor_Update` accepts per-channel tolerances; error duration accumulates only when `|error| > tolerance`, so sub-tolerance jitter no longer pollutes debounce / WARNING→FAULT escalation (C-7).
 - The `_isStopping` deceleration branch has a stop-timeout safety net (5x ideal-stop time + 1.0 s); stuck encoder / actuator no longer hangs STOP forever (C-4). Sensor and timestamp-rollback faults during STOP are already inherited from `RunRunningState` entry checks.
-- `state_reporter.c`, `protection_manager.c`, and `diagnostics.c` now have dedicated unit tests (22 cases across 3 new test executables) (I-7).
+- `state_reporter.c`, `safety_state_manager.c`, and `diagnostics.c` now have dedicated unit tests (22 cases across 3 new test executables) (I-7).
 - `HYD_AXISMOTION` setpoint half (`SET*`, `MAX*`, `SEGMENT*`, `MODE`, `ENDCONDITION`, `DIRECTION`, `PLANNER`, tuning gains) is no longer overwritten by the runtime. `writeMotionFromSegment` has been removed; multi-FB deployments on the same axis can stage next-segment setpoints safely (C-1).
 - Recipe `NextSegment` no longer false-raises `COMMANDABORTED` on the outer `MoveProfile` FB. A new `_recipeBatchId` epoch advances only on initial Start / ABORT / STOP / direct takeover, while `_executionId` continues to serve as the per-segment epoch for direct-command paths (C-2). The `recipeExecutionLostOwnership` predicate was simplified accordingly, also fixing an adjacent latent issue where Stop preemption could be masked by a recipe-source short-circuit.
 

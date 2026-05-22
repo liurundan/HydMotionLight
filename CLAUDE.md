@@ -26,6 +26,12 @@ ctest --test-dir out/build/unixgcc -R '^test_motion_planner$' --output-on-failur
 ./scripts/deploy_embedded_prod.sh
 ```
 
+**Coverage:**
+```bash
+./scripts/coverage.sh           # text report (out/coverage/coverage.txt)
+./scripts/coverage.sh --html    # text + HTML report (out/coverage/index.html)
+```
+
 ## Architecture
 
 This is a C99 motion-control library for hydraulic injection-molding machines. The fundamental design boundary: **the external process layer owns machine sequencing, valve logic, and segment-switch decisions; this library owns only motion math, pressure/flow planning, pump-speed conversion, and diagnostics**.
@@ -87,6 +93,9 @@ IEC61131-3 PLC Program (matiec/Beremiz compiled)
 | `pressure_controller.c` | P/PI/PID with anti-windup, bumpless tracking, measurement filtering, derivative-rate filtering |
 | `segment_completion.c` | Single source of truth for end-condition evaluation (position/time/pressure/flow/manual) |
 | `ramp_controller.c` | Smooths pressure target changes at `rampRate * deltaTime` |
+| `safety_state_manager.c` | Preserves/restores runtime safety state (ResetRuntimeActuation, ApplyIdleState, ApplyDisabledState, ApplyFaultHold, EnterFaultStop) |
+| `diagnostics.c` | Diagnostic code table, code-to-string, alarm/fault severity classification |
+| `state_reporter.c` | Execution reporting, FB state transitions, diagnostic event recording |
 
 ### Execution Flow (each scan cycle)
 
@@ -153,6 +162,7 @@ The library uses matiec's IEC61131-3 type infrastructure from `include/matiec/li
 4. `HYD_DiagnosticCriteria_CheckFaultEscalation()` requires `result.severity == WARNING` and `result.triggered == true` from a prior check call — never pass uninitialized result struct
 5. Stay in pure C99, `HYD_` prefix, static bounded memory, no malloc, PLCopen function-block style
 6. New `src/*.c` files require re-running `cmake --preset unixgcc` because the build uses `file(GLOB_RECURSE ...)`
+7. Tuning-type float thresholds are consolidated in `include/hyd_config.h` §14B; new "tuning" constants must be placed there, not inlined in .c files
 
 ### Key Files for Understanding the System
 
