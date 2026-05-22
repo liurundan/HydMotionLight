@@ -1,6 +1,6 @@
 #include "state_reporter.h"
 #include "diagnostics.h"
-#include "protection_manager.h"
+#include "safety_state_manager.h"
 #include "vp_transfer.h"
 #include <string.h>
 
@@ -417,7 +417,7 @@ void HYD_StateReporter_ReportFault(HYD_MotionControlFB* fb,
         return;
     }
 
-    HYD_ProtectionManager_EnterFaultStop(fb);
+    HYD_SafetyStateManager_EnterFaultStop(fb);
     HYD_StateReporter_ReportDiagnostic(fb, code, HYD_DIAG_SEVERITY_FAULT, eventTimestamp, segment, references);
 }
 

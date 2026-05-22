@@ -1,13 +1,13 @@
-/* tests/test_protection_manager.c
+/* tests/test_safety_state_manager.c
  *
- * Unit tests for the ProtectionManager — locks in the runtime-safety
+ * Unit tests for the SafetyStateManager — locks in the runtime-safety
  * helpers that motion_control invokes when transitioning between EN=false,
  * idle, fault-hold, and fault-stop states. These tests exercise the
  * helpers directly (no Execute() cycles) so that any regression in their
  * single-responsibility behavior surfaces immediately.
  */
 #include "motion_control.h"
-#include "protection_manager.h"
+#include "safety_state_manager.h"
 #include "common_types.h"
 #include <assert.h>
 #include <stdio.h>
@@ -41,7 +41,7 @@ static void test_reset_runtime_actuation_clears_pressure_state(void) {
     fb._activeSegmentValid = true;
     fb._activeSegmentSource = HYD_SEGMENT_SOURCE_DIRECT;
 
-    HYD_ProtectionManager_ResetRuntimeActuation(&fb);
+    HYD_SafetyStateManager_ResetRuntimeActuation(&fb);
 
     /* Negative sentinel signals "feedback not yet valid". */
     assert(fb._lastFeedbackTimestamp < 0.0);
@@ -65,7 +65,7 @@ static void test_apply_disabled_state_with_loaded_recipe_reports_ready(void) {
     fb._lastCommandedFlow = 75.0;
     fb.STATE.active = true;
 
-    HYD_ProtectionManager_ApplyDisabledState(&fb);
+    HYD_SafetyStateManager_ApplyDisabledState(&fb);
 
     assert(fb.FB_STATE == HYD_FB_STATE_DISABLED);
     assert(fb.STATE.status == HYD_STATUS_READY);
@@ -83,7 +83,7 @@ static void test_apply_disabled_state_without_source_reports_idle(void) {
 
     HYD_MotionControlFB_Init(&fb);
     /* No recipe loaded and DIRECT_SEGMENT_VALID=false. */
-    HYD_ProtectionManager_ApplyDisabledState(&fb);
+    HYD_SafetyStateManager_ApplyDisabledState(&fb);
 
     assert(fb.FB_STATE == HYD_FB_STATE_DISABLED);
     assert(fb.STATE.status == HYD_STATUS_IDLE);
@@ -99,7 +99,7 @@ static void test_apply_disabled_state_with_fault_preserves_fault_status(void) {
     /* Simulate an already-latched fault entering the EN=false branch. */
     fb.STATE.faultActive = true;
 
-    HYD_ProtectionManager_ApplyDisabledState(&fb);
+    HYD_SafetyStateManager_ApplyDisabledState(&fb);
 
     assert(fb.FB_STATE == HYD_FB_STATE_DISABLED);
     assert(fb.STATE.status == HYD_STATUS_FAULT);
@@ -116,7 +116,7 @@ static void test_apply_fault_hold_re_applies_safe_outputs(void) {
     fb._segmentStartTime = 4.0;
     fb._activeSegmentValid = true;
 
-    HYD_ProtectionManager_ApplyFaultHold(&fb);
+    HYD_SafetyStateManager_ApplyFaultHold(&fb);
 
     assert(fb.PUMP_SPEED == 0.0);
     assert(fb._lastCommandedFlow == 0.0);
@@ -136,7 +136,7 @@ static void test_enter_fault_stop_clears_pending_and_marks_fault(void) {
     fb._directPendingValid = true;
     fb._lastCommandedFlow = 12.0;
 
-    HYD_ProtectionManager_EnterFaultStop(&fb);
+    HYD_SafetyStateManager_EnterFaultStop(&fb);
 
     assert(fb.PUMP_SPEED == 0.0);
     assert(fb._lastCommandedFlow == 0.0);
@@ -157,7 +157,7 @@ static void test_apply_idle_state_resets_runtime_and_reports_idle(void) {
     fb._activeSegmentSource = HYD_SEGMENT_SOURCE_RECIPE;
     fb.PUMP_SPEED = 300.0;
 
-    HYD_ProtectionManager_ApplyIdleState(&fb, /*finished*/ false, /*segmentCompleted*/ false);
+    HYD_SafetyStateManager_ApplyIdleState(&fb, /*finished*/ false, /*segmentCompleted*/ false);
 
     /* Runtime actuation cleared. */
     assert(!fb._activeSegmentValid);

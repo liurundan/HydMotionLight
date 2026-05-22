@@ -2,7 +2,7 @@
 #include "diagnostics.h"
 #include "motion_planner.h"
 #include "pressure_controller.h"
-#include "protection_manager.h"
+#include "safety_state_manager.h"
 #include "pump_converter.h"
 #include "ramp_controller.h"
 #include "recipe_validator.h"
@@ -456,7 +456,7 @@ static void HYD_PrepareRecipeLoadState(HYD_MotionControlFB* fb) {
     fb->_lastCommandedFlow = 0.0;
     fb->_activeSegmentValid = false;
     fb->_startSegmentSignalPrev = false;
-    HYD_ProtectionManager_ResetRuntimeActuation(fb);
+    HYD_SafetyStateManager_ResetRuntimeActuation(fb);
     HYD_ClearPendingCommand(fb);
     HYD_ClearDirectPendingSlot(fb);
     HYD_ClearStartCommandInput(fb);
@@ -601,7 +601,7 @@ static HYD_BOOL HYD_BeginSegment(HYD_MotionControlFB* fb,
     }
 
     if (!HYD_MotionValidator_ValidateStartRequest(fb, segmentIndex, &code)) {
-        HYD_ProtectionManager_ApplyIdleState(fb, false, false);
+        HYD_SafetyStateManager_ApplyIdleState(fb, false, false);
         HYD_ResetReadyContextPreview(fb);
         HYD_StateReporter_ReportDiagnostic(fb,
                            code,
@@ -626,7 +626,7 @@ static HYD_BOOL HYD_BeginSegment(HYD_MotionControlFB* fb,
         return false;
     }
 
-    HYD_ProtectionManager_ResetRuntimeActuation(fb);
+    HYD_SafetyStateManager_ResetRuntimeActuation(fb);
     HYD_StateReporter_ApplySafeOutputs(fb);
     HYD_StateReporter_ResetTransitionFlags(fb);
 
@@ -745,7 +745,7 @@ static HYD_BOOL HYD_AdvanceToNextSegment(HYD_MotionControlFB* fb,
         return HYD_BeginSegment(fb, fb->STATE.currentSegmentIndex + 1U, timestamp);
     }
 
-    HYD_ProtectionManager_ApplyIdleState(fb, true, true);
+    HYD_SafetyStateManager_ApplyIdleState(fb, true, true);
     HYD_StateReporter_ClearSegmentTag(fb);
     HYD_StateReporter_SetSegmentSource(fb, HYD_SEGMENT_SOURCE_NONE);
     HYD_ResetReadyContextPreview(fb);
@@ -872,7 +872,7 @@ static void HYD_AbortNow(HYD_MotionControlFB* fb,
     }
 
     HYD_ClearStartCommandInput(fb);
-    HYD_ProtectionManager_ApplyIdleState(fb, true, false);
+    HYD_SafetyStateManager_ApplyIdleState(fb, true, false);
     /* Ensure outputs are forced to a safe state immediately on abort */
     HYD_StateReporter_ApplySafeOutputs(fb);
     fb->_holdStateTime = 0.0;
@@ -906,7 +906,7 @@ static void HYD_MaintainNonExecutingState(HYD_MotionControlFB* fb,
 
     if (fb->STATE.finished) {
         preservedState = fb->FB_STATE;
-        HYD_ProtectionManager_ApplyIdleState(fb, true, fb->SEGMENT_COMPLETED);
+        HYD_SafetyStateManager_ApplyIdleState(fb, true, fb->SEGMENT_COMPLETED);
         if (preservedState == HYD_FB_STATE_ABORTED) {
             HYD_StateReporter_SetFbState(fb, HYD_FB_STATE_ABORTED);
         }
@@ -917,14 +917,14 @@ static void HYD_MaintainNonExecutingState(HYD_MotionControlFB* fb,
     }
 
     if (fb->SEGMENT_COMPLETED) {
-        HYD_ProtectionManager_ApplyIdleState(fb, false, true);
+        HYD_SafetyStateManager_ApplyIdleState(fb, false, true);
         if (autoClearLiveDiagnostic) {
             HYD_StateReporter_ClearLiveDiagnosticInNonFaultHold(fb);
         }
         return;
     }
 
-    HYD_ProtectionManager_ApplyIdleState(fb, false, false);
+    HYD_SafetyStateManager_ApplyIdleState(fb, false, false);
     HYD_ResetReadyContextPreview(fb);
     if (autoClearLiveDiagnostic) {
         HYD_StateReporter_ClearLiveDiagnosticInNonFaultHold(fb);
@@ -1077,7 +1077,7 @@ static void HYD_MotionControlFB_PublishOutputs(HYD_MotionControlFB* fb,
     }
 
     if (fb->STATE.faultActive) {
-        HYD_ProtectionManager_ApplyFaultHold(fb);
+        HYD_SafetyStateManager_ApplyFaultHold(fb);
         fb->SEGMENT_CHANGED = fb->_segmentChangedFlag;
         fb->_segmentChangedFlag = false;
         return;
@@ -1827,7 +1827,7 @@ static void HYD_MotionControlFB_RunRunningState(HYD_MotionControlFB* fb) {
             fb->_stopDeceleration = 0.0f;
             fb->_directSessionState = HYD_DIRECT_SESSION_DONE;
             HYD_ClearDirectPendingSlot(fb);
-            HYD_ProtectionManager_ApplyIdleState(fb, true, false);
+            HYD_SafetyStateManager_ApplyIdleState(fb, true, false);
             HYD_StateReporter_SetFbState(fb, HYD_FB_STATE_DONE);
         } else if (stopDeceleration > 0.0f) {
             /* C-4: stop-timeout safety net.
@@ -1844,7 +1844,7 @@ static void HYD_MotionControlFB_RunRunningState(HYD_MotionControlFB* fb) {
                                               fb->AXIS_REF.timestamp,
                                               segment,
                                               &fb->STATE.references);
-                HYD_ProtectionManager_EnterFaultStop(fb);
+                HYD_SafetyStateManager_EnterFaultStop(fb);
             }
         }
         return;
@@ -1852,7 +1852,7 @@ static void HYD_MotionControlFB_RunRunningState(HYD_MotionControlFB* fb) {
 
     if (fb->DIAGNOSTIC.protectionAction == HYD_PROTECTION_ACTION_STOP) {
         fb->_directSessionState = HYD_DIRECT_SESSION_FAULT;
-        HYD_ProtectionManager_EnterFaultStop(fb);
+        HYD_SafetyStateManager_EnterFaultStop(fb);
         HYD_StateReporter_RecordDiagnosticEvent(fb, fb->AXIS_REF.timestamp, segment, &executionReference);
         return;
     }
@@ -1872,7 +1872,7 @@ static void HYD_MotionControlFB_RunRunningState(HYD_MotionControlFB* fb) {
         }
         recipeFinished = (completedSegmentSource == HYD_SEGMENT_SOURCE_DIRECT) ||
             (fb->STATE.currentSegmentIndex + 1U >= fb->RECIPE_SIZE);
-        HYD_ProtectionManager_ApplyIdleState(fb, recipeFinished, true);
+        HYD_SafetyStateManager_ApplyIdleState(fb, recipeFinished, true);
         HYD_StateReporter_SetSegmentSource(fb, completedSegmentSource);
         HYD_StateReporter_RecordDiagnosticEvent(fb, fb->AXIS_REF.timestamp, segment, &executionReference);
         return;
@@ -1902,7 +1902,7 @@ static void HYD_MotionControlFB_RunRunningState(HYD_MotionControlFB* fb) {
             }
             recipeFinished = (completedSegmentSource == HYD_SEGMENT_SOURCE_DIRECT) ||
                 (fb->STATE.currentSegmentIndex + 1U >= fb->RECIPE_SIZE);
-            HYD_ProtectionManager_ApplyIdleState(fb, recipeFinished, true);
+            HYD_SafetyStateManager_ApplyIdleState(fb, recipeFinished, true);
             HYD_StateReporter_SetSegmentSource(fb, completedSegmentSource);
             HYD_StateReporter_RecordDiagnosticEvent(fb, fb->AXIS_REF.timestamp, segment, &executionReference);
             return;

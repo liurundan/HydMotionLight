@@ -1,10 +1,10 @@
-#include "protection_manager.h"
+#include "safety_state_manager.h"
 #include "state_reporter.h"
 #include "pressure_controller.h"
 
 extern void HYD_ClearDirectPendingSlot(HYD_MotionControlFB* fb);
 
-static HYD_BOOL HYD_ProtectionManager_HasSelectedStartSource(const HYD_MotionControlFB* fb) {
+static HYD_BOOL HYD_SafetyStateManager_HasSelectedStartSource(const HYD_MotionControlFB* fb) {
     if (fb == NULL) {
         return false;
     }
@@ -16,7 +16,7 @@ static HYD_BOOL HYD_ProtectionManager_HasSelectedStartSource(const HYD_MotionCon
     return fb->DIRECT_SEGMENT_VALID;
 }
 
-void HYD_ProtectionManager_ResetRuntimeActuation(HYD_MotionControlFB* fb) {
+void HYD_SafetyStateManager_ResetRuntimeActuation(HYD_MotionControlFB* fb) {
     if (fb == NULL) {
         return;
     }
@@ -29,23 +29,23 @@ void HYD_ProtectionManager_ResetRuntimeActuation(HYD_MotionControlFB* fb) {
     fb->_activeSegmentSource = HYD_SEGMENT_SOURCE_NONE;
 }
 
-void HYD_ProtectionManager_ApplyIdleState(HYD_MotionControlFB* fb,
+void HYD_SafetyStateManager_ApplyIdleState(HYD_MotionControlFB* fb,
                                           HYD_BOOL finished,
                                           HYD_BOOL segmentCompleted) {
     if (fb == NULL) {
         return;
     }
 
-    HYD_ProtectionManager_ResetRuntimeActuation(fb);
+    HYD_SafetyStateManager_ResetRuntimeActuation(fb);
     HYD_StateReporter_SetIdleState(fb, finished, segmentCompleted);
 }
 
-void HYD_ProtectionManager_ApplyDisabledState(HYD_MotionControlFB* fb) {
+void HYD_SafetyStateManager_ApplyDisabledState(HYD_MotionControlFB* fb) {
     if (fb == NULL) {
         return;
     }
 
-    HYD_ProtectionManager_ResetRuntimeActuation(fb);
+    HYD_SafetyStateManager_ResetRuntimeActuation(fb);
     fb->_lastCommandedFlow = 0.0;
     HYD_StateReporter_ResetTransitionFlags(fb);
     HYD_StateReporter_ApplySafeOutputs(fb);
@@ -60,19 +60,19 @@ void HYD_ProtectionManager_ApplyDisabledState(HYD_MotionControlFB* fb) {
 
     if (fb->STATE.finished) {
         HYD_StateReporter_SetStatus(fb, HYD_STATUS_FINISHED);
-    } else if (HYD_ProtectionManager_HasSelectedStartSource(fb)) {
+    } else if (HYD_SafetyStateManager_HasSelectedStartSource(fb)) {
         HYD_StateReporter_SetStatus(fb, HYD_STATUS_READY);
     } else {
         HYD_StateReporter_SetStatus(fb, HYD_STATUS_IDLE);
     }
 }
 
-void HYD_ProtectionManager_ApplyFaultHold(HYD_MotionControlFB* fb) {
+void HYD_SafetyStateManager_ApplyFaultHold(HYD_MotionControlFB* fb) {
     if (fb == NULL) {
         return;
     }
 
-    HYD_ProtectionManager_ResetRuntimeActuation(fb);
+    HYD_SafetyStateManager_ResetRuntimeActuation(fb);
     fb->_lastCommandedFlow = 0.0;
     HYD_StateReporter_ApplySafeOutputs(fb);
     HYD_StateReporter_SetProtectionAction(fb, HYD_PROTECTION_ACTION_STOP);
@@ -80,12 +80,12 @@ void HYD_ProtectionManager_ApplyFaultHold(HYD_MotionControlFB* fb) {
     HYD_StateReporter_SetFbState(fb, HYD_FB_STATE_FAULT);
 }
 
-void HYD_ProtectionManager_EnterFaultStop(HYD_MotionControlFB* fb) {
+void HYD_SafetyStateManager_EnterFaultStop(HYD_MotionControlFB* fb) {
     if (fb == NULL) {
         return;
     }
 
-    HYD_ProtectionManager_ResetRuntimeActuation(fb);
+    HYD_SafetyStateManager_ResetRuntimeActuation(fb);
     fb->_lastCommandedFlow = 0.0;
     HYD_ClearDirectPendingSlot(fb);
     HYD_StateReporter_EnterFaultState(fb);
