@@ -209,6 +209,40 @@ static void test_get_flag_mask_reflects_active_flags(void) {
     printf("test_get_flag_mask_reflects_active_flags PASSED\n");
 }
 
+static void test_diag_spec_returns_warning_for_pressure_ceiling_exceeded(void) {
+    HYD_DiagnosticInfo info;
+    memset(&info, 0, sizeof(info));
+    HYD_Diagnostics_SetEvent(&info, HYD_DIAG_CODE_PRESSURE_CEILING_EXCEEDED, HYD_DIAG_SEVERITY_NONE);
+    assert(info.code == HYD_DIAG_CODE_PRESSURE_CEILING_EXCEEDED);
+    assert(info.severity == HYD_DIAG_SEVERITY_WARNING);
+    assert(info.protectionAction == HYD_PROTECTION_ACTION_DERATE);
+    printf("test_diag_spec_returns_warning_for_pressure_ceiling_exceeded PASSED\n");
+}
+
+static void test_diag_spec_returns_fault_for_pressure_ceiling_violated(void) {
+    HYD_DiagnosticInfo info;
+    memset(&info, 0, sizeof(info));
+    HYD_Diagnostics_SetEvent(&info, HYD_DIAG_CODE_PRESSURE_CEILING_VIOLATED, HYD_DIAG_SEVERITY_NONE);
+    assert(info.code == HYD_DIAG_CODE_PRESSURE_CEILING_VIOLATED);
+    assert(info.severity == HYD_DIAG_SEVERITY_FAULT);
+    assert(info.protectionAction == HYD_PROTECTION_ACTION_STOP);
+    printf("test_diag_spec_returns_fault_for_pressure_ceiling_violated PASSED\n");
+}
+
+static void test_ceiling_flag_mask_round_trip(void) {
+    HYD_DiagnosticInfo info;
+    memset(&info, 0, sizeof(info));
+    info.pressureCeilingExceeded = true;
+    info.flags = HYD_Diagnostics_GetFlagMask(&info);
+    assert((info.flags & HYD_DIAG_FLAG_PRESSURE_CEILING_EXCEEDED) != 0U);
+    assert((info.flags & HYD_DIAG_FLAG_PRESSURE_CEILING_VIOLATED) == 0U);
+
+    info.pressureCeilingViolated = true;
+    info.flags = HYD_Diagnostics_GetFlagMask(&info);
+    assert((info.flags & HYD_DIAG_FLAG_PRESSURE_CEILING_VIOLATED) != 0U);
+    printf("test_ceiling_flag_mask_round_trip PASSED\n");
+}
+
 int main(void) {
     test_set_event_timeout_applies_fault_severity_and_stop_action();
     test_set_event_position_deviation_applies_warning_severity();
@@ -219,5 +253,8 @@ int main(void) {
     test_capture_snapshot_marks_invalid_for_no_code();
     test_history_push_and_get_latest();
     test_get_flag_mask_reflects_active_flags();
+    test_diag_spec_returns_warning_for_pressure_ceiling_exceeded();
+    test_diag_spec_returns_fault_for_pressure_ceiling_violated();
+    test_ceiling_flag_mask_round_trip();
     return 0;
 }

@@ -72,6 +72,33 @@ HYD_BOOL HYD_ActionProfile_BuildClampClose(HYD_MotionSegment* segment,
                                            targetPosition);
 }
 
+HYD_BOOL HYD_ActionProfile_BuildClampCloseWithMoldProtect(HYD_MotionSegment* segment,
+                                                          const HYD_MotionFBParams* params,
+                                                          HYD_UINT8 segmentTag,
+                                                          HYD_REAL targetPosition,
+                                                          HYD_REAL protectWindowStart,
+                                                          HYD_REAL pressureCeiling,
+                                                          HYD_REAL pressureCeilingTolerance,
+                                                          HYD_REAL derateRatio) {
+    if (segment == NULL || pressureCeiling <= 0.0 ||
+        protectWindowStart >= targetPosition) {
+        return false;
+    }
+    /* derateRatio must be 0 (use default) or strictly in (0, 1). */
+    if (derateRatio != 0.0 && (derateRatio <= 0.0 || derateRatio >= 1.0)) {
+        return false;
+    }
+    if (!HYD_ActionProfile_BuildClampClose(segment, params, segmentTag, targetPosition)) {
+        return false;
+    }
+    segment->pressureCeiling = pressureCeiling;
+    segment->pressureCeilingTolerance = pressureCeilingTolerance;  /* 0 -> use pressureTolerance via getter */
+    segment->pressureCeilingPositionStart = protectWindowStart;
+    segment->pressureCeilingPositionEnd = targetPosition;
+    segment->derateRatio = derateRatio;
+    return true;
+}
+
 HYD_BOOL HYD_ActionProfile_BuildClampOpen(HYD_MotionSegment* segment,
                                           const HYD_MotionFBParams* params,
                                           HYD_UINT8 segmentTag,

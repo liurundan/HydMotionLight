@@ -9,6 +9,20 @@ HYD_REAL HYD_Segment_GetFlowTolerance(const HYD_MotionSegment* segment);
 HYD_REAL HYD_Segment_GetVelocityTolerance(const HYD_MotionSegment* segment);
 HYD_TIME HYD_Segment_GetTimeoutLimit(const HYD_MotionSegment* segment);
 
+/* Pressure-ceiling accessors (Sprint 1 low-pressure mold-protect primitive).
+ *
+ * The "active at position" helper consolidates the gating logic used by
+ * every control-mode path so callers don't have to re-implement the
+ * window + ceiling > 0 check. Zero pressureCeiling always returns false.
+ * A degenerate window (end <= start) means always-on. */
+HYD_REAL HYD_Segment_GetPressureCeiling(const HYD_MotionSegment* segment);
+HYD_REAL HYD_Segment_GetPressureCeilingTolerance(const HYD_MotionSegment* segment);
+HYD_REAL HYD_Segment_GetPressureCeilingPositionStart(const HYD_MotionSegment* segment);
+HYD_REAL HYD_Segment_GetPressureCeilingPositionEnd(const HYD_MotionSegment* segment);
+HYD_REAL HYD_Segment_GetDerateRatio(const HYD_MotionSegment* segment);
+HYD_BOOL HYD_Segment_PressureCeilingActiveAt(const HYD_MotionSegment* segment,
+                                              HYD_REAL actualPosition);
+
 /**
  * @brief Resolve motion direction from segment configuration and axis position.
  *

@@ -280,6 +280,61 @@ Supported observation criteria are:
 
 Zero-valued criteria are disabled. Non-injection segments and non-speed-ramp segments do not report V/P transfer readiness.
 
+## Segment Field Contract
+
+### Pressure-ceiling fields (Sprint 1)
+
+四个新字段定义"段内压力软上限 + 激活窗口":
+
+| Field | Unit | Semantics |
+|---|---|---|
+| `pressureCeiling` | MPa | 0 disables; >0 enables ceiling check |
+| `pressureCeilingTolerance` | MPa | hysteresis above ceiling; 0 falls back to `pressureTolerance` |
+| `pressureCeilingPositionStart` | mm | window lower bound; ignored when End<=Start |
+| `pressureCeilingPositionEnd` | mm | window upper bound; <=Start means always-on |
+
+**Activation rule:**
+
+```
+activeAt(P) <=> pressureCeiling > 0 AND
+                (End <= Start  OR  (P >= Start AND P <= End))
+```
+
+**Trigger rule:**
+
+```
+exceeded <=> activeAt(currentPosition) AND
+             (actualPressure > pressureCeiling + effectiveTolerance)
+```
+
+其中 `effectiveTolerance = pressureCeilingTolerance if > 0 else pressureTolerance`.
+
+**Severity & action:**
+
+- Initial breach (after `_pressureCeilingCriteria.debounceTime = 0.05 s`):
+  `DIAGNOSTIC.code = PRESSURE_CEILING_EXCEEDED`, severity WARNING, action DERATE.
+- Sustained breach (after `_pressureCeilingCriteria.faultEscalationTime = 0.30 s`):
+  `DIAGNOSTIC.code = PRESSURE_CEILING_VIOLATED`, severity FAULT, action STOP.
+- Hysteresis: criteria state resets only when `actualPressure < pressureCeiling`
+  (i.e. strictly below the ceiling, ignoring tolerance) to avoid chatter on jitter.
+
+**Validation (recipe_validator):**
+
+- `pressureCeiling` itself must be finite and >= 0 (NaN/Inf/negative rejected).
+- `pressureCeiling > 0` 时 `pressureCeilingTolerance >= 0`(允许 0,回退到 pressureTolerance)且必须 finite。
+- 位置字段必须 finite(不允许 NaN / -Inf);零是合法值(代表"always-on")。
+
+### Derate-ratio field (Sprint 1)
+
+| Field | Range | Semantics |
+|---|---|---|
+| `derateRatio` | 0 OR (0, 1) | 0 表示"使用库默认 0.5";其他取值即 DERATE 时的输出系数 |
+
+`HYD_OutputLimiter_Execute` 在 `protectionAction = DERATE` 时把
+`commandFlow` 与 `pumpSpeed` 都乘以 `derateRatio`。
+取值 <=0 / >=1 / NaN 都被 `HYD_Segment_GetDerateRatio` 视为"未配置"并返回 0,
+随后 `HYD_OutputLimiter_ResolveDerateRatio` 回退到 0.5。
+
 ## Error and Protection Contract
 
 ### Error Semantics
@@ -294,6 +349,22 @@ Zero-valued criteria are disabled. Non-injection segments and non-speed-ramp seg
 - `LAST_FAULT_SNAPSHOT` is the most recent retained fault snapshot intended for review and service.
 - `DIAGNOSTIC_HISTORY` and `LAST_FAULT_SNAPSHOT` retain diagnostic information for review and service.
 - Warning diagnostics may exist without full terminal fault semantics.
+
+### Diagnostic Codes (Sprint 1 additions)
+
+The full code catalogue lives in `include/common_types.h` (`HYD_DiagnosticCode`)
+and the field-by-field HMI mapping is documented in `HMI诊断对照表.md`. The two
+codes introduced by Sprint 1 are:
+
+| Code | Severity | Source | Recovery | Protection Action | 说明 |
+|---|---|---|---|---|---|
+| `HYD_DIAG_CODE_PRESSURE_CEILING_EXCEEDED` | WARNING | EXECUTION | CHECK_COMMAND | DERATE | 段内压力超过软上限(初次) |
+| `HYD_DIAG_CODE_PRESSURE_CEILING_VIOLATED` | FAULT   | EXECUTION | RESTART_SEGMENT | STOP   | 持续超限,触发 fault escalation |
+
+Priority ordering in `HYD_UpdateExecutionDiagnostics` (highest first):
+TIMEOUT > PRESSURE_CEILING_VIOLATED > OVER_PRESSURE (fault-escalated) >
+PRESSURE_CEILING_EXCEEDED > OVER_PRESSURE (warning) > UNDER_PRESSURE >
+FLOW_DEVIATION > POSITION_DEVIATION > VELOCITY_DEVIATION.
 
 ### Protection Semantics
 

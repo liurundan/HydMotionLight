@@ -139,6 +139,18 @@ static const HYD_DiagnosticSpec HYD_DIAGNOSTIC_SPECS[] = {
      HYD_DIAG_RECOVERY_CHECK_SENSOR,
      HYD_PROTECTION_ACTION_STOP,
      "Axis timestamp moved backwards"},
+    {HYD_DIAG_CODE_PRESSURE_CEILING_EXCEEDED,
+     HYD_DIAG_SEVERITY_WARNING,
+     HYD_DIAG_SOURCE_EXECUTION,
+     HYD_DIAG_RECOVERY_CHECK_COMMAND,
+     HYD_PROTECTION_ACTION_DERATE,
+     "Pressure exceeded segment soft ceiling"},
+    {HYD_DIAG_CODE_PRESSURE_CEILING_VIOLATED,
+     HYD_DIAG_SEVERITY_FAULT,
+     HYD_DIAG_SOURCE_EXECUTION,
+     HYD_DIAG_RECOVERY_RESTART_SEGMENT,
+     HYD_PROTECTION_ACTION_STOP,
+     "Pressure remained above ceiling beyond fault-escalation window"},
     {HYD_DIAG_CODE_INTERNAL_ERROR,
      HYD_DIAG_SEVERITY_FAULT,
      HYD_DIAG_SOURCE_INTERNAL,
@@ -177,6 +189,12 @@ static HYD_DiagnosticFlags HYD_Diagnostics_BuildFlagMask(const HYD_DiagnosticInf
     }
     if (diagnostic->timestampRollback) {
         flags |= HYD_DIAG_FLAG_TIMESTAMP_ROLLBACK;
+    }
+    if (diagnostic->pressureCeilingExceeded) {
+        flags |= HYD_DIAG_FLAG_PRESSURE_CEILING_EXCEEDED;
+    }
+    if (diagnostic->pressureCeilingViolated) {
+        flags |= HYD_DIAG_FLAG_PRESSURE_CEILING_VIOLATED;
     }
 
     return flags;
@@ -409,6 +427,10 @@ const char* HYD_Diagnostics_CodeToString(HYD_DiagnosticCode code) {
             return "SENSOR_FAULT";
         case HYD_DIAG_CODE_TIMESTAMP_ROLLBACK:
             return "TIMESTAMP_ROLLBACK";
+        case HYD_DIAG_CODE_PRESSURE_CEILING_EXCEEDED:
+            return "PRESSURE_CEILING_EXCEEDED";
+        case HYD_DIAG_CODE_PRESSURE_CEILING_VIOLATED:
+            return "PRESSURE_CEILING_VIOLATED";
         case HYD_DIAG_CODE_INTERNAL_ERROR:
             return "INTERNAL_ERROR";
         default:

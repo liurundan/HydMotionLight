@@ -82,3 +82,65 @@ HYD_MotionDirection HYD_Segment_ResolveDirection(const HYD_MotionSegment* segmen
     }
     return HYD_DIRECTION_HOLD;
 }
+
+HYD_REAL HYD_Segment_GetPressureCeiling(const HYD_MotionSegment* segment) {
+    if (segment == NULL) {
+        return 0.0;
+    }
+    return (segment->pressureCeiling > 0.0) ? segment->pressureCeiling : 0.0;
+}
+
+HYD_REAL HYD_Segment_GetPressureCeilingTolerance(const HYD_MotionSegment* segment) {
+    if (segment == NULL) {
+        return 0.0;
+    }
+    if (segment->pressureCeilingTolerance > 0.0) {
+        return segment->pressureCeilingTolerance;
+    }
+    /* Fall back to generic pressureTolerance if dedicated value not configured. */
+    return HYD_Segment_GetPressureTolerance(segment);
+}
+
+HYD_REAL HYD_Segment_GetPressureCeilingPositionStart(const HYD_MotionSegment* segment) {
+    if (segment == NULL) {
+        return 0.0;
+    }
+    return segment->pressureCeilingPositionStart;
+}
+
+HYD_REAL HYD_Segment_GetPressureCeilingPositionEnd(const HYD_MotionSegment* segment) {
+    if (segment == NULL) {
+        return 0.0;
+    }
+    return segment->pressureCeilingPositionEnd;
+}
+
+HYD_REAL HYD_Segment_GetDerateRatio(const HYD_MotionSegment* segment) {
+    if (segment == NULL) {
+        return 0.0;
+    }
+    if (segment->derateRatio > 0.0 && segment->derateRatio < 1.0) {
+        return segment->derateRatio;
+    }
+    return 0.0;  /* 0 signals "use library default" to HYD_OutputLimiter */
+}
+
+HYD_BOOL HYD_Segment_PressureCeilingActiveAt(const HYD_MotionSegment* segment,
+                                              HYD_REAL actualPosition) {
+    HYD_REAL start;
+    HYD_REAL end;
+
+    if (segment == NULL || HYD_Segment_GetPressureCeiling(segment) <= 0.0) {
+        return false;
+    }
+
+    start = segment->pressureCeilingPositionStart;
+    end = segment->pressureCeilingPositionEnd;
+
+    /* Always-on when window is degenerate (end <= start). */
+    if (end <= start) {
+        return true;
+    }
+
+    return (actualPosition >= start) && (actualPosition <= end);
+}
