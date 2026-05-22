@@ -28,19 +28,39 @@ void HYD_VpTransfer_Evaluate(const HYD_MotionSegment* segment,
         return;
     }
 
-    if (segment->vpTransferPosition > 0.0 &&
-        axisRef->position >= segment->vpTransferPosition) {
-        result->ready = true;
-        result->reason = HYD_VP_TRANSFER_REASON_POSITION;
-        return;
+    if (segment->vpTransferPriority == HYD_VP_PRIORITY_PRESSURE_FIRST) {
+        /* Pressure-first: check pressure before position */
+        if (segment->vpTransferPressure > 0.0 &&
+            axisRef->pressure >= segment->vpTransferPressure) {
+            result->ready = true;
+            result->reason = HYD_VP_TRANSFER_REASON_PRESSURE;
+            return;
+        }
+
+        if (segment->vpTransferPosition > 0.0 &&
+            axisRef->position >= segment->vpTransferPosition) {
+            result->ready = true;
+            result->reason = HYD_VP_TRANSFER_REASON_POSITION;
+            return;
+        }
+    } else {
+        /* Position-first (default): check position before pressure */
+        if (segment->vpTransferPosition > 0.0 &&
+            axisRef->position >= segment->vpTransferPosition) {
+            result->ready = true;
+            result->reason = HYD_VP_TRANSFER_REASON_POSITION;
+            return;
+        }
+
+        if (segment->vpTransferPressure > 0.0 &&
+            axisRef->pressure >= segment->vpTransferPressure) {
+            result->ready = true;
+            result->reason = HYD_VP_TRANSFER_REASON_PRESSURE;
+            return;
+        }
     }
 
-    if (segment->vpTransferPressure > 0.0 &&
-        axisRef->pressure >= segment->vpTransferPressure) {
-        result->ready = true;
-        result->reason = HYD_VP_TRANSFER_REASON_PRESSURE;
-        return;
-    }
+    /* Time and velocity_drop order is unchanged (both are lower priority) */
 
     if (segment->vpTransferMinTime > 0.0 &&
         references != NULL &&

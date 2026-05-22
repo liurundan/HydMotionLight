@@ -113,6 +113,14 @@ typedef enum {
     HYD_PROTECTION_ACTION_STOP
 } HYD_ProtectionAction;
 
+/* VP transfer criteria priority order.
+ * POSITION_FIRST (default): position > pressure > time > velocity_drop
+ * PRESSURE_FIRST:           pressure > position > time > velocity_drop */
+typedef enum {
+    HYD_VP_PRIORITY_POSITION_FIRST = 0,
+    HYD_VP_PRIORITY_PRESSURE_FIRST = 1
+} HYD_VpTransferPriority;
+
 typedef enum {
     HYD_VP_TRANSFER_REASON_NONE = 0,
     HYD_VP_TRANSFER_REASON_POSITION = 1,
@@ -281,6 +289,8 @@ typedef struct {
     HYD_REAL vpTransferPressure;        /* MPa, 0 disables pressure transfer observation */
     HYD_TIME vpTransferMinTime;         /* s, 0 disables elapsed-time transfer observation */
     HYD_REAL vpTransferVelocityDrop;    /* mm/s, 0 disables velocity-drop observation */
+    HYD_VpTransferPriority vpTransferPriority; /* criteria check order; 0 = position-first (default) */
+    HYD_BOOL vpTransferLatch;                  /* true = latch vpTransferReady after first trigger */
 
     HYD_REAL velocityToFlowGain; /* L/min per mm/s, actuator flow gain */
     HYD_REAL velocityKp;        /* L/min per mm/s, 0 disables velocity feedback correction */
