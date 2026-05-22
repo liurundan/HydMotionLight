@@ -403,6 +403,68 @@ static void test_rbf_pid_strategy_switch_tracks_previous_output_bumplessly(void)
 
 /* ---- P1-5: Boundary and edge-case tests ---- */
 
+static void test_cross_controller_switch_seeds_rbf_within_clamp_window(void) {
+    HYD_MotionSegment segmentA;
+    HYD_MotionSegment segmentB;
+    HYD_PressureControllerState state;
+    HYD_PressureControllerInput input;
+    HYD_PressureControllerOutput output;
+
+    printf("Testing cross-controller PI->RBF switch clamp seeding...\n");
+
+    /* Segment A: PI controller, brief working state. */
+    segmentA = make_pressure_segment();
+    segmentA.pressureController = HYD_PRESSURE_CONTROLLER_PI;
+    segmentA.pressureKp = 0.5;
+    segmentA.pressureKi = 0.1;
+    segmentA.pressureIntegralLimit = 5.0;
+    segmentA.maxFlow = 30.0;
+
+    HYD_PressureController_InitState(&state, 18.0, 5.0, 0.0);
+
+    input.targetPressure = 20.0;
+    input.measuredPressure = 18.0;
+    input.feedforwardFlow = 5.0;
+    input.outputMin = 0.0;
+    input.outputMax = 30.0;
+    input.timestamp = 0.0;
+    HYD_PressureController_Execute(&segmentA, &state, &input, &output);
+    assert(output.appliedStrategy == HYD_PRESSURE_CONTROLLER_PI);
+
+    /* Segment B: RBF controller with window [1.5, 2.0] outside Init default KP=0.8 */
+    segmentB = make_pressure_segment();
+    segmentB.pressureController = HYD_PRESSURE_CONTROLLER_RBF_PID;
+    segmentB.targetPressure = 30.0;
+    segmentB.maxFlow = 30.0;
+    segmentB.pressureCeiling = 50.0;
+    segmentB.pressureRbfConfig.minKp = 1.5;
+    segmentB.pressureRbfConfig.maxKp = 2.0;
+    segmentB.pressureRbfConfig.minKi = 0.005;
+    segmentB.pressureRbfConfig.maxKi = 0.050;
+    segmentB.pressureRbfConfig.minKd = 0.5;
+    segmentB.pressureRbfConfig.maxKd = 2.0;
+
+    input.targetPressure = 30.0;
+    input.measuredPressure = 25.0;
+    input.timestamp = 0.01;
+    HYD_PressureController_Execute(&segmentB, &state, &input, &output);
+
+    /* After PI->RBF switch with custom window, all 3 gains must be clamped into the new window. */
+    assert(state.rbfPid.KP >= 1.5f - 1e-4f);
+    assert(state.rbfPid.KP <= 2.0f + 1e-4f);
+    assert(state.rbfPid.KI >= 0.005f - 1e-4f);
+    assert(state.rbfPid.KI <= 0.050f + 1e-4f);
+    assert(state.rbfPid.KD >= 0.5f - 1e-4f);
+    assert(state.rbfPid.KD <= 2.0f + 1e-4f);
+    /* Output must remain within [outputMin, outputMax] — no first-step spike. */
+    assert(output.outputFlow >= 0.0);
+    assert(output.outputFlow <= input.outputMax + 1e-4);
+    printf("✓ Cross-controller PI->RBF clamp seeding test passed (KP=%.3f KI=%.4f KD=%.3f)\n",
+           state.rbfPid.KP, state.rbfPid.KI, state.rbfPid.KD);
+}
+
+/* ---- P1-5: Boundary and edge-case tests ---- */
+
 static void test_pi_integral_saturates_and_back_calculates_on_recovery(void) {
     HYD_MotionSegment segment;
     HYD_PressureControllerState state;
@@ -694,6 +756,7 @@ int main(void) {
     test_rbf_pid_strategy_executes_within_limits_and_adapts();
     test_rbf_pid_strategy_uses_segment_level_tuning_profile();
     test_rbf_pid_strategy_switch_tracks_previous_output_bumplessly();
+    test_cross_controller_switch_seeds_rbf_within_clamp_window();
     test_pi_integral_saturates_and_back_calculates_on_recovery();
     test_p_to_pi_strategy_switch_preinitializes_integral();
     test_long_run_integral_stability();
