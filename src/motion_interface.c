@@ -1555,21 +1555,41 @@ void __mcl_cmd_GetPumpRequest(HYD_GETPUMPREQUEST *data__)
     if (!enable)
     {
         __SET_VAR(data__->, PUMPSPEED, , (IEC_REAL)0.0);
+        __SET_VAR(data__->, CONFLICT, , false);
         __SET_VAR(data__->, DONE, , true);
         return;
     }
 
     /* STRATEGY: 0 = MAX arbitration (only supported strategy for now) */
     HYD_REAL maxSpeed = 0.0;
+    IEC_BOOL sawExtend = false;
+    IEC_BOOL sawRetract = false;
 
     for (int i = 0; i < (int)nextAllocatedFB; i++) {
         HYD_MotionControlFB* fb = &HYD_MotionControlFB_inst[i];
-        if (fb->STATE.active && fb->PUMP_SPEED > maxSpeed) {
+        if (!fb->STATE.active) {
+            continue;
+        }
+        if (fb->PUMP_SPEED > maxSpeed) {
             maxSpeed = fb->PUMP_SPEED;
+        }
+        switch (fb->STATE.plannedDirection) {
+            case HYD_DIRECTION_EXTEND:
+                sawExtend = true;
+                break;
+            case HYD_DIRECTION_RETRACT:
+                sawRetract = true;
+                break;
+            case HYD_DIRECTION_HOLD:
+            case HYD_DIRECTION_AUTO:
+            default:
+                /* HOLD / AUTO axes do not contribute to direction conflict. */
+                break;
         }
     }
 
     __SET_VAR(data__->, PUMPSPEED, , (IEC_REAL)maxSpeed);
+    __SET_VAR(data__->, CONFLICT, , (sawExtend && sawRetract) ? true : false);
     __SET_VAR(data__->, DONE, , true);
 }
 

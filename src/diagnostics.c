@@ -151,6 +151,12 @@ static const HYD_DiagnosticSpec HYD_DIAGNOSTIC_SPECS[] = {
      HYD_DIAG_RECOVERY_RESTART_SEGMENT,
      HYD_PROTECTION_ACTION_STOP,
      "Pressure remained above ceiling beyond fault-escalation window"},
+    {HYD_DIAG_CODE_PUMP_DIRECTION_CONFLICT,
+     HYD_DIAG_SEVERITY_WARNING,
+     HYD_DIAG_SOURCE_RUNTIME,
+     HYD_DIAG_RECOVERY_NONE,
+     HYD_PROTECTION_ACTION_NONE,
+     "Pump direction conflict: opposing planned directions on active axes."},
     {HYD_DIAG_CODE_INTERNAL_ERROR,
      HYD_DIAG_SEVERITY_FAULT,
      HYD_DIAG_SOURCE_INTERNAL,
@@ -431,6 +437,8 @@ const char* HYD_Diagnostics_CodeToString(HYD_DiagnosticCode code) {
             return "PRESSURE_CEILING_EXCEEDED";
         case HYD_DIAG_CODE_PRESSURE_CEILING_VIOLATED:
             return "PRESSURE_CEILING_VIOLATED";
+        case HYD_DIAG_CODE_PUMP_DIRECTION_CONFLICT:
+            return "PUMP_DIRECTION_CONFLICT";
         case HYD_DIAG_CODE_INTERNAL_ERROR:
             return "INTERNAL_ERROR";
         default:

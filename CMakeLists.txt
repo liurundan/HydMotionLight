@@ -142,6 +142,12 @@ target_link_libraries(test_recipe_multi_segment_ownership PRIVATE HydroMotionLib
 add_executable(test_mold_protect tests/test_mold_protect.c)
 target_link_libraries(test_mold_protect PRIVATE HydroMotionLib)
 
+add_executable(test_rbf_pid_hil tests/test_rbf_pid_hil.c)
+target_link_libraries(test_rbf_pid_hil PRIVATE HydroMotionLib HydroSimLib)
+
+add_executable(test_pump_direction_conflict tests/test_pump_direction_conflict.c)
+target_link_libraries(test_pump_direction_conflict PRIVATE HydroMotionLib)
+
 add_executable(main tests/main.c)
 target_link_libraries(main PRIVATE HydroMotionLib)
 
@@ -203,6 +209,12 @@ add_test(NAME test_recipe_multi_segment_ownership
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 add_test(NAME test_mold_protect
          COMMAND test_mold_protect
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+add_test(NAME test_rbf_pid_hil
+         COMMAND test_rbf_pid_hil
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+add_test(NAME test_pump_direction_conflict
+         COMMAND test_pump_direction_conflict
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 add_test(NAME test_interface_layout_consistency
          COMMAND ${CMAKE_COMMAND} -E env PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}
