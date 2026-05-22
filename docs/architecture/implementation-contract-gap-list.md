@@ -46,6 +46,19 @@ against the current implementation in:
 - `HYD_AXISMOTION` setpoint half (`SET*`, `MAX*`, `SEGMENT*`, `MODE`, `ENDCONDITION`, `DIRECTION`, `PLANNER`, tuning gains) is no longer overwritten by the runtime. `writeMotionFromSegment` has been removed; multi-FB deployments on the same axis can stage next-segment setpoints safely (C-1).
 - Recipe `NextSegment` no longer false-raises `COMMANDABORTED` on the outer `MoveProfile` FB. A new `_recipeBatchId` epoch advances only on initial Start / ABORT / STOP / direct takeover, while `_executionId` continues to serve as the per-segment epoch for direct-command paths (C-2). The `recipeExecutionLostOwnership` predicate was simplified accordingly, also fixing an adjacent latent issue where Stop preemption could be masked by a recipe-source short-circuit.
 
+### Sprint 1 (2026-05-21) — Low-Pressure Mold-Protect Landed
+
+- Pressure-ceiling check now runs under HYD_MODE_POSITION / SPEED_RAMP /
+  PRESSURE_CLOSED_LOOP for any segment with `pressureCeiling > 0`
+  (Sprint 1 spec 1.3). Two new diagnostic codes
+  `HYD_DIAG_CODE_PRESSURE_CEILING_EXCEEDED` (WARNING/DERATE) and
+  `HYD_DIAG_CODE_PRESSURE_CEILING_VIOLATED` (FAULT/STOP) emit with
+  position-window-aware activation.
+- `derateRatio` 改为段级可配置(`HYD_MotionSegment.derateRatio`),硬编码
+  0.5 已从 motion_control.c 移除(Sprint 1 spec 1.4)。
+- `HYD_ActionProfile_BuildClampCloseWithMoldProtect()` 新增,作为低压护
+  膜工艺的一句调用模板(Sprint 1 spec 1.5)。
+
 ## Still Outside Runtime Scope
 
 - Valve sequencing remains in PLC process logic.

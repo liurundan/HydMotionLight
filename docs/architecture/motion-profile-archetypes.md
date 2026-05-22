@@ -169,6 +169,54 @@ Recommended structure:
 | Required values | `targetPosition`, `maxVelocity`, `maxAcceleration` |
 | Recommended safeguards | `positionTolerance`, `timeoutLimit` |
 
+#### 低压护膜变体 (Low-Pressure Mold Protect)
+
+> Introduced in Sprint 1.
+
+合模段进入护膜窗口后,允许"实测压力 > 段配置 ceiling + tolerance"立即触发 DERATE,
+持续超限超过 fault-escalation 阈值后升级为 STOP。适用场景:模具内异物、模板平行度异常、
+顶针未完全回位、嵌件未到位等。
+
+**推荐 builder:**
+
+```c
+HYD_ActionProfile_BuildClampCloseWithMoldProtect(
+    &seg, &params, tag,
+    /* targetPosition */ 100.0,    /* mm, 全合位置 */
+    /* protectWindowStart */ 70.0, /* mm, 低速护膜窗口起点 */
+    /* pressureCeiling */ 5.0,     /* MPa, 护膜段压力上限 */
+    /* pressureCeilingTolerance */ 0.0,  /* 0 = 沿用 params->pressureTolerance */
+    /* derateRatio */ 0.2);        /* 触发 ceiling-exceeded 时减速到 20% */
+```
+
+**激活窗口语义:**
+
+- `pressureCeilingPositionStart < pressureCeilingPositionEnd` -> 窗口内激活
+- `pressureCeilingPositionStart >= pressureCeilingPositionEnd`(含 0,0)-> 整段激活
+- `pressureCeiling = 0` -> 整段禁用 ceiling 检查(默认状态)
+
+**诊断码:**
+
+| Code | Severity | Protection Action |
+|---|---|---|
+| `HYD_DIAG_CODE_PRESSURE_CEILING_EXCEEDED` | WARNING | DERATE |
+| `HYD_DIAG_CODE_PRESSURE_CEILING_VIOLATED` | FAULT | STOP |
+
+EXCEEDED -> VIOLATED 的升级由 `_pressureCeilingCriteria.faultEscalationTime`
+控制(默认 300 ms)。PLC 在 WARNING 阶段会观察到 PUMP_SPEED 按 derateRatio 缩放;
+在 FAULT 阶段会观察到 FB_STATE = FAULT、PUMP_SPEED = 0,需要通过 Abort+重启或
+Reset 恢复。
+
+**与 OVER_PRESSURE 的区别:**
+
+- `OVER_PRESSURE`(legacy)只在 PRESSURE_CLOSED_LOOP mode 评估,语义是"实测压力偏离
+  closed-loop reference 超过 pressureTolerance",用于压力 servo 跟踪。
+- `PRESSURE_CEILING_EXCEEDED`(Sprint 1)在 POSITION / SPEED_RAMP /
+  PRESSURE_CLOSED_LOOP 任意 mode 都评估,语义是"实测压力超过段配置的固定软上限",
+  用于安全保护。两者可以共存:一个 PRESSURE_CLOSED_LOOP 段同时配置
+  `pressureTolerance`(跟踪误差告警)和 `pressureCeiling`(安全上限保护)是合法且推荐
+  的工艺配置。
+
 ### `ClampOpenSegment`
 
 Recommended use:
