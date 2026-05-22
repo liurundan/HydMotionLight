@@ -1772,8 +1772,12 @@ static void HYD_MotionControlFB_RunRunningState(HYD_MotionControlFB* fb) {
     {
         HYD_VpTransferResult vpResult;
         HYD_VpTransfer_Evaluate(segment, &fb->AXIS_REF, &executionReference, &vpResult);
-        fb->STATE.vpTransferReady = vpResult.ready;
-        fb->STATE.vpTransferReason = (HYD_UINT8)vpResult.reason;
+        if (segment->vpTransferLatch && fb->STATE.vpTransferReady) {
+            /* Latch mode: once triggered, hold until segment end (PrimeSegmentControllers clears it). */
+        } else {
+            fb->STATE.vpTransferReady = vpResult.ready;
+            fb->STATE.vpTransferReason = (HYD_UINT8)vpResult.reason;
+        }
     }
 
     limiterInput.requestedFlow = pumpOutput.commandFlow;
