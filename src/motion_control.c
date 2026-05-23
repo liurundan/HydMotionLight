@@ -2205,7 +2205,7 @@ void HYD_MotionControlFB_Init(HYD_MotionControlFB* fb) {
     fb->_params.velocityTolerance = 5.0f;
     fb->_params.flowTolerance = 1.0f;
     fb->_params.pressureTolerance = 0.5f;
-    fb->_params.timeoutLimit = 30.0f;
+    fb->_params.timeoutLimit = 0.0f; // default diabled, since not all recipes may have a meaningful timeout condition
     fb->_params.velocityToFlowGain = 0.2f;
     fb->_params.maxVelocity = 100.0f;
     fb->_params.maxAcceleration = 500.0f;

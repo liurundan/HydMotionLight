@@ -2,7 +2,7 @@
 #include "segment_limits.h"
 #include <math.h>
 
-#define HYD_DEFAULT_POSITION_SETTLED_VELOCITY_TOLERANCE 1.0
+#define HYD_DEFAULT_POSITION_SETTLED_VELOCITY_TOLERANCE 0.001
 
 static HYD_REAL HYD_SegmentCompletion_ResolvePositionSettledVelocityTolerance(
     const HYD_MotionSegment* segment) {
