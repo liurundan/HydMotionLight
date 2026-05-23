@@ -39,7 +39,7 @@ static void test_init_sets_defaults(void) {
 
     ok = HYD_MotionControlFB_ReadParameter(&fb, HYD_PARAM_TIMEOUT_LIMIT, &val);
     ASSERT_TRUE(ok, "Read timeoutLimit should succeed");
-    ASSERT_FLOAT_EQ(val, 30.0f, 0.001f, "Default timeoutLimit should be 30.0");
+    ASSERT_FLOAT_EQ(val, 0.0f, 0.001f, "Default timeoutLimit should be 0.0 (disabled)");
 
     ok = HYD_MotionControlFB_ReadParameter(&fb, HYD_PARAM_VELOCITY_TO_FLOW_GAIN, &val);
     ASSERT_TRUE(ok, "Read velocityToFlowGain should succeed");

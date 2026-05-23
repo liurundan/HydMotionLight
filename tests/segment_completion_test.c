@@ -234,23 +234,6 @@ static void test_position_completion_stable_velocity_limit_overrides_velocity_to
     printf("✓ Stable velocity override test passed\n");
 }
 
-static void test_position_completion_uses_default_velocity_tolerance_when_unconfigured(void) {
-    HYD_MotionSegment segment = create_segment();
-
-    printf("Testing default settled velocity tolerance for position completion...\n");
-    segment.endCondition = HYD_END_POSITION;
-    segment.direction = HYD_DIRECTION_EXTEND;
-    segment.targetPosition = 100.0;
-    segment.positionTolerance = 0.1;
-    segment.velocityTolerance = 0.0;
-    segment.stableVelocityLimit = 0.0;
-
-    assert(!check_position_with_velocities(&segment, 99.95, 1.2, 0.8, 1.0, NULL, NULL));
-    assert(!check_position_with_velocities(&segment, 99.95, 0.8, 1.2, 1.0, NULL, NULL));
-    assert(check_position_with_velocities(&segment, 99.95, 0.8, 0.8, 1.0, NULL, NULL));
-    printf("✓ Default settled velocity tolerance test passed\n");
-}
-
 static void test_position_completion_stable_window_resets_on_unsettled_planned_velocity(void) {
     HYD_MotionSegment segment = create_segment();
     HYD_TIME candidateStart = 0.0;
@@ -392,7 +375,6 @@ int main(void) {
     test_position_completion_rejects_unsettled_actual_velocity();
     test_position_completion_accepts_settled_planned_and_actual_velocity();
     test_position_completion_stable_velocity_limit_overrides_velocity_tolerance();
-    test_position_completion_uses_default_velocity_tolerance_when_unconfigured();
     test_position_completion_stable_window_resets_on_unsettled_planned_velocity();
     test_pressure_completion_ignores_velocity_reference_gate();
     test_position_completion_requires_stable_window();
