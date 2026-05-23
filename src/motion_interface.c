@@ -1684,6 +1684,7 @@ void __mcl_cmd_ReadSimFeedback(HYD_READSIMFEEDBACK* data__)
         __SET_VAR(data__->, FLOW,, fb->AXIS_REF.flow);
         __SET_VAR(data__->, PRESSURE,, fb->AXIS_REF.pressure);
         __SET_VAR(data__->, BUSY,, HYD_MotionControlFB_IsBusy(fb) ? true : false);
+        __SET_VAR(data__->, VALID,, true );
     }
     else
     {
