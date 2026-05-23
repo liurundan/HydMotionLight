@@ -1320,6 +1320,85 @@ static void test_multiple_axes_operate_independently(void) {
                "Axis 1 should not get COMMANDABORTED from independent operation");
 }
 
+/**
+ * @brief ApplyLiveUpdate 在段完成后应对同一 owner 的请求静默成功
+ *
+ * 修复前: 连续更新模式下段完成后，ApplyLiveUpdate 守卫条件失败会报
+ * COMMAND_NOT_ALLOWED。修复后应静默返回 true 让 IEC 适配器的 DONE 逻辑触发。
+ */
+static void test_apply_live_update_tolerates_completed_segment(void)
+{
+    HYD_MotionControlFB* fb;
+    HYD_LiveUpdateRequest request;
+    HYD_MotionSegment segment;
+    HYD_BOOL result;
+
+    __HydMotion_framework_Init();
+    ensure_axes_allocated(1);
+    fb = __MK_GetPublic_MotionControlFB(0);
+
+    /* 手动构造一个活跃的 DIRECT 段并设置 owner */
+    memset(&segment, 0, sizeof(segment));
+    segment.mode = HYD_MODE_POSITION;
+    segment.endCondition = HYD_END_POSITION;
+    segment.targetPosition = 200.0;
+    segment.maxVelocity = 50.0;
+    segment.maxAcceleration = 100.0;
+    segment.maxDeceleration = 100.0;
+    segment.maxFlow = 50.0;
+    segment.velocityToFlowGain = 1.0;
+    segment.direction = HYD_DIRECTION_EXTEND;
+
+    fb->DIRECT_SEGMENT = segment;
+    fb->DIRECT_SEGMENT_VALID = true;
+    fb->USE_RECIPE = false;
+    fb->AXIS_REF.timestamp = 1.0;
+
+    /* 模拟 BeginSegment 后的状态 */
+    fb->_activeSegment = segment;
+    fb->_activeSegmentValid = true;
+    fb->_activeSegmentSource = HYD_SEGMENT_SOURCE_DIRECT;
+    fb->STATE.active = true;
+    fb->_directOwnerKind = HYD_DIRECT_CMD_MOVE_ABSOLUTE;
+    fb->_directOwnerExecutionId = 42;
+    fb->_executionId = 42;
+
+    /* 构造请求 */
+    memset(&request, 0, sizeof(request));
+    request.flags = HYD_LIVE_UPDATE_TARGET_POSITION | HYD_LIVE_UPDATE_MAX_VELOCITY;
+    request.ownerKind = HYD_DIRECT_CMD_MOVE_ABSOLUTE;
+    request.ownerExecutionId = 42;
+    request.targetPosition = 250.0;
+    request.maxVelocity = 60.0;
+
+    /* 活跃段 + 正确 owner: ApplyLiveUpdate 应该成功 */
+    result = HYD_MotionControlFB_ApplyLiveUpdate(fb, &request);
+    ASSERT_TRUE(result == true,
+               "ApplyLiveUpdate should succeed on active segment with matching owner");
+    ASSERT_TRUE(fabs(fb->_activeSegment.targetPosition - 250.0) < 0.001,
+               "ApplyLiveUpdate should update target position on active segment");
+
+    /* 模拟段正常完成 (ApplyIdleState 效果) */
+    fb->STATE.finished = true;
+    fb->SEGMENT_COMPLETED = true;
+    fb->_activeSegmentValid = false;
+    fb->STATE.active = false;
+    fb->_activeSegmentSource = HYD_SEGMENT_SOURCE_NONE;
+
+    /* 同一 owner 在完成后请求更新: 应静默成功 (不报错) */
+    result = HYD_MotionControlFB_ApplyLiveUpdate(fb, &request);
+    ASSERT_TRUE(result == true,
+               "ApplyLiveUpdate should silently succeed for same owner after completion");
+
+    /* 不同 owner 在完成后请求更新: 仍应拒绝 */
+    request.ownerExecutionId = 999;
+    result = HYD_MotionControlFB_ApplyLiveUpdate(fb, &request);
+    ASSERT_TRUE(result == false,
+               "ApplyLiveUpdate should reject WRONG owner even after completion");
+
+    printf("  OK: test_apply_live_update_tolerates_completed_segment\n");
+}
+
 int main(void) {
     printf("=== Motion Interface Unit Tests ===\n\n");
 
@@ -1357,6 +1436,7 @@ int main(void) {
     test_hold_resume_reject_invalid_axis_index();
     test_hold_resume_reject_invalid_runtime_state();
     test_multiple_axes_operate_independently();
+    test_apply_live_update_tolerates_completed_segment();
 
     printf("\n=== Results: %d/%d passed ===\n", tests_passed, tests_run);
     return (tests_passed == tests_run) ? 0 : 1;

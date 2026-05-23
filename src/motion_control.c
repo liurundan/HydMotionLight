@@ -1977,6 +1977,9 @@ static HYD_BOOL HYD_RunRunningStateCompletion(HYD_MotionControlFB* fb,
             (void)HYD_StartPendingDirectSlot(fb, fb->AXIS_REF.timestamp, false);
             return true;
         }
+        if (completedSegmentSource == HYD_SEGMENT_SOURCE_DIRECT) {
+            HYD_RecordDirectExecutionCompleted(fb);
+        }
         recipeFinished = (completedSegmentSource == HYD_SEGMENT_SOURCE_DIRECT) ||
             (fb->STATE.currentSegmentIndex + 1U >= fb->RECIPE_SIZE);
         HYD_SafetyStateManager_ApplyIdleState(fb, recipeFinished, true);
@@ -2010,6 +2013,9 @@ static HYD_BOOL HYD_RunRunningStateCompletion(HYD_MotionControlFB* fb,
         fb->_directPendingValid) {
         (void)HYD_StartPendingDirectSlot(fb, fb->AXIS_REF.timestamp, false);
         return true;
+    }
+    if (completedSegmentSource == HYD_SEGMENT_SOURCE_DIRECT) {
+        HYD_RecordDirectExecutionCompleted(fb);
     }
     recipeFinished = (completedSegmentSource == HYD_SEGMENT_SOURCE_DIRECT) ||
         (fb->STATE.currentSegmentIndex + 1U >= fb->RECIPE_SIZE);
@@ -2774,6 +2780,11 @@ HYD_BOOL HYD_MotionControlFB_ApplyLiveUpdate(HYD_MotionControlFB* fb,
         fb->_activeSegmentSource != HYD_SEGMENT_SOURCE_DIRECT ||
         fb->_directOwnerKind != request->ownerKind ||
         fb->_directOwnerExecutionId != request->ownerExecutionId) {
+        if (fb->STATE.finished &&
+            fb->_directOwnerKind == request->ownerKind &&
+            fb->_directOwnerExecutionId == request->ownerExecutionId) {
+            return true;
+        }
         HYD_StateReporter_ReportDiagnostic(fb,
                                            HYD_DIAG_CODE_COMMAND_NOT_ALLOWED,
                                            HYD_DIAG_SEVERITY_WARNING,
