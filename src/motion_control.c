@@ -683,6 +683,14 @@ static HYD_BOOL HYD_BeginSegment(HYD_MotionControlFB* fb,
     fb->_activeSegment = *sourceSegment;
     fb->_activeSegmentValid = true;
     fb->_activeSegmentSource = resolvedSource;
+
+    /* Resolve velocityToFlowGain: segment explicit > cylinderConfig > existing fallback */
+    if (fb->_activeSegment.velocityToFlowGain <= 0.0f &&
+        HYD_CylinderConfig_IsValid(&fb->cylinderConfig)) {
+        fb->_activeSegment.velocityToFlowGain =
+            HYD_CylinderConfig_GetVelocityToFlowGain(
+                &fb->cylinderConfig, fb->_activeSegment.direction);
+    }
     fb->STATE.currentSegmentIndex = resolvedSegmentIndex;
     fb->_segmentStartTime = timestamp;
     fb->_holdStateTime = 0.0;
@@ -1294,8 +1302,13 @@ static void HYD_ExecuteActiveSegmentControl(HYD_MotionControlFB* fb,
     }
 
     pumpInput.requestedFlow = plannerOutput->targetFlow;
-    pumpInput.flowToPumpSpeedGain = fb->FLOW_TO_PUMP_SPEED_GAIN;
-    pumpInput.pumpSpeedLimit = fb->PUMP_SPEED_LIMIT;
+    if (HYD_PumpConfig_IsValid(&fb->pumpConfig)) {
+        pumpInput.flowToPumpSpeedGain = HYD_PumpConfig_GetFlowToSpeedGain(&fb->pumpConfig);
+        pumpInput.pumpSpeedLimit = HYD_PumpConfig_GetSpeedLimit(&fb->pumpConfig);
+    } else {
+        pumpInput.flowToPumpSpeedGain = fb->FLOW_TO_PUMP_SPEED_GAIN;
+        pumpInput.pumpSpeedLimit = fb->PUMP_SPEED_LIMIT;
+    }
     pumpInput.direction = plannerOutput->direction;
     HYD_PumpConverter_Execute(&pumpInput, pumpOutput);
 
@@ -1776,18 +1789,28 @@ static void HYD_MotionControlFB_RunRunningState(HYD_MotionControlFB* fb) {
         ? fb->AXIS_REF.timestamp - fb->_lastFeedbackTimestamp
         : 0.0;
 
-    if (!HYD_PumpConverter_ValidateConfig(fb->FLOW_TO_PUMP_SPEED_GAIN,
-                                          fb->PUMP_SPEED_LIMIT,
-                                          &code) ||
-        !HYD_RecipeValidator_ValidateSegment(segment,
-                                             fb->STATE.currentSegmentIndex,
-                                             &code)) {
-        HYD_StateReporter_ReportFault(fb,
-                        code,
-                        fb->AXIS_REF.timestamp,
-                        segment,
-                        &fb->STATE.references);
-        return;
+    {
+        HYD_REAL effectiveGain, effectiveLimit;
+        if (HYD_PumpConfig_IsValid(&fb->pumpConfig)) {
+            effectiveGain = HYD_PumpConfig_GetFlowToSpeedGain(&fb->pumpConfig);
+            effectiveLimit = HYD_PumpConfig_GetSpeedLimit(&fb->pumpConfig);
+        } else {
+            effectiveGain = fb->FLOW_TO_PUMP_SPEED_GAIN;
+            effectiveLimit = fb->PUMP_SPEED_LIMIT;
+        }
+        if (!HYD_PumpConverter_ValidateConfig(effectiveGain,
+                                              effectiveLimit,
+                                              &code) ||
+            !HYD_RecipeValidator_ValidateSegment(segment,
+                                                 fb->STATE.currentSegmentIndex,
+                                                 &code)) {
+            HYD_StateReporter_ReportFault(fb,
+                            code,
+                            fb->AXIS_REF.timestamp,
+                            segment,
+                            &fb->STATE.references);
+            return;
+        }
     }
 
     elapsed = fb->AXIS_REF.timestamp - fb->_segmentStartTime;
@@ -1819,8 +1842,13 @@ static void HYD_MotionControlFB_RunRunningState(HYD_MotionControlFB* fb) {
 
     limiterInput.requestedFlow = pumpOutput.commandFlow;
     limiterInput.requestedPumpSpeed = pumpOutput.pumpSpeed;
-    limiterInput.flowToPumpSpeedGain = fb->FLOW_TO_PUMP_SPEED_GAIN;
-    limiterInput.pumpSpeedLimit = fb->PUMP_SPEED_LIMIT;
+    if (HYD_PumpConfig_IsValid(&fb->pumpConfig)) {
+        limiterInput.flowToPumpSpeedGain = HYD_PumpConfig_GetFlowToSpeedGain(&fb->pumpConfig);
+        limiterInput.pumpSpeedLimit = HYD_PumpConfig_GetSpeedLimit(&fb->pumpConfig);
+    } else {
+        limiterInput.flowToPumpSpeedGain = fb->FLOW_TO_PUMP_SPEED_GAIN;
+        limiterInput.pumpSpeedLimit = fb->PUMP_SPEED_LIMIT;
+    }
     limiterInput.protectionAction = fb->DIAGNOSTIC.protectionAction;
     /* Per-segment derate ratio: 0 falls back to library default (0.5) inside
      * HYD_OutputLimiter_Execute. See HYD_Segment_GetDerateRatio + segment->derateRatio. */
@@ -1889,9 +1917,19 @@ static void HYD_RunRunningStateStopping(HYD_MotionControlFB* fb,
                                               0.0f,
                                               segment->maxFlow);
     pumpOutput->commandFlow = plannerOutput->targetFlow;
-    pumpOutput->pumpSpeed = HYD_ClampReal(plannerOutput->targetFlow * fb->FLOW_TO_PUMP_SPEED_GAIN,
-                                          0.0f,
-                                          fb->PUMP_SPEED_LIMIT);
+    {
+        HYD_REAL effectiveGain, effectiveLimit;
+        if (HYD_PumpConfig_IsValid(&fb->pumpConfig)) {
+            effectiveGain = HYD_PumpConfig_GetFlowToSpeedGain(&fb->pumpConfig);
+            effectiveLimit = HYD_PumpConfig_GetSpeedLimit(&fb->pumpConfig);
+        } else {
+            effectiveGain = fb->FLOW_TO_PUMP_SPEED_GAIN;
+            effectiveLimit = fb->PUMP_SPEED_LIMIT;
+        }
+        pumpOutput->pumpSpeed = HYD_ClampReal(plannerOutput->targetFlow * effectiveGain,
+                                              0.0f,
+                                              effectiveLimit);
+    }
     executionReference->flowReference = pumpOutput->commandFlow;
     executionReference->velocityReference = plannerOutput->targetVelocity;
 

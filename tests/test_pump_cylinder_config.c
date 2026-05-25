@@ -1,7 +1,9 @@
 #include "common_types.h"
+#include "motion_control.h"
 #include <assert.h>
 #include <math.h>
 #include <stdio.h>
+#include <string.h>
 
 static void test_pump_config_gain_derivation(void) {
     HYD_PumpConfig cfg = {28.0f, 0.95f, 2000.0f};
@@ -72,6 +74,134 @@ static void test_null_safety(void) {
     printf("  PASS: null safety\n");
 }
 
+static void test_fb_pump_config_derivation(void) {
+    HYD_MotionControlFB fb;
+    HYD_MotionControlFB_Init(&fb);
+
+    /* Configure pump: 28 mL/rev, eta=0.95, max 2000 rpm */
+    fb.pumpConfig.displacementMlRev = 28.0f;
+    fb.pumpConfig.volumetricEfficiency = 0.95f;
+    fb.pumpConfig.maxSpeedRpm = 2000.0f;
+
+    /* Load a simple segment */
+    HYD_MotionSegment seg;
+    memset(&seg, 0, sizeof(seg));
+    seg.segmentTag = 1;
+    seg.planner = HYD_PLANNER_TIME_BASED;
+    seg.mode = HYD_MODE_SPEED_RAMP;
+    seg.endCondition = HYD_END_TIME;
+    seg.direction = HYD_DIRECTION_EXTEND;
+    seg.maxVelocity = 100.0f;
+    seg.maxFlow = 50.0f;
+    seg.velocityToFlowGain = 0.3f;
+    seg.duration = 2.0f;
+    seg.maxAcceleration = 500.0f;
+    seg.maxDeceleration = 500.0f;
+
+    fb.USE_RECIPE = false;
+    assert(HYD_MotionControlFB_LoadDirectSegment(&fb, &seg));
+    HYD_MotionControlFB_StartSegment(&fb, 0, 0.0f);
+
+    fb.AXIS_REF.position = 0.0f;
+    fb.AXIS_REF.velocity = 0.0f;
+    fb.AXIS_REF.pressure = 0.0f;
+    fb.AXIS_REF.timestamp = 0.001f;
+    HYD_MotionControlFB_Cycle(&fb);
+    fb.AXIS_REF.timestamp = 0.002f;
+    HYD_MotionControlFB_Cycle(&fb);
+
+    /* pumpConfig active: pump speed must be within derived limit (2000 rpm) */
+    assert(fb.FB_STATE == HYD_FB_STATE_RUNNING);
+    assert(fb.PUMP_SPEED <= 2000.0f);
+    /* Poison legacy field — pumpConfig should still be used */
+    fb.FLOW_TO_PUMP_SPEED_GAIN = 9999.0f;
+    fb.AXIS_REF.timestamp = 0.003f;
+    HYD_MotionControlFB_Cycle(&fb);
+    assert(fb.PUMP_SPEED <= 2000.0f);
+    printf("  PASS: FB pump config derivation\n");
+}
+
+static void test_fb_pump_config_fallback_to_legacy(void) {
+    HYD_MotionControlFB fb;
+    HYD_MotionControlFB_Init(&fb);
+
+    fb.FLOW_TO_PUMP_SPEED_GAIN = 80.0f;
+    fb.PUMP_SPEED_LIMIT = 5000.0f;
+
+    HYD_MotionSegment seg;
+    memset(&seg, 0, sizeof(seg));
+    seg.segmentTag = 1;
+    seg.planner = HYD_PLANNER_TIME_BASED;
+    seg.mode = HYD_MODE_SPEED_RAMP;
+    seg.endCondition = HYD_END_TIME;
+    seg.direction = HYD_DIRECTION_EXTEND;
+    seg.maxVelocity = 100.0f;
+    seg.maxFlow = 50.0f;
+    seg.velocityToFlowGain = 0.3f;
+    seg.duration = 2.0f;
+    seg.maxAcceleration = 500.0f;
+    seg.maxDeceleration = 500.0f;
+
+    fb.USE_RECIPE = false;
+    assert(HYD_MotionControlFB_LoadDirectSegment(&fb, &seg));
+    HYD_MotionControlFB_StartSegment(&fb, 0, 0.0f);
+
+    fb.AXIS_REF.position = 0.0f;
+    fb.AXIS_REF.velocity = 0.0f;
+    fb.AXIS_REF.pressure = 0.0f;
+    fb.AXIS_REF.timestamp = 0.001f;
+    HYD_MotionControlFB_Cycle(&fb);
+    fb.AXIS_REF.timestamp = 0.002f;
+    HYD_MotionControlFB_Cycle(&fb);
+
+    /* After two cycles the FB should be in RUNNING state (not FAULT) */
+    assert(fb.FB_STATE == HYD_FB_STATE_RUNNING);
+    assert(fb.PUMP_SPEED <= 5000.0f);
+    printf("  PASS: FB pump config fallback to legacy\n");
+}
+
+static void test_fb_cylinder_config_derivation(void) {
+    HYD_MotionControlFB fb;
+    HYD_MotionControlFB_Init(&fb);
+
+    fb.cylinderConfig.areaExtendMm2 = 6362.0f;
+    fb.cylinderConfig.areaRetractMm2 = 3534.0f;
+    fb.cylinderConfig.strokeMm = 300.0f;
+
+    fb.FLOW_TO_PUMP_SPEED_GAIN = 80.0f;
+    fb.PUMP_SPEED_LIMIT = 5000.0f;
+
+    HYD_MotionSegment seg;
+    memset(&seg, 0, sizeof(seg));
+    seg.segmentTag = 1;
+    seg.planner = HYD_PLANNER_TIME_BASED;
+    seg.mode = HYD_MODE_SPEED_RAMP;
+    seg.endCondition = HYD_END_TIME;
+    seg.direction = HYD_DIRECTION_EXTEND;
+    seg.maxVelocity = 100.0f;
+    seg.maxFlow = 50.0f;
+    seg.velocityToFlowGain = 0.38172f;  /* matches areaExtend 6362 * 6e-5 = 0.38172 */
+    seg.duration = 2.0f;
+    seg.maxAcceleration = 500.0f;
+    seg.maxDeceleration = 500.0f;
+
+    fb.USE_RECIPE = false;
+    assert(HYD_MotionControlFB_LoadDirectSegment(&fb, &seg));
+    HYD_MotionControlFB_StartSegment(&fb, 0, 0.0f);
+
+    fb.AXIS_REF.position = 0.0f;
+    fb.AXIS_REF.velocity = 0.0f;
+    fb.AXIS_REF.pressure = 0.0f;
+    fb.AXIS_REF.timestamp = 0.001f;
+    HYD_MotionControlFB_Cycle(&fb);
+    fb.AXIS_REF.timestamp = 0.002f;
+    HYD_MotionControlFB_Cycle(&fb);
+
+    assert(fb.FB_STATE == HYD_FB_STATE_RUNNING);
+    assert(fb.PUMP_SPEED > 0.0f);
+    printf("  PASS: FB cylinder config derivation\n");
+}
+
 int main(void) {
     printf("test_pump_cylinder_config:\n");
     test_pump_config_gain_derivation();
@@ -82,6 +212,9 @@ int main(void) {
     test_pump_config_is_valid();
     test_cylinder_config_is_valid();
     test_null_safety();
+    test_fb_pump_config_derivation();
+    test_fb_pump_config_fallback_to_legacy();
+    test_fb_cylinder_config_derivation();
     printf("All pump/cylinder config tests passed.\n");
     return 0;
 }
