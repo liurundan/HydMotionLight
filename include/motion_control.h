@@ -205,50 +205,70 @@ typedef struct {
 } HYD_LiveUpdateRequest;
 
 typedef struct {
+    /* ═══════════════════════════════════════════════════════════════════════
+     * INPUT — PLC/caller-owned fields. The runtime reads but never writes.
+     * ═══════════════════════════════════════════════════════════════════════ */
     HYD_BOOL RESET;
     HYD_BOOL START_SEGMENT;
     HYD_UINT START_SEGMENT_INDEX;
-    HYD_BOOL USE_RECIPE; /* true: start from RECIPE[index], false: start from DIRECT_SEGMENT */
-    HYD_REAL FLOW_TO_PUMP_SPEED_GAIN;
-    HYD_REAL PUMP_SPEED_LIMIT;
-    HYD_UINT RECIPE_SIZE;
+    HYD_BOOL USE_RECIPE;
     HYD_AxisRef AXIS_REF;
+    HYD_UINT RECIPE_SIZE;
     HYD_MotionSegment RECIPE[HYD_MAX_SEGMENTS];
     HYD_MotionSegment DIRECT_SEGMENT;
 
+    /* Pump physical parameters. When valid (displacement > 0), the library
+     * derives flowToPumpSpeedGain and pumpSpeedLimit from these instead of
+     * using the legacy FLOW_TO_PUMP_SPEED_GAIN / PUMP_SPEED_LIMIT fields.
+     * Zero-initialized after Init() = inactive (legacy fields used). */
+    HYD_PumpConfig pumpConfig;
+
+    /* Cylinder physical parameters. When valid (area > 0), the library
+     * derives velocityToFlowGain from area + direction at segment-start,
+     * unless the segment explicitly sets velocityToFlowGain > 0.
+     * Zero-initialized after Init() = inactive (segment field used). */
+    HYD_CylinderConfig cylinderConfig;
+
+    /* Legacy gain fields — used when pumpConfig is not configured (all zeros).
+     * Preserved for backward compatibility with IEC adapter CreateMotion path. */
+    HYD_REAL FLOW_TO_PUMP_SPEED_GAIN;
+    HYD_REAL PUMP_SPEED_LIMIT;
+
+    /* ═══════════════════════════════════════════════════════════════════════
+     * OUTPUT — Runtime-owned fields. The caller reads but should not write.
+     * ═══════════════════════════════════════════════════════════════════════ */
     HYD_DiagnosticCode ERROR_ID;
     HYD_FbState FB_STATE;
     HYD_REAL PUMP_SPEED;
     HYD_BOOL SEGMENT_COMPLETED;
     HYD_BOOL SEGMENT_CHANGED;
-    HYD_MotionState STATE;      /* Unified runtime state: active, finished, faultActive, status, segmentTag, pressure-loop telemetry. */
-    HYD_DiagnosticInfo DIAGNOSTIC;         /* Live current-cycle / current-command diagnostic. */
+    HYD_BOOL DIRECT_SEGMENT_VALID;
+    HYD_MotionState STATE;
+    HYD_DiagnosticInfo DIAGNOSTIC;
     HYD_DiagnosticSnapshot LAST_FAULT_SNAPSHOT;
     HYD_DiagnosticHistory DIAGNOSTIC_HISTORY;
-    HYD_BOOL DIRECT_SEGMENT_VALID;
 
-    /* Internal */
+    /* ═══════════════════════════════════════════════════════════════════════
+     * INTERNAL — Private runtime state. External code must not access.
+     * ═══════════════════════════════════════════════════════════════════════ */
+
+    /* --- Segment execution state --- */
     HYD_REAL _segmentStartTime;
     HYD_BOOL _segmentChangedFlag;
     HYD_REAL _lastCommandedFlow;
-    HYD_TIME _lastFeedbackTimestamp;       /* < 0.0 means invalid / never set */
+    HYD_TIME _lastFeedbackTimestamp;
     HYD_BOOL _startSegmentSignalPrev;
-    HYD_FbCommand _pendingCommand;
-    HYD_UINT _pendingCommandSegmentIndex;
-    HYD_TIME _pendingCommandTimestamp;
     HYD_MotionSegment _activeSegment;
     HYD_BOOL _activeSegmentValid;
     HYD_SegmentSource _activeSegmentSource;
-    HYD_TIME _holdStateTime;
-    HYD_RampController _rampController;
-    HYD_MotionPlannerState _plannerState;
-    HYD_ControlMode _previousSegmentMode;  /* mode of the prior segment for bumpless carry-over (Sprint 2) */
-    HYD_PressureControllerState _pressureController;
-    HYD_TIME _completionCandidateStartTime;
-    HYD_BOOL _completionCandidateActive;
-    HYD_BOOL _isDecelerating;
-    HYD_TIME _decelStartTime;
-    HYD_REAL _decelStartVel;
+    HYD_ControlMode _previousSegmentMode;
+
+    /* --- Command processing --- */
+    HYD_FbCommand _pendingCommand;
+    HYD_UINT _pendingCommandSegmentIndex;
+    HYD_TIME _pendingCommandTimestamp;
+
+    /* --- Direct command session --- */
     HYD_DirectCommandKind _directOwnerKind;
     HYD_DirectSessionState _directSessionState;
     uint16_t _directOwnerExecutionId;
@@ -261,13 +281,29 @@ typedef struct {
     HYD_DirectCommandKind _directPendingKind;
     HYD_BufferMode _directPendingBufferMode;
     HYD_MotionBlendContext _directBlendContext;
+
+    /* --- Stop/deceleration state --- */
     HYD_BOOL _isStopping;
     HYD_TIME _stopStartTime;
     HYD_REAL _stopStartVel;
     HYD_REAL _stopDeceleration;
+    HYD_BOOL _isDecelerating;
+    HYD_TIME _decelStartTime;
+    HYD_REAL _decelStartVel;
 
-    /* Diagnostic criteria layer - unified through diagnostics_monitor + diagnostics_criteria
-     * Supports: startup suppress, switch suppress, debounce, hysteresis, fault escalation. */
+    /* --- Hold state --- */
+    HYD_TIME _holdStateTime;
+
+    /* --- Controllers --- */
+    HYD_RampController _rampController;
+    HYD_MotionPlannerState _plannerState;
+    HYD_PressureControllerState _pressureController;
+
+    /* --- Completion detection --- */
+    HYD_TIME _completionCandidateStartTime;
+    HYD_BOOL _completionCandidateActive;
+
+    /* --- Diagnostic criteria --- */
     HYD_ErrorMonitor _errorMonitor;
     HYD_DiagnosticCriteria _pressureCriteria;
     HYD_DiagnosticCriteriaState _pressureCriteriaState;
@@ -281,14 +317,18 @@ typedef struct {
     HYD_DiagnosticCriteriaState _positionCriteriaState;
     HYD_DiagnosticCriteria _timeoutCriteria;
     HYD_DiagnosticCriteriaState _timeoutCriteriaState;
-    HYD_BOOL _isSwitchPhase;            /* True during segment transition window for switch suppress */
-    HYD_TIME _switchSuppressEndTime;    /* Elapsed time at which switch suppress phase expires */
+    HYD_BOOL _isSwitchPhase;
+    HYD_TIME _switchSuppressEndTime;
+
+    /* --- Identity & configuration --- */
     HYD_UINT8 _index;
-    uint16_t _executionId;   /* Per-segment execution epoch. Advances on every successful HYD_BeginSegment, including recipe NextSegment. Used by direct-command ownership tracking. NOT used by IEC MoveProfile adapter — see _recipeBatchId. */
-    uint16_t _recipeBatchId; /* Per-recipe-batch epoch. Advances ONLY on initial Start, external ABORT/STOP, Reset, and direct takeover. Does NOT advance on recipe NextSegment. Used by IEC MoveProfile adapter to detect external recipe takeover separately from per-segment progress. */
-    HYD_BOOL _useSimulation;           /* If true, the FB simulates motion without real hardware interaction for testing purposes. */
-    HYD_BOOL _configuredUseRecipe;     /* Stable preload/source preference from axis setup; not the transient start selector. */
-    HYD_MotionFBParams _params;        /* Tunable parameter defaults for segment builders */
+    uint16_t _executionId;
+    uint16_t _recipeBatchId;
+    HYD_BOOL _useSimulation;
+    HYD_BOOL _configuredUseRecipe;
+    HYD_MotionFBParams _params;
+
+    /* --- Simulation feedback (test only) --- */
     struct {
         HYD_REAL targetPosition;
         HYD_REAL targetVelocity;
