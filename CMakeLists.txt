@@ -152,7 +152,7 @@ add_executable(test_vp_bumpless_reverse tests/test_vp_bumpless_reverse.c)
 target_link_libraries(test_vp_bumpless_reverse PRIVATE HydroMotionLib)
 
 add_executable(test_pump_cylinder_config tests/test_pump_cylinder_config.c)
-target_link_libraries(test_pump_cylinder_config HydroMotionLib m)
+target_link_libraries(test_pump_cylinder_config PRIVATE HydroMotionLib m)
 add_test(NAME test_pump_cylinder_config COMMAND test_pump_cylinder_config)
 
 add_executable(main tests/main.c)

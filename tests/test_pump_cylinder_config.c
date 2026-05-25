@@ -43,6 +43,35 @@ static void test_cylinder_config_zero_returns_zero(void) {
     printf("  PASS: cylinder config zero returns zero\n");
 }
 
+static void test_pump_config_is_valid(void) {
+    HYD_PumpConfig valid = {28.0f, 0.95f, 2000.0f};
+    HYD_PumpConfig zero_disp = {0.0f, 0.95f, 2000.0f};
+    HYD_PumpConfig zero_eff = {28.0f, 0.0f, 2000.0f};
+    assert(HYD_PumpConfig_IsValid(&valid) == 1);
+    assert(HYD_PumpConfig_IsValid(&zero_disp) == 0);
+    assert(HYD_PumpConfig_IsValid(&zero_eff) == 0);
+    assert(HYD_PumpConfig_IsValid(NULL) == 0);
+    printf("  PASS: pump config IsValid\n");
+}
+
+static void test_cylinder_config_is_valid(void) {
+    HYD_CylinderConfig valid = {6362.0f, 3534.0f, 300.0f};
+    HYD_CylinderConfig zero_both = {0.0f, 0.0f, 300.0f};
+    HYD_CylinderConfig extend_only = {6362.0f, 0.0f, 300.0f};
+    assert(HYD_CylinderConfig_IsValid(&valid) == 1);
+    assert(HYD_CylinderConfig_IsValid(&zero_both) == 0);
+    assert(HYD_CylinderConfig_IsValid(&extend_only) == 1);
+    assert(HYD_CylinderConfig_IsValid(NULL) == 0);
+    printf("  PASS: cylinder config IsValid\n");
+}
+
+static void test_null_safety(void) {
+    assert(HYD_PumpConfig_GetFlowToSpeedGain(NULL) == 0.0f);
+    assert(HYD_PumpConfig_GetSpeedLimit(NULL) == 0.0f);
+    assert(HYD_CylinderConfig_GetVelocityToFlowGain(NULL, HYD_DIRECTION_EXTEND) == 0.0f);
+    printf("  PASS: null safety\n");
+}
+
 int main(void) {
     printf("test_pump_cylinder_config:\n");
     test_pump_config_gain_derivation();
@@ -50,6 +79,9 @@ int main(void) {
     test_cylinder_config_extend();
     test_cylinder_config_retract();
     test_cylinder_config_zero_returns_zero();
+    test_pump_config_is_valid();
+    test_cylinder_config_is_valid();
+    test_null_safety();
     printf("All pump/cylinder config tests passed.\n");
     return 0;
 }
