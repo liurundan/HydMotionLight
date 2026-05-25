@@ -202,6 +202,36 @@ static void test_fb_cylinder_config_derivation(void) {
     printf("  PASS: FB cylinder config derivation\n");
 }
 
+static void test_parameter_access(void) {
+    HYD_MotionControlFB fb;
+    HYD_MotionControlFB_Init(&fb);
+    HYD_REAL val;
+
+    assert(HYD_MotionControlFB_WriteParameter(&fb, HYD_PARAM_PUMP_DISPLACEMENT, 45.0f));
+    assert(HYD_MotionControlFB_WriteParameter(&fb, HYD_PARAM_PUMP_VOLUMETRIC_EFF, 0.93f));
+    assert(HYD_MotionControlFB_WriteParameter(&fb, HYD_PARAM_PUMP_MAX_SPEED, 1800.0f));
+
+    assert(HYD_MotionControlFB_ReadParameter(&fb, HYD_PARAM_PUMP_DISPLACEMENT, &val));
+    assert(fabsf(val - 45.0f) < 0.01f);
+    assert(HYD_MotionControlFB_ReadParameter(&fb, HYD_PARAM_PUMP_VOLUMETRIC_EFF, &val));
+    assert(fabsf(val - 0.93f) < 0.01f);
+    assert(HYD_MotionControlFB_ReadParameter(&fb, HYD_PARAM_PUMP_MAX_SPEED, &val));
+    assert(fabsf(val - 1800.0f) < 0.01f);
+
+    assert(HYD_MotionControlFB_WriteParameter(&fb, HYD_PARAM_CYLINDER_AREA_EXTEND, 6362.0f));
+    assert(HYD_MotionControlFB_WriteParameter(&fb, HYD_PARAM_CYLINDER_AREA_RETRACT, 3534.0f));
+    assert(HYD_MotionControlFB_WriteParameter(&fb, HYD_PARAM_CYLINDER_STROKE, 300.0f));
+
+    assert(HYD_MotionControlFB_ReadParameter(&fb, HYD_PARAM_CYLINDER_AREA_EXTEND, &val));
+    assert(fabsf(val - 6362.0f) < 0.01f);
+    assert(HYD_MotionControlFB_ReadParameter(&fb, HYD_PARAM_CYLINDER_AREA_RETRACT, &val));
+    assert(fabsf(val - 3534.0f) < 0.01f);
+    assert(HYD_MotionControlFB_ReadParameter(&fb, HYD_PARAM_CYLINDER_STROKE, &val));
+    assert(fabsf(val - 300.0f) < 0.01f);
+
+    printf("  PASS: parameter access for pump/cylinder config\n");
+}
+
 int main(void) {
     printf("test_pump_cylinder_config:\n");
     test_pump_config_gain_derivation();
@@ -215,6 +245,7 @@ int main(void) {
     test_fb_pump_config_derivation();
     test_fb_pump_config_fallback_to_legacy();
     test_fb_cylinder_config_derivation();
+    test_parameter_access();
     printf("All pump/cylinder config tests passed.\n");
     return 0;
 }

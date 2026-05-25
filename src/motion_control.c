@@ -2712,6 +2712,12 @@ HYD_BOOL HYD_MotionControlFB_ReadParameter(const HYD_MotionControlFB* fb, int pa
         case HYD_PARAM_PUMP_SPEED_LIMIT:               *value = fb->_params.pumpSpeedLimit; break;
         case HYD_PARAM_PRESSURE_CONTROLLER_TYPE:       *value = fb->_params.pressureControllerType; break;
         case HYD_PARAM_DEFAULT_TARGET_FLOW:            *value = fb->_params.defaultTargetFlow; break;
+        case HYD_PARAM_PUMP_DISPLACEMENT:              *value = fb->pumpConfig.displacementMlRev; break;
+        case HYD_PARAM_PUMP_VOLUMETRIC_EFF:            *value = fb->pumpConfig.volumetricEfficiency; break;
+        case HYD_PARAM_PUMP_MAX_SPEED:                 *value = fb->pumpConfig.maxSpeedRpm; break;
+        case HYD_PARAM_CYLINDER_AREA_EXTEND:           *value = fb->cylinderConfig.areaExtendMm2; break;
+        case HYD_PARAM_CYLINDER_AREA_RETRACT:          *value = fb->cylinderConfig.areaRetractMm2; break;
+        case HYD_PARAM_CYLINDER_STROKE:                *value = fb->cylinderConfig.strokeMm; break;
         default: return false;
     }
     return true;
@@ -2757,6 +2763,12 @@ HYD_BOOL HYD_MotionControlFB_WriteParameter(HYD_MotionControlFB* fb, int paramNu
             break;
         case HYD_PARAM_PRESSURE_CONTROLLER_TYPE:       fb->_params.pressureControllerType = value; break;
         case HYD_PARAM_DEFAULT_TARGET_FLOW:            fb->_params.defaultTargetFlow = value; break;
+        case HYD_PARAM_PUMP_DISPLACEMENT:              fb->pumpConfig.displacementMlRev = value; break;
+        case HYD_PARAM_PUMP_VOLUMETRIC_EFF:            fb->pumpConfig.volumetricEfficiency = value; break;
+        case HYD_PARAM_PUMP_MAX_SPEED:                 fb->pumpConfig.maxSpeedRpm = value; break;
+        case HYD_PARAM_CYLINDER_AREA_EXTEND:           fb->cylinderConfig.areaExtendMm2 = value; break;
+        case HYD_PARAM_CYLINDER_AREA_RETRACT:          fb->cylinderConfig.areaRetractMm2 = value; break;
+        case HYD_PARAM_CYLINDER_STROKE:                fb->cylinderConfig.strokeMm = value; break;
         default: return false;
     }
     return true;
