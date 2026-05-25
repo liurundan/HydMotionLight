@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "worktreeRoot": "/home/dan/project/hdy-motion-light",
+  "gitDir": "/home/dan/project/hdy-motion-light/.git",
+  "indexMtimeMs": 1779529656725.2258,
+  "indexSize": 39182,
+  "map": "  .codebuddy/: helper, condition-based-waiting-example, render-graphs\n  .github/: helper, condition-based-waiting-example, render-graphs",
+  "createdAt": "2026-05-25T06:41:23.834Z"
+}
