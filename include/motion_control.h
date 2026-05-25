@@ -217,8 +217,8 @@ typedef struct {
     HYD_MotionSegment RECIPE[HYD_MAX_SEGMENTS];
     HYD_MotionSegment DIRECT_SEGMENT;
 
-    /* Pump physical parameters. When valid (displacement > 0), the library
-     * derives flowToPumpSpeedGain and pumpSpeedLimit from these instead of
+    /* Pump physical parameters. When valid (displacement > 0 and volumetricEfficiency > 0),
+     * the library derives flowToPumpSpeedGain and pumpSpeedLimit from these instead of
      * using the legacy FLOW_TO_PUMP_SPEED_GAIN / PUMP_SPEED_LIMIT fields.
      * Zero-initialized after Init() = inactive (legacy fields used). */
     HYD_PumpConfig pumpConfig;
