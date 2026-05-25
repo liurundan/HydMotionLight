@@ -546,7 +546,7 @@ typedef struct {
 /* --- 泵配置辅助函数 --- */
 
 /* 从泵物理参数推导 flowToPumpSpeedGain [rpm/(L/min)]
- * 公式: gain = 1000 / (displacement_mL_rev * volumetricEfficiency)
+ * 公式: gain = 1000 / (displacementMlRev * volumetricEfficiency)
  * 返回 0 表示配置无效（displacement 或 efficiency <= 0） */
 static inline HYD_REAL HYD_PumpConfig_GetFlowToSpeedGain(const HYD_PumpConfig* cfg) {
     if (cfg == NULL || cfg->displacementMlRev <= 0.0f || cfg->volumetricEfficiency <= 0.0f) {
