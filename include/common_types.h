@@ -521,4 +521,74 @@ typedef struct {
     HYD_BOOL useSimulation;
 } HYD_MotionFBParams;
 
+/* ============================================================================
+ * 泵物理参数配置
+ * 用于从物理参数自动推导 flowToPumpSpeedGain 和 pumpSpeedLimit
+ * 当 displacement_mL_rev > 0 时视为有效配置
+ * ============================================================================ */
+typedef struct {
+    HYD_REAL displacement_mL_rev;   /* 泵排量 [mL/rev] */
+    HYD_REAL volumetricEfficiency;  /* 容积效率 [0~1], 典型 0.90~0.95 */
+    HYD_REAL maxSpeed_rpm;          /* 泵最高转速 [rpm] */
+} HYD_PumpConfig;
+
+/* ============================================================================
+ * 油缸物理参数配置
+ * 用于从面积自动推导 velocityToFlowGain
+ * 当 areaExtend_mm2 > 0 或 areaRetract_mm2 > 0 时视为有效配置
+ * ============================================================================ */
+typedef struct {
+    HYD_REAL areaExtend_mm2;    /* 无杆侧有效面积 [mm²] */
+    HYD_REAL areaRetract_mm2;   /* 有杆侧有效面积 [mm²] */
+    HYD_REAL stroke_mm;         /* 行程 [mm], 用于限位参考 */
+} HYD_CylinderConfig;
+
+/* --- 泵配置辅助函数 --- */
+
+/* 从泵物理参数推导 flowToPumpSpeedGain [rpm/(L/min)]
+ * 公式: gain = 1000 / (displacement_mL_rev * volumetricEfficiency)
+ * 返回 0 表示配置无效（displacement 或 efficiency <= 0） */
+static inline HYD_REAL HYD_PumpConfig_GetFlowToSpeedGain(const HYD_PumpConfig* cfg) {
+    if (cfg == NULL || cfg->displacement_mL_rev <= 0.0f || cfg->volumetricEfficiency <= 0.0f) {
+        return 0.0f;
+    }
+    return 1000.0f / (cfg->displacement_mL_rev * cfg->volumetricEfficiency);
+}
+
+/* 从泵物理参数获取转速上限 [rpm] */
+static inline HYD_REAL HYD_PumpConfig_GetSpeedLimit(const HYD_PumpConfig* cfg) {
+    if (cfg == NULL || cfg->maxSpeed_rpm <= 0.0f) {
+        return 0.0f;
+    }
+    return cfg->maxSpeed_rpm;
+}
+
+/* 判断泵配置是否有效（displacement > 0 且 efficiency > 0） */
+static inline HYD_BOOL HYD_PumpConfig_IsValid(const HYD_PumpConfig* cfg) {
+    return (cfg != NULL && cfg->displacement_mL_rev > 0.0f && cfg->volumetricEfficiency > 0.0f);
+}
+
+/* --- 油缸配置辅助函数 --- */
+
+/* 根据运动方向从油缸面积推导 velocityToFlowGain [L/min per mm/s]
+ * 公式: gain = area_mm2 * 60 / 1000000 = area_mm2 * 6e-5
+ * 返回 0 表示该方向面积未配置 */
+static inline HYD_REAL HYD_CylinderConfig_GetVelocityToFlowGain(const HYD_CylinderConfig* cfg,
+                                                                  HYD_MotionDirection direction) {
+    HYD_REAL area;
+    if (cfg == NULL) { return 0.0f; }
+    if (direction == HYD_DIRECTION_RETRACT) {
+        area = cfg->areaRetract_mm2;
+    } else {
+        area = cfg->areaExtend_mm2;  /* EXTEND, AUTO, HOLD all use extend side */
+    }
+    if (area <= 0.0f) { return 0.0f; }
+    return area * 6.0e-5f;
+}
+
+/* 判断油缸配置是否有效（至少一侧面积 > 0） */
+static inline HYD_BOOL HYD_CylinderConfig_IsValid(const HYD_CylinderConfig* cfg) {
+    return (cfg != NULL && (cfg->areaExtend_mm2 > 0.0f || cfg->areaRetract_mm2 > 0.0f));
+}
+
 #endif /* HYD_COMMON_TYPES_H */
