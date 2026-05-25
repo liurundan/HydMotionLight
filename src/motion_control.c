@@ -2274,7 +2274,8 @@ void HYD_MotionControlFB_Init(HYD_MotionControlFB* fb) {
     fb->_params.defaultTargetFlow = 5.0f;
     fb->_params.useSimulation = false;
 
-    /* Sync legacy fields for backward compatibility */
+    /* Legacy defaults — used when pumpConfig/cylinderConfig are not configured.
+     * pumpConfig and cylinderConfig are zero after memset — inactive by default. */
     fb->FLOW_TO_PUMP_SPEED_GAIN = fb->_params.flowToPumpSpeedGain;
     fb->PUMP_SPEED_LIMIT = fb->_params.pumpSpeedLimit;
     fb->_useSimulation = fb->_params.useSimulation;
