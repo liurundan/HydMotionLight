@@ -284,6 +284,61 @@ static void test_invalid_derate_ratio_rejected(void) {
     printf("test_invalid_derate_ratio_rejected PASSED\n");
 }
 
+static void test_target_position_exceeds_stroke_rejected(void) {
+    HYD_MotionSegment seg = make_valid_segment();
+    HYD_CylinderConfig cyl = {0};
+    HYD_DiagnosticCode code = HYD_DIAG_CODE_NONE;
+
+    cyl.strokeMm = 100.0;
+    cyl.softLimitRetractMm = 0.0;
+
+    /* targetPosition > strokeMm → 拒绝 */
+    seg.targetPosition = 105.0;
+    assert(HYD_RecipeValidator_ValidateSegment(&seg, 0, &code, &cyl) == false);
+    assert(code == HYD_DIAG_CODE_SOFT_LIMIT_VIOLATED);
+
+    /* targetPosition == strokeMm → 通过（边界值） */
+    seg.targetPosition = 100.0;
+    code = HYD_DIAG_CODE_NONE;
+    assert(HYD_RecipeValidator_ValidateSegment(&seg, 0, &code, &cyl) == true);
+
+    printf("test_target_position_exceeds_stroke_rejected PASSED\n");
+}
+
+static void test_target_position_below_retract_limit_rejected(void) {
+    HYD_MotionSegment seg = make_valid_segment();
+    HYD_CylinderConfig cyl = {0};
+    HYD_DiagnosticCode code = HYD_DIAG_CODE_NONE;
+
+    cyl.strokeMm = 100.0;
+    cyl.softLimitRetractMm = 5.0;
+
+    /* targetPosition < softLimitRetractMm → 拒绝 */
+    seg.targetPosition = 3.0;
+    assert(HYD_RecipeValidator_ValidateSegment(&seg, 0, &code, &cyl) == false);
+    assert(code == HYD_DIAG_CODE_SOFT_LIMIT_VIOLATED);
+
+    /* targetPosition == softLimitRetractMm → 通过 */
+    seg.targetPosition = 5.0;
+    code = HYD_DIAG_CODE_NONE;
+    assert(HYD_RecipeValidator_ValidateSegment(&seg, 0, &code, &cyl) == true);
+
+    printf("test_target_position_below_retract_limit_rejected PASSED\n");
+}
+
+static void test_stroke_zero_skips_position_validation(void) {
+    HYD_MotionSegment seg = make_valid_segment();
+    HYD_CylinderConfig cyl = {0};
+    HYD_DiagnosticCode code = HYD_DIAG_CODE_NONE;
+
+    cyl.strokeMm = 0.0; /* 不启用 */
+
+    seg.targetPosition = 9999.0; /* 任意大值 */
+    assert(HYD_RecipeValidator_ValidateSegment(&seg, 0, &code, &cyl) == true);
+
+    printf("test_stroke_zero_skips_position_validation PASSED\n");
+}
+
 int main(void) {
     printf("Running RecipeValidator tests...\n\n");
 
@@ -296,6 +351,9 @@ int main(void) {
     test_invalid_ceiling_value_rejected();
     test_pressure_ceiling_active_at();
     test_invalid_derate_ratio_rejected();
+    test_target_position_exceeds_stroke_rejected();
+    test_target_position_below_retract_limit_rejected();
+    test_stroke_zero_skips_position_validation();
 
     printf("\n✅ All RecipeValidator tests passed successfully!\n");
     return 0;
