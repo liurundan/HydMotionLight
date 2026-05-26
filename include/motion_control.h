@@ -2,6 +2,7 @@
 #define HYD_MOTION_CONTROL_H
 
 #include "common_types.h"
+#include "output_limiter.h"
 #include "pressure_controller.h"
 #include "ramp_controller.h"
 #include "diagnostics_monitor.h"
@@ -322,6 +323,10 @@ typedef struct {
     HYD_DiagnosticCriteriaState _positionCriteriaState;
     HYD_DiagnosticCriteria _timeoutCriteria;
     HYD_DiagnosticCriteriaState _timeoutCriteriaState;
+
+    /* --- Output limiter protection state (pressure limit + soft limit) --- */
+    HYD_OutputLimiterState _limiterState;
+
     HYD_BOOL _isSwitchPhase;
     HYD_TIME _switchSuppressEndTime;
 

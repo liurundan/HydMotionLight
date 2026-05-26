@@ -705,6 +705,7 @@ static HYD_BOOL HYD_BeginSegment(HYD_MotionControlFB* fb,
     HYD_DiagnosticCriteria_ResetState(&fb->_velocityCriteriaState);
     HYD_DiagnosticCriteria_ResetState(&fb->_positionCriteriaState);
     HYD_DiagnosticCriteria_ResetState(&fb->_timeoutCriteriaState);
+    HYD_OutputLimiter_ResetState(&fb->_limiterState);
     fb->_isSwitchPhase = true;
 
     /* Configure criteria thresholds for this segment (once per segment, not every cycle).
@@ -1850,14 +1851,56 @@ static void HYD_MotionControlFB_RunRunningState(HYD_MotionControlFB* fb) {
         limiterInput.pumpSpeedLimit = fb->PUMP_SPEED_LIMIT;
     }
     limiterInput.protectionAction = fb->DIAGNOSTIC.protectionAction;
-    /* Per-segment derate ratio: 0 falls back to library default (0.5) inside
-     * HYD_OutputLimiter_Execute. See HYD_Segment_GetDerateRatio + segment->derateRatio. */
     limiterInput.derateRatio = HYD_Segment_GetDerateRatio(segment);
-    HYD_OutputLimiter_Execute(&limiterInput, &limiterOutput);
+
+    /*
+     * 压力限制参数：
+     * effectiveMaxPressure = 取 segment.maxPressure 和 fb.PRESSURE_LIMIT 中较小的非零值。
+     * 两者都为 0 时不启用压力限制。
+     */
+    {
+        HYD_REAL segMax = segment->maxPressure;
+        HYD_REAL fbMax = fb->PRESSURE_LIMIT;
+        HYD_REAL effective = 0.0;
+        if (segMax > 0.0 && fbMax > 0.0) {
+            effective = (segMax < fbMax) ? segMax : fbMax;
+        } else if (segMax > 0.0) {
+            effective = segMax;
+        } else if (fbMax > 0.0) {
+            effective = fbMax;
+        }
+        limiterInput.effectiveMaxPressure = effective;
+    }
+    limiterInput.actualPressure = fb->AXIS_REF.pressure;
+
+    /* 软限位参数（使用电子尺位置反馈） */
+    limiterInput.actualPosition = fb->AXIS_REF.position;
+    limiterInput.strokeMm = fb->cylinderConfig.strokeMm;
+    limiterInput.softLimitRetractMm = fb->cylinderConfig.softLimitRetractMm;
+    limiterInput.softLimitBandMm = fb->cylinderConfig.softLimitBandMm;
+    limiterInput.direction = segment->direction;
+    limiterInput.currentTime = fb->AXIS_REF.timestamp;
+
+    /* 使用带保护状态的扩展版本（支持压力限制 + 软限位 + debounce + 故障升级） */
+    HYD_OutputLimiter_ExecuteWithProtection(&limiterInput, &fb->_limiterState, &limiterOutput);
+
     pumpOutput.commandFlow = limiterOutput.commandFlow;
     pumpOutput.pumpSpeed = limiterOutput.pumpSpeed;
     plannerOutput.targetFlow = limiterOutput.commandFlow;
     executionReference.flowReference = limiterOutput.commandFlow;
+
+    /* 如果 limiter 报告了 FAULT 级诊断，升级 protectionAction 为 STOP */
+    if (limiterOutput.diagnosticCode == HYD_DIAG_CODE_OVER_PRESSURE_LIMIT_FAULT ||
+        limiterOutput.diagnosticCode == HYD_DIAG_CODE_SOFT_LIMIT_VIOLATED) {
+        fb->DIAGNOSTIC.protectionAction = HYD_PROTECTION_ACTION_STOP;
+        fb->DIAGNOSTIC.code = limiterOutput.diagnosticCode;
+        fb->DIAGNOSTIC.severity = HYD_DIAG_SEVERITY_FAULT;
+    } else if (limiterOutput.diagnosticCode != HYD_DIAG_CODE_NONE &&
+               fb->DIAGNOSTIC.protectionAction < HYD_PROTECTION_ACTION_DERATE) {
+        /* WARNING 级：仅在当前无更高优先级保护时设置 */
+        fb->DIAGNOSTIC.code = limiterOutput.diagnosticCode;
+        fb->DIAGNOSTIC.severity = HYD_DIAG_SEVERITY_WARNING;
+    }
 
     fb->_lastCommandedFlow = pumpOutput.commandFlow;
 
