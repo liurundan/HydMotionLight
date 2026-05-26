@@ -89,7 +89,8 @@ static HYD_BOOL HYD_RecipeValidator_HasCustomRbfConfig(const HYD_MotionSegment* 
 
 HYD_BOOL HYD_RecipeValidator_ValidateSegment(const HYD_MotionSegment* segment,
                                             size_t segmentIndex,
-                                            HYD_DiagnosticCode* code) {
+                                            HYD_DiagnosticCode* code,
+                                            const HYD_CylinderConfig* cylinderConfig) {
     if (segment == NULL) {
         return HYD_RecipeValidator_Fail(code, HYD_DIAG_CODE_SEGMENT_INVALID);
     }
@@ -334,6 +335,20 @@ HYD_BOOL HYD_RecipeValidator_ValidateSegment(const HYD_MotionSegment* segment,
         }
     }
 
+    /*
+     * 软限位启动前校验：
+     * 当 cylinderConfig.strokeMm > 0 时，拒绝 targetPosition 超出行程范围的段。
+     * 这是静态校验，运行时保护由 output_limiter 负责。
+     */
+    if (cylinderConfig != NULL && cylinderConfig->strokeMm > 0.0) {
+        if (segment->targetPosition > cylinderConfig->strokeMm) {
+            return HYD_RecipeValidator_Fail(code, HYD_DIAG_CODE_SOFT_LIMIT_VIOLATED);
+        }
+        if (segment->targetPosition < cylinderConfig->softLimitRetractMm) {
+            return HYD_RecipeValidator_Fail(code, HYD_DIAG_CODE_SOFT_LIMIT_VIOLATED);
+        }
+    }
+
     if (code != NULL) {
         *code = HYD_DIAG_CODE_NONE;
     }
@@ -358,7 +373,7 @@ HYD_BOOL HYD_RecipeValidator_ValidateRecipe(const HYD_MotionSegment* recipe,
     }
 
     for (index = 0U; index < recipeSize; ++index) {
-        if (!HYD_RecipeValidator_ValidateSegment(&recipe[index], index, code)) {
+        if (!HYD_RecipeValidator_ValidateSegment(&recipe[index], index, code, NULL)) {
             return false;
         }
     }

@@ -95,7 +95,8 @@ HYD_BOOL HYD_MotionValidator_ValidateStartRequest(const HYD_MotionControlFB* fb,
                                             code) &&
         HYD_RecipeValidator_ValidateSegment(segment,
                                             resolvedSegmentIndex,
-                                            code) &&
+                                            code,
+                                            &fb->cylinderConfig) &&
         HYD_RecipeValidator_ValidateStartContext(segment,
                                                  resolvedSegmentIndex,
                                                  &fb->AXIS_REF,

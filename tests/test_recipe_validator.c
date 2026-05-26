@@ -84,7 +84,7 @@ static void test_validate_pressure_derivative_filter_alpha(void) {
     segment.pressureKd = 0.1;
     segment.pressureDerivativeFilterAlpha = 1.5;
 
-    assert(!HYD_RecipeValidator_ValidateSegment(&segment, 0, &code));
+    assert(!HYD_RecipeValidator_ValidateSegment(&segment, 0, &code, NULL));
     assert(code == HYD_DIAG_CODE_SEGMENT_INVALID);
     printf("✓ Pressure derivative filter alpha validation test passed\n");
 }
@@ -131,19 +131,19 @@ static void test_invalid_ceiling_tolerance_rejected(void) {
     seg.pressureCeilingTolerance = 0.2;
     seg.pressureCeilingPositionStart = 70.0;
     seg.pressureCeilingPositionEnd = 100.0;
-    assert(HYD_RecipeValidator_ValidateSegment(&seg, 0, &code));
+    assert(HYD_RecipeValidator_ValidateSegment(&seg, 0, &code, NULL));
 
     /* Negative tolerance: rejected */
     seg.pressureCeilingTolerance = -0.1;
     code = HYD_DIAG_CODE_NONE;
-    assert(!HYD_RecipeValidator_ValidateSegment(&seg, 0, &code));
+    assert(!HYD_RecipeValidator_ValidateSegment(&seg, 0, &code, NULL));
     assert(code == HYD_DIAG_CODE_SEGMENT_INVALID);
 
     /* Zero ceiling disables check — other fields irrelevant */
     seg.pressureCeiling = 0.0;
     seg.pressureCeilingTolerance = -1.0;  /* invalid but ignored */
     code = HYD_DIAG_CODE_NONE;
-    assert(HYD_RecipeValidator_ValidateSegment(&seg, 0, &code));
+    assert(HYD_RecipeValidator_ValidateSegment(&seg, 0, &code, NULL));
 
     printf("test_invalid_ceiling_tolerance_rejected PASSED\n");
 }
@@ -169,31 +169,31 @@ static void test_invalid_ceiling_value_rejected(void) {
     /* NaN ceiling: rejected (silent disablement is exactly what we forbid) */
     seg.pressureCeiling = (HYD_REAL)NAN;
     code = HYD_DIAG_CODE_NONE;
-    assert(!HYD_RecipeValidator_ValidateSegment(&seg, 0, &code));
+    assert(!HYD_RecipeValidator_ValidateSegment(&seg, 0, &code, NULL));
     assert(code == HYD_DIAG_CODE_SEGMENT_INVALID);
 
     /* +Inf ceiling: rejected */
     seg.pressureCeiling = (HYD_REAL)INFINITY;
     code = HYD_DIAG_CODE_NONE;
-    assert(!HYD_RecipeValidator_ValidateSegment(&seg, 0, &code));
+    assert(!HYD_RecipeValidator_ValidateSegment(&seg, 0, &code, NULL));
     assert(code == HYD_DIAG_CODE_SEGMENT_INVALID);
 
     /* -Inf ceiling: rejected */
     seg.pressureCeiling = (HYD_REAL)(-INFINITY);
     code = HYD_DIAG_CODE_NONE;
-    assert(!HYD_RecipeValidator_ValidateSegment(&seg, 0, &code));
+    assert(!HYD_RecipeValidator_ValidateSegment(&seg, 0, &code, NULL));
     assert(code == HYD_DIAG_CODE_SEGMENT_INVALID);
 
     /* Negative ceiling: rejected */
     seg.pressureCeiling = -5.0;
     code = HYD_DIAG_CODE_NONE;
-    assert(!HYD_RecipeValidator_ValidateSegment(&seg, 0, &code));
+    assert(!HYD_RecipeValidator_ValidateSegment(&seg, 0, &code, NULL));
     assert(code == HYD_DIAG_CODE_SEGMENT_INVALID);
 
     /* Zero ceiling: passes (disabled) */
     seg.pressureCeiling = 0.0;
     code = HYD_DIAG_CODE_NONE;
-    assert(HYD_RecipeValidator_ValidateSegment(&seg, 0, &code));
+    assert(HYD_RecipeValidator_ValidateSegment(&seg, 0, &code, NULL));
     assert(code == HYD_DIAG_CODE_NONE);
 
     printf("test_invalid_ceiling_value_rejected PASSED\n");
@@ -264,21 +264,21 @@ static void test_invalid_derate_ratio_rejected(void) {
 
     /* 0.0 = use default -> passes */
     seg.derateRatio = 0.0;
-    assert(HYD_RecipeValidator_ValidateSegment(&seg, 0, &code));
+    assert(HYD_RecipeValidator_ValidateSegment(&seg, 0, &code, NULL));
 
     /* Valid range (0,1) -> passes */
     seg.derateRatio = 0.3;
-    assert(HYD_RecipeValidator_ValidateSegment(&seg, 0, &code));
+    assert(HYD_RecipeValidator_ValidateSegment(&seg, 0, &code, NULL));
 
     /* Out of range -> rejected */
     seg.derateRatio = 1.5;
     code = HYD_DIAG_CODE_NONE;
-    assert(!HYD_RecipeValidator_ValidateSegment(&seg, 0, &code));
+    assert(!HYD_RecipeValidator_ValidateSegment(&seg, 0, &code, NULL));
     assert(code == HYD_DIAG_CODE_SEGMENT_INVALID);
 
     seg.derateRatio = -0.1;
     code = HYD_DIAG_CODE_NONE;
-    assert(!HYD_RecipeValidator_ValidateSegment(&seg, 0, &code));
+    assert(!HYD_RecipeValidator_ValidateSegment(&seg, 0, &code, NULL));
     assert(code == HYD_DIAG_CODE_SEGMENT_INVALID);
 
     printf("test_invalid_derate_ratio_rejected PASSED\n");

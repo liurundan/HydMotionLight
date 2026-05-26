@@ -40,7 +40,7 @@ static void test_clamp_close_profile_is_position_extend(void) {
     assert(segment.endCondition == HYD_END_POSITION);
     assert(segment.direction == HYD_DIRECTION_EXTEND);
     assert(segment.targetPosition == 250.0);
-    assert(HYD_RecipeValidator_ValidateSegment(&segment, 0, &code));
+    assert(HYD_RecipeValidator_ValidateSegment(&segment, 0, &code, NULL));
 }
 
 static void test_injection_fill_profile_is_speed_ramp_extend(void) {
@@ -56,7 +56,7 @@ static void test_injection_fill_profile_is_speed_ramp_extend(void) {
     assert(segment.direction == HYD_DIRECTION_EXTEND);
     assert(segment.targetPosition == 100.0);
     assert(segment.velocityKp == params.velocityKp);
-    assert(HYD_RecipeValidator_ValidateSegment(&segment, 0, &code));
+    assert(HYD_RecipeValidator_ValidateSegment(&segment, 0, &code, NULL));
 }
 
 static void test_holding_profile_is_pressure_closed_loop(void) {
@@ -72,7 +72,7 @@ static void test_holding_profile_is_pressure_closed_loop(void) {
     assert(segment.direction == HYD_DIRECTION_HOLD);
     assert(segment.targetPressure == 80.0);
     assert(segment.duration == 2.0);
-    assert(HYD_RecipeValidator_ValidateSegment(&segment, 0, &code));
+    assert(HYD_RecipeValidator_ValidateSegment(&segment, 0, &code, NULL));
 }
 
 static void test_build_clamp_close_with_mold_protect_populates_window(void) {

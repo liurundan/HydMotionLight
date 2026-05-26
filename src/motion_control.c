@@ -1804,7 +1804,8 @@ static void HYD_MotionControlFB_RunRunningState(HYD_MotionControlFB* fb) {
                                               &code) ||
             !HYD_RecipeValidator_ValidateSegment(segment,
                                                  fb->STATE.currentSegmentIndex,
-                                                 &code)) {
+                                                 &code,
+                                                 &fb->cylinderConfig)) {
             HYD_StateReporter_ReportFault(fb,
                             code,
                             fb->AXIS_REF.timestamp,
@@ -2475,7 +2476,8 @@ HYD_BOOL HYD_MotionControlFB_LoadDirectSegment(HYD_MotionControlFB* fb,
 
     if (!HYD_RecipeValidator_ValidateSegment(segment,
                                              HYD_MAX_SEGMENTS,
-                                             &code)) {
+                                             &code,
+                                             &fb->cylinderConfig)) {
         memset(&fb->DIRECT_SEGMENT, 0, sizeof(fb->DIRECT_SEGMENT));
         fb->DIRECT_SEGMENT_VALID = false;
         if (!fb->STATE.active && fb->FB_STATE != HYD_FB_STATE_HOLD && !fb->STATE.finished && !fb->SEGMENT_COMPLETED) {
@@ -2516,7 +2518,7 @@ HYD_BOOL HYD_MotionControlFB_StartDirectCommand(HYD_MotionControlFB* fb,
         return false;
     }
 
-    if (!HYD_RecipeValidator_ValidateSegment(segment, HYD_MAX_SEGMENTS, &code)) {
+    if (!HYD_RecipeValidator_ValidateSegment(segment, HYD_MAX_SEGMENTS, &code, &fb->cylinderConfig)) {
         HYD_StateReporter_ReportDiagnostic(fb,
                                            code,
                                            HYD_DIAG_SEVERITY_WARNING,
@@ -2942,7 +2944,8 @@ HYD_BOOL HYD_MotionControlFB_ApplyLiveUpdate(HYD_MotionControlFB* fb,
 
     if (!HYD_RecipeValidator_ValidateSegment(&updated,
                                              fb->STATE.currentSegmentIndex,
-                                             &code)) {
+                                             &code,
+                                             &fb->cylinderConfig)) {
         HYD_StateReporter_ReportDiagnostic(fb,
                                            code,
                                            HYD_DIAG_SEVERITY_WARNING,

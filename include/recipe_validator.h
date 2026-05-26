@@ -6,7 +6,8 @@
 
 HYD_BOOL HYD_RecipeValidator_ValidateSegment(const HYD_MotionSegment* segment,
                                             size_t segmentIndex,
-                                            HYD_DiagnosticCode* code);
+                                            HYD_DiagnosticCode* code,
+                                            const HYD_CylinderConfig* cylinderConfig);
 
 HYD_BOOL HYD_RecipeValidator_ValidateRecipe(const HYD_MotionSegment* recipe,
                                            size_t recipeSize,
