@@ -151,6 +151,38 @@ static const HYD_DiagnosticSpec HYD_DIAGNOSTIC_SPECS[] = {
      HYD_DIAG_RECOVERY_RESTART_SEGMENT,
      HYD_PROTECTION_ACTION_STOP,
      "Pressure remained above ceiling beyond fault-escalation window"},
+    {
+        HYD_DIAG_CODE_OVER_PRESSURE_LIMIT,
+        HYD_DIAG_SEVERITY_WARNING,
+        HYD_DIAG_SOURCE_EXECUTION,
+        HYD_DIAG_RECOVERY_CHECK_COMMAND,
+        HYD_PROTECTION_ACTION_DERATE,
+        "Pressure limit active: proportional flow reduction"
+    },
+    {
+        HYD_DIAG_CODE_OVER_PRESSURE_LIMIT_FAULT,
+        HYD_DIAG_SEVERITY_FAULT,
+        HYD_DIAG_SOURCE_EXECUTION,
+        HYD_DIAG_RECOVERY_RESTART_SEGMENT,
+        HYD_PROTECTION_ACTION_STOP,
+        "Pressure limit violated: sustained over-pressure, emergency stop"
+    },
+    {
+        HYD_DIAG_CODE_SOFT_LIMIT_REACHED,
+        HYD_DIAG_SEVERITY_WARNING,
+        HYD_DIAG_SOURCE_EXECUTION,
+        HYD_DIAG_RECOVERY_CHECK_COMMAND,
+        HYD_PROTECTION_ACTION_DERATE,
+        "Soft position limit reached: flow reduction active"
+    },
+    {
+        HYD_DIAG_CODE_SOFT_LIMIT_VIOLATED,
+        HYD_DIAG_SEVERITY_FAULT,
+        HYD_DIAG_SOURCE_EXECUTION,
+        HYD_DIAG_RECOVERY_RESTART_SEGMENT,
+        HYD_PROTECTION_ACTION_STOP,
+        "Soft position limit violated: beyond stroke boundary"
+    },
     {HYD_DIAG_CODE_PUMP_DIRECTION_CONFLICT,
      HYD_DIAG_SEVERITY_WARNING,
      HYD_DIAG_SOURCE_RUNTIME,
@@ -439,6 +471,14 @@ const char* HYD_Diagnostics_CodeToString(HYD_DiagnosticCode code) {
             return "PRESSURE_CEILING_VIOLATED";
         case HYD_DIAG_CODE_PUMP_DIRECTION_CONFLICT:
             return "PUMP_DIRECTION_CONFLICT";
+        case HYD_DIAG_CODE_OVER_PRESSURE_LIMIT:
+            return "OVER_PRESSURE_LIMIT";
+        case HYD_DIAG_CODE_OVER_PRESSURE_LIMIT_FAULT:
+            return "OVER_PRESSURE_LIMIT_FAULT";
+        case HYD_DIAG_CODE_SOFT_LIMIT_REACHED:
+            return "SOFT_LIMIT_REACHED";
+        case HYD_DIAG_CODE_SOFT_LIMIT_VIOLATED:
+            return "SOFT_LIMIT_VIOLATED";
         case HYD_DIAG_CODE_INTERNAL_ERROR:
             return "INTERNAL_ERROR";
         default:

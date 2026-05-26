@@ -229,6 +229,11 @@ typedef struct {
      * Zero-initialized after Init() = inactive (segment field used). */
     HYD_CylinderConfig cylinderConfig;
 
+    /* 全局最大压力限制 [MPa]。0 表示不启用。
+     * 当 segment.maxPressure 也 > 0 时，取两者较小值生效。
+     * 所有控制模式下均评估（位置/速度/压力闭环）。 */
+    HYD_REAL PRESSURE_LIMIT;
+
     /* Legacy gain fields — used when pumpConfig is not configured (all zeros).
      * Preserved for backward compatibility with IEC adapter CreateMotion path. */
     HYD_REAL FLOW_TO_PUMP_SPEED_GAIN;

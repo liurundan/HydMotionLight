@@ -349,6 +349,41 @@ typedef HYD_REAL HYD_TIME;
  * 原值：motion_control.c:2096 `0.30`，已 f-typed 与同组 _MAG 常量保持一致。 */
 #define HYD_THRESH_PRESSURE_CEILING_FAULT_ESCALATION_S 0.30f
 
+/* --- 压力限制保护阈值（src/output_limiter.c） --- */
+
+/* 压力限制比例增益：超压比例 overRatio 时的输出缩减系数。
+ * scale = 1.0 - Kp * overRatio
+ * 例：Kp=3.0, 超压10% → scale = 1.0 - 3.0*0.1 = 0.7（输出降至70%）
+ * 取保守值避免振荡，实际整定时可适当增大。
+ * 单位：无量纲。 */
+#define HYD_THRESH_PRESSURE_LIMIT_KP             3.0f
+
+/* 压力限制最小缩放比：比例限速的下限，不允许完全停泵。
+ * 完全停泵由 FAULT/STOP 保护层负责。
+ * 单位：无量纲 [0, 1)。 */
+#define HYD_THRESH_PRESSURE_LIMIT_MIN_SCALE      0.1f
+
+/* 压力限制 WARNING 触发前的 debounce 时长。
+ * 取较宽值避免瞬态压力尖峰误报（如射胶段切换瞬间）。
+ * 单位：秒。 */
+#define HYD_THRESH_PRESSURE_LIMIT_DEBOUNCE_S     0.20f
+
+/* 压力限制 WARNING → FAULT 升级时长。
+ * 射胶段压力波动较大，取 1.0s 避免误停机。
+ * 单位：秒。 */
+#define HYD_THRESH_PRESSURE_LIMIT_FAULT_ESCALATION_S  1.0f
+
+/* --- 软限位保护阈值（src/output_limiter.c） --- */
+
+/* 软限位默认减速带宽度（当 cylinderConfig.softLimitBandMm 未设置时的参考值）。
+ * 实际使用 cylinderConfig.softLimitBandMm 字段，此处仅作文档参考。
+ * 单位：mm。 */
+#define HYD_THRESH_SOFT_LIMIT_DEFAULT_BAND_MM    5.0f
+
+/* 软限位 FAULT 触发前的 debounce 时长（position 到达极限后）。
+ * 单位：秒。 */
+#define HYD_THRESH_SOFT_LIMIT_FAULT_DEBOUNCE_S   0.50f
+
 /* --- RBF-PID 数值死区与滤波（src/rbf_pid.c） --- */
 
 /* 设定值归一化绝对值低于该阈值视为"零设定"，直接清零输出，避免

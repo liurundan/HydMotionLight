@@ -153,6 +153,10 @@ typedef enum {
     HYD_DIAG_CODE_TIMESTAMP_ROLLBACK,
     HYD_DIAG_CODE_PRESSURE_CEILING_EXCEEDED,
     HYD_DIAG_CODE_PRESSURE_CEILING_VIOLATED,
+    HYD_DIAG_CODE_OVER_PRESSURE_LIMIT,       /* WARNING: 超过最大压力限制（比例限速中） */
+    HYD_DIAG_CODE_OVER_PRESSURE_LIMIT_FAULT, /* FAULT: 持续超压，停机 */
+    HYD_DIAG_CODE_SOFT_LIMIT_REACHED,        /* WARNING: 到达软限位边界 */
+    HYD_DIAG_CODE_SOFT_LIMIT_VIOLATED,       /* FAULT: 超出软限位 */
     HYD_DIAG_CODE_PUMP_DIRECTION_CONFLICT,
     HYD_DIAG_CODE_INTERNAL_ERROR
 } HYD_DiagnosticCode;
@@ -171,7 +175,9 @@ typedef enum {
     HYD_DIAG_FLAG_TIMESTAMP_ROLLBACK = 1U << 7,
     HYD_DIAG_FLAG_PRESSURE_CEILING_EXCEEDED = 1U << 8,
     HYD_DIAG_FLAG_PRESSURE_CEILING_VIOLATED = 1U << 9,
-    HYD_DIAG_FLAG_PUMP_DIRECTION_CONFLICT = 1U << 10
+    HYD_DIAG_FLAG_PUMP_DIRECTION_CONFLICT = 1U << 10,
+    HYD_DIAG_FLAG_OVER_PRESSURE_LIMIT = 1U << 11,
+    HYD_DIAG_FLAG_SOFT_LIMIT = 1U << 12
 } HYD_DiagnosticFlag;
 
 typedef enum {
@@ -327,6 +333,11 @@ typedef struct {
      * Range (0.0, 1.0). Zero or out-of-range falls back to library default 0.5.
      * Replaces the hardcoded limiterInput.derateRatio = 0.5 in motion_control.c. */
     HYD_REAL derateRatio;
+
+    /* 本段最大压力限制 [MPa]。0 表示使用 FB 级全局 PRESSURE_LIMIT。
+     * 当 segment.maxPressure > 0 且 fb.PRESSURE_LIMIT > 0 时，取两者较小值生效。
+     * 与 pressureCeiling（位置窗口内低压模保护）独立评估，互不干扰。 */
+    HYD_REAL maxPressure;
 
     HYD_RbfPidConfig pressureRbfConfig;      /* Optional RBF-PID bounded tuning / learning profile. Zero uses library defaults. */
 } HYD_MotionSegment;
@@ -546,7 +557,9 @@ typedef struct {
 typedef struct {
     HYD_REAL areaExtendMm2;    /* 无杆侧有效面积 [mm²] */
     HYD_REAL areaRetractMm2;   /* 有杆侧有效面积 [mm²] */
-    HYD_REAL strokeMm;         /* 行程 [mm], 用于限位参考 */
+    HYD_REAL strokeMm;         /* 最大行程 [mm], 正向软限位极限 */
+    HYD_REAL softLimitBandMm;  /* 减速带宽度 [mm], 0 = 不启用软限位 */
+    HYD_REAL softLimitRetractMm; /* 负向软限位位置 [mm], 默认 0（完全缩回） */
 } HYD_CylinderConfig;
 
 /* --- 泵配置辅助函数 --- */
