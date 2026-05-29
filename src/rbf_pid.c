@@ -330,7 +330,7 @@ float RBF_PID_Update(RBF_PID_Handle *pid, float setpoint, float feedback) {
     pid->Output = pid->u_prev + du;
 
     /* 输出限幅: max_out = fMaxFlow * fFlowRateLimit [L/min] */
-    float max_out = pid->fMaxFlow * pid->fFlowRateLimit;
+    float max_out = pid->fFlowRateLimit;
     pid->Output = LIMIT(MIN_OUTPUT, pid->Output, max_out);
     if (ABS(pid->Setpoint) < HYD_THRESH_RBF_SETPOINT_ZERO_EPS && pid->Feedback < HYD_THRESH_RBF_FEEDBACK_ZERO_BAND) {
         pid->Output = 0.0f;
@@ -366,8 +366,9 @@ float RBF_PID_Update(RBF_PID_Handle *pid, float setpoint, float feedback) {
 
     pid->Status = 1;
     pid->TuneResult = 66;   // 运行状态码
+    float flow_request = pid->fMaxFlow * output_total;
 
-    return output_total;
+    return flow_request;
 }
 
 /* 可选：设置PID限幅范围 */
