@@ -381,9 +381,9 @@ static void HYD_SynchronizeRbfPidState(HYD_PressureControllerState* state,
                 ? (HYD_REAL)state->rbfPid.pressure_normalization_scale
                 : (HYD_REAL)MAX_PRESSURE;
 
-    state->rbfPid.Output = (float)seededOutput;
-    state->rbfPid.u_prev = (float)seededOutput;
-    state->rbfPid.n_out = (float)seededOutput;
+    state->rbfPid.Output = (float)(seededOutput / (HYD_REAL)state->rbfPid.fMaxFlow);
+    state->rbfPid.u_prev = (float)(seededOutput / (HYD_REAL)state->rbfPid.fMaxFlow);
+    state->rbfPid.n_out = (float)(seededOutput / (HYD_REAL)state->rbfPid.fMaxFlow);
     state->rbfPid.P_set = (float)targetPressure;
     state->rbfPid.P_actual = (float)measuredPressure;
     state->rbfPid.Setpoint = (float)(targetPressure / normScale);

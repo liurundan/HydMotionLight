@@ -752,6 +752,204 @@ static void test_gain_scheduling_with_error_magnitude(void) {
     printf("✓ Gain scheduling with error magnitude test passed\n");
 }
 
+/* ---- Plant model: first-order inertia G(s)=K/(Ts+1) with backward difference ---- */
+#define PLANT_K     5.4     /* bar/RPM */
+#define PLANT_T     1.0     /* s */
+#define PLANT_TS    0.001   /* s */
+#define PLANT_GAIN  20.0    /* flowToPumpSpeedGain RPM/(L/min) */
+#define PLANT_PUMP_LIMIT  1800.0  /* RPM */
+
+static HYD_REAL plant_model_step(HYD_REAL pressure_bar, HYD_REAL pump_speed) {
+    return (PLANT_T * pressure_bar + PLANT_K * PLANT_TS * pump_speed) / (PLANT_T + PLANT_TS);
+}
+
+static HYD_REAL pump_convert(HYD_REAL flow_lmin) {
+    HYD_REAL speed = flow_lmin * PLANT_GAIN;
+    return HYD_ClampReal(speed, 0.0, PLANT_PUMP_LIMIT);
+}
+
+static HYD_MotionSegment make_rbf_pid_segment(HYD_REAL target_bar) {
+    HYD_MotionSegment seg;
+    memset(&seg, 0, sizeof(seg));
+    seg.mode = HYD_MODE_PRESSURE_CLOSED_LOOP;
+    seg.endCondition = HYD_END_TIME;
+    seg.direction = HYD_DIRECTION_HOLD;
+    seg.targetPressure = target_bar;
+    seg.maxFlow = PLANT_PUMP_LIMIT / PLANT_GAIN;  /* 90 L/min */
+    seg.duration = 10.0;
+    seg.pressureController = HYD_PRESSURE_CONTROLLER_RBF_PID;
+    seg.pressureCeiling = target_bar * 3.0;
+    seg.pressureFilterAlpha = 1.0;
+    seg.pressureDerivativeFilterAlpha = 1.0;
+    /* Tighter KI bounds for this first-order plant (K=5.4, T=1.0, Ts=0.001).
+     * Default KI=0.020 gives ζ≈0.26 → 40% overshoot. Clamping to 0.003
+     * gives ζ≈0.66 → ~6% overshoot, with adaptation fine-tuning further. */
+    seg.pressureRbfConfig.minKp = 0.5;
+    seg.pressureRbfConfig.maxKp = 1.2;
+    seg.pressureRbfConfig.minKi = 0.002;
+    seg.pressureRbfConfig.maxKi = 0.006;
+    seg.pressureRbfConfig.minKd = 0.5;
+    seg.pressureRbfConfig.maxKd = 2.0;
+    seg.pressureRbfConfig.etaP = 0.40;
+    seg.pressureRbfConfig.etaI = 0.40;
+    seg.pressureRbfConfig.etaD = 0.40;
+    return seg;
+}
+
+static void test_rbf_pid_single_setpoint_plant_convergence(void) {
+    HYD_REAL targets[] = {50.0, 80.0, 100.0};
+    int num_targets = 3;
+    int ti;
+
+    printf("Testing RBF-PID single-setpoint convergence against plant model...\n");
+
+    for (ti = 0; ti < num_targets; ti++) {
+        HYD_REAL target = targets[ti];
+        HYD_MotionSegment segment = make_rbf_pid_segment(target);
+        HYD_PressureControllerState state;
+        HYD_PressureControllerInput input;
+        HYD_PressureControllerOutput output;
+        HYD_REAL pressure_bar = 0.0;
+        HYD_REAL peak_pressure = 0.0;
+        HYD_REAL pump_speed;
+        HYD_BOOL oscillating = false;
+        HYD_REAL prev_flow = 0.0;
+        int k;
+        int steps = 8000;
+
+        HYD_PressureController_InitState(&state, 0.0, 0.0, 0.0);
+
+        for (k = 0; k < steps; k++) {
+            input.targetPressure = target;
+            input.measuredPressure = pressure_bar;
+            input.feedforwardFlow = 0.0;
+            input.outputMin = 0.0;
+            input.outputMax = segment.maxFlow;
+            input.flowToPumpSpeedGain = PLANT_GAIN;
+            input.pumpSpeedLimit = PLANT_PUMP_LIMIT;
+            input.timestamp = (HYD_REAL)(k + 1) * PLANT_TS;
+
+            HYD_PressureController_Execute(&segment, &state, &input, &output);
+
+            /* pump_converter chain */
+            pump_speed = pump_convert(output.outputFlow);
+            assert(pump_speed >= -1e-6);
+            assert(pump_speed <= PLANT_PUMP_LIMIT + 1e-6);
+            {
+                HYD_REAL raw_speed = output.outputFlow * (HYD_REAL)PLANT_GAIN;
+                assert(fabs(pump_speed - HYD_ClampReal(raw_speed, 0.0, PLANT_PUMP_LIMIT)) < 1e-5);
+            }
+
+            /* controller output bounds */
+            assert(output.outputFlow >= -1e-6);
+            assert(output.outputFlow <= segment.maxFlow + 1e-6);
+
+            /* PID gain bounds */
+            assert(state.rbfPid.KP >= state.rbfPid.min_KP - 1e-4f);
+            assert(state.rbfPid.KP <= state.rbfPid.max_KP + 1e-4f);
+            assert(state.rbfPid.KI >= state.rbfPid.min_KI - 1e-4f);
+            assert(state.rbfPid.KI <= state.rbfPid.max_KI + 1e-4f);
+            assert(state.rbfPid.KD >= state.rbfPid.min_KD - 1e-4f);
+            assert(state.rbfPid.KD <= state.rbfPid.max_KD + 1e-4f);
+
+            /* plant step */
+            pressure_bar = plant_model_step(pressure_bar, pump_speed);
+
+            if (pressure_bar > peak_pressure) peak_pressure = pressure_bar;
+
+            /* check oscillation in last 1000 steps */
+            if (k >= steps - 1000) {
+                if (k > steps - 1000 && fabs(output.outputFlow - prev_flow) >= 1.0)
+                    oscillating = true;
+                prev_flow = output.outputFlow;
+            }
+        }
+
+        printf("  Target=%.0f bar: final=%.2f peak=%.2f overshoot=%.1f%% KP=%.4f KI=%.5f KD=%.4f flow=%.3f\n",
+               (double)target, (double)pressure_bar, (double)peak_pressure,
+               (double)((peak_pressure - target) / target * 100.0),
+               (double)state.rbfPid.KP, (double)state.rbfPid.KI,
+               (double)state.rbfPid.KD, (double)output.outputFlow);
+
+        assert(pressure_bar >= target * 0.98);
+        assert(pressure_bar <= target * 1.02);
+        assert(peak_pressure <= target * 1.05);
+        assert(!oscillating);
+    }
+
+    printf("✓ RBF-PID single-setpoint plant convergence test passed\n");
+}
+
+static void test_rbf_pid_setpoint_switching_plant(void) {
+    HYD_REAL sequence[] = {50.0, 80.0, 100.0, 50.0};
+    int num_targets = 4;
+    int steps_per_target = 2000;
+    HYD_PressureControllerState state;
+    HYD_PressureControllerInput input;
+    HYD_PressureControllerOutput output;
+    HYD_REAL pressure_bar = 0.0;
+    HYD_REAL prev_flow = 0.0;
+    HYD_BOOL spike_detected = false;
+    int ti, k;
+
+    printf("Testing RBF-PID setpoint switching against plant model...\n");
+
+    HYD_PressureController_InitState(&state, 0.0, 0.0, 0.0);
+
+    for (ti = 0; ti < num_targets; ti++) {
+        HYD_REAL target = sequence[ti];
+        HYD_MotionSegment segment = make_rbf_pid_segment(target);
+
+        for (k = 0; k < steps_per_target; k++) {
+            input.targetPressure = target;
+            input.measuredPressure = pressure_bar;
+            input.feedforwardFlow = 0.0;
+            input.outputMin = 0.0;
+            input.outputMax = segment.maxFlow;
+            input.flowToPumpSpeedGain = PLANT_GAIN;
+            input.pumpSpeedLimit = PLANT_PUMP_LIMIT;
+            input.timestamp = (HYD_REAL)(ti * steps_per_target + k + 1) * PLANT_TS;
+
+            HYD_PressureController_Execute(&segment, &state, &input, &output);
+
+            /* pump_converter chain */
+            HYD_REAL pump_speed = pump_convert(output.outputFlow);
+            assert(pump_speed >= -1e-6);
+            assert(pump_speed <= PLANT_PUMP_LIMIT + 1e-6);
+            assert(output.outputFlow >= -1e-6);
+            assert(output.outputFlow <= segment.maxFlow + 1e-6);
+
+            /* gain bounds */
+            assert(state.rbfPid.KP >= state.rbfPid.min_KP - 1e-4f);
+            assert(state.rbfPid.KP <= state.rbfPid.max_KP + 1e-4f);
+            assert(state.rbfPid.KI >= state.rbfPid.min_KI - 1e-4f);
+            assert(state.rbfPid.KI <= state.rbfPid.max_KI + 1e-4f);
+            assert(state.rbfPid.KD >= state.rbfPid.min_KD - 1e-4f);
+            assert(state.rbfPid.KD <= state.rbfPid.max_KD + 1e-4f);
+
+            /* first step after switch: check no flow spike when target decreases */
+            if (k == 0 && ti > 0 && target < sequence[ti - 1]) {
+                if (output.outputFlow > prev_flow * 1.5 + 0.1)
+                    spike_detected = true;
+            }
+
+            pressure_bar = plant_model_step(pressure_bar, pump_speed);
+            prev_flow = output.outputFlow;
+        }
+
+        printf("  After %d steps at %.0f bar: pressure=%.2f bar, KP=%.4f KI=%.5f KD=%.4f\n",
+               steps_per_target, (double)target, (double)pressure_bar,
+               (double)state.rbfPid.KP, (double)state.rbfPid.KI,
+               (double)state.rbfPid.KD);
+
+        assert(pressure_bar >= target * 0.95);
+        assert(pressure_bar <= target * 1.10);
+        assert(!spike_detected);
+    }
+
+    printf("✓ RBF-PID setpoint switching test passed\n");
+}
+
 int main(void) {
     printf("Running PressureController tests...\n\n");
 
@@ -771,6 +969,8 @@ int main(void) {
     test_small_kp_produces_proportional_output();
     test_default_filter_applies_smoothing();
     test_gain_scheduling_with_error_magnitude();
+    test_rbf_pid_single_setpoint_plant_convergence();
+    test_rbf_pid_setpoint_switching_plant();
 
     printf("\n✅ All PressureController tests passed successfully!\n");
     return 0;
