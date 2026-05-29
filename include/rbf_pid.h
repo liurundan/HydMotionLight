@@ -27,9 +27,8 @@
 #define PID_MAX_KD          2.0f
 
 /* 输出限幅 */
-#define MIN_OUTPUT          -0.05f
+#define MIN_OUTPUT          0.0f
 #define MAX_PRESSURE        250.0f
-#define MAX_MOTOR_SPEED     2000.0f
 
 /**
  * @brief RBF-PID控制器状态结构体
@@ -42,8 +41,8 @@ typedef struct {
     float P_actual;                 // 压力反馈值(原始单位)
     bool auto_tune;                 // 自动调谐标志(未完全实现)
     float sampling_period;          // 采样时间(s)
-    float fMaxFlow;           // 电机最大转速
-    float fFlowRateLimit;             // 最大流量(0-1)
+    float fMaxFlow;           // 最大泵流量 [L/min] = pumpSpeedLimit / flowToPumpSpeedGain
+    float fFlowRateLimit;     // 流量限幅比例 [0,1]; 0=禁止, 1=全流量
     bool Reset;                     // 复位信号
 
     /* 压力归一化标量（MPa 等设定/反馈单位的满量程）.
@@ -74,7 +73,7 @@ typedef struct {
     float max_KD;                   // 微分系数上限
     int32_t Status;                 // 状态代码(1:运行中, -1:未使能)
     int32_t TuneResult;             // 调谐结果标志
-    float n_out;                    // 输出*最大转速
+    float n_out;                    // 输出流量 [L/min]
 
     /* RBF神经网络参数 */
     float c[RBF_HNUM][RBF_INPUT_DIM];   // 中心向量
@@ -144,19 +143,19 @@ typedef struct {
  * @brief 初始化RBF-PID控制器
  * @param pid RBF_PID句柄指针
  * @param sampling_period 采样时间(s)
- * @param max_motor_speed 最大电机转速
- * @param max_flow_rate 最大流量(0~1)
+ * @param max_flow_lmin 最大泵流量 [L/min]
+ * @param flow_rate_limit_pct 流量限幅比例 [0~1]
  * @return 无
  */
-void RBF_PID_Init(RBF_PID_Handle *pid, float sampling_period, 
-                  float max_motor_speed, float max_flow_rate);
+void RBF_PID_Init(RBF_PID_Handle *pid, float sampling_period,
+                  float max_flow_lmin, float flow_rate_limit_pct);
 
 /**
  * @brief 执行RBF-PID控制计算
  * @param pid RBF_PID句柄指针
  * @param setpoint 设定值(压力, 原始单位)
  * @param feedback 反馈值(压力, 原始单位)
- * @return 控制输出(归一化流量, 范围[-0.05, max_flow_rate])
+ * @return 控制器输出流量 [L/min], 范围[0, maxFlow * flowRateLimit]
  */
 float RBF_PID_Update(RBF_PID_Handle *pid, float setpoint, float feedback);
 

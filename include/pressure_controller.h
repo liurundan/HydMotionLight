@@ -10,6 +10,8 @@ typedef struct {
     HYD_REAL feedforwardFlow;
     HYD_REAL outputMin;
     HYD_REAL outputMax;
+    HYD_REAL flowToPumpSpeedGain;  /* rpm per L/min, > 0 — used by RBF PID for fMaxFlow derivation */
+    HYD_REAL pumpSpeedLimit;       /* rpm, >= 0 — pump speed upper bound */
     HYD_TIME timestamp;
 } HYD_PressureControllerInput;
 

@@ -1261,6 +1261,13 @@ static void HYD_ExecuteActiveSegmentControl(HYD_MotionControlFB* fb,
         pressureInput.outputMin = 0.0;
 
         pressureInput.outputMax = segment->maxFlow;
+        if (HYD_PumpConfig_IsValid(&fb->pumpConfig)) {
+            pressureInput.flowToPumpSpeedGain = HYD_PumpConfig_GetFlowToSpeedGain(&fb->pumpConfig);
+            pressureInput.pumpSpeedLimit = HYD_PumpConfig_GetSpeedLimit(&fb->pumpConfig);
+        } else {
+            pressureInput.flowToPumpSpeedGain = fb->FLOW_TO_PUMP_SPEED_GAIN;
+            pressureInput.pumpSpeedLimit = fb->PUMP_SPEED_LIMIT;
+        }
         pressureInput.timestamp = fb->AXIS_REF.timestamp;
         HYD_PressureController_Execute(segment,
                                        &fb->_pressureController,

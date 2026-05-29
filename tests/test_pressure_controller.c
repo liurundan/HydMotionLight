@@ -272,6 +272,8 @@ static void test_rbf_pid_strategy_executes_within_limits_and_adapts(void) {
         input.feedforwardFlow = 0.0;
         input.outputMin = 0.0;
         input.outputMax = segment.maxFlow;
+        input.flowToPumpSpeedGain = 20.0;
+        input.pumpSpeedLimit = 1800.0;
         input.timestamp = (step + 1) * 0.01;
 
         HYD_PressureController_Execute(&segment, &state, &input, &output);
@@ -329,6 +331,8 @@ static void test_rbf_pid_strategy_uses_segment_level_tuning_profile(void) {
     input.feedforwardFlow = segment.targetFlow;
     input.outputMin = 0.0;
     input.outputMax = segment.maxFlow;
+    input.flowToPumpSpeedGain = 20.0;
+    input.pumpSpeedLimit = 1800.0;
     input.timestamp = 0.02;
     HYD_PressureController_Execute(&segment, &state, &input, &output);
 
@@ -388,6 +392,8 @@ static void test_rbf_pid_strategy_switch_tracks_previous_output_bumplessly(void)
     segment.pressureController = HYD_PRESSURE_CONTROLLER_RBF_PID;
     input.targetPressure = 10.0;
     input.measuredPressure = 10.0;
+    input.flowToPumpSpeedGain = 20.0;
+    input.pumpSpeedLimit = 1800.0;
     input.timestamp = 0.1;
     HYD_PressureController_Execute(&segment, &state, &input, &output1);
 
@@ -446,6 +452,8 @@ static void test_cross_controller_switch_seeds_rbf_within_clamp_window(void) {
 
     input.targetPressure = 30.0;
     input.measuredPressure = 25.0;
+    input.flowToPumpSpeedGain = 20.0;
+    input.pumpSpeedLimit = 1800.0;
     input.timestamp = 0.01;
     HYD_PressureController_Execute(&segmentB, &state, &input, &output);
 

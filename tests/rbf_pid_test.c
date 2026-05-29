@@ -8,7 +8,7 @@ static void test_disabled_controller_returns_zero_output(void) {
     float output;
 
     printf("Testing RBF_PID disabled-output semantics...\n");
-    RBF_PID_Init(&pid, 0.01f, 1500.0f, 1.0f);
+    RBF_PID_Init(&pid, 0.01f, 90.0f, 1.0f);
     pid.enable = false;
 
     output = RBF_PID_Update(&pid, 100.0f, 0.0f);
@@ -24,16 +24,16 @@ static void test_enabled_controller_respects_limits_and_drives_feedback(void) {
     int step;
 
     printf("Testing RBF_PID closed-loop adaptation behavior...\n");
-    RBF_PID_Init(&pid, 0.01f, 1500.0f, 1.0f);
+    RBF_PID_Init(&pid, 0.01f, 90.0f, 1.0f);
     pid.enable = true;
     RBF_PID_SetParamLimits(&pid, 0.5f, 1.2f, 0.005f, 0.050f, 0.5f, 2.0f);
 
     for (step = 0; step < 20; ++step) {
         output = RBF_PID_Update(&pid, 100.0f, feedback);
         assert(output >= MIN_OUTPUT - 1e-6f);
-        assert(output <= pid.fMaxFlowRate + 1e-6f);
-        assert(pid.n_out >= MIN_OUTPUT * pid.fMaxMotorSpeed - 1e-3f);
-        assert(pid.n_out <= pid.fMaxMotorSpeed + 1e-3f);
+        assert(output <= pid.fMaxFlow * pid.fFlowRateLimit + 1e-6f);
+        assert(pid.n_out >= MIN_OUTPUT - 1e-3f);
+        assert(pid.n_out <= pid.fMaxFlow * pid.fFlowRateLimit + 1e-3f);
         assert(pid.KP >= pid.min_KP - 1e-6f && pid.KP <= pid.max_KP + 1e-6f);
         assert(pid.KI >= pid.min_KI - 1e-6f && pid.KI <= pid.max_KI + 1e-6f);
         assert(pid.KD >= pid.min_KD - 1e-6f && pid.KD <= pid.max_KD + 1e-6f);
@@ -54,7 +54,7 @@ static void test_explicit_reset_restores_runtime_state(void) {
     RBF_PID_Handle pid;
 
     printf("Testing RBF_PID explicit reset behavior...\n");
-    RBF_PID_Init(&pid, 0.01f, 1500.0f, 1.0f);
+    RBF_PID_Init(&pid, 0.01f, 90.0f, 1.0f);
     pid.enable = true;
     (void)RBF_PID_Update(&pid, 100.0f, 0.0f);
     assert(fabsf(pid.u_prev) > 1e-6f || fabsf(pid.du_prev) > 1e-6f || fabsf(pid.n_out) > 1e-6f);
@@ -78,7 +78,7 @@ static void test_adaptive_learning_rate_scales_with_error(void) {
     int step;
 
     printf("Testing adaptive learning rate scaling...\n");
-    RBF_PID_Init(&pid, 0.01f, 1500.0f, 1.0f);
+    RBF_PID_Init(&pid, 0.01f, 90.0f, 1.0f);
     pid.enable = true;
 
     /* Drive to steady state */
@@ -109,10 +109,10 @@ static void test_multi_axis_differentiated_seeds(void) {
 
     printf("Testing multi-axis differentiated seeds...\n");
 
-    RBF_PID_Init(&pid1, 0.01f, 1500.0f, 1.0f);
+    RBF_PID_Init(&pid1, 0.01f, 90.0f, 1.0f);
     RBF_PID_SetSeed(&pid1, 12345UL);
 
-    RBF_PID_Init(&pid2, 0.01f, 1500.0f, 1.0f);
+    RBF_PID_Init(&pid2, 0.01f, 90.0f, 1.0f);
     RBF_PID_SetSeed(&pid2, 67890UL);
 
     /* Different seeds should produce different initial centers */
@@ -142,7 +142,7 @@ static void test_default_gain_window_allows_adaptation(void) {
     int step;
 
     printf("Testing default gain window allows adaptation room...\n");
-    RBF_PID_Init(&pid, 0.01f, 1500.0f, 1.0f);
+    RBF_PID_Init(&pid, 0.01f, 90.0f, 1.0f);
     pid.enable = true;
     kp_initial = pid.KP;
 
@@ -169,7 +169,7 @@ static void test_pressure_normalization_is_configurable(void) {
     RBF_PID_Handle pid;
 
     printf("Testing configurable pressure normalization scale...\n");
-    RBF_PID_Init(&pid, 0.01f, 1500.0f, 1.0f);
+    RBF_PID_Init(&pid, 0.01f, 90.0f, 1.0f);
     pid.enable = true;
 
     /* Default: pressure_normalization_scale == 0 -> falls back to MAX_PRESSURE (250) */

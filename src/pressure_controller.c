@@ -259,36 +259,56 @@ static void HYD_ResolvePressureControllerConfig(const HYD_MotionSegment* segment
 
 static void HYD_EnsureRbfPidInitialized(HYD_PressureControllerState* state,
                                         HYD_REAL samplingPeriod,
-                                        HYD_REAL outputMax) {
+                                        HYD_REAL outputMax,
+                                        HYD_REAL flowToPumpSpeedGain,
+                                        HYD_REAL pumpSpeedLimit) {
     HYD_REAL resolvedOutputMax;
+    float fMaxFlow, fFlowRateLimit;
 
     if (state == NULL) {
         return;
     }
 
     resolvedOutputMax = (outputMax > 0.0) ? outputMax : 0.0;
+
+    /* Compute max pump flow [L/min] = pumpSpeedLimit [rpm] / flowToPumpSpeedGain [rpm/(L/min)] */
+    if (flowToPumpSpeedGain > 0.0 && pumpSpeedLimit >= 0.0) {
+        fMaxFlow = (float)(pumpSpeedLimit / flowToPumpSpeedGain);
+    } else {
+        fMaxFlow = 0.0f;
+    }
+    if (fMaxFlow <= 0.0f) fMaxFlow = 90.0f;  /* safe fallback: 1800 rpm / 20 rpm per L/min */
+
+    /* Compute flow rate limit as fraction of max flow, capped at 1.0 */
+    fFlowRateLimit = (resolvedOutputMax > 0.0 && fMaxFlow > 0.0f)
+        ? (float)(resolvedOutputMax / (HYD_REAL)fMaxFlow) : 1.0f;
+    if (fFlowRateLimit > 1.0f) fFlowRateLimit = 1.0f;
+
     if (!state->rbfInitialized) {
         RBF_PID_Init(&state->rbfPid,
                      (float)samplingPeriod,
-                     1.0f,
-                     (float)resolvedOutputMax);
+                     fMaxFlow,
+                     fFlowRateLimit);
         state->rbfInitialized = true;
     }
 
     state->rbfPid.sampling_period = (float)samplingPeriod;
-    state->rbfPid.fMaxFlow = 1800.0f;
-    state->rbfPid.fFlowRateLimit = (float)resolvedOutputMax;
+    state->rbfPid.fMaxFlow = fMaxFlow;
+    state->rbfPid.fFlowRateLimit = fFlowRateLimit;
     state->rbfPid.enable = true;
 }
 
 static void HYD_ApplyRbfPidConfig(HYD_PressureControllerState* state,
                                   const HYD_PressureResolvedConfig* config,
-                                  const HYD_MotionSegment* segment) {
+                                  const HYD_MotionSegment* segment,
+                                  HYD_REAL flowToPumpSpeedGain,
+                                  HYD_REAL pumpSpeedLimit) {
     if (state == NULL || config == NULL) {
         return;
     }
 
-    HYD_EnsureRbfPidInitialized(state, config->samplingPeriod, config->outputMax);
+    HYD_EnsureRbfPidInitialized(state, config->samplingPeriod, config->outputMax,
+                                flowToPumpSpeedGain, pumpSpeedLimit);
     RBF_PID_SetParamLimits(&state->rbfPid,
                            (float)config->rbf.minKp,
                            (float)config->rbf.maxKp,
@@ -334,7 +354,9 @@ static void HYD_SynchronizeRbfPidState(HYD_PressureControllerState* state,
                                        HYD_REAL targetPressure,
                                        HYD_REAL measuredPressure,
                                        const HYD_PressureResolvedConfig* config,
-                                       const HYD_MotionSegment* segment) {
+                                       const HYD_MotionSegment* segment,
+                                       HYD_REAL flowToPumpSpeedGain,
+                                       HYD_REAL pumpSpeedLimit) {
     HYD_REAL seededOutput;
     HYD_REAL normScale;
 
@@ -343,7 +365,8 @@ static void HYD_SynchronizeRbfPidState(HYD_PressureControllerState* state,
     }
 
     RBF_PID_Reset(&state->rbfPid);
-    HYD_ApplyRbfPidConfig(state, config, segment);
+    HYD_ApplyRbfPidConfig(state, config, segment,
+                          flowToPumpSpeedGain, pumpSpeedLimit);
 
     seededOutput = HYD_ClampReal(trackedOutputFlow, config->outputMin, config->outputMax);
     if (seededOutput < (HYD_REAL)MIN_OUTPUT) {
@@ -493,7 +516,8 @@ void HYD_PressureController_Execute(const HYD_MotionSegment* segment,
         HYD_BOOL needsAdaptiveReset;
 
         needsAdaptiveReset = trackingRequested || !state->rbfInitialized;
-        HYD_ApplyRbfPidConfig(state, &config, segment);
+        HYD_ApplyRbfPidConfig(state, &config, segment,
+                              input->flowToPumpSpeedGain, input->pumpSpeedLimit);
 
         if (needsAdaptiveReset) {
             output->trackingApplied = true;
@@ -502,7 +526,9 @@ void HYD_PressureController_Execute(const HYD_MotionSegment* segment,
                                        input->targetPressure,
                                        filteredPressure,
                                        &config,
-                                       segment);
+                                       segment,
+                                       input->flowToPumpSpeedGain,
+                                       input->pumpSpeedLimit);
         }
 
         effectiveTargetPressure = (error == 0.0) ? filteredPressure : input->targetPressure;

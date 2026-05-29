@@ -76,7 +76,7 @@ static void controller_reset_state(RBF_PID_Handle *pid) {
 }
 
 void RBF_PID_Init(RBF_PID_Handle *pid, float sampling_period,
-                  float max_motor_speed, float max_flow_rate) {
+                  float max_flow_lmin, float flow_rate_limit_pct) {
     /* 清空整个结构体为0 */
     memset(pid, 0, sizeof(RBF_PID_Handle));
 
@@ -84,8 +84,8 @@ void RBF_PID_Init(RBF_PID_Handle *pid, float sampling_period,
 
     /* 配置基本参数 */
     pid->sampling_period = sampling_period;
-    pid->fMaxFlow = max_motor_speed;
-    pid->fFlowRateLimit = max_flow_rate;
+    pid->fMaxFlow = max_flow_lmin;
+    pid->fFlowRateLimit = flow_rate_limit_pct;
 
     /* 默认学习率 (与原ST一致) */
     pid->eta_w = 0.25f;
@@ -329,8 +329,8 @@ float RBF_PID_Update(RBF_PID_Handle *pid, float setpoint, float feedback) {
     du = du + pid->fBaseBias - pid->fUffAcc;
     pid->Output = pid->u_prev + du;
 
-    /* 输出限幅 */
-    float max_out = pid->fFlowRateLimit;
+    /* 输出限幅: max_out = fMaxFlow * fFlowRateLimit [L/min] */
+    float max_out = pid->fMaxFlow * pid->fFlowRateLimit;
     pid->Output = LIMIT(MIN_OUTPUT, pid->Output, max_out);
     if (ABS(pid->Setpoint) < HYD_THRESH_RBF_SETPOINT_ZERO_EPS && pid->Feedback < HYD_THRESH_RBF_FEEDBACK_ZERO_BAND) {
         pid->Output = 0.0f;
@@ -354,8 +354,8 @@ float RBF_PID_Update(RBF_PID_Handle *pid, float setpoint, float feedback) {
         output_total = 0.0f;
     }
 
-    /* 转换到实际输出值 (如电机转速) */
-    pid->n_out = output_total * pid->fMaxFlow;
+    /* 输出流量 [L/min] */
+    pid->n_out = output_total;
 
     /* ----- 更新历史状态 ----- */
     pid->u_prev = output_total;         // 注意：u_prev存储限幅前的Output? 原ST用的是pid->Output
