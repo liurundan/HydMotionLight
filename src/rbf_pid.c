@@ -84,8 +84,8 @@ void RBF_PID_Init(RBF_PID_Handle *pid, float sampling_period,
 
     /* 配置基本参数 */
     pid->sampling_period = sampling_period;
-    pid->fMaxMotorSpeed = max_motor_speed;
-    pid->fMaxFlowRate = max_flow_rate;
+    pid->fMaxFlow = max_motor_speed;
+    pid->fFlowRateLimit = max_flow_rate;
 
     /* 默认学习率 (与原ST一致) */
     pid->eta_w = 0.25f;
@@ -330,7 +330,7 @@ float RBF_PID_Update(RBF_PID_Handle *pid, float setpoint, float feedback) {
     pid->Output = pid->u_prev + du;
 
     /* 输出限幅 */
-    float max_out = pid->fMaxFlowRate;
+    float max_out = pid->fFlowRateLimit;
     pid->Output = LIMIT(MIN_OUTPUT, pid->Output, max_out);
     if (ABS(pid->Setpoint) < HYD_THRESH_RBF_SETPOINT_ZERO_EPS && pid->Feedback < HYD_THRESH_RBF_FEEDBACK_ZERO_BAND) {
         pid->Output = 0.0f;
@@ -355,10 +355,10 @@ float RBF_PID_Update(RBF_PID_Handle *pid, float setpoint, float feedback) {
     }
 
     /* 转换到实际输出值 (如电机转速) */
-    pid->n_out = output_total * pid->fMaxMotorSpeed;
+    pid->n_out = output_total * pid->fMaxFlow;
 
     /* ----- 更新历史状态 ----- */
-    pid->u_prev = pid->Output;        // 注意：u_prev存储限幅前的Output? 原ST用的是Output
+    pid->u_prev = output_total;         // 注意：u_prev存储限幅前的Output? 原ST用的是pid->Output
     pid->du_prev = du;
     pid->e_prev2 = pid->e_prev1;
     pid->e_prev1 = error;

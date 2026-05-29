@@ -1259,6 +1259,7 @@ static void HYD_ExecuteActiveSegmentControl(HYD_MotionControlFB* fb,
         pressureInput.measuredPressure = fb->AXIS_REF.pressure;
         pressureInput.feedforwardFlow = segment->targetFlow;
         pressureInput.outputMin = 0.0;
+
         pressureInput.outputMax = segment->maxFlow;
         pressureInput.timestamp = fb->AXIS_REF.timestamp;
         HYD_PressureController_Execute(segment,
@@ -2304,7 +2305,7 @@ void HYD_MotionControlFB_Init(HYD_MotionControlFB* fb) {
     fb->_params.pressureKpHigh = 0.0f;
     fb->_params.pressureGainBand = 0.2f;
     fb->_params.pressureKi = 0.1f;
-    fb->_params.pressureKd = 0.0f;
+    fb->_params.pressureKd = 0.01f;
     fb->_params.pressureIntegralLimit = 10.0f;
     fb->_params.pressureDeadband = 0.5f;
     fb->_params.pressureFilterAlpha = 0.5f;
@@ -2335,6 +2336,7 @@ void HYD_MotionControlFB_Init(HYD_MotionControlFB* fb) {
     fb->_stopStartTime = 0.0;
     fb->_stopStartVel = 0.0;
     fb->_stopDeceleration = 0.0;
+
 }
 
 void HYD_MotionControlFB_SoftReset(HYD_MotionControlFB* fb) {

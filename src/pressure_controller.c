@@ -276,8 +276,8 @@ static void HYD_EnsureRbfPidInitialized(HYD_PressureControllerState* state,
     }
 
     state->rbfPid.sampling_period = (float)samplingPeriod;
-    state->rbfPid.fMaxMotorSpeed = 1.0f;
-    state->rbfPid.fMaxFlowRate = (float)resolvedOutputMax;
+    state->rbfPid.fMaxFlow = 1800.0f;
+    state->rbfPid.fFlowRateLimit = (float)resolvedOutputMax;
     state->rbfPid.enable = true;
 }
 

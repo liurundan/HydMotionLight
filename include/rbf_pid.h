@@ -42,8 +42,8 @@ typedef struct {
     float P_actual;                 // 压力反馈值(原始单位)
     bool auto_tune;                 // 自动调谐标志(未完全实现)
     float sampling_period;          // 采样时间(s)
-    float fMaxMotorSpeed;           // 电机最大转速
-    float fMaxFlowRate;             // 最大流量(0-1)
+    float fMaxFlow;           // 电机最大转速
+    float fFlowRateLimit;             // 最大流量(0-1)
     bool Reset;                     // 复位信号
 
     /* 压力归一化标量（MPa 等设定/反馈单位的满量程）.
