@@ -19,13 +19,19 @@
  * Sprint 0 review C-6：原值窗宽 0.05，自适应增益几乎无空间。
  * Sprint 3 扩展：KP/KD 窗宽 0.7+，KI 窗宽 0.045。
  * 各项目可通过 HYD_RbfPidConfig 段字段进一步覆盖。 */
-#define PID_MIN_KP          0.5f
-#define PID_MAX_KP          1.2f
-#define PID_MIN_KI          0.005f
-#define PID_MAX_KI          0.050f
-#define PID_MIN_KD          0.5f
-#define PID_MAX_KD          2.0f
+//#define PID_MIN_KP          0.5f
+//#define PID_MAX_KP          1.2f
+//#define PID_MIN_KI          0.005f
+//#define PID_MAX_KI          0.050f
+//#define PID_MIN_KD          0.5f
+//#define PID_MAX_KD          2.0f
 
+#define PID_MIN_KP          0.8f
+#define PID_MAX_KP          0.85f
+#define PID_MIN_KI          0.02f
+#define PID_MAX_KI          0.03f
+#define PID_MIN_KD          1.5f
+#define PID_MAX_KD          5.0f
 /* 输出限幅 */
 #define MIN_OUTPUT          0.0f
 #define MAX_PRESSURE        250.0f
@@ -123,7 +129,8 @@ typedef struct {
     float last_ref;                 // 上一次设定值
     float fKff_a_pos;               // 正向加速度前馈系数(0.7)
     float fKff_a_neg;               // 负向加速度前馈系数(0.32)
-    float fKSetpoint;               // 设定值变化率前馈增益(0.3)
+    float fKSetpoint_pos;               // 设定值变化率前馈增益(0.3)
+    float fKSetpoint_neg;               // 设定值变化率前馈增益(0.01)
     float fBaseBias;                // 静态偏置(0.00001)
 
     /* 自适应学习率 */

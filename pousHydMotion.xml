@@ -1042,6 +1042,11 @@
 								<REAL />
 							</type>
 						</variable>
+						<variable name="CONFLICT">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
 						<variable name="BUSY">
 							<type>
 								<BOOL />
