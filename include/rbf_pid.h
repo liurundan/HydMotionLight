@@ -19,21 +19,22 @@
  * Sprint 0 review C-6：原值窗宽 0.05，自适应增益几乎无空间。
  * Sprint 3 扩展：KP/KD 窗宽 0.7+，KI 窗宽 0.045。
  * 各项目可通过 HYD_RbfPidConfig 段字段进一步覆盖。 */
-//#define PID_MIN_KP          0.5f
-//#define PID_MAX_KP          1.2f
-//#define PID_MIN_KI          0.005f
-//#define PID_MAX_KI          0.050f
-//#define PID_MIN_KD          0.5f
-//#define PID_MAX_KD          2.0f
+#define PID_MIN_KP          0.5f
+#define PID_MAX_KP          1.2f
+#define PID_MIN_KI          0.005f
+#define PID_MAX_KI          0.050f
+#define PID_MIN_KD          0.5f
+#define PID_MAX_KD          2.0f
 
-#define PID_MIN_KP          0.8f
-#define PID_MAX_KP          0.85f
-#define PID_MIN_KI          0.02f
-#define PID_MAX_KI          0.03f
-#define PID_MIN_KD          1.5f
-#define PID_MAX_KD          5.0f
+//#define PID_MIN_KP          0.8f
+//#define PID_MAX_KP          0.85f
+//#define PID_MIN_KI          0.02f
+//#define PID_MAX_KI          0.03f
+//#define PID_MIN_KD          1.5f
+//#define PID_MAX_KD          5.0f
+
 /* 输出限幅 */
-#define MIN_OUTPUT          0.0f
+#define MIN_OUTPUT          -0.05f
 #define MAX_PRESSURE        250.0f
 
 /**

@@ -103,13 +103,13 @@ void RBF_PID_Init(RBF_PID_Handle *pid, float sampling_period,
     pid->belte = 0.01f;
 
     /* PID初始参数（取新默认窗的合理工作点）*/
-//    pid->KP = 0.8f;   /* mid of [0.5, 1.2] */
-//    pid->KI = 0.020f; /* near typical hydraulic-loop integral value */
-//    pid->KD = 1.0f;   /* mid of [0.5, 2.0] */
+    pid->KP = 0.8f;   /* mid of [0.5, 1.2] */
+    pid->KI = 0.020f; /* near typical hydraulic-loop integral value */
+    pid->KD = 1.0f;   /* mid of [0.5, 2.0] */
 
-    pid->KP = 0.03f;   /* mid of [0.5, 1.2] */
-    pid->KI = 0.02f; /* near typical hydraulic-loop integral value */
-    pid->KD = 0.03f;   /* mid of [0.5, 2.0] */
+//    pid->KP = 0.03f;   /* mid of [0.5, 1.2] */
+//    pid->KI = 0.02f; /* near typical hydraulic-loop integral value */
+//    pid->KD = 0.03f;   /* mid of [0.5, 2.0] */
 
     pid->min_KP = PID_MIN_KP;
     pid->max_KP = PID_MAX_KP;
@@ -121,7 +121,7 @@ void RBF_PID_Init(RBF_PID_Handle *pid, float sampling_period,
     /* 前馈参数 */
     pid->EnableFF = true;
     pid->fKff_a_pos = 0.7f;
-    pid->fKff_a_neg = 0.32f;
+    pid->fKff_a_neg = 0.12f;
     pid->fKSetpoint_pos = 0.3f;
     pid->fKSetpoint_neg = 0.1f;
     pid->fBaseBias = 0.00001f;
@@ -323,16 +323,26 @@ float RBF_PID_Update(RBF_PID_Handle *pid, float setpoint, float feedback) {
     pid->fLastActPress = fActPress;
 
     /* 根据加速度方向选择系数 */
+    ref_change = pid->Setpoint - pid->last_ref;
+    float transient_factor = 0.0f;
+    float error_norm = ABS(error); // 归一化误差
+    float ref_change_norm = ABS(ref_change); // 归一化设定值变化
+    transient_factor = 1.0f / (1.0f + expf(-300.0f * (MAX(error_norm, ref_change_norm) - 0.15f))); // -10~10范围内平滑过渡，0.05f为过渡中心点，可调
+    float ff_gain_multiplier = 1.0f - transient_factor; // 系统越瞬态，前馈越弱；系统越稳态，前馈越强
+
     float fUffAccCompensation = 0.0f;
-    float errorThresholdForFF = 0.0005f;  // 设定一个误差阈值，只有当误差小时才启用前馈补偿
-    if (ABS(error) < errorThresholdForFF) {
+//    float errorThresholdForFF = 0.0005f;  // 设定一个误差阈值，只有当误差小时才启用前馈补偿
+//    if (ABS(error) < errorThresholdForFF)
+    {
         if (fddPress < -HYD_THRESH_RBF_FF_ACCEL_DEAD_BAND) {
-        	fUffAccCompensation = pid->fKff_a_neg * fddPress;
+        	fUffAccCompensation = pid->fKff_a_neg * fddPress * ff_gain_multiplier;
         } else if (fddPress > HYD_THRESH_RBF_FF_ACCEL_DEAD_BAND) {
-        	fUffAccCompensation = pid->fKff_a_pos * fddPress;
+        	fUffAccCompensation = pid->fKff_a_pos * fddPress * ff_gain_multiplier;
         } else {
         	fUffAccCompensation = 0.0f;
         }
+        float max_uff_acc = 0.1f; //归一化输出单位下的前馈补偿最大值，可调
+        fUffAccCompensation = LIMIT(-max_uff_acc, fUffAccCompensation, max_uff_acc);
     }
     pid->fUffAcc = fUffAccCompensation;
 
@@ -351,7 +361,7 @@ float RBF_PID_Update(RBF_PID_Handle *pid, float setpoint, float feedback) {
 
     /* 设定值变化率前馈 */
     if ( pid->EnableFF ) {
-        ref_change = pid->Setpoint - pid->last_ref;
+
         float max_change_rate = 0.01f;  // 设定一个最大变化率，防止过大前馈
         ref_rate = LIMIT(-max_change_rate, ref_change, max_change_rate);
         float kSetpoint = (ref_rate >= 0.0f) ? pid->fKSetpoint_pos : pid->fKSetpoint_neg;
