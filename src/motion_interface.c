@@ -1160,6 +1160,7 @@ void __mcl_cmd_MoveAbsolute(HYD_MOVEABSOLUTE *data__)
             {
                 __SET_VAR(data__->, BUSY, , true);
                 __SET_VAR(data__->, ACTIVE, , true);
+                __SET_VAR(data__->, DONE, , false);
             }
         } else if (directExecutionLostOwnership(fb, myExecId, HYD_DIRECT_CMD_MOVE_ABSOLUTE)) {
             __SET_VAR(data__->, COMMANDABORTED, , true);
