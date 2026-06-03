@@ -499,6 +499,124 @@ static HYD_DirectCommandKind HYD_InferDirectCommandKindFromSegment(const HYD_Mot
     return HYD_DIRECT_CMD_NONE;
 }
 
+/* Apply live-update flags to a segment in-place. Returns false if the
+ * requested update is incompatible with the segment mode. */
+static HYD_BOOL HYD_ApplyLiveUpdateOverrides(const HYD_LiveUpdateRequest* request,
+                                             HYD_MotionSegment* seg) {
+    if ((request->flags & HYD_LIVE_UPDATE_TARGET_POSITION) != 0U) {
+        if (seg->mode != HYD_MODE_POSITION) {
+            return false;
+        }
+        seg->targetPosition = request->targetPosition;
+    }
+
+    if ((request->flags & HYD_LIVE_UPDATE_MAX_VELOCITY) != 0U) {
+        if (seg->mode != HYD_MODE_POSITION &&
+            seg->mode != HYD_MODE_SPEED_RAMP) {
+            return false;
+        }
+        seg->maxVelocity = request->maxVelocity;
+        seg->maxFlow = (request->maxVelocity > 0.0f)
+            ? request->maxVelocity * seg->velocityToFlowGain
+            : seg->maxFlow;
+    }
+
+    if ((request->flags & HYD_LIVE_UPDATE_ACCELERATION) != 0U) {
+        if (seg->mode != HYD_MODE_POSITION &&
+            seg->mode != HYD_MODE_SPEED_RAMP) {
+            return false;
+        }
+        seg->maxAcceleration = request->maxAcceleration;
+    }
+
+    if ((request->flags & HYD_LIVE_UPDATE_DECELERATION) != 0U) {
+        if (seg->mode != HYD_MODE_POSITION &&
+            seg->mode != HYD_MODE_SPEED_RAMP) {
+            return false;
+        }
+        seg->maxDeceleration = (request->maxDeceleration > 0.0f)
+            ? request->maxDeceleration
+            : seg->maxAcceleration;
+    }
+
+    if ((request->flags & HYD_LIVE_UPDATE_TARGET_PRESSURE) != 0U) {
+        if (seg->mode != HYD_MODE_PRESSURE_CLOSED_LOOP) {
+            return false;
+        }
+        seg->targetPressure = request->targetPressure;
+    }
+
+    if ((request->flags & HYD_LIVE_UPDATE_PRESSURE_RAMP_RATE) != 0U) {
+        if (seg->mode != HYD_MODE_PRESSURE_CLOSED_LOOP) {
+            return false;
+        }
+        seg->pressureRampRate = request->pressureRampRate;
+    }
+
+    return true;
+}
+
+/* Reset all diagnostic criteria state and re-configure thresholds for a
+ * newly started segment. Shared by HYD_BeginSegment and the
+ * CONTINUOUSUPDATE re-activation path. */
+static void HYD_ResetCriteriaForSegment(HYD_MotionControlFB* fb,
+                                        const HYD_MotionSegment* segment) {
+    HYD_REAL pTol, fTol, vTol, posTol;
+    HYD_TIME tLim;
+
+    HYD_ErrorMonitor_Reset(&fb->_errorMonitor);
+    HYD_DiagnosticCriteria_ResetState(&fb->_pressureCriteriaState);
+    HYD_DiagnosticCriteria_ResetState(&fb->_pressureCeilingCriteriaState);
+    HYD_DiagnosticCriteria_ResetState(&fb->_flowCriteriaState);
+    HYD_DiagnosticCriteria_ResetState(&fb->_velocityCriteriaState);
+    HYD_DiagnosticCriteria_ResetState(&fb->_positionCriteriaState);
+    HYD_DiagnosticCriteria_ResetState(&fb->_timeoutCriteriaState);
+    HYD_OutputLimiter_ResetState(&fb->_limiterState);
+    fb->_isSwitchPhase = true;
+
+    pTol = HYD_Segment_GetPressureTolerance(segment);
+    fTol = HYD_Segment_GetFlowTolerance(segment);
+    vTol = HYD_Segment_GetVelocityTolerance(segment);
+    posTol = HYD_Segment_GetPositionTolerance(segment);
+    tLim = HYD_Segment_GetTimeoutLimit(segment);
+
+    if (segment->mode == HYD_MODE_PRESSURE_CLOSED_LOOP && pTol > 0.0) {
+        HYD_ConfigureSegmentCriteria(&fb->_pressureCriteria, pTol,
+                                      HYD_DIAG_CODE_OVER_PRESSURE,
+                                      HYD_PROTECTION_ACTION_DERATE);
+    }
+    if (fTol > 0.0) {
+        HYD_ConfigureSegmentCriteria(&fb->_flowCriteria, fTol,
+                                      HYD_DIAG_CODE_FLOW_DEVIATION,
+                                      HYD_PROTECTION_ACTION_DERATE);
+    }
+    if (vTol > 0.0) {
+        HYD_ConfigureSegmentCriteria(&fb->_velocityCriteria, vTol,
+                                      HYD_DIAG_CODE_VELOCITY_DEVIATION,
+                                      HYD_PROTECTION_ACTION_WARNING);
+    }
+    if (posTol > 0.0) {
+        HYD_ConfigureSegmentCriteria(&fb->_positionCriteria, posTol,
+                                      HYD_DIAG_CODE_POSITION_DEVIATION,
+                                      HYD_PROTECTION_ACTION_WARNING);
+    }
+    if (tLim > 0.0) {
+        HYD_ConfigureSegmentCriteria(&fb->_timeoutCriteria, tLim,
+                                      HYD_DIAG_CODE_TIMEOUT,
+                                      HYD_PROTECTION_ACTION_STOP);
+        fb->_timeoutCriteria.severity = HYD_DIAG_SEVERITY_FAULT;
+        if (fb->_timeoutCriteria.startupSuppressTime >= tLim) {
+            fb->_timeoutCriteria.startupSuppressTime = tLim * 0.5;
+        }
+        if (fb->_timeoutCriteria.switchSuppressTime >= tLim) {
+            fb->_timeoutCriteria.switchSuppressTime = 0.0;
+        }
+    }
+
+    fb->_switchSuppressEndTime = fb->_pressureCriteria.startupSuppressTime +
+                                  fb->_pressureCriteria.switchSuppressTime;
+}
+
 /* Diagnostic reporting moved into StateReporter (see state_reporter.c). */
 
 static HYD_BOOL HYD_ValidateNextRequest(const HYD_MotionControlFB* fb,
@@ -698,71 +816,7 @@ static HYD_BOOL HYD_BeginSegment(HYD_MotionControlFB* fb,
     fb->SEGMENT_COMPLETED = false;
 
     /* Reset diagnostic criteria layer for new segment */
-    HYD_ErrorMonitor_Reset(&fb->_errorMonitor);
-    HYD_DiagnosticCriteria_ResetState(&fb->_pressureCriteriaState);
-    HYD_DiagnosticCriteria_ResetState(&fb->_pressureCeilingCriteriaState);
-    HYD_DiagnosticCriteria_ResetState(&fb->_flowCriteriaState);
-    HYD_DiagnosticCriteria_ResetState(&fb->_velocityCriteriaState);
-    HYD_DiagnosticCriteria_ResetState(&fb->_positionCriteriaState);
-    HYD_DiagnosticCriteria_ResetState(&fb->_timeoutCriteriaState);
-    HYD_OutputLimiter_ResetState(&fb->_limiterState);
-    fb->_isSwitchPhase = true;
-
-    /* Configure criteria thresholds for this segment (once per segment, not every cycle).
-     * The default suppress/debounce/hysteresis/escalation settings from
-     * CreateDefaultXxxCriteria (Init) are preserved; only the threshold and
-     * diagnostic code are overridden based on segment tolerances. */
-    {
-        HYD_REAL pTol = HYD_Segment_GetPressureTolerance(sourceSegment);
-        HYD_REAL fTol = HYD_Segment_GetFlowTolerance(sourceSegment);
-        HYD_REAL vTol = HYD_Segment_GetVelocityTolerance(sourceSegment);
-        HYD_REAL posTol = HYD_Segment_GetPositionTolerance(sourceSegment);
-        HYD_TIME tLim = HYD_Segment_GetTimeoutLimit(sourceSegment);
-
-        if (sourceSegment->mode == HYD_MODE_PRESSURE_CLOSED_LOOP && pTol > 0.0) {
-            HYD_ConfigureSegmentCriteria(&fb->_pressureCriteria, pTol,
-                                          HYD_DIAG_CODE_OVER_PRESSURE,
-                                          HYD_PROTECTION_ACTION_DERATE);
-        }
-        if (fTol > 0.0) {
-            HYD_ConfigureSegmentCriteria(&fb->_flowCriteria, fTol,
-                                          HYD_DIAG_CODE_FLOW_DEVIATION,
-                                          HYD_PROTECTION_ACTION_DERATE);
-        }
-        if (vTol > 0.0) {
-            HYD_ConfigureSegmentCriteria(&fb->_velocityCriteria, vTol,
-                                          HYD_DIAG_CODE_VELOCITY_DEVIATION,
-                                          HYD_PROTECTION_ACTION_WARNING);
-        }
-        if (posTol > 0.0) {
-            HYD_ConfigureSegmentCriteria(&fb->_positionCriteria, posTol,
-                                          HYD_DIAG_CODE_POSITION_DEVIATION,
-                                          HYD_PROTECTION_ACTION_WARNING);
-        }
-        if (tLim > 0.0) {
-            HYD_ConfigureSegmentCriteria(&fb->_timeoutCriteria, tLim,
-                                          HYD_DIAG_CODE_TIMEOUT,
-                                          HYD_PROTECTION_ACTION_STOP);
-            fb->_timeoutCriteria.severity = HYD_DIAG_SEVERITY_FAULT;
-            /* Clamp startup/switch suppress times so they never exceed the
-             * timeout limit itself — a timeout that is fully suppressed by
-             * its own startup window would be undetectable. */
-            if (fb->_timeoutCriteria.startupSuppressTime >= tLim) {
-                fb->_timeoutCriteria.startupSuppressTime = tLim * 0.5;
-            }
-            if (fb->_timeoutCriteria.switchSuppressTime >= tLim) {
-                fb->_timeoutCriteria.switchSuppressTime = 0.0;
-            }
-        }
-    }
-
-    /* Enable startup suppress for first 500ms, then switch suppress for next 300ms.
-     * _switchSuppressEndTime uses the pressure criteria's startup+switch window
-     * as a unified transition period; all criteria share this end time.
-     * Must be computed AFTER HYD_ConfigureSegmentCriteria so that it reflects
-     * the current segment's criteria, not the previous segment's. */
-    fb->_switchSuppressEndTime = fb->_pressureCriteria.startupSuppressTime +
-                                  fb->_pressureCriteria.switchSuppressTime;
+    HYD_ResetCriteriaForSegment(fb, sourceSegment);
 
     HYD_PrimeSegmentControllers(fb, &fb->_activeSegment, timestamp, preserveFlowCarryover);
 
@@ -2877,179 +2931,72 @@ HYD_BOOL HYD_MotionControlFB_ApplyLiveUpdate(HYD_MotionControlFB* fb,
                                              const HYD_LiveUpdateRequest* request) {
     HYD_MotionSegment updated;
     HYD_DiagnosticCode code = HYD_DIAG_CODE_NONE;
-    HYD_BOOL segmentCompleted;
+    HYD_BOOL isSegmentActive;
+    HYD_BOOL isSegmentCompleted;
+    HYD_BOOL sameOwner;
 
     if (fb == NULL || request == NULL || request->flags == 0U) {
         return false;
     }
 
-    segmentCompleted = fb->STATE.finished &&
-                       fb->_directOwnerKind == request->ownerKind &&
-                       fb->_directOwnerExecutionId == request->ownerExecutionId;
+    sameOwner = (fb->_directOwnerKind == request->ownerKind &&
+                 fb->_directOwnerExecutionId == request->ownerExecutionId);
 
-    if (!fb->_activeSegmentValid ||
-        !fb->STATE.active ||
-        fb->_activeSegmentSource != HYD_SEGMENT_SOURCE_DIRECT ||
-        fb->_directOwnerKind != request->ownerKind ||
-        fb->_directOwnerExecutionId != request->ownerExecutionId) {
-        if (segmentCompleted) {
-            /* Segment completed, same owner, CONTINUOUSUPDATE.
-             * Re-activate with updated parameters instead of
-             * silently ignoring the live update. */
-            goto reactivate_completed_segment;
-        }
-        HYD_StateReporter_ReportDiagnostic(fb,
-                                           HYD_DIAG_CODE_COMMAND_NOT_ALLOWED,
-                                           HYD_DIAG_SEVERITY_WARNING,
-                                           fb->AXIS_REF.timestamp,
-                                           fb->_activeSegmentValid ? &fb->_activeSegment : NULL,
-                                           &fb->STATE.references);
-        return false;
-    }
+    isSegmentActive = fb->_activeSegmentValid &&
+                      fb->STATE.active &&
+                      fb->_activeSegmentSource == HYD_SEGMENT_SOURCE_DIRECT &&
+                      sameOwner;
 
-    updated = fb->_activeSegment;
+    isSegmentCompleted = fb->STATE.finished &&
+                         !fb->_activeSegmentValid &&
+                         fb->DIRECT_SEGMENT_VALID &&
+                         sameOwner;
 
-    if ((request->flags & HYD_LIVE_UPDATE_TARGET_POSITION) != 0U) {
-        if (updated.mode != HYD_MODE_POSITION) {
+    /* --- Case 1: Segment is currently running, apply update in-place --- */
+    if (isSegmentActive) {
+        updated = fb->_activeSegment;
+
+        if (!HYD_ApplyLiveUpdateOverrides(request, &updated)) {
             return false;
         }
-        updated.targetPosition = request->targetPosition;
-    }
 
-    if ((request->flags & HYD_LIVE_UPDATE_MAX_VELOCITY) != 0U) {
-        if (updated.mode != HYD_MODE_POSITION &&
-            updated.mode != HYD_MODE_SPEED_RAMP) {
+        if (!HYD_RecipeValidator_ValidateSegment(&updated,
+                                                 fb->STATE.currentSegmentIndex,
+                                                 &code,
+                                                 &fb->cylinderConfig)) {
+            HYD_StateReporter_ReportDiagnostic(fb,
+                                               code,
+                                               HYD_DIAG_SEVERITY_WARNING,
+                                               fb->AXIS_REF.timestamp,
+                                               &fb->_activeSegment,
+                                               &fb->STATE.references);
             return false;
         }
-        updated.maxVelocity = request->maxVelocity;
-        updated.maxFlow = (request->maxVelocity > 0.0f)
-            ? request->maxVelocity * updated.velocityToFlowGain
-            : updated.maxFlow;
-    }
 
-    if ((request->flags & HYD_LIVE_UPDATE_ACCELERATION) != 0U) {
-        if (updated.mode != HYD_MODE_POSITION &&
-            updated.mode != HYD_MODE_SPEED_RAMP) {
-            return false;
+        fb->_activeSegment = updated;
+        HYD_StateReporter_SetPlannedDirection(fb, fb->_activeSegment.direction);
+        HYD_StateReporter_SetSegmentTag(fb, fb->_activeSegment.segmentTag);
+        HYD_StateReporter_SetSegmentSource(fb, fb->_activeSegmentSource);
+        HYD_StateReporter_ClearCurrentDiagnostic(fb);
+
+        if (fb->_directPendingValid && fb->_directBlendContext.active) {
+            (void)HYD_TryCreateDirectBlendContext(fb,
+                                                  fb->_directPendingBufferMode,
+                                                  &fb->_directPendingSegment);
         }
-        updated.maxAcceleration = request->maxAcceleration;
+
+        return true;
     }
 
-    if ((request->flags & HYD_LIVE_UPDATE_DECELERATION) != 0U) {
-        if (updated.mode != HYD_MODE_POSITION &&
-            updated.mode != HYD_MODE_SPEED_RAMP) {
-            return false;
-        }
-        updated.maxDeceleration = (request->maxDeceleration > 0.0f)
-            ? request->maxDeceleration
-            : updated.maxAcceleration;
-    }
-
-    if ((request->flags & HYD_LIVE_UPDATE_TARGET_PRESSURE) != 0U) {
-        if (updated.mode != HYD_MODE_PRESSURE_CLOSED_LOOP) {
-            return false;
-        }
-        updated.targetPressure = request->targetPressure;
-    }
-
-    if ((request->flags & HYD_LIVE_UPDATE_PRESSURE_RAMP_RATE) != 0U) {
-        if (updated.mode != HYD_MODE_PRESSURE_CLOSED_LOOP) {
-            return false;
-        }
-        updated.pressureRampRate = request->pressureRampRate;
-    }
-
-    if (!HYD_RecipeValidator_ValidateSegment(&updated,
-                                             fb->STATE.currentSegmentIndex,
-                                             &code,
-                                             &fb->cylinderConfig)) {
-        HYD_StateReporter_ReportDiagnostic(fb,
-                                           code,
-                                           HYD_DIAG_SEVERITY_WARNING,
-                                           fb->AXIS_REF.timestamp,
-                                           &fb->_activeSegment,
-                                           &fb->STATE.references);
-        return false;
-    }
-
-    fb->_activeSegment = updated;
-    HYD_StateReporter_SetPlannedDirection(fb, fb->_activeSegment.direction);
-    HYD_StateReporter_SetSegmentTag(fb, fb->_activeSegment.segmentTag);
-    HYD_StateReporter_SetSegmentSource(fb, fb->_activeSegmentSource);
-    HYD_StateReporter_ClearCurrentDiagnostic(fb);
-
-    if (fb->_directPendingValid && fb->_directBlendContext.active) {
-        (void)HYD_TryCreateDirectBlendContext(fb,
-                                              fb->_directPendingBufferMode,
-                                              &fb->_directPendingSegment);
-    }
-
-    return true;
-
-reactivate_completed_segment:
-    /* Segment already completed (DONE state). Same owner requests
-     * CONTINUOUSUPDATE with new parameters (e.g. target position
-     * changed from 100 to 120). Re-build the segment from DIRECT_SEGMENT,
-     * apply the live-update overrides, and re-start execution without
-     * changing the ownership epoch so the IEC FB retains its _EXEC_ID. */
-    {
+    /* --- Case 2: Segment completed, same owner, CONTINUOUSUPDATE.
+     *             Re-build from DIRECT_SEGMENT and re-start execution. --- */
+    if (isSegmentCompleted) {
         HYD_TIME timestamp = fb->AXIS_REF.timestamp;
 
-        if (!fb->DIRECT_SEGMENT_VALID) {
-            return false;
-        }
-
-        /* Build updated segment from DIRECT_SEGMENT + live-update overrides */
         updated = fb->DIRECT_SEGMENT;
 
-        if ((request->flags & HYD_LIVE_UPDATE_TARGET_POSITION) != 0U) {
-            if (updated.mode != HYD_MODE_POSITION) {
-                return false;
-            }
-            updated.targetPosition = request->targetPosition;
-        }
-
-        if ((request->flags & HYD_LIVE_UPDATE_MAX_VELOCITY) != 0U) {
-            if (updated.mode != HYD_MODE_POSITION &&
-                updated.mode != HYD_MODE_SPEED_RAMP) {
-                return false;
-            }
-            updated.maxVelocity = request->maxVelocity;
-            updated.maxFlow = (request->maxVelocity > 0.0f)
-                ? request->maxVelocity * updated.velocityToFlowGain
-                : updated.maxFlow;
-        }
-
-        if ((request->flags & HYD_LIVE_UPDATE_ACCELERATION) != 0U) {
-            if (updated.mode != HYD_MODE_POSITION &&
-                updated.mode != HYD_MODE_SPEED_RAMP) {
-                return false;
-            }
-            updated.maxAcceleration = request->maxAcceleration;
-        }
-
-        if ((request->flags & HYD_LIVE_UPDATE_DECELERATION) != 0U) {
-            if (updated.mode != HYD_MODE_POSITION &&
-                updated.mode != HYD_MODE_SPEED_RAMP) {
-                return false;
-            }
-            updated.maxDeceleration = (request->maxDeceleration > 0.0f)
-                ? request->maxDeceleration
-                : updated.maxAcceleration;
-        }
-
-        if ((request->flags & HYD_LIVE_UPDATE_TARGET_PRESSURE) != 0U) {
-            if (updated.mode != HYD_MODE_PRESSURE_CLOSED_LOOP) {
-                return false;
-            }
-            updated.targetPressure = request->targetPressure;
-        }
-
-        if ((request->flags & HYD_LIVE_UPDATE_PRESSURE_RAMP_RATE) != 0U) {
-            if (updated.mode != HYD_MODE_PRESSURE_CLOSED_LOOP) {
-                return false;
-            }
-            updated.pressureRampRate = request->pressureRampRate;
+        if (!HYD_ApplyLiveUpdateOverrides(request, &updated)) {
+            return false;
         }
 
         if (!HYD_RecipeValidator_ValidateSegment(&updated,
@@ -3065,12 +3012,13 @@ reactivate_completed_segment:
             return false;
         }
 
-        /* Update DIRECT_SEGMENT so it reflects the new parameters */
+        /* Update DIRECT_SEGMENT so subsequent reactivations use new params */
         fb->DIRECT_SEGMENT = updated;
 
-        /* Re-initialize runtime actuation for the re-started segment.
-         * Keep the same _directOwnerExecutionId so the IEC FB retains
-         * ownership (no COMMANDABORTED). */
+        /* Capture previous segment mode for bumpless carry-over BEFORE
+         * ResetRuntimeActuation clears _activeSegmentValid. */
+        fb->_previousSegmentMode = fb->_activeSegment.mode;
+
         HYD_SafetyStateManager_ResetRuntimeActuation(fb);
         HYD_StateReporter_ApplySafeOutputs(fb);
         HYD_StateReporter_ResetTransitionFlags(fb);
@@ -3091,61 +3039,7 @@ reactivate_completed_segment:
         fb->_segmentChangedFlag = true;
         fb->SEGMENT_COMPLETED = false;
 
-        /* Reset diagnostic criteria for the re-started segment */
-        HYD_ErrorMonitor_Reset(&fb->_errorMonitor);
-        HYD_DiagnosticCriteria_ResetState(&fb->_pressureCriteriaState);
-        HYD_DiagnosticCriteria_ResetState(&fb->_pressureCeilingCriteriaState);
-        HYD_DiagnosticCriteria_ResetState(&fb->_flowCriteriaState);
-        HYD_DiagnosticCriteria_ResetState(&fb->_velocityCriteriaState);
-        HYD_DiagnosticCriteria_ResetState(&fb->_positionCriteriaState);
-        HYD_DiagnosticCriteria_ResetState(&fb->_timeoutCriteriaState);
-        HYD_OutputLimiter_ResetState(&fb->_limiterState);
-        fb->_isSwitchPhase = true;
-
-        /* Re-configure criteria thresholds */
-        {
-            HYD_REAL pTol = HYD_Segment_GetPressureTolerance(&updated);
-            HYD_REAL fTol = HYD_Segment_GetFlowTolerance(&updated);
-            HYD_REAL vTol = HYD_Segment_GetVelocityTolerance(&updated);
-            HYD_REAL posTol = HYD_Segment_GetPositionTolerance(&updated);
-            HYD_TIME tLim = HYD_Segment_GetTimeoutLimit(&updated);
-
-            if (updated.mode == HYD_MODE_PRESSURE_CLOSED_LOOP && pTol > 0.0) {
-                HYD_ConfigureSegmentCriteria(&fb->_pressureCriteria, pTol,
-                                              HYD_DIAG_CODE_OVER_PRESSURE,
-                                              HYD_PROTECTION_ACTION_DERATE);
-            }
-            if (fTol > 0.0) {
-                HYD_ConfigureSegmentCriteria(&fb->_flowCriteria, fTol,
-                                              HYD_DIAG_CODE_FLOW_DEVIATION,
-                                              HYD_PROTECTION_ACTION_DERATE);
-            }
-            if (vTol > 0.0) {
-                HYD_ConfigureSegmentCriteria(&fb->_velocityCriteria, vTol,
-                                              HYD_DIAG_CODE_VELOCITY_DEVIATION,
-                                              HYD_PROTECTION_ACTION_WARNING);
-            }
-            if (posTol > 0.0) {
-                HYD_ConfigureSegmentCriteria(&fb->_positionCriteria, posTol,
-                                              HYD_DIAG_CODE_POSITION_DEVIATION,
-                                              HYD_PROTECTION_ACTION_WARNING);
-            }
-            if (tLim > 0.0) {
-                HYD_ConfigureSegmentCriteria(&fb->_timeoutCriteria, tLim,
-                                              HYD_DIAG_CODE_TIMEOUT,
-                                              HYD_PROTECTION_ACTION_STOP);
-                fb->_timeoutCriteria.severity = HYD_DIAG_SEVERITY_FAULT;
-                if (fb->_timeoutCriteria.startupSuppressTime >= tLim) {
-                    fb->_timeoutCriteria.startupSuppressTime = tLim * 0.5;
-                }
-                if (fb->_timeoutCriteria.switchSuppressTime >= tLim) {
-                    fb->_timeoutCriteria.switchSuppressTime = 0.0;
-                }
-            }
-        }
-
-        fb->_switchSuppressEndTime = fb->_pressureCriteria.startupSuppressTime +
-                                      fb->_pressureCriteria.switchSuppressTime;
+        HYD_ResetCriteriaForSegment(fb, &updated);
 
         /* Prime controllers with no flow carryover (fresh start) */
         HYD_PrimeSegmentControllers(fb, &fb->_activeSegment, timestamp, false);
@@ -3159,13 +3053,28 @@ reactivate_completed_segment:
         HYD_StateReporter_SetStatus(fb, HYD_STATUS_RUNNING);
         HYD_StateReporter_SetPlannedDirection(fb, fb->_activeSegment.direction);
         HYD_StateReporter_SetFbState(fb, HYD_FB_STATE_STARTING);
+
         /* NOTE: _executionId is NOT incremented — keep same ownership epoch
          * so the IEC MoveAbsolute FB does not lose its _EXEC_ID match. */
         fb->_directOwnerKind = HYD_InferDirectCommandKindFromSegment(&updated);
         fb->_directSessionState = HYD_DIRECT_SESSION_RUNNING;
 
+        /* Clear stale completion record so a future completion is detected
+         * as a fresh event, not mistaken for the old one. */
+        fb->_lastCompletedExecutionId = 0U;
+        fb->_lastCompletedKind = HYD_DIRECT_CMD_NONE;
+
         return true;
     }
+
+    /* --- Case 3: Not authorized — report diagnostic and reject --- */
+    HYD_StateReporter_ReportDiagnostic(fb,
+                                       HYD_DIAG_CODE_COMMAND_NOT_ALLOWED,
+                                       HYD_DIAG_SEVERITY_WARNING,
+                                       fb->AXIS_REF.timestamp,
+                                       fb->_activeSegmentValid ? &fb->_activeSegment : NULL,
+                                       &fb->STATE.references);
+    return false;
 }
 
 HYD_BOOL HYD_MotionControlFB_ReadBoolParameter(const HYD_MotionControlFB* fb, int paramNumber, HYD_BOOL* value)
