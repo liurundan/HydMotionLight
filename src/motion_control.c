@@ -2314,7 +2314,7 @@ void HYD_MotionControlFB_Init(HYD_MotionControlFB* fb) {
     fb->_params.pressureKi = 0.1f;
     fb->_params.pressureKd = 0.01f;
     fb->_params.pressureIntegralLimit = 10.0f;
-    fb->_params.pressureDeadband = 0.5f;
+    fb->_params.pressureDeadband = 0.0001f;
     fb->_params.pressureFilterAlpha = 1.0f;
     fb->_params.pressureDerivativeFilterAlpha = 0.5f;
     fb->_params.velocityKp = 0.0f;
