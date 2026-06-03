@@ -2877,20 +2877,26 @@ HYD_BOOL HYD_MotionControlFB_ApplyLiveUpdate(HYD_MotionControlFB* fb,
                                              const HYD_LiveUpdateRequest* request) {
     HYD_MotionSegment updated;
     HYD_DiagnosticCode code = HYD_DIAG_CODE_NONE;
+    HYD_BOOL segmentCompleted;
 
     if (fb == NULL || request == NULL || request->flags == 0U) {
         return false;
     }
+
+    segmentCompleted = fb->STATE.finished &&
+                       fb->_directOwnerKind == request->ownerKind &&
+                       fb->_directOwnerExecutionId == request->ownerExecutionId;
 
     if (!fb->_activeSegmentValid ||
         !fb->STATE.active ||
         fb->_activeSegmentSource != HYD_SEGMENT_SOURCE_DIRECT ||
         fb->_directOwnerKind != request->ownerKind ||
         fb->_directOwnerExecutionId != request->ownerExecutionId) {
-        if (fb->STATE.finished &&
-            fb->_directOwnerKind == request->ownerKind &&
-            fb->_directOwnerExecutionId == request->ownerExecutionId) {
-            return true;
+        if (segmentCompleted) {
+            /* Segment completed, same owner, CONTINUOUSUPDATE.
+             * Re-activate with updated parameters instead of
+             * silently ignoring the live update. */
+            goto reactivate_completed_segment;
         }
         HYD_StateReporter_ReportDiagnostic(fb,
                                            HYD_DIAG_CODE_COMMAND_NOT_ALLOWED,
@@ -2979,6 +2985,187 @@ HYD_BOOL HYD_MotionControlFB_ApplyLiveUpdate(HYD_MotionControlFB* fb,
     }
 
     return true;
+
+reactivate_completed_segment:
+    /* Segment already completed (DONE state). Same owner requests
+     * CONTINUOUSUPDATE with new parameters (e.g. target position
+     * changed from 100 to 120). Re-build the segment from DIRECT_SEGMENT,
+     * apply the live-update overrides, and re-start execution without
+     * changing the ownership epoch so the IEC FB retains its _EXEC_ID. */
+    {
+        HYD_TIME timestamp = fb->AXIS_REF.timestamp;
+
+        if (!fb->DIRECT_SEGMENT_VALID) {
+            return false;
+        }
+
+        /* Build updated segment from DIRECT_SEGMENT + live-update overrides */
+        updated = fb->DIRECT_SEGMENT;
+
+        if ((request->flags & HYD_LIVE_UPDATE_TARGET_POSITION) != 0U) {
+            if (updated.mode != HYD_MODE_POSITION) {
+                return false;
+            }
+            updated.targetPosition = request->targetPosition;
+        }
+
+        if ((request->flags & HYD_LIVE_UPDATE_MAX_VELOCITY) != 0U) {
+            if (updated.mode != HYD_MODE_POSITION &&
+                updated.mode != HYD_MODE_SPEED_RAMP) {
+                return false;
+            }
+            updated.maxVelocity = request->maxVelocity;
+            updated.maxFlow = (request->maxVelocity > 0.0f)
+                ? request->maxVelocity * updated.velocityToFlowGain
+                : updated.maxFlow;
+        }
+
+        if ((request->flags & HYD_LIVE_UPDATE_ACCELERATION) != 0U) {
+            if (updated.mode != HYD_MODE_POSITION &&
+                updated.mode != HYD_MODE_SPEED_RAMP) {
+                return false;
+            }
+            updated.maxAcceleration = request->maxAcceleration;
+        }
+
+        if ((request->flags & HYD_LIVE_UPDATE_DECELERATION) != 0U) {
+            if (updated.mode != HYD_MODE_POSITION &&
+                updated.mode != HYD_MODE_SPEED_RAMP) {
+                return false;
+            }
+            updated.maxDeceleration = (request->maxDeceleration > 0.0f)
+                ? request->maxDeceleration
+                : updated.maxAcceleration;
+        }
+
+        if ((request->flags & HYD_LIVE_UPDATE_TARGET_PRESSURE) != 0U) {
+            if (updated.mode != HYD_MODE_PRESSURE_CLOSED_LOOP) {
+                return false;
+            }
+            updated.targetPressure = request->targetPressure;
+        }
+
+        if ((request->flags & HYD_LIVE_UPDATE_PRESSURE_RAMP_RATE) != 0U) {
+            if (updated.mode != HYD_MODE_PRESSURE_CLOSED_LOOP) {
+                return false;
+            }
+            updated.pressureRampRate = request->pressureRampRate;
+        }
+
+        if (!HYD_RecipeValidator_ValidateSegment(&updated,
+                                                 fb->STATE.currentSegmentIndex,
+                                                 &code,
+                                                 &fb->cylinderConfig)) {
+            HYD_StateReporter_ReportDiagnostic(fb,
+                                               code,
+                                               HYD_DIAG_SEVERITY_WARNING,
+                                               timestamp,
+                                               &fb->DIRECT_SEGMENT,
+                                               &fb->STATE.references);
+            return false;
+        }
+
+        /* Update DIRECT_SEGMENT so it reflects the new parameters */
+        fb->DIRECT_SEGMENT = updated;
+
+        /* Re-initialize runtime actuation for the re-started segment.
+         * Keep the same _directOwnerExecutionId so the IEC FB retains
+         * ownership (no COMMANDABORTED). */
+        HYD_SafetyStateManager_ResetRuntimeActuation(fb);
+        HYD_StateReporter_ApplySafeOutputs(fb);
+        HYD_StateReporter_ResetTransitionFlags(fb);
+
+        fb->_activeSegment = updated;
+        fb->_activeSegmentValid = true;
+        fb->_activeSegmentSource = HYD_SEGMENT_SOURCE_DIRECT;
+
+        if (fb->_activeSegment.velocityToFlowGain <= 0.0f &&
+            HYD_CylinderConfig_IsValid(&fb->cylinderConfig)) {
+            fb->_activeSegment.velocityToFlowGain =
+                HYD_CylinderConfig_GetVelocityToFlowGain(
+                    &fb->cylinderConfig, fb->_activeSegment.direction);
+        }
+
+        fb->_segmentStartTime = timestamp;
+        fb->_holdStateTime = 0.0;
+        fb->_segmentChangedFlag = true;
+        fb->SEGMENT_COMPLETED = false;
+
+        /* Reset diagnostic criteria for the re-started segment */
+        HYD_ErrorMonitor_Reset(&fb->_errorMonitor);
+        HYD_DiagnosticCriteria_ResetState(&fb->_pressureCriteriaState);
+        HYD_DiagnosticCriteria_ResetState(&fb->_pressureCeilingCriteriaState);
+        HYD_DiagnosticCriteria_ResetState(&fb->_flowCriteriaState);
+        HYD_DiagnosticCriteria_ResetState(&fb->_velocityCriteriaState);
+        HYD_DiagnosticCriteria_ResetState(&fb->_positionCriteriaState);
+        HYD_DiagnosticCriteria_ResetState(&fb->_timeoutCriteriaState);
+        HYD_OutputLimiter_ResetState(&fb->_limiterState);
+        fb->_isSwitchPhase = true;
+
+        /* Re-configure criteria thresholds */
+        {
+            HYD_REAL pTol = HYD_Segment_GetPressureTolerance(&updated);
+            HYD_REAL fTol = HYD_Segment_GetFlowTolerance(&updated);
+            HYD_REAL vTol = HYD_Segment_GetVelocityTolerance(&updated);
+            HYD_REAL posTol = HYD_Segment_GetPositionTolerance(&updated);
+            HYD_TIME tLim = HYD_Segment_GetTimeoutLimit(&updated);
+
+            if (updated.mode == HYD_MODE_PRESSURE_CLOSED_LOOP && pTol > 0.0) {
+                HYD_ConfigureSegmentCriteria(&fb->_pressureCriteria, pTol,
+                                              HYD_DIAG_CODE_OVER_PRESSURE,
+                                              HYD_PROTECTION_ACTION_DERATE);
+            }
+            if (fTol > 0.0) {
+                HYD_ConfigureSegmentCriteria(&fb->_flowCriteria, fTol,
+                                              HYD_DIAG_CODE_FLOW_DEVIATION,
+                                              HYD_PROTECTION_ACTION_DERATE);
+            }
+            if (vTol > 0.0) {
+                HYD_ConfigureSegmentCriteria(&fb->_velocityCriteria, vTol,
+                                              HYD_DIAG_CODE_VELOCITY_DEVIATION,
+                                              HYD_PROTECTION_ACTION_WARNING);
+            }
+            if (posTol > 0.0) {
+                HYD_ConfigureSegmentCriteria(&fb->_positionCriteria, posTol,
+                                              HYD_DIAG_CODE_POSITION_DEVIATION,
+                                              HYD_PROTECTION_ACTION_WARNING);
+            }
+            if (tLim > 0.0) {
+                HYD_ConfigureSegmentCriteria(&fb->_timeoutCriteria, tLim,
+                                              HYD_DIAG_CODE_TIMEOUT,
+                                              HYD_PROTECTION_ACTION_STOP);
+                fb->_timeoutCriteria.severity = HYD_DIAG_SEVERITY_FAULT;
+                if (fb->_timeoutCriteria.startupSuppressTime >= tLim) {
+                    fb->_timeoutCriteria.startupSuppressTime = tLim * 0.5;
+                }
+                if (fb->_timeoutCriteria.switchSuppressTime >= tLim) {
+                    fb->_timeoutCriteria.switchSuppressTime = 0.0;
+                }
+            }
+        }
+
+        fb->_switchSuppressEndTime = fb->_pressureCriteria.startupSuppressTime +
+                                      fb->_pressureCriteria.switchSuppressTime;
+
+        /* Prime controllers with no flow carryover (fresh start) */
+        HYD_PrimeSegmentControllers(fb, &fb->_activeSegment, timestamp, false);
+
+        HYD_StateReporter_SetSegmentTag(fb, fb->_activeSegment.segmentTag);
+        HYD_StateReporter_SetSegmentSource(fb, HYD_SEGMENT_SOURCE_DIRECT);
+        HYD_StateReporter_ClearCurrentDiagnostic(fb);
+        HYD_StateReporter_SetActive(fb, true);
+        HYD_StateReporter_SetFinished(fb, false);
+        HYD_StateReporter_SetFault(fb, false);
+        HYD_StateReporter_SetStatus(fb, HYD_STATUS_RUNNING);
+        HYD_StateReporter_SetPlannedDirection(fb, fb->_activeSegment.direction);
+        HYD_StateReporter_SetFbState(fb, HYD_FB_STATE_STARTING);
+        /* NOTE: _executionId is NOT incremented — keep same ownership epoch
+         * so the IEC MoveAbsolute FB does not lose its _EXEC_ID match. */
+        fb->_directOwnerKind = HYD_InferDirectCommandKindFromSegment(&updated);
+        fb->_directSessionState = HYD_DIRECT_SESSION_RUNNING;
+
+        return true;
+    }
 }
 
 HYD_BOOL HYD_MotionControlFB_ReadBoolParameter(const HYD_MotionControlFB* fb, int paramNumber, HYD_BOOL* value)
