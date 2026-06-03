@@ -2,6 +2,20 @@
  * @file rbf_pid.c
  * @brief RBF神经网络自适应PID控制器 - 嵌入式C实现
  * @note 严格遵循 rbf_pid.h 接口约定，修复了抗饱和、发散风险及前馈逻辑
+ *
+ * 压力闭环 RBF-PID 核心公式回顾（归一化空间）:
+ *
+ *   e(k)   = r(k) - y(k)                       -- 归一化误差
+ *   du(k)  = KP·[e(k)-e(k-1)] + KI·e(k) + KD·[e(k)-2e(k-1)+e(k-2)] + ff + bias
+ *   u(k)   = u(k-1) + du(k)                    -- 增量式
+ *   n_out  = u(k) * fMaxFlow * gain_comp       -- 反归一化到物理流量 [L/min]
+ *
+ * 关键修复 (2026-06-03):
+ *   - 引入 gain_compensation: 根据系统物理增益 K 和归一化标量自动缩放输出，
+ *     解决低压小目标（2-3 bar）时归一化标量过小导致的增益失配问题。
+ *     补偿公式: gain_comp = pressure_normalization_scale / (K * fMaxFlow)
+ *     当 K=0 时, gain_comp = 1.0 (无补偿，由PID自适应调节)。
+ *   - 此补偿确保: 在稳态, u≈targetPressure/(K*fMaxFlow) 时 du→0。
  */
 
 #include "rbf_pid.h"
@@ -64,6 +78,9 @@ void RBF_PID_Init(RBF_PID_Handle *pid, float sampling_period,
     pid->fKSetpoint_pos = 0.003f; pid->fKSetpoint_neg = 0.001f;
     pid->fBaseBias = 0.0f;
 
+    // 5. 初始化增益补偿 (0 = 禁用，由外部设置)
+    pid->fGainCompensation = 0.0f;
+
     pid->FirstScan = true;
     pid->Status = -1; // 未使能
 }
@@ -111,6 +128,28 @@ void RBF_PID_SetLearningRates(RBF_PID_Handle *pid,
 void RBF_PID_SetPressureNormalization(RBF_PID_Handle *pid, float scale) {
     if (!pid) return;
     pid->pressure_normalization_scale = (scale > 0.0f) ? scale : MAX_PRESSURE;
+}
+
+void RBF_PID_SetGainCompensation(RBF_PID_Handle *pid, float systemGain) {
+    if (!pid) return;
+    pid->K = (systemGain > 0.0f) ? systemGain : 0.0f;
+    /* 计算增益补偿因子:
+     *   gain_comp = normScale / (K * fMaxFlow)
+     * 当 K=0 时禁用补偿。
+     * 此因子用于缩放 PID 输出，使归一化空间的输出直接映射到正确的物理流量。
+     * 推导: 稳态时 pressure = flow * K, 归一化后 p_norm = p / normScale,
+     *       flow = p / K, 归一化后 flow_norm = flow / fMaxFlow = p / (K * fMaxFlow)
+     *       因此 p_norm → flow_norm 的增益为 fMaxFlow * K / normScale
+     *       补偿因子取其倒数: normScale / (K * fMaxFlow)
+     */
+    if (systemGain > 0.0f && pid->fMaxFlow > 0.0f && pid->pressure_normalization_scale > 0.0f) {
+        pid->fGainCompensation = pid->pressure_normalization_scale / (systemGain * pid->fMaxFlow);
+        /* 限制补偿范围，防止极端值 */
+        if (pid->fGainCompensation > 100.0f) pid->fGainCompensation = 100.0f;
+        if (pid->fGainCompensation < 0.001f) pid->fGainCompensation = 0.001f;
+    } else {
+        pid->fGainCompensation = 0.0f;
+    }
 }
 
 void RBF_PID_SetSeed(RBF_PID_Handle *pid, uint32_t seed) {
@@ -281,7 +320,21 @@ float RBF_PID_Update(RBF_PID_Handle *pid, float setpoint, float feedback) {
               feedforward + pid->fBaseBias;
 
     // 10. 抗积分饱和 (Anti-Windup) 机制 【核心修复】
-    float max_out_limit = pid->fFlowRateLimit;
+    // 当增益补偿激活时，output_total 直接映射到归一化压力:
+    //   p_norm = output_total (稳态时)
+    // 因此抗积分饱和的上限应基于设定点而非 fFlowRateLimit=1.0。
+    // 无增益补偿时回退到原始行为。
+    float max_out_limit;
+    if (pid->fGainCompensation > 0.0f) {
+        /* 增益补偿模式下: output_total = p_norm 稳态。
+         * 上限 = max(Setpoint * 1.2, 0.1)，留 20% 瞬态余量。
+         * 这确保稳态时积分不会超过目标压力的 120%。 */
+        max_out_limit = pid->Setpoint * 1.2f;
+        if (max_out_limit < 0.1f) max_out_limit = 0.1f;   /* 最小 10% 避免锁死 */
+        if (max_out_limit > pid->fFlowRateLimit) max_out_limit = pid->fFlowRateLimit;
+    } else {
+        max_out_limit = pid->fFlowRateLimit;
+    }
     float temp_output = pid->u_prev + pid->du;
 
     if (temp_output > max_out_limit && pid->du > 0.0f) {
@@ -299,10 +352,24 @@ float RBF_PID_Update(RBF_PID_Handle *pid, float setpoint, float feedback) {
         output_total = 0.0f;
     }
 
-    pid->Output = output_total;
-    pid->n_out = output_total * pid->fMaxFlow; // 转换为物理流量 L/min
+    // 12. 增益补偿: 将归一化空间输出映射到正确的物理流量
+    // 补偿公式: n_out = output_total * fMaxFlow * fGainCompensation
+    // 当 fGainCompensation=0 时，退化为原始行为（无补偿）
+    float compensated_output = output_total;
+    float compensated_n_out;
+    if (pid->fGainCompensation > 0.0f) {
+        compensated_n_out = output_total * pid->fMaxFlow * pid->fGainCompensation;
+        /* 补偿后仍受流量限幅约束 */
+        float compensated_max = pid->fMaxFlow * pid->fFlowRateLimit;
+        compensated_n_out = LIMIT(MIN_OUTPUT * pid->fMaxFlow, compensated_n_out, compensated_max);
+    } else {
+        compensated_n_out = output_total * pid->fMaxFlow;
+    }
 
-    // 11. 更新历史状态
+    pid->Output = output_total;
+    pid->n_out = compensated_n_out;
+
+    // 13. 更新历史状态
     pid->u_prev = output_total;
     pid->du_prev = pid->du;
     pid->e_prev2 = pid->e_prev1;

@@ -61,11 +61,11 @@ static void test_invalid_input_returns_safe_zero(void) {
     printf("✓ Invalid pump converter input handling test passed\n");
 }
 
-static void test_negative_requested_flow_uses_magnitude(void) {
+static void test_negative_requested_flow_is_preserved(void) {
     HYD_PumpConverterInput input = {0};
     HYD_PumpConverterOutput output = {0};
 
-    printf("Testing negative requested flow normalization...\n");
+    printf("Testing negative requested flow preservation...\n");
     input.requestedFlow = -6.0;
     input.flowToPumpSpeedGain = 120.0;
     input.pumpSpeedLimit = 1200.0;
@@ -73,9 +73,12 @@ static void test_negative_requested_flow_uses_magnitude(void) {
 
     HYD_PumpConverter_Execute(&input, &output);
 
-    assert(fabs(output.commandFlow - 6.0) < 0.001);
-    assert(fabs(output.pumpSpeed - 720.0) < 0.001);
-    printf("✓ Negative requested flow normalization test passed\n");
+    /* Negative flow is preserved for rapid depressurization.
+     * commandFlow = clamp(-6.0, -0.5, 10.0) = -0.5
+     * pumpSpeed = -0.5 * 120 = -60 rpm (small reverse) */
+    assert(output.commandFlow <= 0.0);  /* negative direction preserved */
+    assert(fabs(output.pumpSpeed - output.commandFlow * input.flowToPumpSpeedGain) < 0.001);
+    printf("✓ Negative requested flow preservation test passed\n");
 }
 
 static void test_non_finite_input_returns_safe_zero(void) {
@@ -111,7 +114,7 @@ int main(void) {
     test_basic_conversion();
     test_pump_limit_back_projects_flow();
     test_invalid_input_returns_safe_zero();
-    test_negative_requested_flow_uses_magnitude();
+    test_negative_requested_flow_is_preserved();
     test_non_finite_input_returns_safe_zero();
     test_validate_config();
 

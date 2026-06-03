@@ -333,19 +333,41 @@ static void HYD_ApplyRbfPidConfig(HYD_PressureControllerState* state,
                                             config->rbf.minKd,
                                             config->rbf.maxKd);
 
-    /* Per-segment RBF pressure normalization scale. Prefer pressureCeiling
-     * (an explicit upper bound), else 2x targetPressure as a conservative
-     * envelope, else leave 0 (RBF falls back to MAX_PRESSURE default). */
+    /* Per-segment RBF pressure normalization scale.
+     *
+     * 策略 (2026-06-03 修复):
+     *   优先使用 pressureCeiling（显式上限）。
+     *   否则使用 MAX(250, targetPressure * 5.0) 作为归一化标量。
+     *   这确保低压目标（如2-3 bar）时归一化标量不会过小，
+     *   避免归一化后的输出被过度放大（与系统物理增益失配）。
+     *
+     *   原因: 当 targetPressure=2 bar 时，旧逻辑使用 4 bar 作为标量，
+     *   归一化后的 PID 输出 du≈0.4，乘以 fMaxFlow=90 → n_out≈36 L/min，
+     *   在系统增益 K=5.4 时产生 36*5.4=194 bar 的稳态压力，远超目标。
+     *
+     *   新逻辑使用 250 bar（满量程）作为标量，归一化后 du≈0.01，
+     *   n_out≈0.9 L/min，稳态压力≈4.9 bar — 仍在 PID 可调节范围内。
+     *   配合增益补偿因子进一步精确匹配。 */
     {
         HYD_REAL pressureScale = 0.0;
         if (segment != NULL) {
             if (segment->pressureCeiling > 0.0) {
                 pressureScale = segment->pressureCeiling;
             } else if (segment->targetPressure > 0.0) {
-                pressureScale = segment->targetPressure * 2.0;
+                /* 使用较大的归一化标量，避免低压时归一化空间压缩 */
+                HYD_REAL candidate = segment->targetPressure * 5.0f;
+                pressureScale = (candidate > (HYD_REAL)MAX_PRESSURE) ? candidate : (HYD_REAL)MAX_PRESSURE;
             }
         }
         RBF_PID_SetPressureNormalization(&state->rbfPid, (float)pressureScale);
+    }
+
+    /* 设置系统增益补偿: 将段配置的系统增益 K 传递给 RBF PID，
+     * 使其能正确缩放输出以匹配物理系统的压力/流量关系。
+     * K = deltaPressure / deltaFlow [bar/(L/min)]
+     * 当 segment->systemGain > 0 时启用补偿。 */
+    if (segment != NULL && segment->systemGain > 0.0) {
+        RBF_PID_SetGainCompensation(&state->rbfPid, (float)segment->systemGain);
     }
 }
 
@@ -392,8 +414,12 @@ static void HYD_SynchronizeRbfPidState(HYD_PressureControllerState* state,
     state->rbfPid.y_prev1 = state->rbfPid.Feedback;
     state->rbfPid.du = 0.0f;
     state->rbfPid.du_prev = 0.0f;
-    state->rbfPid.e_prev1 = 0.0f;
-    state->rbfPid.e_prev2 = 0.0f;
+    /* Initialize error history to current error to prevent derivative kick on
+     * first Update() call. Without this, raw_de = Error - 0 = Error on first
+     * scan, causing a massive KD contribution that can produce >70% overshoot
+     * even with gain compensation enabled. */
+    state->rbfPid.e_prev1 = state->rbfPid.Error;
+    state->rbfPid.e_prev2 = state->rbfPid.Error;
     state->rbfPid.delta_temp_prev = 0.0f;
     state->rbfPid.fLastActPress = state->rbfPid.Feedback;
     state->rbfPid.fLastActPress2 = state->rbfPid.Feedback;

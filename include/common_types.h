@@ -340,6 +340,12 @@ typedef struct {
     HYD_REAL maxPressure;
 
     HYD_RbfPidConfig pressureRbfConfig;      /* Optional RBF-PID bounded tuning / learning profile. Zero uses library defaults. */
+
+    /* 系统物理增益: deltaPressure / deltaFlow [bar/(L/min)].
+     * 用于 RBF-PID 输出增益补偿，确保归一化空间的控制量正确映射到物理流量。
+     * 典型值: 注塑机保压段 1-10 bar/(L/min)，取决于油缸面积和负载刚度。
+     * 0 表示不启用增益补偿（由 PID 自适应完全承担）。 */
+    HYD_REAL systemGain;
 } HYD_MotionSegment;
 
 typedef struct {

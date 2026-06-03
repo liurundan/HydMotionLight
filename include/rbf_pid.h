@@ -57,10 +57,11 @@ typedef struct {
      * 配置；推荐由 pressure_controller.c 在每段 Resolve 时根据段配置写入。 */
     float pressure_normalization_scale;
 
-    /* 系统模型参数(用于未来扩展) */
+    /* 系统模型参数 */
     float T_d;                      // 纯时滞时间
-    float K;                        // 系统增益
-    float T;                        // 惯性时间常数
+    float K;                        // 系统增益 (bar per L/min, 稳态压力/流量比)
+    float T;                        // 惯性时间常数 (s)
+    float fGainCompensation;        // 增益补偿因子 = normScale / (K * fMaxFlow), 0=禁用
 
     /* 输出变量 */
     float Output;                   // 控制器原始输出
@@ -199,6 +200,17 @@ void RBF_PID_SetLearningRates(RBF_PID_Handle *pid,
  * @note 推荐在每段开始时调用一次；运行中改变会导致归一化基准跳变。
  */
 void RBF_PID_SetPressureNormalization(RBF_PID_Handle *pid, float scale);
+
+/**
+ * @brief 设置系统物理增益并计算输出增益补偿因子
+ * @param pid RBF_PID句柄指针
+ * @param systemGain 系统稳态增益 K = deltaPressure / deltaFlow [bar/(L/min)]
+ *                   传0禁用补偿（此时输出完全由PID自适应调节）
+ * @note 调用此函数后，RBF_PID_Update 会在输出时自动乘以补偿因子，
+ *       使归一化空间的控制量正确映射到物理流量。
+ *       推荐在 RBF_PID_SetPressureNormalization 之后调用。
+ */
+void RBF_PID_SetGainCompensation(RBF_PID_Handle *pid, float systemGain);
 
 void RBF_PID_SetSeed(RBF_PID_Handle *pid, uint32_t seed);
 
