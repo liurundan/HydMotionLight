@@ -354,8 +354,8 @@ static void HYD_ApplyRbfPidConfig(HYD_PressureControllerState* state,
             if (segment->pressureCeiling > 0.0) {
                 pressureScale = segment->pressureCeiling;
             } else if (segment->targetPressure > 0.0) {
-                /* 使用较大的归一化标量，避免低压时归一化空间压缩 */
-                HYD_REAL candidate = segment->targetPressure * 5.0f;
+                /* 使用较大的归一化标量，避免低压时归一化空间压缩 segment->targetPressure * 5.0f*/
+                HYD_REAL candidate = MAX_PRESSURE;
                 pressureScale = (candidate > (HYD_REAL)MAX_PRESSURE) ? candidate : (HYD_REAL)MAX_PRESSURE;
             }
         }
