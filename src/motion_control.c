@@ -2999,6 +2999,20 @@ HYD_BOOL HYD_MotionControlFB_ApplyLiveUpdate(HYD_MotionControlFB* fb,
             return false;
         }
 
+        /* If the updated target position is already reached (within tolerance),
+         * the segment would complete immediately on the next Scan, causing a
+         * DONE oscillation loop.  Silently accept the update without re-starting
+         * so the existing DONE state is preserved. */
+        if ((request->flags & HYD_LIVE_UPDATE_TARGET_POSITION) != 0U) {
+            HYD_REAL posTolerance = HYD_Segment_GetPositionTolerance(&updated);
+            if (fabs(fb->AXIS_REF.position - updated.targetPosition) <= posTolerance) {
+                /* Target already reached — update DIRECT_SEGMENT for
+                 * reference but do NOT re-start execution. */
+                fb->DIRECT_SEGMENT = updated;
+                return true;
+            }
+        }
+
         if (!HYD_RecipeValidator_ValidateSegment(&updated,
                                                  fb->STATE.currentSegmentIndex,
                                                  &code,

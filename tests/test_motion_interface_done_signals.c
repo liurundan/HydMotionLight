@@ -1299,6 +1299,167 @@ static void test_moveabsolute_stop_velocity_zero(void) {
     }
 }
 
+/* ==================================================================
+ * Test 16: MoveAbsolute CONTINUOUSUPDATE=1 Done后修改目标位置DONE应清零
+ *
+ * 复现步骤:
+ *   1. MoveAbsolute CONTINUOUSUPDATE=1 启动到 position=100
+ *   2. 仿真推进直到到达100 → DONE=1
+ *   3. 修改 POSITION=200 (EXECUTE保持true)
+ *   4. 验证 DONE 变为 false，轴继续运动到200
+ *   5. 到达200后 DONE 再次变为 true
+ *
+ * Bug: 修改目标位置后 DONE 一直保持 true
+ * ================================================================== */
+static void test_moveabsolute_continuousupdate_position_change(void) {
+    HYD_MOVEABSOLUTE ma;
+    int axisId, step;
+
+    printf("--- Test: MoveAbsolute CONTINUOUSUPDATE position change ---\n");
+
+    __HydMotion_framework_Init();
+    axisId = create_sim_axis(false);
+    ASSERT_TRUE(axisId >= 0, "CreateMotion should succeed");
+
+    /* Step 1: EXECUTE上升沿，CONTINUOUSUPDATE=1，目标100 */
+    memset(&ma, 0, sizeof(ma));
+    IEC_VAL(ma.EN) = true;
+    IEC_VAL(ma.EXECUTE) = true;
+    ma.EXECUTE0.value = false;
+    IEC_VAL(ma.AXISID) = axisId;
+    IEC_VAL(ma.POSITION) = 100.0f;
+    IEC_VAL(ma.VELOCITY) = 50.0f;
+    IEC_VAL(ma.ACCELERATION) = 200.0f;
+    IEC_VAL(ma.DIRECTION) = 1;
+    IEC_VAL(ma.CONTINUOUSUPDATE) = true;
+
+    __mcl_cmd_MoveAbsolute(&ma);
+    __HydMotion_framework_Publish();
+
+    ASSERT_TRUE(IEC_VAL(ma.ERROR) == false,
+               "MoveAbsolute initial EXECUTE should not error");
+    ASSERT_TRUE(IEC_VAL(ma.BUSY) == true,
+               "Should be BUSY after EXECUTE");
+
+    /* 消耗 _PENDING → _EXEC_ID */
+    IEC_VAL(ma.EXECUTE) = true;
+    ma.EXECUTE0.value = true;
+    __mcl_cmd_MoveAbsolute(&ma);
+
+    /* Step 2: 仿真推进直到 DONE（到达100） */
+    for (step = 0; step < MAX_SIM_STEPS; step++) {
+        __HydMotion_framework_Publish();
+        IEC_VAL(ma.EXECUTE) = true;
+        ma.EXECUTE0.value = true;
+        IEC_VAL(ma.POSITION) = 100.0f;  /* 保持目标100 */
+        IEC_VAL(ma.CONTINUOUSUPDATE) = true;
+        __mcl_cmd_MoveAbsolute(&ma);
+
+        if (IEC_VAL(ma.DONE)) {
+            break;
+        }
+    }
+    ASSERT_TRUE(step < MAX_SIM_STEPS,
+               "Should reach DONE within max steps for position 100");
+    ASSERT_TRUE(IEC_VAL(ma.DONE) == true,
+               "DONE should be true after reaching position 100");
+    printf("  First DONE (position 100) after %d steps\n", step);
+
+    /* Step 3: 修改目标位置到200，验证 DONE 变为 false */
+    /* 关键验证点: 在同一个 EXECUTE 保持 high 的状态下修改 POSITION */
+    IEC_VAL(ma.POSITION) = 200.0f;
+
+    /* 调用一次 MoveAbsolute，此时应该通过 live update 重新激活段 */
+    IEC_VAL(ma.EXECUTE) = true;
+    ma.EXECUTE0.value = true;
+    IEC_VAL(ma.CONTINUOUSUPDATE) = true;
+    __mcl_cmd_MoveAbsolute(&ma);
+
+    /* 验证: DONE 应该变为 false，BUSY 和 ACTIVE 应该变为 true */
+    ASSERT_TRUE(IEC_VAL(ma.DONE) == false,
+               "DONE should be false after changing target position (was 100, now 200)");
+    ASSERT_TRUE(IEC_VAL(ma.BUSY) == true,
+               "BUSY should be true after changing target position");
+    ASSERT_TRUE(IEC_VAL(ma.ACTIVE) == true,
+               "ACTIVE should be true after changing target position");
+    ASSERT_TRUE(IEC_VAL(ma.COMMANDABORTED) == false,
+               "COMMANDABORTED should be false");
+
+    printf("  After changing target to 200: DONE=%d, BUSY=%d, ACTIVE=%d\n",
+           (int)IEC_VAL(ma.DONE),
+           (int)IEC_VAL(ma.BUSY),
+           (int)IEC_VAL(ma.ACTIVE));
+
+    /* Step 4: 继续推进仿真直到到达200 */
+    for (step = 0; step < MAX_SIM_STEPS; step++) {
+        __HydMotion_framework_Publish();
+        IEC_VAL(ma.EXECUTE) = true;
+        ma.EXECUTE0.value = true;
+        IEC_VAL(ma.POSITION) = 200.0f;
+        IEC_VAL(ma.CONTINUOUSUPDATE) = true;
+        __mcl_cmd_MoveAbsolute(&ma);
+
+        if (IEC_VAL(ma.DONE)) {
+            break;
+        }
+    }
+    ASSERT_TRUE(step < MAX_SIM_STEPS,
+               "Should reach DONE within max steps for position 200");
+    ASSERT_TRUE(IEC_VAL(ma.DONE) == true,
+               "DONE should be true after reaching position 200");
+
+    printf("  Second DONE (position 200) after %d steps\n", step);
+
+    /* 验证轴实际到达200附近 */
+    {
+        HYD_MotionControlFB* fb = __MK_GetPublic_MotionControlFB(axisId);
+        ASSERT_TRUE(fb != NULL, "Should get FB by index");
+        printf("  Final position: %.4f mm (target: 200.0)\n",
+               (double)fb->AXIS_REF.position);
+        ASSERT_FNEAR(fb->AXIS_REF.position, 200.0, 2.0,
+                     "Final position should be near 200");
+    }
+
+    /* Step 5: DONE后保持CONTINUOUSUPDATE=1，验证DONE不会振荡
+     * （修复前：每次ApplyLiveUpdate都会重新激活已完成段，导致DONE反复翻转） */
+    {
+        int doneCount = 0;
+        int busyCount = 0;
+        int activeCount = 0;
+        int i;
+
+        for (i = 0; i < 50; i++) {
+            __HydMotion_framework_Publish();
+            IEC_VAL(ma.EXECUTE) = true;
+            ma.EXECUTE0.value = true;
+            IEC_VAL(ma.POSITION) = 200.0f;  /* 保持目标不变 */
+            IEC_VAL(ma.CONTINUOUSUPDATE) = true;
+            __mcl_cmd_MoveAbsolute(&ma);
+
+            if (IEC_VAL(ma.DONE)) doneCount++;
+            if (IEC_VAL(ma.BUSY)) busyCount++;
+            if (IEC_VAL(ma.ACTIVE)) activeCount++;
+
+            /* 验证：DONE应持续为true，BUSY/ACTIVE应持续为false */
+            ASSERT_TRUE(IEC_VAL(ma.DONE) == true,
+                       "DONE should remain true when CONTINUOUSUPDATE=1 and target unchanged");
+            ASSERT_TRUE(IEC_VAL(ma.BUSY) == false,
+                       "BUSY should remain false when CONTINUOUSUPDATE=1 and target unchanged");
+            ASSERT_TRUE(IEC_VAL(ma.ACTIVE) == false,
+                       "ACTIVE should remain false when CONTINUOUSUPDATE=1 and target unchanged");
+        }
+
+        ASSERT_EQ(doneCount, 50,
+                  "DONE should be true for all 50 post-completion cycles");
+        ASSERT_EQ(busyCount, 0,
+                  "BUSY should stay false after DONE with unchanged target");
+        ASSERT_EQ(activeCount, 0,
+                  "ACTIVE should stay false after DONE with unchanged target");
+
+        printf("  Stability check: DONE stable for %d cycles (no oscillation)\n", i);
+    }
+}
+
 int main(void) {
     printf("=== Motion Interface Done Signal Simulation Tests ===\n\n");
 
@@ -1318,6 +1479,7 @@ int main(void) {
     test_moveabsolute_done_velocity_zero();
     test_moveabsolute_retract_done_velocity_zero();
     test_moveabsolute_stop_velocity_zero();
+    test_moveabsolute_continuousupdate_position_change();
 
     printf("\n=== Results: %d/%d passed ===\n", tests_passed, tests_run);
     return (tests_passed == tests_run) ? 0 : 1;
