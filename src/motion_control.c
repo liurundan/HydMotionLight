@@ -2979,10 +2979,32 @@ HYD_BOOL HYD_MotionControlFB_ApplyLiveUpdate(HYD_MotionControlFB* fb,
 
     /* --- Case 1: Segment is currently running, apply update in-place --- */
     if (isSegmentActive) {
+        HYD_BOOL directionChanged = false;
+        HYD_MotionDirection previousDirection;
+
+        previousDirection = fb->_activeSegment.direction;
+        directionChanged = ((request->flags & HYD_LIVE_UPDATE_DIRECTION) != 0U) &&
+                           (request->direction != previousDirection);
+
         updated = fb->_activeSegment;
 
         if (!HYD_ApplyLiveUpdateOverrides(request, &updated)) {
             return false;
+        }
+
+        /* Position-direction consistency check on direction change.
+         * POSITIVE requires target >= current; NEGATIVE requires target <= current. */
+        if (directionChanged && updated.mode == HYD_MODE_POSITION) {
+            HYD_REAL posTolerance = HYD_Segment_GetPositionTolerance(&updated);
+            if (updated.direction == HYD_DIRECTION_POSITIVE) {
+                if (updated.targetPosition < fb->AXIS_REF.position - posTolerance) {
+                    return false;
+                }
+            } else if (updated.direction == HYD_DIRECTION_NEGATIVE) {
+                if (updated.targetPosition > fb->AXIS_REF.position + posTolerance) {
+                    return false;
+                }
+            }
         }
 
         if (!HYD_RecipeValidator_ValidateSegment(&updated,
@@ -2999,12 +3021,23 @@ HYD_BOOL HYD_MotionControlFB_ApplyLiveUpdate(HYD_MotionControlFB* fb,
         }
 
         fb->_activeSegment = updated;
-        /* Keep DIRECT_SEGMENT in sync so Case 2 can correctly detect
-         * whether the target has changed after segment completion.
-         * Without this, DIRECT_SEGMENT retains the pre-update target
-         * and Case 2 would incorrectly think the target changed,
-         * triggering a spurious restart on position feedback drift. */
         fb->DIRECT_SEGMENT = updated;
+
+        /* Direction flip: recalculate velocityToFlowGain and re-prime controllers.
+         * Different cylinder areas (extend vs retract) change the flow-to-velocity
+         * relationship; the planner also needs a fresh velocity-curve baseline. */
+        if (directionChanged) {
+            if (fb->_activeSegment.velocityToFlowGain <= 0.0f &&
+                HYD_CylinderConfig_IsValid(&fb->cylinderConfig)) {
+                fb->_activeSegment.velocityToFlowGain =
+                    HYD_CylinderConfig_GetVelocityToFlowGain(
+                        &fb->cylinderConfig, fb->_activeSegment.direction);
+            }
+            /* Re-prime WITHOUT flow carryover — direction flip is a fresh start */
+            HYD_PrimeSegmentControllers(fb, &fb->_activeSegment,
+                                        fb->AXIS_REF.timestamp, false);
+        }
+
         HYD_StateReporter_SetPlannedDirection(fb, fb->_activeSegment.direction);
         HYD_StateReporter_SetSegmentTag(fb, fb->_activeSegment.segmentTag);
         HYD_StateReporter_SetSegmentSource(fb, fb->_activeSegmentSource);
