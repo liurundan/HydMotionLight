@@ -287,8 +287,10 @@ static HYD_BOOL HYD_AreBlendDirectionsCompatible(const HYD_MotionControlFB* fb,
         return false;
     }
 
-    activeDirection = HYD_Segment_ResolveDirection(activeSegment, &fb->AXIS_REF);
-    pendingDirection = HYD_Segment_ResolveDirection(pendingSegment, &fb->AXIS_REF);
+    activeDirection = HYD_Segment_ResolveDirection(activeSegment, &fb->AXIS_REF,
+                                                    fb->_lastActiveDirection);
+    pendingDirection = HYD_Segment_ResolveDirection(pendingSegment, &fb->AXIS_REF,
+                                                     fb->_lastActiveDirection);
 
     return (activeDirection == HYD_DIRECTION_EXTEND ||
             activeDirection == HYD_DIRECTION_RETRACT) &&
@@ -384,7 +386,8 @@ static HYD_BOOL HYD_ShouldCutoverDirectBlend(const HYD_MotionControlFB* fb,
         return false;
     }
 
-    direction = HYD_Segment_ResolveDirection(segment, &fb->AXIS_REF);
+    direction = HYD_Segment_ResolveDirection(segment, &fb->AXIS_REF,
+                                              fb->_lastActiveDirection);
     tolerance = fb->_directBlendContext.switchTolerance;
     if (tolerance <= 0.0) {
         tolerance = HYD_Segment_GetPositionTolerance(segment);

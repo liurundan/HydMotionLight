@@ -24,11 +24,12 @@ static HYD_BOOL HYD_SegmentCompletion_IsPositionReached(
     HYD_REAL positionTolerance) {
     HYD_MotionDirection direction;
 
-    direction = HYD_Segment_ResolveDirection(segment, axisRef);
-    if (direction == HYD_DIRECTION_EXTEND) {
+    direction = HYD_Segment_ResolveDirection(segment, axisRef,
+                                              HYD_DIRECTION_POSITIVE);
+    if (direction == HYD_DIRECTION_POSITIVE) {
         return axisRef->position >= segment->targetPosition - positionTolerance;
     }
-    if (direction == HYD_DIRECTION_RETRACT) {
+    if (direction == HYD_DIRECTION_NEGATIVE) {
         return axisRef->position <= segment->targetPosition + positionTolerance;
     }
     return fabs(axisRef->position - segment->targetPosition) <= positionTolerance;
