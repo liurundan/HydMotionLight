@@ -1072,9 +1072,40 @@ void __mcl_cmd_MoveAbsolute(HYD_MOVEABSOLUTE *data__)
         fb->USE_RECIPE = false;
 
         HYD_MotionDirection dir = mapPlcOpenDirection(__GET_VAR(data__->DIRECTION));
+        HYD_REAL velocity = __GET_VAR(data__->VELOCITY);
+        HYD_REAL targetPos = __GET_VAR(data__->POSITION);
+        HYD_REAL currentPos = fb->AXIS_REF.position;
+
+        /* Positive_Direction: 强制正向，校验目标位置匹配 */
+        if (dir == HYD_DIRECTION_POSITIVE) {
+            if (targetPos < currentPos - fb->_params.positionTolerance) {
+                __SET_VAR(data__->, ERROR,, true);
+                __SET_VAR(data__->, ERRORID,,
+                    (IEC_WORD)HYD_DIAG_CODE_PUMP_DIRECTION_CONFLICT);
+                __SET_VAR(data__->, EXECUTE0,, execute);
+                return;
+            }
+            velocity = (IEC_REAL)fabs((double)velocity);
+        }
+        /* Negative_Direction: 强制负向，校验目标位置匹配 */
+        else if (dir == HYD_DIRECTION_NEGATIVE) {
+            if (targetPos > currentPos + fb->_params.positionTolerance) {
+                __SET_VAR(data__->, ERROR,, true);
+                __SET_VAR(data__->, ERRORID,,
+                    (IEC_WORD)HYD_DIAG_CODE_PUMP_DIRECTION_CONFLICT);
+                __SET_VAR(data__->, EXECUTE0,, execute);
+                return;
+            }
+            velocity = (IEC_REAL)fabs((double)velocity);
+        }
+        /* SHORTEST_WAY 和 CURRENT: 方向由运行时解析，Velocity 恒取正值 */
+        else {
+            velocity = (IEC_REAL)fabs((double)velocity);
+        }
+
         HYD_MotionSegment segment = buildPositionSegment(
-            __GET_VAR(data__->POSITION),
-            __GET_VAR(data__->VELOCITY),
+            targetPos,
+            velocity,
             __GET_VAR(data__->ACCELERATION),
             __GET_VAR(data__->DECELERATION),
             dir,
@@ -1230,8 +1261,26 @@ void __mcl_cmd_MoveVelocity(HYD_MOVEVELOCITY *data__)
         fb->USE_RECIPE = false;
 
         HYD_MotionDirection dir = mapPlcOpenDirection(__GET_VAR(data__->DIRECTION));
+        HYD_REAL velocity = targetVelocity;
+
+        /* SHORTEST_WAY: 根据 Velocity 正负区分方向 */
+        if (dir == HYD_DIRECTION_SHORTEST_WAY) {
+            if (velocity > 0.0f) {
+                dir = HYD_DIRECTION_POSITIVE;
+            } else if (velocity < 0.0f) {
+                dir = HYD_DIRECTION_NEGATIVE;
+            } else {
+                /* Velocity == 0: 利用 lastActiveDirection 或默认正向 */
+                dir = (fb->_lastActiveDirection == HYD_DIRECTION_NEGATIVE)
+                      ? HYD_DIRECTION_NEGATIVE : HYD_DIRECTION_POSITIVE;
+            }
+        }
+
+        /* 所有模式下，Velocity 取绝对值（Direction 优先级高于符号） */
+        velocity = (IEC_REAL)fabs((double)velocity);
+
         HYD_MotionSegment segment = buildVelocitySegment(
-            targetVelocity,
+            velocity,
             __GET_VAR(data__->ACCELERATION),
             __GET_VAR(data__->DECELERATION),
             dir,
