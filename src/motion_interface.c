@@ -406,13 +406,16 @@ static HYD_BOOL applyMoveAbsoluteLiveUpdate(HYD_MotionControlFB* fb,
     request.flags = HYD_LIVE_UPDATE_TARGET_POSITION |
                     HYD_LIVE_UPDATE_MAX_VELOCITY |
                     HYD_LIVE_UPDATE_ACCELERATION |
-                    HYD_LIVE_UPDATE_DECELERATION;
+                    HYD_LIVE_UPDATE_DECELERATION |
+                    HYD_LIVE_UPDATE_CONTINUOUS_UPDATE |
+                    HYD_LIVE_UPDATE_DIRECTION;
     request.ownerKind = HYD_DIRECT_CMD_MOVE_ABSOLUTE;
     request.ownerExecutionId = (uint16_t)execId;
     request.targetPosition = __GET_VAR(data__->POSITION);
     request.maxVelocity = __GET_VAR(data__->VELOCITY);
     request.maxAcceleration = __GET_VAR(data__->ACCELERATION);
     request.maxDeceleration = __GET_VAR(data__->DECELERATION);
+    request.direction = mapPlcOpenDirection(__GET_VAR(data__->DIRECTION));
     return HYD_MotionControlFB_ApplyLiveUpdate(fb, &request);
 }
 
@@ -429,12 +432,15 @@ static HYD_BOOL applyMoveVelocityLiveUpdate(HYD_MotionControlFB* fb,
     memset(&request, 0, sizeof(request));
     request.flags = HYD_LIVE_UPDATE_MAX_VELOCITY |
                     HYD_LIVE_UPDATE_ACCELERATION |
-                    HYD_LIVE_UPDATE_DECELERATION;
+                    HYD_LIVE_UPDATE_DECELERATION |
+                    HYD_LIVE_UPDATE_CONTINUOUS_UPDATE |
+                    HYD_LIVE_UPDATE_DIRECTION;
     request.ownerKind = HYD_DIRECT_CMD_MOVE_VELOCITY;
     request.ownerExecutionId = (uint16_t)execId;
     request.maxVelocity = __GET_VAR(data__->VELOCITY);
     request.maxAcceleration = __GET_VAR(data__->ACCELERATION);
     request.maxDeceleration = __GET_VAR(data__->DECELERATION);
+    request.direction = mapPlcOpenDirection(__GET_VAR(data__->DIRECTION));
     return HYD_MotionControlFB_ApplyLiveUpdate(fb, &request);
 }
 
@@ -450,7 +456,8 @@ static HYD_BOOL applyPressureHandleLiveUpdate(HYD_MotionControlFB* fb,
 
     memset(&request, 0, sizeof(request));
     request.flags = HYD_LIVE_UPDATE_TARGET_PRESSURE |
-                    HYD_LIVE_UPDATE_PRESSURE_RAMP_RATE;
+                    HYD_LIVE_UPDATE_PRESSURE_RAMP_RATE |
+                    HYD_LIVE_UPDATE_CONTINUOUS_UPDATE;
     request.ownerKind = HYD_DIRECT_CMD_PRESSURE_HANDLE;
     request.ownerExecutionId = (uint16_t)execId;
     request.targetPressure = __GET_VAR(data__->PRESSURE);
