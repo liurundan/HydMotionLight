@@ -170,7 +170,7 @@ static void test_moveabsolute_extend_retract_cycle(void) {
         IEC_VAL(ma.POSITION) = 0.0f;
         IEC_VAL(ma.VELOCITY) = 50.0f;
         IEC_VAL(ma.ACCELERATION) = 200.0f;
-        IEC_VAL(ma.DIRECTION) = -1;  /* RETRACT */
+        IEC_VAL(ma.DIRECTION) = 2;  /* NEGATIVE (formerly RETRACT) */
 
         steps = run_moveabsolute_to_done(&ma, MAX_SIM_STEPS);
         ASSERT_TRUE(steps > 0, "Retract MoveAbsolute should reach DONE within max steps");
@@ -446,7 +446,7 @@ static void test_two_moveabsolute_fbs_alternating_same_axis(void) {
     IEC_VAL(maB.POSITION) = 0.0f;
     IEC_VAL(maB.VELOCITY) = 40.0f;
     IEC_VAL(maB.ACCELERATION) = 200.0f;
-    IEC_VAL(maB.DIRECTION) = -1;  /* RETRACT */
+    IEC_VAL(maB.DIRECTION) = 2;  /* NEGATIVE (formerly RETRACT) */
 
     IEC_VAL(maB.EXECUTE) = true;
     maB.EXECUTE0.value = false;
@@ -535,7 +535,7 @@ static void test_two_moveabsolute_fbs_alternating_same_axis(void) {
     IEC_VAL(maB.POSITION) = 0.0f;
     IEC_VAL(maB.VELOCITY) = 40.0f;
     IEC_VAL(maB.ACCELERATION) = 200.0f;
-    IEC_VAL(maB.DIRECTION) = -1;
+    IEC_VAL(maB.DIRECTION) = 2;  /* NEGATIVE */
 
     IEC_VAL(maB.EXECUTE) = true;
     maB.EXECUTE0.value = false;
@@ -882,7 +882,7 @@ static void test_multi_axis_extend_retract_parallel(void) {
     IEC_VAL(ma0.POSITION) = 0.0f;
     IEC_VAL(ma0.VELOCITY) = 40.0f;
     IEC_VAL(ma0.ACCELERATION) = 200.0f;
-    IEC_VAL(ma0.DIRECTION) = -1;
+    IEC_VAL(ma0.DIRECTION) = 2;  /* NEGATIVE */
     steps0 = run_moveabsolute_to_done(&ma0, MAX_SIM_STEPS);
 
     /* 轴1 缩回 */
@@ -892,7 +892,7 @@ static void test_multi_axis_extend_retract_parallel(void) {
     IEC_VAL(ma1.POSITION) = 0.0f;
     IEC_VAL(ma1.VELOCITY) = 30.0f;
     IEC_VAL(ma1.ACCELERATION) = 150.0f;
-    IEC_VAL(ma1.DIRECTION) = -1;
+    IEC_VAL(ma1.DIRECTION) = 2;  /* NEGATIVE */
     steps1 = run_moveabsolute_to_done(&ma1, MAX_SIM_STEPS);
 
     ASSERT_TRUE(steps0 > 0, "Axis 0 retract should reach DONE");
@@ -1203,7 +1203,7 @@ static void test_moveabsolute_retract_done_velocity_zero(void) {
     IEC_VAL(ma.POSITION) = 0.0f;
     IEC_VAL(ma.VELOCITY) = 40.0f;
     IEC_VAL(ma.ACCELERATION) = 200.0f;
-    IEC_VAL(ma.DIRECTION) = -1;
+    IEC_VAL(ma.DIRECTION) = 2;  /* NEGATIVE */
 
     steps = run_moveabsolute_to_done(&ma, MAX_SIM_STEPS);
     ASSERT_TRUE(steps > 0, "Retract should reach DONE");

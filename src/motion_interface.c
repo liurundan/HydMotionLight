@@ -64,15 +64,16 @@ HYD_MotionControlFB* __MK_GetPublic_MotionControlFB(int index)
  * ====================================================================== */
 
 
-/* 从PLCopen方向值映射到HDY_MotionDirection */
-static HYD_MotionDirection mapPlcOpenDirection(IEC_SINT direction)
-{
-    if (direction > 0) {
-        return HYD_DIRECTION_EXTEND;
-    } else if (direction < 0) {
-        return HYD_DIRECTION_RETRACT;
+/* PLC方向映射 — Beckhoff TF5810 MC_Direction 兼容
+ * DIRECTION SINT 值: 0=Shortest_Way, 1=Positive, 2=Negative, 3=Current
+ * 超出范围的值默认视为 Shortest_Way */
+static HYD_MotionDirection mapPlcOpenDirection(IEC_SINT direction) {
+    switch ((int)direction) {
+        case 1:  return HYD_DIRECTION_POSITIVE;
+        case 2:  return HYD_DIRECTION_NEGATIVE;
+        case 3:  return HYD_DIRECTION_CURRENT;
+        default: return HYD_DIRECTION_SHORTEST_WAY;
     }
-    return HYD_DIRECTION_AUTO;
 }
 
 /* 构建位置控制运动段 (MoveAbsolute用) */

@@ -865,7 +865,7 @@ static void test_blend_context_requires_compatible_moveabsolute_direction(void) 
                "Forward MoveAbsolute should create a direct blend context");
 
     fb = start_active_moveabsolute_for_blend_fallback_test();
-    queue_pending_moveabsolute_for_blend_fallback_test(0.0f, -1);
+    queue_pending_moveabsolute_for_blend_fallback_test(0.0f, 2)  /* NEGATIVE */;
 
     ASSERT_TRUE(fb->_directPendingValid,
                "Reverse MoveAbsolute should still be accepted into pending slot");
@@ -1252,7 +1252,7 @@ static void test_direct_command_starts_cleanly_after_recipe_done(void) {
     IEC_VAL(ma.POSITION) = 0.0f;
     IEC_VAL(ma.VELOCITY) = 15.0f;
     IEC_VAL(ma.ACCELERATION) = 70.0f;
-    IEC_VAL(ma.DIRECTION) = -1;
+    IEC_VAL(ma.DIRECTION) = 2;  /* NEGATIVE */
     __mcl_cmd_MoveAbsolute(&ma);
     __HydMotion_framework_Publish();
     IEC_VAL(ma.EXECUTE) = true;
@@ -1360,7 +1360,7 @@ static void test_reverse_blend_pending_completes_as_buffered(void) {
     HYD_MOVEABSOLUTE second;
 
     fb = start_active_moveabsolute_for_blend_fallback_test();
-    queue_pending_moveabsolute_for_blend_fallback_test(0.0f, -1);
+    queue_pending_moveabsolute_for_blend_fallback_test(0.0f, 2)  /* NEGATIVE */;
 
     ASSERT_TRUE(fb->_directPendingValid,
                "Reverse MoveAbsolute should still occupy the pending slot");
@@ -1390,7 +1390,7 @@ static void test_reverse_blend_pending_completes_as_buffered(void) {
     IEC_VAL(second.VELOCITY) = 8.0f;
     IEC_VAL(second.ACCELERATION) = 100.0f;
     IEC_VAL(second.DECELERATION) = 100.0f;
-    IEC_VAL(second.DIRECTION) = -1;
+    IEC_VAL(second.DIRECTION) = 2;  /* NEGATIVE */
     IEC_VAL(second.BUFFERMODE) = HYD_BUFFER_MODE_BLENDING_HIGH;
     __mcl_cmd_MoveAbsolute(&second);
     ASSERT_TRUE(IEC_VAL(second.COMMANDABORTED) == false,
