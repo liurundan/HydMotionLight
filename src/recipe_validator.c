@@ -297,7 +297,7 @@ HYD_BOOL HYD_RecipeValidator_ValidateSegment(const HYD_MotionSegment* segment,
 
     if ((segment->planner == HYD_PLANNER_TIME_BASED) &&
         (segment->mode != HYD_MODE_PRESSURE_CLOSED_LOOP) &&
-        (segment->maxVelocity <= 0.0)) {
+        (segment->maxVelocity < 0.0)) {
         return HYD_RecipeValidator_Fail(code, HYD_DIAG_CODE_SEGMENT_INVALID);
     }
 
