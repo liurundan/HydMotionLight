@@ -462,7 +462,8 @@ void HYD_MotionPlanner_Execute(const HYD_MotionPlannerInput* input, HYD_MotionPl
         return;
     }
 
-    direction = HYD_Segment_ResolveDirection(input->segment, input->axisRef);
+    direction = HYD_Segment_ResolveDirection(input->segment, input->axisRef,
+                                             input->lastActiveDirection);
     output->direction = direction;
 
     if (input->segment->mode == HYD_MODE_PRESSURE_CLOSED_LOOP) {
@@ -477,9 +478,9 @@ void HYD_MotionPlanner_Execute(const HYD_MotionPlannerInput* input, HYD_MotionPl
     if (direction == HYD_DIRECTION_HOLD &&
         input->segment->mode == HYD_MODE_POSITION &&
         input->segment->planner == HYD_PLANNER_POSITION_BASED &&
-        input->segment->direction == HYD_DIRECTION_AUTO &&
+        input->segment->direction == HYD_DIRECTION_SHORTEST_WAY &&
         previousDirectionSign != 0.0) {
-        direction = (previousDirectionSign > 0.0) ? HYD_DIRECTION_EXTEND : HYD_DIRECTION_RETRACT;
+        direction = (previousDirectionSign > 0.0) ? HYD_DIRECTION_POSITIVE : HYD_DIRECTION_NEGATIVE;
         output->direction = direction;
     }
 

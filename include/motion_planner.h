@@ -28,6 +28,7 @@ typedef struct {
     HYD_REAL decelStartVel;
     HYD_MotionPlannerState* state;
     const HYD_MotionBlendContext* blend;
+    HYD_MotionDirection lastActiveDirection;  /* for CURRENT direction resolution */
 } HYD_MotionPlannerInput;
 
 typedef struct {

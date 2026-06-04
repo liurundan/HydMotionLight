@@ -1347,6 +1347,7 @@ static void HYD_ExecuteActiveSegmentControl(HYD_MotionControlFB* fb,
         plannerInput.blend = fb->_directBlendContext.active
             ? &fb->_directBlendContext
             : NULL;
+        plannerInput.lastActiveDirection = fb->_lastActiveDirection;
         HYD_MotionPlanner_Execute(&plannerInput, plannerOutput);
 
         if (segment->mode == HYD_MODE_SPEED_RAMP && segment->velocityKp > 0.0) {
