@@ -983,6 +983,104 @@ static void test_position_based_blend_terminal_velocity_cap(void) {
     printf("✓ Position blend terminal velocity cap test passed\n");
 }
 
+/* Test: ResolveDirection with CURRENT inherits lastActiveDirection (POSITIVE) */
+static void test_resolve_direction_current_inherits_positive(void) {
+    HYD_MotionSegment segment;
+    HYD_AxisRef axisRef;
+    HYD_MotionDirection result;
+
+    memset(&segment, 0, sizeof(segment));
+    segment.direction = HYD_DIRECTION_CURRENT;
+    segment.targetPosition = 0.0f;
+    segment.positionTolerance = 0.1f;
+
+    axisRef.position = 50.0f;
+
+    result = HYD_Segment_ResolveDirection(&segment, &axisRef,
+                                          HYD_DIRECTION_POSITIVE);
+    assert(result == HYD_DIRECTION_POSITIVE);
+    printf("✓ CURRENT + lastActive=POSITIVE -> POSITIVE passed\n");
+}
+
+/* Test: ResolveDirection with CURRENT inherits lastActiveDirection (NEGATIVE) */
+static void test_resolve_direction_current_inherits_negative(void) {
+    HYD_MotionSegment segment;
+    HYD_AxisRef axisRef;
+    HYD_MotionDirection result;
+
+    memset(&segment, 0, sizeof(segment));
+    segment.direction = HYD_DIRECTION_CURRENT;
+    segment.positionTolerance = 0.1f;
+
+    axisRef.position = 0.0f;
+
+    result = HYD_Segment_ResolveDirection(&segment, &axisRef,
+                                          HYD_DIRECTION_NEGATIVE);
+    assert(result == HYD_DIRECTION_NEGATIVE);
+    printf("✓ CURRENT + lastActive=NEGATIVE -> NEGATIVE passed\n");
+}
+
+/* Test: ResolveDirection with CURRENT defaults to POSITIVE when stationary */
+static void test_resolve_direction_current_defaults_positive(void) {
+    HYD_MotionSegment segment;
+    HYD_AxisRef axisRef;
+    HYD_MotionDirection result;
+
+    memset(&segment, 0, sizeof(segment));
+    segment.direction = HYD_DIRECTION_CURRENT;
+    segment.positionTolerance = 0.1f;
+
+    axisRef.position = 0.0f;
+
+    result = HYD_Segment_ResolveDirection(&segment, &axisRef,
+                                          HYD_DIRECTION_HOLD);
+    assert(result == HYD_DIRECTION_POSITIVE);
+    printf("✓ CURRENT + lastActive=HOLD -> POSITIVE passed\n");
+
+    result = HYD_Segment_ResolveDirection(&segment, &axisRef,
+                                          HYD_DIRECTION_SHORTEST_WAY);
+    assert(result == HYD_DIRECTION_POSITIVE);
+    printf("✓ CURRENT + lastActive=SHORTEST_WAY -> POSITIVE passed\n");
+}
+
+/* Test: ResolveDirection SHORTEST_WAY extends */
+static void test_resolve_direction_shortest_way_extends(void) {
+    HYD_MotionSegment segment;
+    HYD_AxisRef axisRef;
+    HYD_MotionDirection result;
+
+    memset(&segment, 0, sizeof(segment));
+    segment.direction = HYD_DIRECTION_SHORTEST_WAY;
+    segment.targetPosition = 100.0f;
+    segment.positionTolerance = 0.1f;
+
+    axisRef.position = 0.0f;
+
+    result = HYD_Segment_ResolveDirection(&segment, &axisRef,
+                                          HYD_DIRECTION_POSITIVE);
+    assert(result == HYD_DIRECTION_POSITIVE);
+    printf("✓ SHORTEST_WAY + targetPos>curr -> POSITIVE passed\n");
+}
+
+/* Test: ResolveDirection SHORTEST_WAY retracts */
+static void test_resolve_direction_shortest_way_retracts(void) {
+    HYD_MotionSegment segment;
+    HYD_AxisRef axisRef;
+    HYD_MotionDirection result;
+
+    memset(&segment, 0, sizeof(segment));
+    segment.direction = HYD_DIRECTION_SHORTEST_WAY;
+    segment.targetPosition = -100.0f;
+    segment.positionTolerance = 0.1f;
+
+    axisRef.position = 0.0f;
+
+    result = HYD_Segment_ResolveDirection(&segment, &axisRef,
+                                          HYD_DIRECTION_POSITIVE);
+    assert(result == HYD_DIRECTION_NEGATIVE);
+    printf("✓ SHORTEST_WAY + targetPos<curr -> NEGATIVE passed\n");
+}
+
 int main(void) {
     printf("Running MotionPlanner tests...\n\n");
 
@@ -1010,6 +1108,11 @@ int main(void) {
     test_position_based_online_trapezoid_direction_reversal_is_continuous();
     test_position_based_blend_terminal_velocity_inside_tolerance();
     test_position_based_blend_terminal_velocity_cap();
+    test_resolve_direction_current_inherits_positive();
+    test_resolve_direction_current_inherits_negative();
+    test_resolve_direction_current_defaults_positive();
+    test_resolve_direction_shortest_way_extends();
+    test_resolve_direction_shortest_way_retracts();
 
     printf("\n✅ All MotionPlanner tests passed successfully!\n");
     return 0;

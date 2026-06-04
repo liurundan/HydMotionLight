@@ -24,15 +24,16 @@ static HYD_BOOL HYD_IsValidEndCondition(HYD_EndConditionType endCondition) {
 }
 
 static HYD_BOOL HYD_IsValidMotionDirection(HYD_MotionDirection direction) {
-    return (direction == HYD_DIRECTION_AUTO) ||
-           (direction == HYD_DIRECTION_EXTEND) ||
-           (direction == HYD_DIRECTION_RETRACT) ||
+    return (direction == HYD_DIRECTION_SHORTEST_WAY) ||
+           (direction == HYD_DIRECTION_POSITIVE) ||
+           (direction == HYD_DIRECTION_NEGATIVE) ||
+           (direction == HYD_DIRECTION_CURRENT) ||
            (direction == HYD_DIRECTION_HOLD);
 }
 
 static HYD_BOOL HYD_IsLinearMotionDirection(HYD_MotionDirection direction) {
-    return (direction == HYD_DIRECTION_EXTEND) ||
-           (direction == HYD_DIRECTION_RETRACT);
+    return (direction == HYD_DIRECTION_POSITIVE) ||
+           (direction == HYD_DIRECTION_NEGATIVE);
 }
 
 static HYD_BOOL HYD_IsValidPressureControllerType(HYD_PressureControllerType strategy) {

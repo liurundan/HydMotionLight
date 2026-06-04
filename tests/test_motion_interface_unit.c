@@ -1399,6 +1399,51 @@ static void test_apply_live_update_tolerates_completed_segment(void)
     printf("  OK: test_apply_live_update_tolerates_completed_segment\n");
 }
 
+/* Test: Direction enum values survive round-trip through segment direction field.
+ * Uses direct recipe loading (no PLCopen lifecycle) to verify the 4-direction mapping. */
+static void test_direction_enum_values_round_trip(void) {
+    HYD_MotionControlFB fb;
+    HYD_MotionSegment seg;
+
+    memset(&fb, 0, sizeof(fb));
+    memset(&seg, 0, sizeof(seg));
+    seg.mode = HYD_MODE_SPEED_RAMP;
+    seg.endCondition = HYD_END_MANUAL;
+    seg.direction = HYD_DIRECTION_SHORTEST_WAY;
+    seg.planner = HYD_PLANNER_TIME_BASED;
+
+    /* SHORTEST_WAY */
+    ASSERT_TRUE(seg.direction == HYD_DIRECTION_SHORTEST_WAY,
+                "SHORTEST_WAY enum must be 0");
+    ASSERT_TRUE(seg.direction == 0, "SHORTEST_WAY value must be 0");
+
+    /* POSITIVE */
+    seg.direction = HYD_DIRECTION_POSITIVE;
+    ASSERT_TRUE(seg.direction == HYD_DIRECTION_POSITIVE,
+                "POSITIVE enum must be 1");
+    ASSERT_TRUE(seg.direction == 1, "POSITIVE value must be 1");
+
+    /* NEGATIVE */
+    seg.direction = HYD_DIRECTION_NEGATIVE;
+    ASSERT_TRUE(seg.direction == HYD_DIRECTION_NEGATIVE,
+                "NEGATIVE enum must be 2");
+    ASSERT_TRUE(seg.direction == 2, "NEGATIVE value must be 2");
+
+    /* CURRENT */
+    seg.direction = HYD_DIRECTION_CURRENT;
+    ASSERT_TRUE(seg.direction == HYD_DIRECTION_CURRENT,
+                "CURRENT enum must be 3");
+    ASSERT_TRUE(seg.direction == 3, "CURRENT value must be 3");
+
+    /* HOLD */
+    seg.direction = HYD_DIRECTION_HOLD;
+    ASSERT_TRUE(seg.direction == HYD_DIRECTION_HOLD,
+                "HOLD enum must be 4");
+    ASSERT_TRUE(seg.direction == 4, "HOLD value must be 4");
+
+    printf("  PASS: Direction enum values (SW=0, POS=1, NEG=2, CUR=3, HOLD=4)\n");
+}
+
 int main(void) {
     printf("=== Motion Interface Unit Tests ===\n\n");
 
@@ -1437,6 +1482,7 @@ int main(void) {
     test_hold_resume_reject_invalid_runtime_state();
     test_multiple_axes_operate_independently();
     test_apply_live_update_tolerates_completed_segment();
+    test_direction_enum_values_round_trip();
 
     printf("\n=== Results: %d/%d passed ===\n", tests_passed, tests_run);
     return (tests_passed == tests_run) ? 0 : 1;
