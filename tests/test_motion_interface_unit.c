@@ -1444,6 +1444,274 @@ static void test_direction_enum_values_round_trip(void) {
     printf("  PASS: Direction enum values (SW=0, POS=1, NEG=2, CUR=3, HOLD=4)\n");
 }
 
+/* Test: MoveAbsolute with DIRECTION=0 (SHORTEST_WAY) should be accepted and
+ * correctly resolved at runtime. Verifies that recipe_validator does not
+ * reject SHORTEST_WAY/CURRENT as invalid directions for position mode. */
+static void test_moveabsolute_shortest_way_direction_accepted(void) {
+    HYD_MOVEABSOLUTE ma;
+    HYD_MotionControlFB* fb;
+
+    __HydMotion_framework_Init();
+    ensure_axes_allocated(1);
+    memset(&ma, 0, sizeof(ma));
+
+    /* 上升沿触发 MoveAbsolute with SHORTEST_WAY direction, velocity=5, accel=200, target=100 */
+    IEC_VAL(ma.EN) = true;
+    IEC_VAL(ma.EXECUTE) = true;
+    ma.EXECUTE0.value = false;
+    IEC_VAL(ma.AXISID) = 0;
+    IEC_VAL(ma.POSITION) = 100.0f;
+    IEC_VAL(ma.VELOCITY) = 5.0f;
+    IEC_VAL(ma.ACCELERATION) = 200.0f;
+    IEC_VAL(ma.DIRECTION) = 0;  /* HYD_Shortest_Way */
+
+    __mcl_cmd_MoveAbsolute(&ma);
+
+    ASSERT_TRUE(IEC_VAL(ma.ERROR) == false,
+               "MoveAbsolute SHORTEST_WAY should NOT error");
+    ASSERT_TRUE(IEC_VAL(ma.BUSY) == true,
+               "MoveAbsolute SHORTEST_WAY should set BUSY=true");
+    ASSERT_TRUE(IEC_VAL(ma.ACTIVE) == true,
+               "MoveAbsolute SHORTEST_WAY should set ACTIVE=true");
+
+    /* 验证底层FB状态：segment方向应为SHORTEST_WAY，运行时会被解析 */
+    fb = __MK_GetPublic_MotionControlFB(0);
+    ASSERT_TRUE(fb != NULL, "FB should exist after MoveAbsolute SHORTEST_WAY");
+    ASSERT_TRUE(fb->DIRECT_SEGMENT.direction == HYD_DIRECTION_SHORTEST_WAY,
+               "Segment direction should be SHORTEST_WAY(0)");
+    ASSERT_TRUE(fb->DIRECT_SEGMENT.mode == HYD_MODE_POSITION,
+               "Segment mode should be POSITION");
+
+    printf("  PASS: MoveAbsolute SHORTEST_WAY direction accepted\n");
+}
+
+/* Test: MoveAbsolute with DIRECTION=3 (CURRENT) should also be accepted
+ * by the recipe validator for position mode. */
+static void test_moveabsolute_current_direction_accepted(void) {
+    HYD_MOVEABSOLUTE ma;
+    HYD_MotionControlFB* fb;
+
+    __HydMotion_framework_Init();
+    ensure_axes_allocated(1);
+    memset(&ma, 0, sizeof(ma));
+
+    IEC_VAL(ma.EN) = true;
+    IEC_VAL(ma.EXECUTE) = true;
+    ma.EXECUTE0.value = false;
+    IEC_VAL(ma.AXISID) = 0;
+    IEC_VAL(ma.POSITION) = 100.0f;
+    IEC_VAL(ma.VELOCITY) = 5.0f;
+    IEC_VAL(ma.ACCELERATION) = 200.0f;
+    IEC_VAL(ma.DIRECTION) = 3;  /* HYD_Current_Direction */
+
+    __mcl_cmd_MoveAbsolute(&ma);
+
+    ASSERT_TRUE(IEC_VAL(ma.ERROR) == false,
+               "MoveAbsolute CURRENT direction should NOT error");
+    ASSERT_TRUE(IEC_VAL(ma.BUSY) == true,
+               "MoveAbsolute CURRENT direction should set BUSY=true");
+
+    fb = __MK_GetPublic_MotionControlFB(0);
+    ASSERT_TRUE(fb != NULL, "FB should exist after MoveAbsolute CURRENT");
+    ASSERT_TRUE(fb->DIRECT_SEGMENT.direction == HYD_DIRECTION_CURRENT,
+               "Segment direction should be CURRENT(3)");
+
+    printf("  PASS: MoveAbsolute CURRENT direction accepted\n");
+}
+
+/* ==================================================================
+ * MoveAbsolute 方向参数覆盖测试
+ * 验证 POSITIVE / NEGATIVE 强制方向 + velocity=5 accel=200 的
+ * 匹配/不匹配场景，以及越界方向值的默认处理。
+ * ================================================================== */
+
+/* DIRECTION=1 (POSITIVE), targetPos=100 > currentPos=0 — 方向匹配，应正常启动 */
+static void test_moveabsolute_positive_direction_matching_target_starts(void) {
+    HYD_MOVEABSOLUTE ma;
+    HYD_MotionControlFB* fb;
+
+    __HydMotion_framework_Init();
+    ensure_axes_allocated(1);
+    memset(&ma, 0, sizeof(ma));
+
+    IEC_VAL(ma.EN) = true;
+    IEC_VAL(ma.EXECUTE) = true;
+    ma.EXECUTE0.value = false;
+    IEC_VAL(ma.AXISID) = 0;
+    IEC_VAL(ma.POSITION) = 100.0f;   /* 目标在当前位置前方 */
+    IEC_VAL(ma.VELOCITY) = 5.0f;
+    IEC_VAL(ma.ACCELERATION) = 200.0f;
+    IEC_VAL(ma.DIRECTION) = 1;  /* HYD_Positive_Direction */
+
+    __mcl_cmd_MoveAbsolute(&ma);
+
+    ASSERT_TRUE(IEC_VAL(ma.ERROR) == false,
+               "MoveAbsolute POSITIVE with forward target should NOT error");
+    ASSERT_TRUE(IEC_VAL(ma.BUSY) == true,
+               "MoveAbsolute POSITIVE with forward target should set BUSY=true");
+    ASSERT_TRUE(IEC_VAL(ma.ACTIVE) == true,
+               "MoveAbsolute POSITIVE with forward target should set ACTIVE=true");
+    ASSERT_TRUE(IEC_VAL(ma.COMMANDABORTED) == false,
+               "MoveAbsolute POSITIVE with forward target should not abort");
+
+    fb = __MK_GetPublic_MotionControlFB(0);
+    ASSERT_TRUE(fb != NULL, "FB should exist after MoveAbsolute POSITIVE");
+    ASSERT_TRUE(fb->DIRECT_SEGMENT_VALID == true,
+               "DIRECT_SEGMENT_VALID should be true");
+    ASSERT_TRUE(fb->DIRECT_SEGMENT.direction == HYD_DIRECTION_POSITIVE,
+               "Segment direction should be POSITIVE(1)");
+    ASSERT_TRUE(fabs(fb->DIRECT_SEGMENT.maxVelocity - 5.0f) < 0.001f,
+               "Velocity should be preserved as 5.0");
+    ASSERT_TRUE(fabs(fb->DIRECT_SEGMENT.maxAcceleration - 200.0f) < 0.001f,
+               "Acceleration should be preserved as 200.0");
+
+    printf("  PASS: MoveAbsolute POSITIVE direction matching target starts (vel=5, accel=200)\n");
+}
+
+/* DIRECTION=1 (POSITIVE), targetPos=-50 < currentPos=0 — 方向冲突，应报 ERROR */
+static void test_moveabsolute_positive_direction_rejects_backward_target(void) {
+    HYD_MOVEABSOLUTE ma;
+
+    __HydMotion_framework_Init();
+    ensure_axes_allocated(1);
+    memset(&ma, 0, sizeof(ma));
+
+    IEC_VAL(ma.EN) = true;
+    IEC_VAL(ma.EXECUTE) = true;
+    ma.EXECUTE0.value = false;
+    IEC_VAL(ma.AXISID) = 0;
+    IEC_VAL(ma.POSITION) = -50.0f;   /* 目标在当前位置后方 — 与正向冲突 */
+    IEC_VAL(ma.VELOCITY) = 5.0f;
+    IEC_VAL(ma.ACCELERATION) = 200.0f;
+    IEC_VAL(ma.DIRECTION) = 1;  /* HYD_Positive_Direction */
+
+    __mcl_cmd_MoveAbsolute(&ma);
+
+    ASSERT_TRUE(IEC_VAL(ma.ERROR) == true,
+               "MoveAbsolute POSITIVE with backward target should set ERROR");
+    ASSERT_TRUE(IEC_VAL(ma.ERRORID) == HYD_DIAG_CODE_PUMP_DIRECTION_CONFLICT,
+               "ERRORID should be PUMP_DIRECTION_CONFLICT for POSITIVE + backward target");
+    ASSERT_TRUE(IEC_VAL(ma.BUSY) == false,
+               "MoveAbsolute should NOT set BUSY on direction conflict");
+    ASSERT_TRUE(IEC_VAL(ma.ACTIVE) == false,
+               "MoveAbsolute should NOT set ACTIVE on direction conflict");
+
+    printf("  PASS: MoveAbsolute POSITIVE direction rejects backward target\n");
+}
+
+/* DIRECTION=2 (NEGATIVE), targetPos=-100 < currentPos=0 — 方向匹配，应正常启动 */
+static void test_moveabsolute_negative_direction_matching_target_starts(void) {
+    HYD_MOVEABSOLUTE ma;
+    HYD_MotionControlFB* fb;
+
+    __HydMotion_framework_Init();
+    ensure_axes_allocated(1);
+    memset(&ma, 0, sizeof(ma));
+
+    IEC_VAL(ma.EN) = true;
+    IEC_VAL(ma.EXECUTE) = true;
+    ma.EXECUTE0.value = false;
+    IEC_VAL(ma.AXISID) = 0;
+    IEC_VAL(ma.POSITION) = -100.0f;   /* 目标在当前位置后方 */
+    IEC_VAL(ma.VELOCITY) = 5.0f;
+    IEC_VAL(ma.ACCELERATION) = 200.0f;
+    IEC_VAL(ma.DIRECTION) = 2;  /* HYD_Negative_Direction */
+
+    __mcl_cmd_MoveAbsolute(&ma);
+
+    ASSERT_TRUE(IEC_VAL(ma.ERROR) == false,
+               "MoveAbsolute NEGATIVE with backward target should NOT error");
+    ASSERT_TRUE(IEC_VAL(ma.BUSY) == true,
+               "MoveAbsolute NEGATIVE with backward target should set BUSY=true");
+    ASSERT_TRUE(IEC_VAL(ma.ACTIVE) == true,
+               "MoveAbsolute NEGATIVE with backward target should set ACTIVE=true");
+    ASSERT_TRUE(IEC_VAL(ma.COMMANDABORTED) == false,
+               "MoveAbsolute NEGATIVE with backward target should not abort");
+
+    fb = __MK_GetPublic_MotionControlFB(0);
+    ASSERT_TRUE(fb != NULL, "FB should exist after MoveAbsolute NEGATIVE");
+    ASSERT_TRUE(fb->DIRECT_SEGMENT_VALID == true,
+               "DIRECT_SEGMENT_VALID should be true");
+    ASSERT_TRUE(fb->DIRECT_SEGMENT.direction == HYD_DIRECTION_NEGATIVE,
+               "Segment direction should be NEGATIVE(2)");
+    ASSERT_TRUE(fabs(fb->DIRECT_SEGMENT.maxVelocity - 5.0f) < 0.001f,
+               "Velocity should be 5.0 (abs of input)");
+    ASSERT_TRUE(fabs(fb->DIRECT_SEGMENT.maxAcceleration - 200.0f) < 0.001f,
+               "Acceleration should be 200.0");
+
+    printf("  PASS: MoveAbsolute NEGATIVE direction matching target starts (vel=5, accel=200)\n");
+}
+
+/* DIRECTION=2 (NEGATIVE), targetPos=100 > currentPos=0 — 方向冲突，应报 ERROR */
+static void test_moveabsolute_negative_direction_rejects_forward_target(void) {
+    HYD_MOVEABSOLUTE ma;
+
+    __HydMotion_framework_Init();
+    ensure_axes_allocated(1);
+    memset(&ma, 0, sizeof(ma));
+
+    IEC_VAL(ma.EN) = true;
+    IEC_VAL(ma.EXECUTE) = true;
+    ma.EXECUTE0.value = false;
+    IEC_VAL(ma.AXISID) = 0;
+    IEC_VAL(ma.POSITION) = 100.0f;   /* 目标在当前位置前方 — 与负向冲突 */
+    IEC_VAL(ma.VELOCITY) = 5.0f;
+    IEC_VAL(ma.ACCELERATION) = 200.0f;
+    IEC_VAL(ma.DIRECTION) = 2;  /* HYD_Negative_Direction */
+
+    __mcl_cmd_MoveAbsolute(&ma);
+
+    ASSERT_TRUE(IEC_VAL(ma.ERROR) == true,
+               "MoveAbsolute NEGATIVE with forward target should set ERROR");
+    ASSERT_TRUE(IEC_VAL(ma.ERRORID) == HYD_DIAG_CODE_PUMP_DIRECTION_CONFLICT,
+               "ERRORID should be PUMP_DIRECTION_CONFLICT for NEGATIVE + forward target");
+    ASSERT_TRUE(IEC_VAL(ma.BUSY) == false,
+               "MoveAbsolute should NOT set BUSY on direction conflict");
+    ASSERT_TRUE(IEC_VAL(ma.ACTIVE) == false,
+               "MoveAbsolute should NOT set ACTIVE on direction conflict");
+
+    printf("  PASS: MoveAbsolute NEGATIVE direction rejects forward target\n");
+}
+
+/* 越界方向值 (>3) 默认映射为 SHORTEST_WAY 并正常启动 */
+static void test_moveabsolute_out_of_range_direction_defaults_to_shortest_way(void) {
+    HYD_MOVEABSOLUTE ma;
+    HYD_MotionControlFB* fb;
+
+    /* 测试 DIRECTION=4, 5, 99, 255 均映射到 SHORTEST_WAY */
+    int directions[] = {4, 5, 99, 255};
+    int numDirs = sizeof(directions) / sizeof(directions[0]);
+
+    for (int i = 0; i < numDirs; i++) {
+        __HydMotion_framework_Init();
+        ensure_axes_allocated(1);
+        memset(&ma, 0, sizeof(ma));
+
+        IEC_VAL(ma.EN) = true;
+        IEC_VAL(ma.EXECUTE) = true;
+        ma.EXECUTE0.value = false;
+        IEC_VAL(ma.AXISID) = 0;
+        IEC_VAL(ma.POSITION) = 100.0f;
+        IEC_VAL(ma.VELOCITY) = 5.0f;
+        IEC_VAL(ma.ACCELERATION) = 200.0f;
+        IEC_VAL(ma.DIRECTION) = directions[i];
+
+        __mcl_cmd_MoveAbsolute(&ma);
+
+        ASSERT_TRUE(IEC_VAL(ma.ERROR) == false,
+                   "MoveAbsolute out-of-range direction should NOT error");
+        ASSERT_TRUE(IEC_VAL(ma.BUSY) == true,
+                   "MoveAbsolute out-of-range direction should set BUSY=true");
+
+        fb = __MK_GetPublic_MotionControlFB(0);
+        ASSERT_TRUE(fb != NULL, "FB should exist after MoveAbsolute out-of-range dir");
+        ASSERT_TRUE(fb->DIRECT_SEGMENT.direction == HYD_DIRECTION_SHORTEST_WAY,
+                   "Out-of-range direction should default to SHORTEST_WAY(0)");
+    }
+
+    printf("  PASS: MoveAbsolute out-of-range direction values (4,5,99,255) default to SHORTEST_WAY\n");
+}
+
 int main(void) {
     printf("=== Motion Interface Unit Tests ===\n\n");
 
@@ -1483,6 +1751,14 @@ int main(void) {
     test_multiple_axes_operate_independently();
     test_apply_live_update_tolerates_completed_segment();
     test_direction_enum_values_round_trip();
+    test_moveabsolute_shortest_way_direction_accepted();
+    test_moveabsolute_current_direction_accepted();
+    /* 新增: MoveAbsolute 方向参数全覆盖测试 */
+    test_moveabsolute_positive_direction_matching_target_starts();
+    test_moveabsolute_positive_direction_rejects_backward_target();
+    test_moveabsolute_negative_direction_matching_target_starts();
+    test_moveabsolute_negative_direction_rejects_forward_target();
+    test_moveabsolute_out_of_range_direction_defaults_to_shortest_way();
 
     printf("\n=== Results: %d/%d passed ===\n", tests_passed, tests_run);
     return (tests_passed == tests_run) ? 0 : 1;
