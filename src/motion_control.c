@@ -2992,16 +2992,34 @@ HYD_BOOL HYD_MotionControlFB_ApplyLiveUpdate(HYD_MotionControlFB* fb,
             return false;
         }
 
-        /* Position-direction consistency check on direction change.
-         * POSITIVE requires target >= current; NEGATIVE requires target <= current. */
-        if (directionChanged && updated.mode == HYD_MODE_POSITION) {
-            HYD_REAL posTolerance = HYD_Segment_GetPositionTolerance(&updated);
-            if (updated.direction == HYD_DIRECTION_POSITIVE) {
-                if (updated.targetPosition < fb->AXIS_REF.position - posTolerance) {
-                    return false;
+        /* Position-direction consistency check.
+         * POSITIVE requires target >= current; NEGATIVE requires target <= current.
+         * Check whenever target position or direction changes while direction is
+         * forced — a fixed direction combined with an incompatible target is
+         * always an error, regardless of whether the direction value itself
+         * changed.  This mirrors the execRising-path check in
+         * __mcl_cmd_MoveAbsolute. */
+        if (updated.mode == HYD_MODE_POSITION) {
+            HYD_BOOL needsConsistencyCheck = directionChanged ||
+                ((request->flags & HYD_LIVE_UPDATE_TARGET_POSITION) != 0U);
+            if (needsConsistencyCheck &&
+                (updated.direction == HYD_DIRECTION_POSITIVE ||
+                 updated.direction == HYD_DIRECTION_NEGATIVE)) {
+                HYD_REAL posTolerance = HYD_Segment_GetPositionTolerance(&updated);
+                HYD_BOOL conflict = false;
+                if (updated.direction == HYD_DIRECTION_POSITIVE) {
+                    conflict = (updated.targetPosition < fb->AXIS_REF.position - posTolerance);
+                } else {
+                    conflict = (updated.targetPosition > fb->AXIS_REF.position + posTolerance);
                 }
-            } else if (updated.direction == HYD_DIRECTION_NEGATIVE) {
-                if (updated.targetPosition > fb->AXIS_REF.position + posTolerance) {
+                if (conflict) {
+                    fb->ERROR_ID = HYD_DIAG_CODE_PUMP_DIRECTION_CONFLICT;
+                    HYD_StateReporter_ReportDiagnostic(fb,
+                        HYD_DIAG_CODE_PUMP_DIRECTION_CONFLICT,
+                        HYD_DIAG_SEVERITY_WARNING,
+                        fb->AXIS_REF.timestamp,
+                        &updated,
+                        &fb->STATE.references);
                     return false;
                 }
             }
