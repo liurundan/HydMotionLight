@@ -429,6 +429,21 @@ static HYD_BOOL applyMoveVelocityLiveUpdate(HYD_MotionControlFB* fb,
         return true;
     }
 
+    HYD_REAL rawVelocity = __GET_VAR(data__->VELOCITY);
+    HYD_MotionDirection dir = mapPlcOpenDirection(__GET_VAR(data__->DIRECTION));
+
+    /* SHORTEST_WAY: derive direction from Velocity sign — match execRising path */
+    if (dir == HYD_DIRECTION_SHORTEST_WAY) {
+        if (rawVelocity > 0.0f) {
+            dir = HYD_DIRECTION_POSITIVE;
+        } else if (rawVelocity < 0.0f) {
+            dir = HYD_DIRECTION_NEGATIVE;
+        } else {
+            dir = (fb->_lastActiveDirection == HYD_DIRECTION_NEGATIVE)
+                  ? HYD_DIRECTION_NEGATIVE : HYD_DIRECTION_POSITIVE;
+        }
+    }
+
     memset(&request, 0, sizeof(request));
     request.flags = HYD_LIVE_UPDATE_MAX_VELOCITY |
                     HYD_LIVE_UPDATE_ACCELERATION |
@@ -437,10 +452,10 @@ static HYD_BOOL applyMoveVelocityLiveUpdate(HYD_MotionControlFB* fb,
                     HYD_LIVE_UPDATE_DIRECTION;
     request.ownerKind = HYD_DIRECT_CMD_MOVE_VELOCITY;
     request.ownerExecutionId = (uint16_t)execId;
-    request.maxVelocity = __GET_VAR(data__->VELOCITY);
+    request.maxVelocity = (IEC_REAL)fabs((double)rawVelocity);
     request.maxAcceleration = __GET_VAR(data__->ACCELERATION);
     request.maxDeceleration = __GET_VAR(data__->DECELERATION);
-    request.direction = mapPlcOpenDirection(__GET_VAR(data__->DIRECTION));
+    request.direction = dir;
     return HYD_MotionControlFB_ApplyLiveUpdate(fb, &request);
 }
 
