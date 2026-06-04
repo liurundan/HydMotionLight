@@ -2992,6 +2992,12 @@ HYD_BOOL HYD_MotionControlFB_ApplyLiveUpdate(HYD_MotionControlFB* fb,
         }
 
         fb->_activeSegment = updated;
+        /* Keep DIRECT_SEGMENT in sync so Case 2 can correctly detect
+         * whether the target has changed after segment completion.
+         * Without this, DIRECT_SEGMENT retains the pre-update target
+         * and Case 2 would incorrectly think the target changed,
+         * triggering a spurious restart on position feedback drift. */
+        fb->DIRECT_SEGMENT = updated;
         HYD_StateReporter_SetPlannedDirection(fb, fb->_activeSegment.direction);
         HYD_StateReporter_SetSegmentTag(fb, fb->_activeSegment.segmentTag);
         HYD_StateReporter_SetSegmentSource(fb, fb->_activeSegmentSource);
@@ -3017,15 +3023,36 @@ HYD_BOOL HYD_MotionControlFB_ApplyLiveUpdate(HYD_MotionControlFB* fb,
             return false;
         }
 
-        /* If the updated target position is already reached (within tolerance),
-         * the segment would complete immediately on the next Scan, causing a
-         * DONE oscillation loop.  Silently accept the update without re-starting
-         * so the existing DONE state is preserved. */
+        /* PLCopen CONTINUOUSUPDATE guard: restart only when the Position
+         * INPUT has actually changed, not when position feedback drifts.
+         *
+         * Without this guard, post-completion axis drift (inertia, valve
+         * dynamics, feedback noise) that moves AXIS_REF.position outside
+         * the position tolerance triggers a restart on every scan, causing
+         * DONE↔BUSY oscillation.  This is especially severe on reverse-
+         * direction moves where hydraulic forces resist braking.
+         *
+         * Compare the requested target with DIRECT_SEGMENT's current target.
+         * If they match within position tolerance, the user has not moved
+         * the Position input — the segment should stay DONE.
+         */
+        if ((request->flags & HYD_LIVE_UPDATE_TARGET_POSITION) != 0U) {
+            HYD_REAL posTolerance = HYD_Segment_GetPositionTolerance(&updated);
+            HYD_REAL targetDelta = fabs(updated.targetPosition - fb->DIRECT_SEGMENT.targetPosition);
+            if (targetDelta <= posTolerance) {
+                /* Target position input hasn't changed — update
+                 * DIRECT_SEGMENT for reference but do NOT re-start. */
+                fb->DIRECT_SEGMENT = updated;
+                return true;
+            }
+        }
+
+        /* Secondary guard: even if the target changed, if the axis is
+         * already at the new target position, don't restart (would cause
+         * immediate re-completion and DONE oscillation). */
         if ((request->flags & HYD_LIVE_UPDATE_TARGET_POSITION) != 0U) {
             HYD_REAL posTolerance = HYD_Segment_GetPositionTolerance(&updated);
             if (fabs(fb->AXIS_REF.position - updated.targetPosition) <= posTolerance) {
-                /* Target already reached — update DIRECT_SEGMENT for
-                 * reference but do NOT re-start execution. */
                 fb->DIRECT_SEGMENT = updated;
                 return true;
             }

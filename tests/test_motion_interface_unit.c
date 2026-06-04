@@ -1777,8 +1777,9 @@ static void test_moveabsolute_continuous_update_reverse_no_oscillation(void) {
     __mcl_cmd_MoveAbsolute(&ma);
 
     /* --- 等待伸出到 100 完成 --- */
+    /* v=50, a=200 => 梯形 2.25s = 2250 steps; 使用 3000 步确保完成 */
     doneSteps = -1;
-    for (step = 0; step < 2000; step++) {
+    for (step = 0; step < 3000; step++) {
         __HydMotion_framework_Publish();
         ma.EXECUTE0.value = IEC_VAL(ma.EXECUTE);
         __mcl_cmd_MoveAbsolute(&ma);
@@ -1810,7 +1811,7 @@ static void test_moveabsolute_continuous_update_reverse_no_oscillation(void) {
     /* --- 等待缩回到 20 完成, 同时监控状态是否跳变 --- */
     doneSteps = -1;
     oscCount = 0;
-    for (step = 0; step < 4000; step++) {
+    for (step = 0; step < 6000; step++) {
         __HydMotion_framework_Publish();
         ma.EXECUTE0.value = IEC_VAL(ma.EXECUTE);
         __mcl_cmd_MoveAbsolute(&ma);
@@ -1842,7 +1843,7 @@ static void test_moveabsolute_continuous_update_reverse_no_oscillation(void) {
     ASSERT_TRUE(doneSteps >= 0, "MoveAbsolute 100->20 reverse should reach DONE");
 
     finalPosition = fb->AXIS_REF.position;
-    printf("  Reverse 100->20: DONE first at step %d of 4000, final position=%.3f\n",
+    printf("  Reverse 100->20: DONE first at step %d of 6000, final position=%.3f\n",
            doneSteps, (double)finalPosition);
 
     /* 验证位置到达目标 */
@@ -1857,6 +1858,115 @@ static void test_moveabsolute_continuous_update_reverse_no_oscillation(void) {
                "Done/Busy/Active should NOT oscillate repeatedly during reverse move");
 
     printf("  PASS: MoveAbsolute CONTINUOUSUPDATE reverse direction no oscillation\n");
+}
+
+/* Test: Position feedback drift after DONE should NOT trigger restart.
+ *
+ * Simulates the exact oscillation scenario: after a MoveAbsolute completes
+ * to target 20, we artificially shift AXIS_REF.position outside the position
+ * tolerance.  With CONTINUOUSUPDATE=1 and POSITION=20 unchanged, the FB
+ * should stay DONE (no restart), because the target INPUT hasn't changed.
+ */
+static void test_moveabsolute_position_drift_no_restart(void) {
+    HYD_MOVEABSOLUTE ma;
+    HYD_MotionControlFB* fb;
+    int axisId, step, doneSteps;
+
+    printf("--- Test: MoveAbsolute position drift after DONE should not restart ---\n");
+
+    __HydMotion_framework_Init();
+    {
+        HYD_CREATEMOTION cm;
+        memset(&cm, 0, sizeof(cm));
+        IEC_VAL(cm.EN) = true;
+        IEC_VAL(cm.USE_RECIPE) = false;
+        IEC_VAL(cm.FLOW_TO_PUMPSPEED) = 1.0f;
+        IEC_VAL(cm.PUMPSPEED_LIMIT) = 3000.0f;
+        IEC_VAL(cm.USE_SIMULATION) = true;
+        __mcl_cmd_CreateMotion(&cm);
+        axisId = (int)IEC_VAL(cm.AXISID);
+    }
+    ASSERT_TRUE(axisId >= 0, "CreateMotion should succeed for drift test");
+
+    fb = __MK_GetPublic_MotionControlFB(axisId);
+    ASSERT_TRUE(fb != NULL, "FB should exist");
+
+    /* Start MoveAbsolute to target=20 */
+    memset(&ma, 0, sizeof(ma));
+    IEC_VAL(ma.EN) = true;
+    IEC_VAL(ma.AXISID) = axisId;
+    IEC_VAL(ma.POSITION) = 20.0f;
+    IEC_VAL(ma.VELOCITY) = 50.0f;
+    IEC_VAL(ma.ACCELERATION) = 200.0f;
+    IEC_VAL(ma.DECELERATION) = 200.0f;
+    IEC_VAL(ma.DIRECTION) = 0;   /* SHORTEST_WAY */
+    IEC_VAL(ma.CONTINUOUSUPDATE) = true;
+
+    IEC_VAL(ma.EXECUTE) = true;
+    ma.EXECUTE0.value = false;
+    __mcl_cmd_MoveAbsolute(&ma);
+
+    __HydMotion_framework_Publish();
+    ma.EXECUTE0.value = true;
+    __mcl_cmd_MoveAbsolute(&ma);
+
+    /* Wait for DONE */
+    doneSteps = -1;
+    for (step = 0; step < 3000; step++) {
+        __HydMotion_framework_Publish();
+        ma.EXECUTE0.value = IEC_VAL(ma.EXECUTE);
+        __mcl_cmd_MoveAbsolute(&ma);
+        if (IEC_VAL(ma.DONE)) {
+            doneSteps = step;
+            break;
+        }
+    }
+    ASSERT_TRUE(doneSteps >= 0, "MoveAbsolute to 20 should reach DONE");
+    printf("  MoveAbsolute to 20: DONE after %d steps, position=%.4f\n",
+           doneSteps, (double)fb->AXIS_REF.position);
+
+    /* Record DONE state */
+    ASSERT_TRUE(IEC_VAL(ma.DONE) == true, "DONE should be true after completion");
+    ASSERT_TRUE(IEC_VAL(ma.BUSY) == false, "BUSY should be false after completion");
+
+    /* Simulate position feedback drift: shift position 0.5mm outside tolerance.
+     * This mimics real-world axis drift after pump stops. */
+    fb->AXIS_REF.position = 20.5f;  /* 0.5mm away from target, outside 0.1 tolerance */
+
+    /* Run several cycles with POSITION unchanged (still 20) and CONTINUOUSUPDATE=1 */
+    for (step = 0; step < 50; step++) {
+        __HydMotion_framework_Publish();
+        ma.EXECUTE0.value = IEC_VAL(ma.EXECUTE);
+        __mcl_cmd_MoveAbsolute(&ma);
+
+        /* DONE should remain true despite position drift — the target INPUT
+         * hasn't changed, so no restart should be triggered */
+        if (!IEC_VAL(ma.DONE)) {
+            printf("  FAIL at step %d: DONE went false! BUSY=%d ACTIVE=%d pos=%.3f\n",
+                   step, IEC_VAL(ma.BUSY)?1:0, IEC_VAL(ma.ACTIVE)?1:0,
+                   (double)fb->AXIS_REF.position);
+            ASSERT_TRUE(false,
+                       "DONE should remain true when position drifts but POSITION input unchanged");
+            return;
+        }
+    }
+
+    printf("  Position drift (0.5mm outside tol): DONE stayed true for 50 cycles\n");
+
+    /* Now change POSITION input to 30 — this SHOULD trigger a restart */
+    IEC_VAL(ma.POSITION) = 30.0f;
+    __HydMotion_framework_Publish();
+    ma.EXECUTE0.value = IEC_VAL(ma.EXECUTE);
+    __mcl_cmd_MoveAbsolute(&ma);
+
+    printf("  After POSITION changed to 30: BUSY=%d ACTIVE=%d DONE=%d\n",
+           IEC_VAL(ma.BUSY)?1:0, IEC_VAL(ma.ACTIVE)?1:0, IEC_VAL(ma.DONE)?1:0);
+    ASSERT_TRUE(IEC_VAL(ma.BUSY) == true,
+               "BUSY should become true when POSITION input changes to new target");
+    ASSERT_TRUE(IEC_VAL(ma.DONE) == false,
+               "DONE should become false when POSITION input changes to new target");
+
+    printf("  PASS: MoveAbsolute position drift after DONE does not restart\n");
 }
 
 int main(void) {
@@ -1907,6 +2017,7 @@ int main(void) {
     test_moveabsolute_negative_direction_rejects_forward_target();
     test_moveabsolute_out_of_range_direction_defaults_to_shortest_way();
     test_moveabsolute_continuous_update_reverse_no_oscillation();
+    test_moveabsolute_position_drift_no_restart();
 
     printf("\n=== Results: %d/%d passed ===\n", tests_passed, tests_run);
     return (tests_passed == tests_run) ? 0 : 1;
