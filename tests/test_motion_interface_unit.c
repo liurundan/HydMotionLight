@@ -1712,6 +1712,153 @@ static void test_moveabsolute_out_of_range_direction_defaults_to_shortest_way(vo
     printf("  PASS: MoveAbsolute out-of-range direction values (4,5,99,255) default to SHORTEST_WAY\n");
 }
 
+/* ==================================================================
+ * Test: MoveAbsolute CONTINUOUSUPDATE 反向运动到目标点 Done/Busy/Active 稳定性
+ *
+ * 场景:
+ *   1. MoveAbsolute CONTINUOUSUPDATE=1 启动 target=100
+ *   2. 仿真驱动前进到 ~100，DONE/BUSY/ACTIVE 正常
+ *   3. 改变 POSITION=20（反向），CONTINUOUSUPDATE 触发 target 更新
+ *   4. 仿真继续推进到 ~20
+ *   5. 验证 DONE/BUSY/ACTIVE 不会反复跳变
+ * ================================================================== */
+static void test_moveabsolute_continuous_update_reverse_no_oscillation(void) {
+    HYD_MOVEABSOLUTE ma;
+    HYD_MotionControlFB* fb;
+    int axisId, step, doneSteps;
+    int oscCount = 0;
+    HYD_BOOL prevDone = false;
+    HYD_BOOL prevBusy = false;
+    HYD_BOOL prevActive = false;
+    HYD_REAL finalPosition;
+
+    printf("--- Test: MoveAbsolute CONTINUOUSUPDATE reverse direction no oscillation ---\n");
+
+    /* --- 创建仿真轴 --- */
+    __HydMotion_framework_Init();
+    {
+        HYD_CREATEMOTION cm;
+        memset(&cm, 0, sizeof(cm));
+        IEC_VAL(cm.EN) = true;
+        IEC_VAL(cm.USE_RECIPE) = false;
+        IEC_VAL(cm.FLOW_TO_PUMPSPEED) = 1.0f;
+        IEC_VAL(cm.PUMPSPEED_LIMIT) = 3000.0f;
+        IEC_VAL(cm.USE_SIMULATION) = true;
+        __mcl_cmd_CreateMotion(&cm);
+        axisId = (int)IEC_VAL(cm.AXISID);
+    }
+    ASSERT_TRUE(axisId >= 0, "CreateMotion should succeed for reverse-direction test");
+
+    fb = __MK_GetPublic_MotionControlFB(axisId);
+    ASSERT_TRUE(fb != NULL, "FB should exist");
+
+    /* --- 第一阶段: MoveAbsolute target=100 (正向), CONTINUOUSUPDATE=1 --- */
+    memset(&ma, 0, sizeof(ma));
+    IEC_VAL(ma.EN) = true;
+    IEC_VAL(ma.AXISID) = axisId;
+    IEC_VAL(ma.POSITION) = 100.0f;
+    IEC_VAL(ma.VELOCITY) = 50.0f;
+    IEC_VAL(ma.ACCELERATION) = 200.0f;
+    IEC_VAL(ma.DECELERATION) = 200.0f;
+    IEC_VAL(ma.DIRECTION) = 0;   /* SHORTEST_WAY */
+    IEC_VAL(ma.CONTINUOUSUPDATE) = true;
+
+    /* EXECUTE 上升沿 */
+    IEC_VAL(ma.EXECUTE) = true;
+    ma.EXECUTE0.value = false;
+    __mcl_cmd_MoveAbsolute(&ma);
+    ASSERT_TRUE(IEC_VAL(ma.BUSY) == true, "First EXECUTE: BUSY should be true");
+    ASSERT_TRUE(IEC_VAL(ma.ACTIVE) == true, "First EXECUTE: ACTIVE should be true");
+    ASSERT_TRUE(IEC_VAL(ma.DONE) == false, "First EXECUTE: DONE should be false");
+
+    /* 第二个周期: 获取 _EXEC_ID ownership */
+    __HydMotion_framework_Publish();
+    ma.EXECUTE0.value = true;
+    __mcl_cmd_MoveAbsolute(&ma);
+
+    /* --- 等待伸出到 100 完成 --- */
+    doneSteps = -1;
+    for (step = 0; step < 2000; step++) {
+        __HydMotion_framework_Publish();
+        ma.EXECUTE0.value = IEC_VAL(ma.EXECUTE);
+        __mcl_cmd_MoveAbsolute(&ma);
+
+        if (IEC_VAL(ma.DONE)) {
+            doneSteps = step;
+            break;
+        }
+    }
+    ASSERT_TRUE(doneSteps >= 0, "MoveAbsolute 0->100 should reach DONE");
+    printf("  Forward 0->100: DONE after %d steps, position=%.3f\n",
+           doneSteps, (double)fb->AXIS_REF.position);
+
+    /* --- 第二阶段: 修改 POSITION=20 (反向), CONTINUOUSUPDATE 触发 restart --- */
+    /* 注意: 不拉低 EXECUTE, 不创建新 FB, 仅更改 POSITION 输入 */
+    IEC_VAL(ma.POSITION) = 20.0f;
+
+    /* 第一周期: POSITION=20 被 applyMoveAbsoluteLiveUpdate 看到 */
+    __HydMotion_framework_Publish();
+    ma.EXECUTE0.value = IEC_VAL(ma.EXECUTE);
+    __mcl_cmd_MoveAbsolute(&ma);
+
+    /* 此时 CONTINUOUSUPDATE 应触发 restart, FB_STATE 从 DONE -> STARTING */
+    printf("  After reverse target=20: BUSY=%d ACTIVE=%d DONE=%d\n",
+           IEC_VAL(ma.BUSY) ? 1 : 0,
+           IEC_VAL(ma.ACTIVE) ? 1 : 0,
+           IEC_VAL(ma.DONE) ? 1 : 0);
+
+    /* --- 等待缩回到 20 完成, 同时监控状态是否跳变 --- */
+    doneSteps = -1;
+    oscCount = 0;
+    for (step = 0; step < 4000; step++) {
+        __HydMotion_framework_Publish();
+        ma.EXECUTE0.value = IEC_VAL(ma.EXECUTE);
+        __mcl_cmd_MoveAbsolute(&ma);
+
+        /* 检测状态跳变: 记录从 BUSY->!BUSY 或 DONE->!DONE 的次数 */
+        if (step > 0) {
+            HYD_BOOL curDone = IEC_VAL(ma.DONE);
+            HYD_BOOL curBusy = IEC_VAL(ma.BUSY);
+            HYD_BOOL curActive = IEC_VAL(ma.ACTIVE);
+
+            if (curDone != prevDone) oscCount++;
+            if (curBusy != prevBusy) oscCount++;
+            if (curActive != prevActive) oscCount++;
+
+            prevDone = curDone;
+            prevBusy = curBusy;
+            prevActive = curActive;
+        } else {
+            prevDone = IEC_VAL(ma.DONE);
+            prevBusy = IEC_VAL(ma.BUSY);
+            prevActive = IEC_VAL(ma.ACTIVE);
+        }
+
+        if (IEC_VAL(ma.DONE) && doneSteps < 0) {
+            doneSteps = step;
+            /* 注意: 到达 DONE 后仍需多运行几步检查稳定性 */
+        }
+    }
+    ASSERT_TRUE(doneSteps >= 0, "MoveAbsolute 100->20 reverse should reach DONE");
+
+    finalPosition = fb->AXIS_REF.position;
+    printf("  Reverse 100->20: DONE first at step %d of 4000, final position=%.3f\n",
+           doneSteps, (double)finalPosition);
+
+    /* 验证位置到达目标 */
+    ASSERT_TRUE(fabs((double)finalPosition - 20.0) < 1.0,
+               "Position should be near 20 after completion");
+
+    /* 正常状态机应有: BUSY(上升沿)→BUSY(执行中)→过渡到DONE(完成)
+     * 期望的状态变化: 上升沿触发 1 次 + PENDING→激活 1 次 + DONE 1 次 = 约 3-4 次
+     * 如果 oscCount 过大, 说明存在反复跳变 */
+    printf("  State signal transitions (reverse phase): %d\n", oscCount);
+    ASSERT_TRUE(oscCount < 12,
+               "Done/Busy/Active should NOT oscillate repeatedly during reverse move");
+
+    printf("  PASS: MoveAbsolute CONTINUOUSUPDATE reverse direction no oscillation\n");
+}
+
 int main(void) {
     printf("=== Motion Interface Unit Tests ===\n\n");
 
@@ -1759,6 +1906,7 @@ int main(void) {
     test_moveabsolute_negative_direction_matching_target_starts();
     test_moveabsolute_negative_direction_rejects_forward_target();
     test_moveabsolute_out_of_range_direction_defaults_to_shortest_way();
+    test_moveabsolute_continuous_update_reverse_no_oscillation();
 
     printf("\n=== Results: %d/%d passed ===\n", tests_passed, tests_run);
     return (tests_passed == tests_run) ? 0 : 1;
