@@ -56,11 +56,17 @@ typedef enum {
 } HYD_EndConditionType;
 
 typedef enum {
-    HYD_DIRECTION_AUTO,
-    HYD_DIRECTION_EXTEND,
-    HYD_DIRECTION_RETRACT,
-    HYD_DIRECTION_HOLD
+    HYD_DIRECTION_SHORTEST_WAY   = 0,  /* 自动最短路径 */
+    HYD_DIRECTION_POSITIVE       = 1,  /* 强制正向 (EXTEND) */
+    HYD_DIRECTION_NEGATIVE       = 2,  /* 强制负向 (RETRACT) */
+    HYD_DIRECTION_CURRENT        = 3,  /* 保持当前方向 */
+    HYD_DIRECTION_HOLD           = 4   /* 无运动（保压专用） */
 } HYD_MotionDirection;
+
+/* 向后兼容别名 */
+#define HYD_DIRECTION_AUTO    HYD_DIRECTION_SHORTEST_WAY
+#define HYD_DIRECTION_EXTEND  HYD_DIRECTION_POSITIVE
+#define HYD_DIRECTION_RETRACT HYD_DIRECTION_NEGATIVE
 
 typedef enum {
     HYD_SEGMENT_SOURCE_NONE,
