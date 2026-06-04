@@ -190,7 +190,9 @@ typedef enum {
     HYD_LIVE_UPDATE_ACCELERATION = 1U << 2,
     HYD_LIVE_UPDATE_DECELERATION = 1U << 3,
     HYD_LIVE_UPDATE_TARGET_PRESSURE = 1U << 4,
-    HYD_LIVE_UPDATE_PRESSURE_RAMP_RATE = 1U << 5
+    HYD_LIVE_UPDATE_PRESSURE_RAMP_RATE = 1U << 5,
+    HYD_LIVE_UPDATE_CONTINUOUS_UPDATE  = 1U << 6,
+    HYD_LIVE_UPDATE_DIRECTION          = 1U << 7
 } HYD_LiveUpdateFlags;
 
 typedef struct {
@@ -203,6 +205,7 @@ typedef struct {
     HYD_REAL maxDeceleration;
     HYD_REAL targetPressure;
     HYD_REAL pressureRampRate;
+    HYD_MotionDirection direction;
 } HYD_LiveUpdateRequest;
 
 typedef struct {
