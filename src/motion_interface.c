@@ -379,11 +379,9 @@ static HYD_BOOL validateSupportedBufferMode(IEC_INT bufferMode, IEC_WORD* errorI
     return false;
 }
 
-static HYD_BOOL validateUnsupportedMotionOptions(IEC_BOOL continuousUpdate,
-                                                 IEC_REAL jerk,
+static HYD_BOOL validateUnsupportedMotionOptions(IEC_REAL jerk,
                                                  IEC_WORD* errorId)
 {
-    (void)continuousUpdate;
     if (fabs((double)jerk) <= 1e-6) {
         return true;
     }
@@ -1060,8 +1058,7 @@ void __mcl_cmd_MoveAbsolute(HYD_MOVEABSOLUTE *data__)
     {
         IEC_WORD errorId = 0;
         if (!validateSupportedBufferMode(bufferMode, &errorId) ||
-            !validateUnsupportedMotionOptions(__GET_VAR(data__->CONTINUOUSUPDATE),
-                                              __GET_VAR(data__->JERK),
+            !validateUnsupportedMotionOptions(__GET_VAR(data__->JERK),
                                               &errorId)) {
             __SET_VAR(data__->, ERROR, , true);
             __SET_VAR(data__->, ERRORID, , errorId);
@@ -1249,8 +1246,7 @@ void __mcl_cmd_MoveVelocity(HYD_MOVEVELOCITY *data__)
     {
         IEC_WORD errorId = 0;
         if (!validateSupportedBufferMode(bufferMode, &errorId) ||
-            !validateUnsupportedMotionOptions(__GET_VAR(data__->CONTINUOUSUPDATE),
-                                              __GET_VAR(data__->JERK),
+            !validateUnsupportedMotionOptions(__GET_VAR(data__->JERK),
                                               &errorId)) {
             __SET_VAR(data__->, ERROR, , true);
             __SET_VAR(data__->, ERRORID, , errorId);
