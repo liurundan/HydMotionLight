@@ -832,6 +832,16 @@ static HYD_BOOL HYD_BeginSegment(HYD_MotionControlFB* fb,
     HYD_StateReporter_SetStatus(fb, HYD_STATUS_RUNNING);
     HYD_StateReporter_SetPlannedDirection(fb, fb->_activeSegment.direction);
     HYD_StateReporter_SetFbState(fb, HYD_FB_STATE_STARTING);
+
+    /* 更新轴方向记忆（用于 CURRENT 方向解析） */
+    if (fb->_activeSegment.direction != HYD_DIRECTION_HOLD) {
+        HYD_MotionDirection resolved = HYD_Segment_ResolveDirection(
+            &fb->_activeSegment, &fb->AXIS_REF, fb->_lastActiveDirection);
+        if (resolved == HYD_DIRECTION_POSITIVE || resolved == HYD_DIRECTION_NEGATIVE) {
+            fb->_lastActiveDirection = resolved;
+        }
+    }
+
     fb->_executionId++;
     if (resolvedSource == HYD_SEGMENT_SOURCE_DIRECT) {
         fb->_directOwnerKind = HYD_InferDirectCommandKindFromSegment(sourceSegment);
