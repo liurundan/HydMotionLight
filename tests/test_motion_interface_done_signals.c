@@ -1460,6 +1460,112 @@ static void test_moveabsolute_continuousupdate_position_change(void) {
     }
 }
 
+/* ==================================================================
+ * Test 17: MoveAbsolute CONTINUOUSUPDATE direction flip full cycle
+ *
+ * 验证: DONE后通过CONTINUOUSUPDATE修改DIRECTION和POSITION，
+ *       段以新方向重新激活，完整执行到新目标位置
+ *
+ * 流程:
+ *   1. MoveAbsolute position=100, DIRECTION=Positive, CONTINUOUSUPDATE=true
+ *   2. 仿真直到DONE (到达100)
+ *   3. 修改DIRECTION=Negative, POSITION=50 (方向翻转，目标<当前)
+ *   4. 验证DONE=false, BUSY=true (段重启)
+ *   5. 仿真直到DONE (到达50)
+ * ================================================================== */
+static void test_moveabsolute_continuousupdate_direction_flip_cycle(void) {
+    HYD_MOVEABSOLUTE ma;
+    int axisId, step;
+
+    printf("--- Test: MoveAbsolute direction flip full cycle ---\n");
+
+    __HydMotion_framework_Init();
+    axisId = create_sim_axis(false);
+    ASSERT_TRUE(axisId >= 0, "CreateMotion should succeed for direction flip test");
+
+    /* Phase 1: Move to position 100, DIRECTION=Positive */
+    memset(&ma, 0, sizeof(ma));
+    IEC_VAL(ma.EN) = true;
+    IEC_VAL(ma.EXECUTE) = true;
+    ma.EXECUTE0.value = false;
+    IEC_VAL(ma.AXISID) = axisId;
+    IEC_VAL(ma.POSITION) = 100.0f;
+    IEC_VAL(ma.VELOCITY) = 50.0f;
+    IEC_VAL(ma.ACCELERATION) = 200.0f;
+    IEC_VAL(ma.DECELERATION) = 200.0f;
+    IEC_VAL(ma.DIRECTION) = 1;  /* Positive */
+    IEC_VAL(ma.CONTINUOUSUPDATE) = true;
+
+    __mcl_cmd_MoveAbsolute(&ma);
+    __HydMotion_framework_Publish();
+
+    ASSERT_TRUE(IEC_VAL(ma.ERROR) == false,
+               "MoveAbsolute initial execute should not error");
+    ASSERT_TRUE(IEC_VAL(ma.BUSY) == true,
+               "Should be BUSY after execute");
+
+    /* Run until reaching position 100 */
+    for (step = 0; step < MAX_SIM_STEPS; step++) {
+        __HydMotion_framework_Publish();
+        IEC_VAL(ma.EXECUTE) = true;
+        ma.EXECUTE0.value = true;
+        IEC_VAL(ma.POSITION) = 100.0f;
+        IEC_VAL(ma.DIRECTION) = 1;
+        IEC_VAL(ma.CONTINUOUSUPDATE) = true;
+        __mcl_cmd_MoveAbsolute(&ma);
+
+        if (IEC_VAL(ma.DONE)) {
+            break;
+        }
+    }
+    ASSERT_TRUE(step < MAX_SIM_STEPS,
+               "Should reach DONE (position 100) within max steps");
+    ASSERT_TRUE(IEC_VAL(ma.DONE) == true,
+               "DONE should be true after reaching position 100");
+    printf("  Phase 1 DONE after %d steps\n", step);
+
+    /* Phase 2: Flip direction to Negative, target position 50.
+     * target 50 < current ~100, consistent with NEGATIVE direction. */
+    IEC_VAL(ma.POSITION) = 50.0f;
+    IEC_VAL(ma.DIRECTION) = 2;  /* Negative */
+    IEC_VAL(ma.EXECUTE) = true;
+    ma.EXECUTE0.value = true;
+    IEC_VAL(ma.CONTINUOUSUPDATE) = true;
+    __mcl_cmd_MoveAbsolute(&ma);
+
+    /* Direction flip via live update should restart the segment */
+    ASSERT_TRUE(IEC_VAL(ma.DONE) == false,
+               "DONE should be false after direction flip");
+    ASSERT_TRUE(IEC_VAL(ma.BUSY) == true,
+               "BUSY should be true after direction flip restart");
+
+    /* Verify the active segment now has NEGATIVE direction */
+    HYD_MotionControlFB* fb = __MK_GetPublic_MotionControlFB(axisId);
+    ASSERT_TRUE(fb != NULL, "Should resolve FB for direction check");
+    ASSERT_TRUE(fb->_activeSegment.direction == HYD_DIRECTION_NEGATIVE,
+               "Active segment direction should be NEGATIVE after flip");
+
+    /* Run until reaching position 50 */
+    for (step = 0; step < MAX_SIM_STEPS; step++) {
+        __HydMotion_framework_Publish();
+        IEC_VAL(ma.EXECUTE) = true;
+        ma.EXECUTE0.value = true;
+        IEC_VAL(ma.POSITION) = 50.0f;
+        IEC_VAL(ma.DIRECTION) = 2;
+        IEC_VAL(ma.CONTINUOUSUPDATE) = true;
+        __mcl_cmd_MoveAbsolute(&ma);
+
+        if (IEC_VAL(ma.DONE)) {
+            break;
+        }
+    }
+    ASSERT_TRUE(step < MAX_SIM_STEPS,
+               "Should reach DONE (position 50) within max steps after direction flip");
+    ASSERT_TRUE(IEC_VAL(ma.DONE) == true,
+               "DONE should be true after reaching position 50");
+    printf("  Phase 2 DONE (position 50) after %d steps\n", step);
+}
+
 int main(void) {
     printf("=== Motion Interface Done Signal Simulation Tests ===\n\n");
 
@@ -1480,6 +1586,7 @@ int main(void) {
     test_moveabsolute_retract_done_velocity_zero();
     test_moveabsolute_stop_velocity_zero();
     test_moveabsolute_continuousupdate_position_change();
+    test_moveabsolute_continuousupdate_direction_flip_cycle();
 
     printf("\n=== Results: %d/%d passed ===\n", tests_passed, tests_run);
     return (tests_passed == tests_run) ? 0 : 1;
