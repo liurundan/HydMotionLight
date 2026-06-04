@@ -263,6 +263,8 @@ typedef struct {
     HYD_BOOL _segmentChangedFlag;
     HYD_REAL _lastCommandedFlow;
     HYD_TIME _lastFeedbackTimestamp;
+    /* --- Direction memory for HYD_DIRECTION_CURRENT --- */
+    HYD_MotionDirection _lastActiveDirection;  /* 上一次非HOLD的实际运动方向，静止轴初始化POSITIVE */
     HYD_BOOL _startSegmentSignalPrev;
     HYD_MotionSegment _activeSegment;
     HYD_BOOL _activeSegmentValid;

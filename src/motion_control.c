@@ -2306,6 +2306,7 @@ void HYD_MotionControlFB_Init(HYD_MotionControlFB* fb) {
 
     memset(fb, 0, sizeof(*fb));
     fb->_lastFeedbackTimestamp = -1.0;  /* sentinel: not yet valid */
+    fb->_lastActiveDirection = HYD_DIRECTION_POSITIVE;  /* 静止轴默认正向 */
     fb->USE_RECIPE = false;
     fb->FB_STATE = HYD_FB_STATE_IDLE;
     fb->STATE.currentSegmentIndex = HYD_MAX_SEGMENTS;
@@ -2416,6 +2417,7 @@ void HYD_MotionControlFB_SoftReset(HYD_MotionControlFB* fb) {
     HYD_DiagnosticCriteria savedFlowCriteria;
     HYD_DiagnosticCriteria savedVelocityCriteria;
     HYD_DiagnosticCriteria savedPositionCriteria;
+    HYD_MotionDirection savedLastActiveDirection;
 
     if (fb == NULL) {
         return;
@@ -2436,10 +2438,12 @@ void HYD_MotionControlFB_SoftReset(HYD_MotionControlFB* fb) {
     savedFlowCriteria = fb->_flowCriteria;
     savedVelocityCriteria = fb->_velocityCriteria;
     savedPositionCriteria = fb->_positionCriteria;
+    savedLastActiveDirection = fb->_lastActiveDirection;
 
     /* 2. Full memset to clear all runtime state cleanly */
     (void)memset(fb, 0, sizeof(*fb));
     fb->_lastFeedbackTimestamp = -1.0;  /* sentinel: not yet valid */
+    fb->_lastActiveDirection = savedLastActiveDirection;  /* 保留方向记忆 */
 
     /* 3. Restore persistent configuration */
     (void)memcpy(fb->RECIPE, savedRecipe, sizeof(fb->RECIPE));
