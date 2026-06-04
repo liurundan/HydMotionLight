@@ -1969,6 +1969,283 @@ static void test_moveabsolute_position_drift_no_restart(void) {
     printf("  PASS: MoveAbsolute position drift after DONE does not restart\n");
 }
 
+/* Test: LiveUpdate request carries CONTINUOUS_UPDATE and DIRECTION flags
+ * and successfully updates direction on an active POSITION segment. */
+static void test_live_update_request_carries_flags_and_direction(void) {
+    HYD_MotionControlFB fb;
+    HYD_LiveUpdateRequest req;
+    HYD_MotionSegment segment;
+    HYD_BOOL result;
+
+    printf("--- Test: LiveUpdate request carries CONTINUOUS_UPDATE and DIRECTION ---\n");
+
+    memset(&fb, 0, sizeof(fb));
+    fb.USE_RECIPE = false;
+    fb.FB_STATE = HYD_FB_STATE_IDLE;
+
+    /* Set up an active POSITION segment with POSITIVE direction */
+    memset(&segment, 0, sizeof(segment));
+    segment.mode = HYD_MODE_POSITION;
+    segment.endCondition = HYD_END_POSITION;
+    segment.targetPosition = 200.0;
+    segment.maxVelocity = 50.0;
+    segment.maxAcceleration = 100.0;
+    segment.maxDeceleration = 100.0;
+    segment.maxFlow = 50.0;
+    segment.velocityToFlowGain = 1.0;
+    segment.direction = HYD_DIRECTION_POSITIVE;
+
+    fb._activeSegment = segment;
+    fb._activeSegmentValid = true;
+    fb._activeSegmentSource = HYD_SEGMENT_SOURCE_DIRECT;
+    fb.STATE.active = true;
+    fb._directOwnerKind = HYD_DIRECT_CMD_MOVE_ABSOLUTE;
+    fb._directOwnerExecutionId = 42;
+    fb._executionId = 42;
+    fb.AXIS_REF.timestamp = 1.0;
+    fb.AXIS_REF.position = 100.0;
+    fb.DIRECT_SEGMENT = segment;
+    fb.DIRECT_SEGMENT_VALID = true;
+
+    /* Apply live update with CONTINUOUS_UPDATE + DIRECTION flip to NEGATIVE */
+    memset(&req, 0, sizeof(req));
+    req.flags = HYD_LIVE_UPDATE_TARGET_POSITION |
+                HYD_LIVE_UPDATE_MAX_VELOCITY |
+                HYD_LIVE_UPDATE_CONTINUOUS_UPDATE |
+                HYD_LIVE_UPDATE_DIRECTION;
+    req.ownerKind = HYD_DIRECT_CMD_MOVE_ABSOLUTE;
+    req.ownerExecutionId = 42;
+    req.targetPosition = 50.0;  /* Valid: target < current for NEGATIVE */
+    req.maxVelocity = 30.0;
+    req.direction = HYD_DIRECTION_NEGATIVE;
+
+    result = HYD_MotionControlFB_ApplyLiveUpdate(&fb, &req);
+    ASSERT_TRUE(result, "LiveUpdate with CONTINUOUS_UPDATE + DIRECTION should succeed on active segment");
+    ASSERT_TRUE(fb._activeSegment.direction == HYD_DIRECTION_NEGATIVE,
+        "Direction should be updated to NEGATIVE");
+    ASSERT_TRUE(fabs(fb._activeSegment.targetPosition - 50.0) < 0.001,
+        "targetPosition should be updated");
+
+    printf("  PASS: LiveUpdate request carries CONTINUOUS_UPDATE and DIRECTION\n");
+}
+
+/* Test: CONTINUOUS_UPDATE flag suppresses diagnostic output in Case 3
+ * (unauthorized owner / no active segment). Without CONTINUOUS_UPDATE,
+ * Case 3 would write a COMMAND_NOT_ALLOWED diagnostic. */
+static void test_live_update_continuous_suppresses_diagnostic(void) {
+    HYD_MotionControlFB fb;
+
+    printf("--- Test: CONTINUOUS_UPDATE suppresses diagnostic in Case 3 ---\n");
+
+    memset(&fb, 0, sizeof(fb));
+    HYD_MotionControlFB_Init(&fb);
+    fb.FB_STATE = HYD_FB_STATE_IDLE;
+
+    /* No active segment, no ownership — this is Case 3 */
+    HYD_LiveUpdateRequest req;
+    memset(&req, 0, sizeof(req));
+    req.flags = HYD_LIVE_UPDATE_TARGET_POSITION |
+                HYD_LIVE_UPDATE_CONTINUOUS_UPDATE;
+    req.ownerKind = HYD_DIRECT_CMD_MOVE_ABSOLUTE;
+    req.ownerExecutionId = 99;  /* Mismatch with fb._executionId (0) */
+    req.targetPosition = 100.0;
+
+    /* Save pre-call diagnostic state */
+    HYD_DiagnosticCode preCode = fb.DIAGNOSTIC.code;
+
+    HYD_BOOL result = HYD_MotionControlFB_ApplyLiveUpdate(&fb, &req);
+    ASSERT_TRUE(!result, "Should return false in Case 3");
+
+    /* CONTINUOUS_UPDATE should suppress diagnostic — code unchanged */
+    ASSERT_TRUE(fb.DIAGNOSTIC.code == preCode,
+        "Diagnostic should NOT be written when CONTINUOUS_UPDATE is set");
+
+    printf("  PASS: CONTINUOUS_UPDATE suppresses diagnostic in Case 3\n");
+}
+
+/* Test: MoveVelocity (SPEED_RAMP mode) direction flip succeeds.
+ * Verifies that flipping from POSITIVE to NEGATIVE is accepted
+ * on a SPEED_RAMP segment. */
+static void test_movevelocity_live_update_direction_flip(void) {
+    HYD_MotionControlFB fb;
+    HYD_MotionSegment segment;
+    HYD_LiveUpdateRequest req;
+
+    printf("--- Test: MoveVelocity LiveUpdate direction flip ---\n");
+
+    memset(&fb, 0, sizeof(fb));
+    fb.USE_RECIPE = false;
+    fb.FB_STATE = HYD_FB_STATE_IDLE;
+
+    /* Configure cylinder with different EXTEND/RETRACT areas */
+    fb.cylinderConfig.areaExtendMm2 = 10000.0;
+    fb.cylinderConfig.areaRetractMm2 = 6000.0;
+
+    /* Set up an active SPEED_RAMP segment with POSITIVE direction */
+    memset(&segment, 0, sizeof(segment));
+    segment.mode = HYD_MODE_SPEED_RAMP;
+    segment.endCondition = HYD_END_MANUAL;
+    segment.planner = HYD_PLANNER_TIME_BASED;
+    segment.maxVelocity = 20.0;
+    segment.maxAcceleration = 50.0;
+    segment.maxDeceleration = 50.0;
+    segment.maxFlow = 50.0;
+    segment.velocityToFlowGain = 1.0;
+    segment.direction = HYD_DIRECTION_POSITIVE;
+
+    fb._activeSegment = segment;
+    fb._activeSegmentValid = true;
+    fb._activeSegmentSource = HYD_SEGMENT_SOURCE_DIRECT;
+    fb.STATE.active = true;
+    fb._directOwnerKind = HYD_DIRECT_CMD_MOVE_VELOCITY;
+    fb._directOwnerExecutionId = 10;
+    fb._executionId = 10;
+    fb.AXIS_REF.timestamp = 1.0;
+    fb.AXIS_REF.position = 0.0;
+    fb.AXIS_REF.flow = 0.0;
+    fb.AXIS_REF.pressure = 0.0;
+    fb.DIRECT_SEGMENT = segment;
+    fb.DIRECT_SEGMENT_VALID = true;
+
+    /* Flip direction to RETRACT via live update.
+     * Since velocityToFlowGain is > 0, the recalculation condition
+     * (gain <= 0) won't fire, but the direction should still flip
+     * and planner should be re-primed. */
+    memset(&req, 0, sizeof(req));
+    req.flags = HYD_LIVE_UPDATE_MAX_VELOCITY |
+                HYD_LIVE_UPDATE_CONTINUOUS_UPDATE |
+                HYD_LIVE_UPDATE_DIRECTION;
+    req.ownerKind = HYD_DIRECT_CMD_MOVE_VELOCITY;
+    req.ownerExecutionId = 10;
+    req.maxVelocity = 20.0;
+    req.direction = HYD_DIRECTION_NEGATIVE;
+
+    ASSERT_TRUE(HYD_MotionControlFB_ApplyLiveUpdate(&fb, &req),
+        "Direction flip on SPEED_RAMP should succeed");
+
+    ASSERT_TRUE(fb._activeSegment.direction == HYD_DIRECTION_NEGATIVE,
+        "Direction should be NEGATIVE after flip");
+
+    /* velocityToFlowGain may or may not change depending on whether
+     * the recalculation condition fires (gain <= 0). The key assertion
+     * is that direction was flipped and the request was accepted. */
+
+    printf("  PASS: MoveVelocity LiveUpdate direction flip\n");
+}
+
+/* Test: MoveAbsolute (POSITION mode) direction flip is rejected when
+ * target is inconsistent with the requested direction.
+ * NEGATIVE direction requires target <= current, but target 200 > current 100. */
+static void test_moveabsolute_live_update_direction_rejected(void) {
+    HYD_MotionControlFB fb;
+    HYD_MotionSegment segment;
+    HYD_LiveUpdateRequest req;
+
+    printf("--- Test: MoveAbsolute LiveUpdate direction rejected on consistency ---\n");
+
+    memset(&fb, 0, sizeof(fb));
+    fb.USE_RECIPE = false;
+    fb.FB_STATE = HYD_FB_STATE_IDLE;
+
+    /* Set up an active POSITION segment at position 100, moving forward to 200 */
+    memset(&segment, 0, sizeof(segment));
+    segment.mode = HYD_MODE_POSITION;
+    segment.endCondition = HYD_END_POSITION;
+    segment.targetPosition = 200.0;
+    segment.maxVelocity = 20.0;
+    segment.maxAcceleration = 50.0;
+    segment.maxDeceleration = 50.0;
+    segment.maxFlow = 50.0;
+    segment.velocityToFlowGain = 1.0;
+    segment.direction = HYD_DIRECTION_POSITIVE;
+    segment.positionTolerance = 0.5;
+
+    fb._activeSegment = segment;
+    fb._activeSegmentValid = true;
+    fb._activeSegmentSource = HYD_SEGMENT_SOURCE_DIRECT;
+    fb.STATE.active = true;
+    fb._directOwnerKind = HYD_DIRECT_CMD_MOVE_ABSOLUTE;
+    fb._directOwnerExecutionId = 42;
+    fb._executionId = 42;
+    fb.AXIS_REF.timestamp = 1.0;
+    fb.AXIS_REF.position = 100.0;
+    fb.DIRECT_SEGMENT = segment;
+    fb.DIRECT_SEGMENT_VALID = true;
+
+    /* Try to flip to NEGATIVE direction — but target 200 is ahead of current 100.
+     * NEGATIVE requires target <= current, so this should be rejected. */
+    memset(&req, 0, sizeof(req));
+    req.flags = HYD_LIVE_UPDATE_TARGET_POSITION |
+                HYD_LIVE_UPDATE_CONTINUOUS_UPDATE |
+                HYD_LIVE_UPDATE_DIRECTION;
+    req.ownerKind = HYD_DIRECT_CMD_MOVE_ABSOLUTE;
+    req.ownerExecutionId = 42;
+    req.targetPosition = 200.0;
+    req.direction = HYD_DIRECTION_NEGATIVE;
+
+    HYD_BOOL result = HYD_MotionControlFB_ApplyLiveUpdate(&fb, &req);
+    ASSERT_TRUE(!result,
+        "Direction flip NEGATIVE with target > current should be rejected");
+
+    ASSERT_TRUE(fb._activeSegment.direction == HYD_DIRECTION_POSITIVE,
+        "Direction should remain POSITIVE after rejected update");
+
+    printf("  PASS: MoveAbsolute LiveUpdate direction consistency rejection\n");
+}
+
+/* Test: PressureHandle (PRESSURE_CLOSED_LOOP mode) rejects DIRECTION update.
+ * DIRECTION is only meaningful for POSITION and SPEED_RAMP modes. */
+static void test_pressurehandle_live_update_direction_rejected(void) {
+    HYD_MotionControlFB fb;
+    HYD_MotionSegment segment;
+    HYD_LiveUpdateRequest req;
+
+    printf("--- Test: PressureHandle LiveUpdate DIRECTION rejected ---\n");
+
+    memset(&fb, 0, sizeof(fb));
+    fb.USE_RECIPE = false;
+    fb.FB_STATE = HYD_FB_STATE_IDLE;
+
+    /* Set up an active PRESSURE_CLOSED_LOOP segment */
+    memset(&segment, 0, sizeof(segment));
+    segment.mode = HYD_MODE_PRESSURE_CLOSED_LOOP;
+    segment.endCondition = HYD_END_PRESSURE;
+    segment.targetPressure = 50.0;
+    segment.pressureRampRate = 10.0;
+    segment.maxVelocity = 20.0;
+    segment.maxAcceleration = 50.0;
+    segment.maxDeceleration = 50.0;
+    segment.maxFlow = 50.0;
+    segment.velocityToFlowGain = 1.0;
+
+    fb._activeSegment = segment;
+    fb._activeSegmentValid = true;
+    fb._activeSegmentSource = HYD_SEGMENT_SOURCE_DIRECT;
+    fb.STATE.active = true;
+    fb._directOwnerKind = HYD_DIRECT_CMD_PRESSURE_HANDLE;
+    fb._directOwnerExecutionId = 77;
+    fb._executionId = 77;
+    fb.AXIS_REF.timestamp = 1.0;
+    fb.AXIS_REF.position = 0.0;
+    fb.DIRECT_SEGMENT = segment;
+    fb.DIRECT_SEGMENT_VALID = true;
+
+    /* Try DIRECTION update — should be rejected by HYD_ApplyLiveUpdateOverrides */
+    memset(&req, 0, sizeof(req));
+    req.flags = HYD_LIVE_UPDATE_TARGET_PRESSURE |
+                HYD_LIVE_UPDATE_DIRECTION;
+    req.ownerKind = HYD_DIRECT_CMD_PRESSURE_HANDLE;
+    req.ownerExecutionId = 77;
+    req.targetPressure = 60.0;
+    req.direction = HYD_DIRECTION_POSITIVE;
+
+    HYD_BOOL result = HYD_MotionControlFB_ApplyLiveUpdate(&fb, &req);
+    ASSERT_TRUE(!result,
+        "DIRECTION update on PRESSURE_CLOSED_LOOP should be rejected");
+
+    printf("  PASS: PressureHandle LiveUpdate DIRECTION rejected\n");
+}
+
 int main(void) {
     printf("=== Motion Interface Unit Tests ===\n\n");
 
@@ -2018,6 +2295,11 @@ int main(void) {
     test_moveabsolute_out_of_range_direction_defaults_to_shortest_way();
     test_moveabsolute_continuous_update_reverse_no_oscillation();
     test_moveabsolute_position_drift_no_restart();
+    test_live_update_request_carries_flags_and_direction();
+    test_live_update_continuous_suppresses_diagnostic();
+    test_movevelocity_live_update_direction_flip();
+    test_moveabsolute_live_update_direction_rejected();
+    test_pressurehandle_live_update_direction_rejected();
 
     printf("\n=== Results: %d/%d passed ===\n", tests_passed, tests_run);
     return (tests_passed == tests_run) ? 0 : 1;
