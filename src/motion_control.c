@@ -556,6 +556,13 @@ static HYD_BOOL HYD_ApplyLiveUpdateOverrides(const HYD_LiveUpdateRequest* reques
         seg->pressureRampRate = request->pressureRampRate;
     }
 
+    if ((request->flags & HYD_LIVE_UPDATE_DIRECTION) != 0U) {
+        if (seg->mode == HYD_MODE_PRESSURE_CLOSED_LOOP) {
+            return false;
+        }
+        seg->direction = request->direction;
+    }
+
     return true;
 }
 
