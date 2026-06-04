@@ -3166,7 +3166,14 @@ HYD_BOOL HYD_MotionControlFB_ApplyLiveUpdate(HYD_MotionControlFB* fb,
         return true;
     }
 
-    /* --- Case 3: Not authorized — report diagnostic and reject --- */
+    /* --- Case 3: Not authorized --- */
+    if ((request->flags & HYD_LIVE_UPDATE_CONTINUOUS_UPDATE) != 0U) {
+        /* Continuous update stream — suppress diagnostic to avoid
+         * per-cycle alarm flood. The PLC process layer handles the
+         * FB-level ERROR output. */
+        return false;
+    }
+
     HYD_StateReporter_ReportDiagnostic(fb,
                                        HYD_DIAG_CODE_COMMAND_NOT_ALLOWED,
                                        HYD_DIAG_SEVERITY_WARNING,
