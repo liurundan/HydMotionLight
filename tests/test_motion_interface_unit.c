@@ -18,6 +18,7 @@
 
 #include "motion_interface.h"
 #include "motion_control.h"
+#include "recipe_validator.h"
 
 extern HYD_MotionControlFB* __MK_GetPublic_MotionControlFB(int index);
 
@@ -2246,6 +2247,152 @@ static void test_pressurehandle_live_update_direction_rejected(void) {
     printf("  PASS: PressureHandle LiveUpdate DIRECTION rejected\n");
 }
 
+/* Test: MoveVelocity live update negative VELOCITY flips direction.
+ * When CONTINUOUSUPDATE=1 and DIRECTION=SHORTEST_WAY, setting VELOCITY
+ * to a negative value should flip direction to NEGATIVE (not error). */
+static void test_movevelocity_live_update_negative_velocity_flips_direction(void)
+{
+    HYD_MotionControlFB fb;
+    HYD_MOVEVELOCITY mv;
+
+    printf("--- Test: MoveVelocity live update negative VELOCITY flips direction ---\n");
+
+    memset(&fb, 0, sizeof(fb));
+    fb.USE_RECIPE = false;
+    fb.FB_STATE = HYD_FB_STATE_IDLE;
+    fb.AXIS_REF.timestamp = 0.0;
+    fb.AXIS_REF.position = 0.0;
+    fb.AXIS_REF.flow = 0.0;
+    fb.AXIS_REF.pressure = 0.0;
+    fb._params.velocityToFlowGain = 0.2f;
+    fb._params.maxFlow = 50.0f;
+    fb._params.timeoutLimit = 30.0f;
+    fb._params.positionTolerance = 0.5f;
+
+    /* Phase 1: Start MoveVelocity with VELOCITY=5, SHORTEST_WAY */
+    memset(&mv, 0, sizeof(mv));
+    IEC_VAL(mv.EXECUTE) = true;
+    IEC_VAL(mv.CONTINUOUSUPDATE) = true;
+    IEC_VAL(mv.DIRECTION) = 0;  /* SHORTEST_WAY */
+    IEC_VAL(mv.VELOCITY) = 5.0;
+    IEC_VAL(mv.ACCELERATION) = 50.0;
+    IEC_VAL(mv.DECELERATION) = 50.0;
+    IEC_VAL(mv.BUFFERMODE) = (IEC_INT)HYD_BUFFER_MODE_ABORT;
+    __mcl_cmd_MoveVelocity(&mv);
+    ASSERT_TRUE(IEC_VAL(mv.BUSY), "MoveVelocity should be BUSY after execute");
+
+    /* Simulate 1 scan cycle to latch ownership */
+    HYD_MotionControlFB_Scan(&fb);
+    fb.AXIS_REF.timestamp += 0.001;
+
+    /* Verify initial state: direction POSITIVE, maxVelocity=5 */
+    ASSERT_TRUE(fb._activeSegment.direction == HYD_DIRECTION_POSITIVE,
+        "Initial direction should be POSITIVE (derived from +VELOCITY)");
+    ASSERT_TRUE(fb._activeSegment.maxVelocity == 5.0,
+        "Initial maxVelocity should be 5.0");
+
+    /* Phase 2: Live update VELOCITY=-5, still SHORTEST_WAY.
+     * Expected: direction flips to NEGATIVE, maxVelocity=fabs(-5)=5.0 */
+    IEC_VAL(mv.VELOCITY) = -5.0;
+    fb.AXIS_REF.timestamp += 0.001;
+    __mcl_cmd_MoveVelocity(&mv);
+
+    ASSERT_TRUE(IEC_VAL(mv.ERROR) == false,
+        "Live update with negative VELOCITY should NOT produce ERROR");
+    ASSERT_TRUE(fb._activeSegment.direction == HYD_DIRECTION_NEGATIVE,
+        "Direction should flip to NEGATIVE after negative VELOCITY update");
+    ASSERT_TRUE(fb._activeSegment.maxVelocity == 5.0,
+        "maxVelocity should be 5.0 (fabs of -5) after negative update");
+
+    printf("  PASS: MoveVelocity live update negative VELOCITY flips direction\n");
+}
+
+/* Test: MoveVelocity live update VELOCITY=0 decelerates to stop.
+ * Setting VELOCITY=0 should set maxVelocity=0 and keep the last
+ * active direction without triggering an ERROR. */
+static void test_movevelocity_live_update_zero_velocity_decel_to_stop(void)
+{
+    HYD_MotionControlFB fb;
+    HYD_MOVEVELOCITY mv;
+
+    printf("--- Test: MoveVelocity live update VELOCITY=0 decelerates to stop ---\n");
+
+    memset(&fb, 0, sizeof(fb));
+    fb.USE_RECIPE = false;
+    fb.FB_STATE = HYD_FB_STATE_IDLE;
+    fb.AXIS_REF.timestamp = 0.0;
+    fb.AXIS_REF.position = 0.0;
+    fb.AXIS_REF.flow = 0.0;
+    fb.AXIS_REF.pressure = 0.0;
+    fb._params.velocityToFlowGain = 0.2f;
+    fb._params.maxFlow = 50.0f;
+    fb._params.timeoutLimit = 30.0f;
+    fb._params.positionTolerance = 0.5f;
+
+    /* Phase 1: Start MoveVelocity with VELOCITY=5, SHORTEST_WAY */
+    memset(&mv, 0, sizeof(mv));
+    IEC_VAL(mv.EXECUTE) = true;
+    IEC_VAL(mv.CONTINUOUSUPDATE) = true;
+    IEC_VAL(mv.DIRECTION) = 0;  /* SHORTEST_WAY */
+    IEC_VAL(mv.VELOCITY) = 5.0;
+    IEC_VAL(mv.ACCELERATION) = 50.0;
+    IEC_VAL(mv.DECELERATION) = 50.0;
+    IEC_VAL(mv.BUFFERMODE) = (IEC_INT)HYD_BUFFER_MODE_ABORT;
+    __mcl_cmd_MoveVelocity(&mv);
+    ASSERT_TRUE(IEC_VAL(mv.BUSY), "MoveVelocity should be BUSY after execute");
+
+    HYD_MotionControlFB_Scan(&fb);
+    fb.AXIS_REF.timestamp += 0.001;
+
+    /* Phase 2: Live update VELOCITY=0.
+     * Expected: no ERROR, maxVelocity=0, direction stays POSITIVE.
+     * The planner will return 0.0 velocity for maxVelocity<=0. */
+    IEC_VAL(mv.VELOCITY) = 0.0;
+    fb.AXIS_REF.timestamp += 0.001;
+    __mcl_cmd_MoveVelocity(&mv);
+
+    ASSERT_TRUE(IEC_VAL(mv.ERROR) == false,
+        "Live update with VELOCITY=0 should NOT produce ERROR");
+    ASSERT_TRUE(fb._activeSegment.maxVelocity == 0.0,
+        "maxVelocity should be 0.0 after zero VELOCITY update");
+    ASSERT_TRUE(fb._activeSegment.direction == HYD_DIRECTION_POSITIVE,
+        "Direction should stay POSITIVE (lastActiveDirection for zero VELOCITY)");
+
+    printf("  PASS: MoveVelocity live update VELOCITY=0 decelerates to stop\n");
+}
+
+/* Test: ValidateSegment accepts maxVelocity=0 for SPEED_RAMP mode.
+ * VELOCITY=0 is a valid stop request and should not be rejected. */
+static void test_validate_segment_accepts_zero_maxvelocity_speed_ramp(void)
+{
+    HYD_MotionSegment seg;
+    HYD_DiagnosticCode code = HYD_DIAG_CODE_NONE;
+
+    printf("--- Test: ValidateSegment accepts maxVelocity=0 for SPEED_RAMP ---\n");
+
+    memset(&seg, 0, sizeof(seg));
+    seg.segmentTag = HYD_SEGMENT_TYPE_OTHER;
+    seg.segmentType = HYD_SEGMENT_TYPE_OTHER;
+    seg.mode = HYD_MODE_SPEED_RAMP;
+    seg.endCondition = HYD_END_MANUAL;
+    seg.direction = HYD_DIRECTION_POSITIVE;
+    seg.planner = HYD_PLANNER_TIME_BASED;
+    seg.maxVelocity = 0.0;
+    seg.maxAcceleration = 50.0;
+    seg.maxDeceleration = 50.0;
+    seg.velocityToFlowGain = 0.2f;
+    seg.maxFlow = 50.0f;
+    seg.timeoutLimit = 30.0f;
+
+    HYD_BOOL result = HYD_RecipeValidator_ValidateSegment(&seg, 0, &code, NULL);
+    ASSERT_TRUE(result,
+        "ValidateSegment should accept SPEED_RAMP with maxVelocity=0");
+    ASSERT_TRUE(code == HYD_DIAG_CODE_NONE,
+        "Diagnostic code should be NONE for valid maxVelocity=0 segment");
+
+    printf("  PASS: ValidateSegment accepts maxVelocity=0 for SPEED_RAMP\n");
+}
+
 int main(void) {
     printf("=== Motion Interface Unit Tests ===\n\n");
 
@@ -2300,6 +2447,9 @@ int main(void) {
     test_movevelocity_live_update_direction_flip();
     test_moveabsolute_live_update_direction_rejected();
     test_pressurehandle_live_update_direction_rejected();
+    test_movevelocity_live_update_negative_velocity_flips_direction();
+    test_movevelocity_live_update_zero_velocity_decel_to_stop();
+    test_validate_segment_accepts_zero_maxvelocity_speed_ramp();
 
     printf("\n=== Results: %d/%d passed ===\n", tests_passed, tests_run);
     return (tests_passed == tests_run) ? 0 : 1;
