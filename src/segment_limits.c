@@ -56,7 +56,8 @@ HYD_TIME HYD_Segment_GetTimeoutLimit(const HYD_MotionSegment* segment) {
 }
 
 HYD_MotionDirection HYD_Segment_ResolveDirection(const HYD_MotionSegment* segment,
-                                                   const HYD_AxisRef* axisRef) {
+                                                   const HYD_AxisRef* axisRef,
+                                                   HYD_MotionDirection lastActiveDirection) {
     HYD_REAL delta;
     HYD_REAL positionTolerance;
 
@@ -65,20 +66,29 @@ HYD_MotionDirection HYD_Segment_ResolveDirection(const HYD_MotionSegment* segmen
     }
 
     /* Explicit direction declarations take precedence. */
-    if (segment->direction == HYD_DIRECTION_EXTEND ||
-        segment->direction == HYD_DIRECTION_RETRACT ||
+    if (segment->direction == HYD_DIRECTION_POSITIVE ||
+        segment->direction == HYD_DIRECTION_NEGATIVE ||
         segment->direction == HYD_DIRECTION_HOLD) {
         return segment->direction;
     }
 
-    /* Infer direction from position delta when no explicit direction is set. */
+    /* CURRENT: inherit last active motion direction, default POSITIVE for stationary */
+    if (segment->direction == HYD_DIRECTION_CURRENT) {
+        if (lastActiveDirection == HYD_DIRECTION_POSITIVE ||
+            lastActiveDirection == HYD_DIRECTION_NEGATIVE) {
+            return lastActiveDirection;
+        }
+        return HYD_DIRECTION_POSITIVE;  /* stationary axis defaults to positive */
+    }
+
+    /* SHORTEST_WAY: infer direction from position delta */
     positionTolerance = HYD_Segment_GetPositionTolerance(segment);
     delta = segment->targetPosition - axisRef->position;
     if (delta > positionTolerance) {
-        return HYD_DIRECTION_EXTEND;
+        return HYD_DIRECTION_POSITIVE;
     }
     if (delta < -positionTolerance) {
-        return HYD_DIRECTION_RETRACT;
+        return HYD_DIRECTION_NEGATIVE;
     }
     return HYD_DIRECTION_HOLD;
 }

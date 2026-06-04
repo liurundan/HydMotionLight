@@ -24,21 +24,25 @@ HYD_BOOL HYD_Segment_PressureCeilingActiveAt(const HYD_MotionSegment* segment,
                                               HYD_REAL actualPosition);
 
 /**
- * @brief Resolve motion direction from segment configuration and axis position.
+ * @brief Resolve motion direction from segment configuration, axis position,
+ *        and last-active-direction memory.
  *
- * If the segment declares an explicit direction (EXTEND / RETRACT / HOLD),
- * that direction is returned directly. Otherwise the direction is inferred
- * from the signed delta between targetPosition and the current axis position,
- * gated by the segment's position tolerance.
+ * If the segment declares an explicit direction (POSITIVE / NEGATIVE / HOLD),
+ * that direction is returned directly. CURRENT inherits the last active motion
+ * direction (defaulting to POSITIVE for stationary axes). SHORTEST_WAY is
+ * inferred from the signed delta between targetPosition and the current axis
+ * position, gated by the segment's position tolerance.
  *
  * This function consolidates the direction-resolution logic previously
  * duplicated in segment_completion and motion_planner.
  *
- * @param segment  Active segment (must not be NULL)
- * @param axisRef  Current axis feedback (must not be NULL)
- * @return Resolved direction: EXTEND, RETRACT, or HOLD
+ * @param segment              Active segment (must not be NULL)
+ * @param axisRef              Current axis feedback (must not be NULL)
+ * @param lastActiveDirection  Previous non-HOLD motion direction (for CURRENT)
+ * @return Resolved direction: POSITIVE, NEGATIVE, or HOLD
  */
 HYD_MotionDirection HYD_Segment_ResolveDirection(const HYD_MotionSegment* segment,
-                                                   const HYD_AxisRef* axisRef);
+                                                   const HYD_AxisRef* axisRef,
+                                                   HYD_MotionDirection lastActiveDirection);
 
 #endif /* HYD_SEGMENT_LIMITS_H */
