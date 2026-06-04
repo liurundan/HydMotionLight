@@ -139,7 +139,6 @@ MoveProfile 运行时方向由段描述符的 `direction` 字段携带至 planne
 |------|------|----------|
 | `src/segment_completion.c` | `HYD_SegmentCompletion_IsPositionReached` | 传入 `lastActiveDirection` |
 | `src/motion_control.c` | `HYD_AreBlendDirectionsCompatible` | 传入 `lastActiveDirection` |
-| `src/motion_control.c` | `HYD_AdjustPumpGainByDirection` | 传入 `lastActiveDirection` |
 
 ---
 
