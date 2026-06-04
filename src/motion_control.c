@@ -3013,13 +3013,13 @@ HYD_BOOL HYD_MotionControlFB_ApplyLiveUpdate(HYD_MotionControlFB* fb,
                     conflict = (updated.targetPosition > fb->AXIS_REF.position + posTolerance);
                 }
                 if (conflict) {
-                    fb->ERROR_ID = HYD_DIAG_CODE_PUMP_DIRECTION_CONFLICT;
                     HYD_StateReporter_ReportDiagnostic(fb,
                         HYD_DIAG_CODE_PUMP_DIRECTION_CONFLICT,
                         HYD_DIAG_SEVERITY_WARNING,
                         fb->AXIS_REF.timestamp,
                         &updated,
                         &fb->STATE.references);
+                    fb->ERROR_ID = HYD_DIAG_CODE_PUMP_DIRECTION_CONFLICT;
                     return false;
                 }
             }
@@ -3113,6 +3113,35 @@ HYD_BOOL HYD_MotionControlFB_ApplyLiveUpdate(HYD_MotionControlFB* fb,
             if (fabs(fb->AXIS_REF.position - updated.targetPosition) <= posTolerance) {
                 fb->DIRECT_SEGMENT = updated;
                 return true;
+            }
+        }
+
+        /* Position-direction consistency check.
+         * POSITIVE requires target >= current; NEGATIVE requires target <= current.
+         * When direction is forced, a target that requires moving in the opposite
+         * direction is always an error.  This mirrors the same check in the
+         * isSegmentActive path and the execRising-path check in
+         * __mcl_cmd_MoveAbsolute. */
+        if (updated.mode == HYD_MODE_POSITION) {
+            if (updated.direction == HYD_DIRECTION_POSITIVE ||
+                updated.direction == HYD_DIRECTION_NEGATIVE) {
+                HYD_REAL posTolerance = HYD_Segment_GetPositionTolerance(&updated);
+                HYD_BOOL conflict = false;
+                if (updated.direction == HYD_DIRECTION_POSITIVE) {
+                    conflict = (updated.targetPosition < fb->AXIS_REF.position - posTolerance);
+                } else {
+                    conflict = (updated.targetPosition > fb->AXIS_REF.position + posTolerance);
+                }
+                if (conflict) {
+                    HYD_StateReporter_ReportDiagnostic(fb,
+                        HYD_DIAG_CODE_PUMP_DIRECTION_CONFLICT,
+                        HYD_DIAG_SEVERITY_WARNING,
+                        timestamp,
+                        &updated,
+                        &fb->STATE.references);
+                    fb->ERROR_ID = HYD_DIAG_CODE_PUMP_DIRECTION_CONFLICT;
+                    return false;
+                }
             }
         }
 

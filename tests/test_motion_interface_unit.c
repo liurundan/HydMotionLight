@@ -2364,6 +2364,204 @@ static void test_movevelocity_live_update_zero_velocity_decel_to_stop(void)
 
 /* Test: ValidateSegment accepts maxVelocity=0 for SPEED_RAMP mode.
  * VELOCITY=0 is a valid stop request and should not be rejected. */
+/* Test: CONTINUOUSUPDATE + forced Direction rejects backward target after
+ * segment completion.  Mirrors the isSegmentActive direction-consistency
+ * check (Case 1) for the isSegmentCompleted path (Case 2).
+ *
+ * Scenario:
+ *   Direction = POSITIVE, axis completed at position 100.
+ *   User changes target to 20 via CONTINUOUSUPDATE.
+ *   Target 20 at position 100 with forced POSITIVE is impossible —
+ *   must set ERROR/ERRORID, NOT silently restart. */
+static void test_moveabsolute_completed_segment_direction_conflict_positive(void)
+{
+    HYD_MotionControlFB fb;
+    HYD_MotionSegment segment;
+    HYD_LiveUpdateRequest req;
+    HYD_BOOL result;
+
+    printf("--- Test: Completed-segment direction conflict POSITIVE target < current ---\n");
+
+    memset(&fb, 0, sizeof(fb));
+    fb.USE_RECIPE = false;
+    fb.FB_STATE = HYD_FB_STATE_IDLE;
+
+    /* Construct a completed direct segment at position 100 */
+    memset(&segment, 0, sizeof(segment));
+    segment.mode = HYD_MODE_POSITION;
+    segment.endCondition = HYD_END_POSITION;
+    segment.targetPosition = 100.0;
+    segment.maxVelocity = 20.0;
+    segment.maxAcceleration = 50.0;
+    segment.maxDeceleration = 50.0;
+    segment.maxFlow = 50.0;
+    segment.velocityToFlowGain = 1.0;
+    segment.direction = HYD_DIRECTION_POSITIVE;
+    segment.positionTolerance = 0.5;
+
+    fb.DIRECT_SEGMENT = segment;
+    fb.DIRECT_SEGMENT_VALID = true;
+    fb.AXIS_REF.timestamp = 1.0;
+    fb.AXIS_REF.position = 100.0;
+    fb._directOwnerKind = HYD_DIRECT_CMD_MOVE_ABSOLUTE;
+    fb._directOwnerExecutionId = 42;
+    fb._executionId = 42;
+
+    /* Simulate a completed direct session */
+    fb.STATE.finished = true;
+    fb._activeSegmentValid = false;
+    fb.STATE.active = false;
+    fb._activeSegmentSource = HYD_SEGMENT_SOURCE_NONE;
+    fb._previousSegmentMode = HYD_MODE_POSITION;
+    fb._activeSegment = segment; /* stale but needed for mode carry-over */
+
+    /* CONTINUOUSUPDATE with Direction=POSITIVE, target=20 (behind current=100) */
+    memset(&req, 0, sizeof(req));
+    req.flags = HYD_LIVE_UPDATE_TARGET_POSITION |
+                HYD_LIVE_UPDATE_DIRECTION |
+                HYD_LIVE_UPDATE_CONTINUOUS_UPDATE;
+    req.ownerKind = HYD_DIRECT_CMD_MOVE_ABSOLUTE;
+    req.ownerExecutionId = 42;
+    req.targetPosition = 20.0;
+    req.direction = HYD_DIRECTION_POSITIVE;
+
+    result = HYD_MotionControlFB_ApplyLiveUpdate(&fb, &req);
+    ASSERT_TRUE(result == false,
+        "POSITIVE direction with target < current should be REJECTED after completion");
+    ASSERT_TRUE(fb.ERROR_ID == HYD_DIAG_CODE_PUMP_DIRECTION_CONFLICT,
+        "ERROR_ID should be PUMP_DIRECTION_CONFLICT for POSITIVE + backward target");
+
+    printf("  PASS: Completed-segment direction conflict POSITIVE target < current\n");
+}
+
+/* Test: CONTINUOUSUPDATE + forced NEGATIVE Direction rejects forward target
+ * after segment completion. */
+static void test_moveabsolute_completed_segment_direction_conflict_negative(void)
+{
+    HYD_MotionControlFB fb;
+    HYD_MotionSegment segment;
+    HYD_LiveUpdateRequest req;
+    HYD_BOOL result;
+
+    printf("--- Test: Completed-segment direction conflict NEGATIVE target > current ---\n");
+
+    memset(&fb, 0, sizeof(fb));
+    fb.USE_RECIPE = false;
+    fb.FB_STATE = HYD_FB_STATE_IDLE;
+
+    /* Construct a completed direct segment at position 50 */
+    memset(&segment, 0, sizeof(segment));
+    segment.mode = HYD_MODE_POSITION;
+    segment.endCondition = HYD_END_POSITION;
+    segment.targetPosition = 50.0;
+    segment.maxVelocity = 20.0;
+    segment.maxAcceleration = 50.0;
+    segment.maxDeceleration = 50.0;
+    segment.maxFlow = 50.0;
+    segment.velocityToFlowGain = 1.0;
+    segment.direction = HYD_DIRECTION_NEGATIVE;
+    segment.positionTolerance = 0.5;
+
+    fb.DIRECT_SEGMENT = segment;
+    fb.DIRECT_SEGMENT_VALID = true;
+    fb.AXIS_REF.timestamp = 1.0;
+    fb.AXIS_REF.position = 50.0;
+    fb._directOwnerKind = HYD_DIRECT_CMD_MOVE_ABSOLUTE;
+    fb._directOwnerExecutionId = 42;
+    fb._executionId = 42;
+
+    /* Simulate a completed direct session */
+    fb.STATE.finished = true;
+    fb._activeSegmentValid = false;
+    fb.STATE.active = false;
+    fb._activeSegmentSource = HYD_SEGMENT_SOURCE_NONE;
+    fb._previousSegmentMode = HYD_MODE_POSITION;
+    fb._activeSegment = segment;
+
+    /* CONTINUOUSUPDATE with Direction=NEGATIVE, target=200 (ahead of current=50) */
+    memset(&req, 0, sizeof(req));
+    req.flags = HYD_LIVE_UPDATE_TARGET_POSITION |
+                HYD_LIVE_UPDATE_DIRECTION |
+                HYD_LIVE_UPDATE_CONTINUOUS_UPDATE;
+    req.ownerKind = HYD_DIRECT_CMD_MOVE_ABSOLUTE;
+    req.ownerExecutionId = 42;
+    req.targetPosition = 200.0;
+    req.direction = HYD_DIRECTION_NEGATIVE;
+
+    result = HYD_MotionControlFB_ApplyLiveUpdate(&fb, &req);
+    ASSERT_TRUE(result == false,
+        "NEGATIVE direction with target > current should be REJECTED after completion");
+    ASSERT_TRUE(fb.ERROR_ID == HYD_DIAG_CODE_PUMP_DIRECTION_CONFLICT,
+        "ERROR_ID should be PUMP_DIRECTION_CONFLICT for NEGATIVE + forward target");
+
+    printf("  PASS: Completed-segment direction conflict NEGATIVE target > current\n");
+}
+
+/* Test: CONTINUOUSUPDATE + forced Direction with compatible target succeeds
+ * after segment completion (verifies the check doesn't block valid restarts). */
+static void test_moveabsolute_completed_segment_direction_ok(void)
+{
+    HYD_MotionControlFB fb;
+    HYD_MotionSegment segment;
+    HYD_LiveUpdateRequest req;
+    HYD_BOOL result;
+
+    printf("--- Test: Completed-segment direction compatible target succeeds ---\n");
+
+    memset(&fb, 0, sizeof(fb));
+    fb.USE_RECIPE = false;
+    fb.FB_STATE = HYD_FB_STATE_IDLE;
+
+    /* Construct a completed direct segment at position 100 */
+    memset(&segment, 0, sizeof(segment));
+    segment.mode = HYD_MODE_POSITION;
+    segment.endCondition = HYD_END_POSITION;
+    segment.targetPosition = 100.0;
+    segment.maxVelocity = 20.0;
+    segment.maxAcceleration = 50.0;
+    segment.maxDeceleration = 50.0;
+    segment.maxFlow = 50.0;
+    segment.velocityToFlowGain = 1.0;
+    segment.direction = HYD_DIRECTION_POSITIVE;
+    segment.positionTolerance = 0.5;
+
+    fb.DIRECT_SEGMENT = segment;
+    fb.DIRECT_SEGMENT_VALID = true;
+    fb.AXIS_REF.timestamp = 1.0;
+    fb.AXIS_REF.position = 100.0;
+    fb._directOwnerKind = HYD_DIRECT_CMD_MOVE_ABSOLUTE;
+    fb._directOwnerExecutionId = 42;
+    fb._executionId = 42;
+
+    /* Simulate a completed direct session */
+    fb.STATE.finished = true;
+    fb._activeSegmentValid = false;
+    fb.STATE.active = false;
+    fb._activeSegmentSource = HYD_SEGMENT_SOURCE_NONE;
+    fb._previousSegmentMode = HYD_MODE_POSITION;
+    fb._activeSegment = segment;
+
+    /* CONTINUOUSUPDATE with Direction=POSITIVE, target=200 (ahead of current=100) */
+    memset(&req, 0, sizeof(req));
+    req.flags = HYD_LIVE_UPDATE_TARGET_POSITION |
+                HYD_LIVE_UPDATE_DIRECTION |
+                HYD_LIVE_UPDATE_CONTINUOUS_UPDATE;
+    req.ownerKind = HYD_DIRECT_CMD_MOVE_ABSOLUTE;
+    req.ownerExecutionId = 42;
+    req.targetPosition = 200.0;
+    req.direction = HYD_DIRECTION_POSITIVE;
+
+    result = HYD_MotionControlFB_ApplyLiveUpdate(&fb, &req);
+    ASSERT_TRUE(result == true,
+        "POSITIVE direction with target > current should SUCCEED after completion");
+    ASSERT_TRUE(fabs(fb._activeSegment.targetPosition - 200.0) < 0.001,
+        "Active segment target should be updated to 200.0 after restart");
+    ASSERT_TRUE(fb._activeSegmentValid == true,
+        "Segment should be active after successful restart");
+
+    printf("  PASS: Completed-segment direction compatible target succeeds\n");
+}
+
 static void test_validate_segment_accepts_zero_maxvelocity_speed_ramp(void)
 {
     HYD_MotionSegment seg;
@@ -2450,6 +2648,9 @@ int main(void) {
     test_pressurehandle_live_update_direction_rejected();
     test_movevelocity_live_update_negative_velocity_flips_direction();
     test_movevelocity_live_update_zero_velocity_decel_to_stop();
+    test_moveabsolute_completed_segment_direction_conflict_positive();
+    test_moveabsolute_completed_segment_direction_conflict_negative();
+    test_moveabsolute_completed_segment_direction_ok();
     test_validate_segment_accepts_zero_maxvelocity_speed_ramp();
 
     printf("\n=== Results: %d/%d passed ===\n", tests_passed, tests_run);
