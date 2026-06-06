@@ -348,6 +348,69 @@ static void test_no_protection_when_disabled(void) {
     printf("test_no_protection_when_disabled PASSED\n");
 }
 
+static void test_allow_negative_flow_passes_negative_input(void) {
+    HYD_OutputLimiterInput input;
+    HYD_OutputLimiterOutput output;
+
+    memset(&input, 0, sizeof(input));
+    input.requestedFlow = -1.0;
+    input.requestedPumpSpeed = -100.0;
+    input.flowToPumpSpeedGain = 100.0;
+    input.pumpSpeedLimit = 3000.0;
+    input.protectionAction = HYD_PROTECTION_ACTION_NONE;
+    input.allowNegativeFlow = true;
+
+    HYD_OutputLimiter_Execute(&input, &output);
+
+    /* -1.0 > minFlow(-1.5), -100.0 > minSpeed(-150.0) → 原值通过 */
+    assert_real_eq(output.commandFlow, -1.0, 0.001, "negative flow should pass");
+    assert_real_eq(output.pumpSpeed, -100.0, 0.001, "negative speed should pass");
+    printf("test_allow_negative_flow_passes_negative_input PASSED\n");
+}
+
+static void test_allow_negative_flow_clamps_to_min(void) {
+    HYD_OutputLimiterInput input;
+    HYD_OutputLimiterOutput output;
+    HYD_REAL minSpeed, minFlow;
+
+    memset(&input, 0, sizeof(input));
+    input.requestedFlow = -10.0;
+    input.requestedPumpSpeed = -200.0;
+    input.flowToPumpSpeedGain = 100.0;
+    input.pumpSpeedLimit = 3000.0;
+    input.protectionAction = HYD_PROTECTION_ACTION_NONE;
+    input.allowNegativeFlow = true;
+
+    /* 计算期望下限 */
+    minSpeed = -input.pumpSpeedLimit * 0.05f;  /* -150.0 */
+    minFlow  = minSpeed / input.flowToPumpSpeedGain; /* -1.5 */
+
+    HYD_OutputLimiter_Execute(&input, &output);
+
+    assert_real_eq(output.commandFlow, minFlow, 0.001, "flow should clamp to minFlow");
+    assert_real_eq(output.pumpSpeed, minSpeed, 0.001, "speed should clamp to minSpeed");
+    printf("test_allow_negative_flow_clamps_to_min PASSED\n");
+}
+
+static void test_allow_negative_flow_false_clamps_to_zero(void) {
+    HYD_OutputLimiterInput input;
+    HYD_OutputLimiterOutput output;
+
+    memset(&input, 0, sizeof(input));
+    input.requestedFlow = -5.0;
+    input.requestedPumpSpeed = -500.0;
+    input.flowToPumpSpeedGain = 100.0;
+    input.pumpSpeedLimit = 3000.0;
+    input.protectionAction = HYD_PROTECTION_ACTION_NONE;
+    input.allowNegativeFlow = false;
+
+    HYD_OutputLimiter_Execute(&input, &output);
+
+    assert_real_eq(output.commandFlow, 0.0, 0.001, "negative flow should clamp to 0");
+    assert_real_eq(output.pumpSpeed, 0.0, 0.001, "negative speed should clamp to 0");
+    printf("test_allow_negative_flow_false_clamps_to_zero PASSED\n");
+}
+
 int main(void) {
     test_derate_halves_flow_and_speed();
     test_no_derate_preserves_outputs();
@@ -361,6 +424,9 @@ int main(void) {
     test_protection_takes_min_scale();
     test_pressure_limit_fault_escalation();
     test_no_protection_when_disabled();
+    test_allow_negative_flow_passes_negative_input();
+    test_allow_negative_flow_clamps_to_min();
+    test_allow_negative_flow_false_clamps_to_zero();
 
     printf("test_output_limiter passed\n");
     return 0;

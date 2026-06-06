@@ -12,6 +12,9 @@ typedef struct {
     HYD_ProtectionAction protectionAction;
     HYD_REAL derateRatio;
 
+    /* --- 负流量允许（新增） --- */
+    HYD_BOOL allowNegativeFlow;    /* true = 允许小幅负流量/负转速用于快速卸压 */
+
     /* --- 压力限制（新增） --- */
     HYD_REAL actualPressure;         /* 当前压力反馈 [MPa] */
     HYD_REAL effectiveMaxPressure;   /* 生效的最大压力限制 [MPa], 0 = 不启用 */

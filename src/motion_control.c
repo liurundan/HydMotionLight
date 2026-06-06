@@ -1965,6 +1965,10 @@ static void HYD_MotionControlFB_RunRunningState(HYD_MotionControlFB* fb) {
     limiterInput.direction = segment->direction;
     limiterInput.currentTime = fb->AXIS_REF.timestamp;
 
+    /* 压力闭环段允许小幅负流量/负转速，用于快速卸压 */
+    limiterInput.allowNegativeFlow =
+        (segment->mode == HYD_MODE_PRESSURE_CLOSED_LOOP);
+
     /* 使用带保护状态的扩展版本（支持压力限制 + 软限位 + debounce + 故障升级） */
     HYD_OutputLimiter_ExecuteWithProtection(&limiterInput, &fb->_limiterState, &limiterOutput);
 

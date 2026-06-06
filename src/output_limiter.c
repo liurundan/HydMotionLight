@@ -8,12 +8,23 @@ static HYD_BOOL HYD_OutputLimiter_IsFinite(HYD_REAL value) {
     return isfinite(value) ? true : false;
 }
 
-/* 泵为单向运行（PUMP_SPEED 非负幅值）。负流量请求应理解为"停止供油"
- * 而非取绝对值反向泵送。取绝对值会导致压力控制器输出负流量时发生
- * 符号反转正反馈，使压力失控至系统满量程。clamp-to-zero 正确表达了
- * 单泵"只能供油、不能主动抽油"的物理约束。 */
-static HYD_REAL HYD_OutputLimiter_ClampToZero(HYD_REAL value) {
-    return (value < 0.0) ? 0.0 : value;
+/* 计算流量/转速下限（与 PumpConverter 一致）
+ * allowNegativeFlow=false（默认）：下限=0，原 ClampToZero 行为
+ * allowNegativeFlow=true：下限 = -pumpSpeedLimit * 0.05
+ *   允许小幅负流量/负转速，用于压力闭环快速卸压 */
+static void HYD_OutputLimiter_GetLimits(
+    const HYD_OutputLimiterInput* input,
+    HYD_REAL* minFlow,
+    HYD_REAL* minSpeed)
+{
+    *minFlow = 0.0;
+    *minSpeed = 0.0;
+    if (input->allowNegativeFlow &&
+        input->flowToPumpSpeedGain > 0.0 &&
+        input->pumpSpeedLimit > 0.0) {
+        *minSpeed = -input->pumpSpeedLimit * 0.05f;
+        *minFlow  = *minSpeed / input->flowToPumpSpeedGain;
+    }
 }
 
 static HYD_REAL HYD_OutputLimiter_ResolveDerateRatio(HYD_REAL configuredRatio) {
@@ -57,8 +68,10 @@ void HYD_OutputLimiter_Execute(const HYD_OutputLimiterInput* input,
         return;
     }
 
-    commandFlow = HYD_OutputLimiter_ClampToZero(input->requestedFlow);
-    pumpSpeed = HYD_OutputLimiter_ClampToZero(input->requestedPumpSpeed);
+    HYD_REAL minFlow, minSpeed;
+    HYD_OutputLimiter_GetLimits(input, &minFlow, &minSpeed);
+    commandFlow = (input->requestedFlow > minFlow) ? input->requestedFlow : minFlow;
+    pumpSpeed   = (input->requestedPumpSpeed > minSpeed) ? input->requestedPumpSpeed : minSpeed;
 
     if (input->protectionAction == HYD_PROTECTION_ACTION_DERATE) {
         ratio = HYD_OutputLimiter_ResolveDerateRatio(input->derateRatio);
@@ -67,9 +80,17 @@ void HYD_OutputLimiter_Execute(const HYD_OutputLimiterInput* input,
         output->derated = true;
     }
 
-    if (pumpSpeed > input->pumpSpeedLimit) {
-        pumpSpeed = input->pumpSpeedLimit;
-        commandFlow = pumpSpeed / input->flowToPumpSpeedGain;
+    /* --- pumpSpeedLimit 硬裁剪（最终兜底） --- */
+    {
+        HYD_REAL lo = input->allowNegativeFlow ? -input->pumpSpeedLimit * 0.05f : 0.0;
+        HYD_REAL hi = input->pumpSpeedLimit;
+        if (pumpSpeed > hi) {
+            pumpSpeed = hi;
+            commandFlow = pumpSpeed / input->flowToPumpSpeedGain;
+        } else if (pumpSpeed < lo) {
+            pumpSpeed = lo;
+            commandFlow = pumpSpeed / input->flowToPumpSpeedGain;
+        }
     }
 
     output->commandFlow = commandFlow;
@@ -307,8 +328,10 @@ void HYD_OutputLimiter_ExecuteWithProtection(
         return;
     }
 
-    commandFlow = HYD_OutputLimiter_ClampToZero(input->requestedFlow);
-    pumpSpeed = HYD_OutputLimiter_ClampToZero(input->requestedPumpSpeed);
+    HYD_REAL minFlow, minSpeed;
+    HYD_OutputLimiter_GetLimits(input, &minFlow, &minSpeed);
+    commandFlow = (input->requestedFlow > minFlow) ? input->requestedFlow : minFlow;
+    pumpSpeed   = (input->requestedPumpSpeed > minSpeed) ? input->requestedPumpSpeed : minSpeed;
     /* --- 1. 现有 DERATE 逻辑（pressureCeiling 等触发） --- */
     if (input->protectionAction == HYD_PROTECTION_ACTION_DERATE) {
         ratio = HYD_OutputLimiter_ResolveDerateRatio(input->derateRatio);
@@ -366,9 +389,16 @@ void HYD_OutputLimiter_ExecuteWithProtection(
     }
 
     /* --- 7. pumpSpeedLimit 硬裁剪（最终兜底） --- */
-    if (pumpSpeed > input->pumpSpeedLimit) {
-        pumpSpeed = input->pumpSpeedLimit;
-        commandFlow = pumpSpeed / input->flowToPumpSpeedGain;
+    {
+        HYD_REAL lo = input->allowNegativeFlow ? -input->pumpSpeedLimit * 0.05f : 0.0;
+        HYD_REAL hi = input->pumpSpeedLimit;
+        if (pumpSpeed > hi) {
+            pumpSpeed = hi;
+            commandFlow = pumpSpeed / input->flowToPumpSpeedGain;
+        } else if (pumpSpeed < lo) {
+            pumpSpeed = lo;
+            commandFlow = pumpSpeed / input->flowToPumpSpeedGain;
+        }
     }
 
     output->commandFlow = commandFlow;
