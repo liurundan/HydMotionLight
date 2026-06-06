@@ -242,8 +242,8 @@ static void HYD_ResolvePressureControllerConfig(const HYD_MotionSegment* segment
     config->derivativeFilterAlpha = HYD_ResolveDerivativeFilterAlpha(segment);
     config->outputMin = (input != NULL) ? input->outputMin : 0.0;
     /* M4: 泄压目标下限钳位：防止过度泄压导致空穴 */
-    if (input != NULL && input->targetPressure < 2.0) {
-        config->outputMin = 0.0; /* 目标压力 < 2 bar 时禁止负流量 */
+    if (input != NULL && input->targetPressure < 5.0) {
+        config->outputMin = 0.0; /* 目标压力 < 5 bar 时禁止负流量 */
     }
     config->outputMax = (input != NULL) ? input->outputMax : 0.0;
     if (config->outputMax < config->outputMin) {
