@@ -22,7 +22,7 @@ static void HYD_OutputLimiter_GetLimits(
     if (input->allowNegativeFlow &&
         input->flowToPumpSpeedGain > 0.0 &&
         input->pumpSpeedLimit > 0.0) {
-        *minSpeed = -input->pumpSpeedLimit * 0.05f;
+        *minSpeed = -input->pumpSpeedLimit * HYD_PUMP_NEGATIVE_SPEED_RATIO;
         *minFlow  = *minSpeed / input->flowToPumpSpeedGain;
     }
 }
@@ -82,7 +82,7 @@ void HYD_OutputLimiter_Execute(const HYD_OutputLimiterInput* input,
 
     /* --- pumpSpeedLimit 硬裁剪（最终兜底） --- */
     {
-        HYD_REAL lo = input->allowNegativeFlow ? -input->pumpSpeedLimit * 0.05f : 0.0;
+        HYD_REAL lo = input->allowNegativeFlow ? -input->pumpSpeedLimit * HYD_PUMP_NEGATIVE_SPEED_RATIO : 0.0;
         HYD_REAL hi = input->pumpSpeedLimit;
         if (pumpSpeed > hi) {
             pumpSpeed = hi;
@@ -390,7 +390,7 @@ void HYD_OutputLimiter_ExecuteWithProtection(
 
     /* --- 7. pumpSpeedLimit 硬裁剪（最终兜底） --- */
     {
-        HYD_REAL lo = input->allowNegativeFlow ? -input->pumpSpeedLimit * 0.05f : 0.0;
+        HYD_REAL lo = input->allowNegativeFlow ? -input->pumpSpeedLimit * HYD_PUMP_NEGATIVE_SPEED_RATIO : 0.0;
         HYD_REAL hi = input->pumpSpeedLimit;
         if (pumpSpeed > hi) {
             pumpSpeed = hi;

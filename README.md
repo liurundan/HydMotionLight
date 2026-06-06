@@ -363,7 +363,7 @@ HYD_MotionControlFB_StartSegment(&fb, 0, timestamp); // index 被忽略
 - `RESET=true` 等价于完整 `Init()`，会清空配方、配置与保留诊断
 - `SEGMENT_CHANGED` 为单周期脉冲，`SEGMENT_COMPLETED` 为保持信号
 - 最后一段完成后进入 `FINISHED=true`
-- `PUMP_SPEED` 始终为泵侧非负幅值，方向由 `STATE.plannedDirection` 和工艺层阀动作共同决定
+- `PUMP_SPEED` 为泵侧正负幅值，允许小范围反转（`≤ HYD_PUMP_NEGATIVE_SPEED_RATIO × pumpSpeedLimit`，默认 5%）实现快速卸压；方向由 `STATE.plannedDirection` 和工艺层阀动作共同决定
 
 ### 当前未纳入发布承诺的内容
 

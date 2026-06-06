@@ -35,9 +35,12 @@ void HYD_PumpConverter_Execute(const HYD_PumpConverterInput* input,
 
     /* 允许负流量用于快速卸压阶段: 油泵允许小范围反转。
      * 负流量直接传递到 commandFlow，不做绝对值处理。
-     * 方向信息由 input->direction 字段和调用方维护。 */
+     * 方向信息由 input->direction 字段和调用方维护。
+     * 负流量下限 = -pumpSpeedLimit * RATIO / gain = -maxFlow * RATIO */
     maxFlowFromPumpLimit = input->pumpSpeedLimit / input->flowToPumpSpeedGain;
-    output->commandFlow = HYD_ClampReal(requestedFlow, -maxFlowFromPumpLimit * 0.05f, maxFlowFromPumpLimit);
+    output->commandFlow = HYD_ClampReal(requestedFlow,
+        -maxFlowFromPumpLimit * HYD_PUMP_NEGATIVE_SPEED_RATIO,
+        maxFlowFromPumpLimit);
     output->pumpSpeed = output->commandFlow * input->flowToPumpSpeedGain;
 }
 

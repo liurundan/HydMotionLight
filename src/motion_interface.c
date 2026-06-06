@@ -1640,8 +1640,18 @@ void __mcl_cmd_GetPumpRequest(HYD_GETPUMPREQUEST *data__)
         return;
     }
 
-    /* STRATEGY: 0 = MAX arbitration (only supported strategy for now) */
-    HYD_REAL maxSpeed = 0.0;
+    /* 正反向分别仲裁:
+     * - 正向：多轴取 MAX（供油需求最大的轴）
+     * - 反向：多轴取 MIN（抽油需求最大的轴，用于快速卸压）
+     * - 优先级：反向 > 正向（卸压优先于供油，安全设计）
+     *
+     * ALLOW_NEGATIVE：全局策略配置，PLC 层设置。
+     *   默认 FALSE（向后兼容，不写此引脚时行为与原版一致）。
+     */
+    IEC_BOOL allowNegative = __GET_VAR(data__->ALLOW_NEGATIVE);
+    HYD_REAL maxForward = 0.0f;
+    HYD_REAL minReverse = 0.0f;   /* 初始化为 0 = 无反转需求 */
+    IEC_BOOL hasReverse = false;
     IEC_BOOL sawExtend = false;
     IEC_BOOL sawRetract = false;
 
@@ -1650,9 +1660,22 @@ void __mcl_cmd_GetPumpRequest(HYD_GETPUMPREQUEST *data__)
         if (!fb->STATE.active) {
             continue;
         }
-        if (fb->PUMP_SPEED > maxSpeed) {
-            maxSpeed = fb->PUMP_SPEED;
+
+        /* 正向仲裁 */
+        if (fb->PUMP_SPEED > maxForward) {
+            maxForward = fb->PUMP_SPEED;
         }
+
+        /* 反向仲裁（负转速 = 反转卸压）
+         * 只有当 allowNegative=TRUE 时才考虑负转速 */
+        if (allowNegative && fb->PUMP_SPEED < 0.0f) {
+            hasReverse = true;
+            if (fb->PUMP_SPEED < minReverse) {
+                minReverse = fb->PUMP_SPEED;
+            }
+        }
+
+        /* 方向冲突检测（原有逻辑保留） */
         switch (fb->STATE.plannedDirection) {
             case HYD_DIRECTION_EXTEND:
                 sawExtend = true;
@@ -1668,7 +1691,18 @@ void __mcl_cmd_GetPumpRequest(HYD_GETPUMPREQUEST *data__)
         }
     }
 
-    __SET_VAR(data__->, PUMPSPEED, , (IEC_REAL)maxSpeed);
+    /* 输出仲裁：反向优先（卸压优先级高） */
+    HYD_REAL outputSpeed;
+    if (hasReverse) {
+        /* 有反转卸压需求：输出最小的负值（绝对值最大的反转请求）
+         * 负转速下限已由上游 output_limiter 保证在
+         *   [-pumpSpeedLimit * HYD_PUMP_NEGATIVE_SPEED_RATIO, 0] 范围内 */
+        outputSpeed = minReverse;
+    } else {
+        outputSpeed = maxForward;
+    }
+
+    __SET_VAR(data__->, PUMPSPEED, , (IEC_REAL)outputSpeed);
     __SET_VAR(data__->, CONFLICT, , (sawExtend && sawRetract) ? true : false);
     __SET_VAR(data__->, DONE, , true);
 }

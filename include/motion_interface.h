@@ -368,6 +368,7 @@ typedef struct {
   __DECLARE_VAR(BOOL,ENO)
   __DECLARE_VAR(BOOL,ENABLE)
   __DECLARE_VAR(SINT,STRATEGY)
+  __DECLARE_VAR(BOOL,ALLOW_NEGATIVE)   /* 允许负转速输出（反转卸压），默认 FALSE */
   __DECLARE_VAR(REAL,PUMPSPEED)
   __DECLARE_VAR(BOOL,CONFLICT)
   __DECLARE_VAR(BOOL,BUSY)
@@ -377,6 +378,7 @@ typedef struct {
 
   // FB private variables - TEMP, private and located variables
   __DECLARE_VAR(BOOL,DONE0)
+  __DECLARE_VAR(BOOL,ALLOW_NEGATIVE0)  /* 内部缓存，用于边沿检测（如需） */
 
 } HYD_GETPUMPREQUEST;
 

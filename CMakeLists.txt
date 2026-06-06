@@ -234,3 +234,7 @@ add_test(NAME test_interface_layout_consistency
                  python3 ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_interface_layout_consistency.py)
 
 add_test(NAME test_negative_flow COMMAND test_negative_flow)
+
+add_executable(test_motion_interface_negative_speed tests/test_motion_interface_negative_speed.c)
+target_link_libraries(test_motion_interface_negative_speed PRIVATE HydroMotionLib)
+add_test(NAME test_motion_interface_negative_speed COMMAND test_motion_interface_negative_speed)

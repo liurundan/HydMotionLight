@@ -417,6 +417,21 @@ typedef HYD_REAL HYD_TIME;
 #define HYD_MAX_AXIS_MOTION  20 /* 最大液压轴数量，包括合模、射胶、顶出、座台、中子等 */
 
 /* ============================================================================
+ * 14C. 泵负转速下限比例（Pump Negative Speed Ratio）
+ *
+ * 允许油泵小范围反转以快速卸压时，反转转速上限占 pumpSpeedLimit 的比例。
+ * 例：pumpSpeedLimit=1500rpm, RATIO=0.05 → 最大反转转速 = -75rpm
+ *
+ * 使用此宏的模块：
+ *   - output_limiter.c  HYD_OutputLimiter_GetLimits()
+ *   - output_limiter.c  HYD_OutputLimiter_Execute() 硬裁剪
+ *   - output_limiter.c  HYD_OutputLimiter_ExecuteWithProtection() 硬裁剪
+ *   - pump_converter.c  HYD_PumpConverter_Execute()
+ *   - motion_interface.c __mcl_cmd_GetPumpRequest()（间接，依赖上游保证）
+ * ============================================================================ */
+#define HYD_PUMP_NEGATIVE_SPEED_RATIO      0.05f
+
+/* ============================================================================
  * 15. 配置导出接口
  * ============================================================================ */
 

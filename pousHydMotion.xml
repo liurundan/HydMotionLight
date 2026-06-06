@@ -1035,6 +1035,11 @@
 								<SINT />
 							</type>
 						</variable>
+						<variable name="ALLOW_NEGATIVE">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
 					</inputVars>
 					<outputVars>
 						<variable name="PUMPSPEED">
