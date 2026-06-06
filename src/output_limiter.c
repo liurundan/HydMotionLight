@@ -8,8 +8,12 @@ static HYD_BOOL HYD_OutputLimiter_IsFinite(HYD_REAL value) {
     return isfinite(value) ? true : false;
 }
 
-static HYD_REAL HYD_OutputLimiter_AbsReal(HYD_REAL value) {
-    return (value < 0.0) ? -value : value;
+/* 泵为单向运行（PUMP_SPEED 非负幅值）。负流量请求应理解为"停止供油"
+ * 而非取绝对值反向泵送。取绝对值会导致压力控制器输出负流量时发生
+ * 符号反转正反馈，使压力失控至系统满量程。clamp-to-zero 正确表达了
+ * 单泵"只能供油、不能主动抽油"的物理约束。 */
+static HYD_REAL HYD_OutputLimiter_ClampToZero(HYD_REAL value) {
+    return (value < 0.0) ? 0.0 : value;
 }
 
 static HYD_REAL HYD_OutputLimiter_ResolveDerateRatio(HYD_REAL configuredRatio) {
@@ -53,8 +57,8 @@ void HYD_OutputLimiter_Execute(const HYD_OutputLimiterInput* input,
         return;
     }
 
-    commandFlow = HYD_OutputLimiter_AbsReal(input->requestedFlow);
-    pumpSpeed = HYD_OutputLimiter_AbsReal(input->requestedPumpSpeed);
+    commandFlow = HYD_OutputLimiter_ClampToZero(input->requestedFlow);
+    pumpSpeed = HYD_OutputLimiter_ClampToZero(input->requestedPumpSpeed);
 
     if (input->protectionAction == HYD_PROTECTION_ACTION_DERATE) {
         ratio = HYD_OutputLimiter_ResolveDerateRatio(input->derateRatio);
@@ -303,9 +307,8 @@ void HYD_OutputLimiter_ExecuteWithProtection(
         return;
     }
 
-    commandFlow = HYD_OutputLimiter_AbsReal(input->requestedFlow);
-    pumpSpeed = HYD_OutputLimiter_AbsReal(input->requestedPumpSpeed);
-
+    commandFlow = HYD_OutputLimiter_ClampToZero(input->requestedFlow);
+    pumpSpeed = HYD_OutputLimiter_ClampToZero(input->requestedPumpSpeed);
     /* --- 1. 现有 DERATE 逻辑（pressureCeiling 等触发） --- */
     if (input->protectionAction == HYD_PROTECTION_ACTION_DERATE) {
         ratio = HYD_OutputLimiter_ResolveDerateRatio(input->derateRatio);
