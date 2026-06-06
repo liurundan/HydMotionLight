@@ -261,7 +261,7 @@ float RBF_PID_Update(RBF_PID_Handle *pid, float setpoint, float feedback) {
     // 7. PID 参数自适应更新
     float xc1 = pid->Error - pid->e_prev1;
     float xc2 = pid->Error;
-    float xc3 = raw_de; // 使用滤波后的微分项
+    float xc3 = pid->Error - 2*pid->e_prev1 + pid->e_prev2; // 使用滤波后的微分项
 
     float dKP = eta_scale * pid->eta_p * pid->Error * pid->Jacobian * xc1;
     float dKI = eta_scale * pid->eta_i * pid->Error * pid->Jacobian * xc2;
@@ -314,10 +314,7 @@ float RBF_PID_Update(RBF_PID_Handle *pid, float setpoint, float feedback) {
 
     // 9. 计算增量式 PID 输出
     // 修复点: 微分项严格使用滤波后的 delta_temp
-    pid->du = pid->KP * (raw_de) +
-              pid->KI * pid->Error +
-              pid->KD * (raw_de - (pid->e_prev1 - pid->e_prev2)) +
-              feedforward + pid->fBaseBias;
+    pid->du = pid->KP * xc1 + pid->KI * xc2 + pid->KD * xc3 + feedforward + pid->fBaseBias;
 
     // 10. 抗积分饱和 (Anti-Windup) 机制 【核心修复】
     // 当增益补偿激活时，output_total 直接映射到归一化压力:
@@ -355,7 +352,6 @@ float RBF_PID_Update(RBF_PID_Handle *pid, float setpoint, float feedback) {
     // 12. 增益补偿: 将归一化空间输出映射到正确的物理流量
     // 补偿公式: n_out = output_total * fMaxFlow * fGainCompensation
     // 当 fGainCompensation=0 时，退化为原始行为（无补偿）
-    float compensated_output = output_total;
     float compensated_n_out;
     if (pid->fGainCompensation > 0.0f) {
         compensated_n_out = output_total * pid->fMaxFlow * pid->fGainCompensation;
