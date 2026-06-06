@@ -207,6 +207,27 @@ static void test_pressure_normalization_is_configurable(void) {
     printf("✓ Configurable pressure normalization test passed\n");
 }
 
+static void test_rbf_pid_negative_output(void) {
+    RBF_PID_Handle pid;
+    float output;
+    int step;
+
+    printf("Testing RBF-PID negative output...\n");
+    RBF_PID_Init(&pid, 0.01f, 90.0f, 1.0f);
+    pid.enable = true;
+    RBF_PID_SetGainCompensation(&pid, 1.0f);  /* K = 1.0 */
+
+    /* Run steps with Setpoint=10.0, Feedback=15.0 → pressure too high, need negative flow */
+    for (step = 0; step < 50; step++) {
+        output = RBF_PID_Update(&pid, 10.0f, 15.0f);
+    }
+
+    /* After adaptation, n_out should be negative (negative flow) */
+    printf("  n_out after 50 steps = %.4f L/min (expect < 0)\n", output);
+    assert(output < 0.0f);
+    printf("✓ RBF-PID negative output test passed (n_out=%.3f)\n", output);
+}
+
 int main(void) {
     printf("Running RBF_PID tests...\n\n");
 
@@ -217,6 +238,7 @@ int main(void) {
     test_default_gain_window_allows_adaptation();
     test_pressure_normalization_is_configurable();
     test_multi_axis_differentiated_seeds();
+    test_rbf_pid_negative_output();
 
     printf("\n✅ All RBF_PID tests passed successfully!\n");
     return 0;

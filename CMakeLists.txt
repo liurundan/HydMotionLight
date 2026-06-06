@@ -65,6 +65,9 @@ target_link_libraries(segment_completion_test PRIVATE HydroMotionLib)
 add_executable(rbf_pid_test tests/rbf_pid_test.c)
 target_link_libraries(rbf_pid_test PRIVATE HydroMotionLib)
 
+add_executable(test_negative_flow tests/test_negative_flow.c)
+target_link_libraries(test_negative_flow PRIVATE HydroMotionLib)
+
 add_executable(test_diagnostic_monitor tests/test_diagnostic_monitor.c)
 target_link_libraries(test_diagnostic_monitor PRIVATE HydroMotionLib)
 
@@ -229,3 +232,5 @@ add_test(NAME test_vp_bumpless_reverse
 add_test(NAME test_interface_layout_consistency
          COMMAND ${CMAKE_COMMAND} -E env PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}
                  python3 ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_interface_layout_consistency.py)
+
+add_test(NAME test_negative_flow COMMAND test_negative_flow)

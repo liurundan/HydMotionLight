@@ -241,6 +241,10 @@ static void HYD_ResolvePressureControllerConfig(const HYD_MotionSegment* segment
     config->filterAlpha = HYD_ResolveFilterAlpha(segment);
     config->derivativeFilterAlpha = HYD_ResolveDerivativeFilterAlpha(segment);
     config->outputMin = (input != NULL) ? input->outputMin : 0.0;
+    /* M4: 泄压目标下限钳位：防止过度泄压导致空穴 */
+    if (input != NULL && input->targetPressure < 2.0) {
+        config->outputMin = 0.0; /* 目标压力 < 2 bar 时禁止负流量 */
+    }
     config->outputMax = (input != NULL) ? input->outputMax : 0.0;
     if (config->outputMax < config->outputMin) {
         config->outputMax = config->outputMin;
@@ -565,6 +569,11 @@ void HYD_PressureController_Execute(const HYD_MotionSegment* segment,
                                                  (float)filteredPressure);
         outputFlow = HYD_ClampReal(rawOutputFlow, config.outputMin, config.outputMax);
 
+        /* 负流量死区：仅当压力偏差 <= -2.0 bar（超压 >= 2 bar）时才允许负流量 */
+        if (config.outputMin < 0.0 && outputFlow < 0.0 && error > -2.0) {
+            outputFlow = 0.0; /* 小偏差时不使用负流量，防止0附近震荡 */
+        }
+
         output->targetPressure = effectiveTargetPressure;
         output->feedbackFlow = rawOutputFlow - input->feedforwardFlow;
         output->unsaturatedOutputFlow = rawOutputFlow;
@@ -636,6 +645,11 @@ void HYD_PressureController_Execute(const HYD_MotionSegment* segment,
 
     unsaturatedOutput = input->feedforwardFlow + proportionalTerm + integralTerm + derivativeTerm + trackingTerm;
     outputFlow = HYD_ClampReal(unsaturatedOutput, config.outputMin, config.outputMax);
+
+    /* 负流量死区：仅当压力偏差 <= -2.0 bar（超压 >= 2 bar）时才允许负流量 */
+    if (config.outputMin < 0.0 && outputFlow < 0.0 && error > -2.0) {
+        outputFlow = HYD_ClampReal(unsaturatedOutput, 0.0, config.outputMax);
+    }
 
     output->proportionalTerm = proportionalTerm;
     output->integralTerm = integralTerm;

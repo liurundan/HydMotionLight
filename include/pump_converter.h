@@ -12,7 +12,7 @@ typedef struct {
 
 typedef struct {
     HYD_REAL commandFlow;            /* L/min after pump-speed limit back-projection */
-    HYD_REAL pumpSpeed;              /* rpm, nonnegative */
+    HYD_REAL pumpSpeed;              /* rpm, can be negative if commandFlow is negative */
 } HYD_PumpConverterOutput;
 
 void HYD_PumpConverter_Execute(const HYD_PumpConverterInput* input,

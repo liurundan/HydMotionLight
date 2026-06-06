@@ -1332,7 +1332,7 @@ static void HYD_ExecuteActiveSegmentControl(HYD_MotionControlFB* fb,
         pressureInput.targetPressure = rampOutput->rampedPressure;
         pressureInput.measuredPressure = fb->AXIS_REF.pressure;
         pressureInput.feedforwardFlow = segment->targetFlow;
-        pressureInput.outputMin = 0.0;
+        pressureInput.outputMin = -5.0;
 
         pressureInput.outputMax = segment->maxFlow;
         if (HYD_PumpConfig_IsValid(&fb->pumpConfig)) {
