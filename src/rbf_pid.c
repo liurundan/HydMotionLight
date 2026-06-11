@@ -74,9 +74,9 @@ void RBF_PID_Init(RBF_PID_Handle *pid, float sampling_period,
 
     // 4. 初始化前馈参数
     pid->EnableFF = true;
-    pid->fKff_a_pos = 0.7f;  pid->fKff_a_neg = 0.32f;
+    pid->fKff_a_pos = 0.8f;  pid->fKff_a_neg = 0.8f;
     pid->fKSetpoint_pos = 0.003f; pid->fKSetpoint_neg = 0.001f;
-    pid->fBaseBias = 0.0f;
+    pid->fBaseBias = 0.0002f;
 
     // 5. 初始化增益补偿 (0 = 禁用，由外部设置)
     pid->fGainCompensation = 0.0f;
@@ -186,18 +186,13 @@ float RBF_PID_Update(RBF_PID_Handle *pid, float setpoint, float feedback) {
 
     // 3. 计算误差与微分滤波
     pid->Error = pid->Setpoint - pid->Feedback;
-    float raw_de = pid->Error - pid->e_prev1;
-
-    // 修复点: 使用一阶低通滤波器平滑微分项 (alpha=0.85 默认)
-    // delta_temp = alpha * prev + (1-alpha) * raw
-
 
     // 4. 准备 RBF 网络输入特征
     // 修复点: 将 du_prev 改为 u_prev (绝对控制量)，更符合液压伺服阀物理特性
     float x_norm[RBF_INPUT_DIM] = {
-        pid->u_prev,        // x0: 上一周期绝对控制量 (用于求 Jacobian)
+        pid->du_prev/pid->fFlowRateLimit,        // x0: 上一周期绝对控制量 (用于求 Jacobian)
         pid->Feedback,      // x1: 当前压力反馈
-        pid->Error          // x2: 当前误差
+        pid->y_prev1          // x2: 当前误差
     };
 
     // 5. RBF 前向传播与 Jacobian 辨识
@@ -222,7 +217,7 @@ float RBF_PID_Update(RBF_PID_Handle *pid, float setpoint, float feedback) {
 
     // 6. RBF 网络在线学习 (带梯度裁剪与动量)
     float error_rbf = pid->Feedback - pid->y_hat;
-    error_rbf = LIMIT(-0.2f, error_rbf, 0.2f); // 限制辨识误差，防止突变摧毁网络
+    error_rbf = LIMIT(-10.2f, error_rbf, 10.2f); // 限制辨识误差，防止突变摧毁网络
     float eta_scale = pid->eta_scale;
 
     for (int i = 0; i < RBF_HNUM; i++) {
@@ -236,14 +231,14 @@ float RBF_PID_Update(RBF_PID_Handle *pid, float setpoint, float feedback) {
 
         // 权重更新 (带梯度裁剪)
         float dw = eta_scale * pid->eta_w * error_rbf * pid->h[i] + pid->alpha * pid->w_1[i] + pid->belte * pid->w_2[i];
-        dw = LIMIT(-0.05f, dw, 0.05f);
+        dw = LIMIT(-10.05f, dw, 10.05f);
         pid->w_3[i] = pid->w_2[i]; pid->w_2[i] = pid->w_1[i]; pid->w_1[i] = dw;
         pid->w[i] += dw;
 
         // 宽度更新 (下限提高至 0.5，防止 b^3 过小导致更新量放大)
         float db = eta_scale * pid->eta_b * error_rbf * pid->w[i] * pid->h[i] * dist_sq / (pid->b_rbf[i] * b_sq)
                    + pid->alpha * pid->bi_1[i] + pid->belte * pid->bi_2[i];
-        db = LIMIT(-0.05f, db, 0.05f);
+        db = LIMIT(-10.05f, db, 10.05f);
         pid->bi_3[i] = pid->bi_2[i]; pid->bi_2[i] = pid->bi_1[i]; pid->bi_1[i] = db;
         pid->b_rbf[i] += db;
         if (pid->b_rbf[i] < 0.5f) pid->b_rbf[i] = 0.5f;
@@ -252,7 +247,7 @@ float RBF_PID_Update(RBF_PID_Handle *pid, float setpoint, float feedback) {
         for (int j = 0; j < RBF_INPUT_DIM; j++) {
             float dc = eta_scale * pid->eta_c * error_rbf * pid->w[i] * pid->h[i] * (x_norm[j] - pid->c[i][j]) / b_sq
                        + pid->alpha * pid->ci_1[i][j] + pid->belte * pid->ci_2[i][j];
-            dc = LIMIT(-0.05f, dc, 0.05f);
+            dc = LIMIT(-10.05f, dc, 10.05f);
             pid->ci_3[i][j] = pid->ci_2[i][j]; pid->ci_2[i][j] = pid->ci_1[i][j]; pid->ci_1[i][j] = dc;
             pid->c[i][j] += dc;
         }
@@ -268,9 +263,9 @@ float RBF_PID_Update(RBF_PID_Handle *pid, float setpoint, float feedback) {
     float dKD = eta_scale * pid->eta_d * pid->Error * pid->Jacobian * xc3;
 
     // 限制 PID 参数单次调整幅度
-    dKP = LIMIT(-0.05f, dKP, 0.05f);
-    dKI = LIMIT(-0.02f, dKI, 0.02f);
-    dKD = LIMIT(-0.05f, dKD, 0.05f);
+    dKP = LIMIT(-10.05f, dKP, 10.05f);
+    dKI = LIMIT(-10.02f, dKI, 10.02f);
+    dKD = LIMIT(-10.05f, dKD, 10.05f);
 
     pid->KP = LIMIT(pid->min_KP, pid->KP + dKP, pid->max_KP);
     pid->KI = LIMIT(pid->min_KI, pid->KI + dKI, pid->max_KI);
@@ -291,18 +286,18 @@ float RBF_PID_Update(RBF_PID_Handle *pid, float setpoint, float feedback) {
 
         // 加速度前馈 (区分正负向)
         static float filt_acc = 0.0f;
-        float alpha_acc = 0.7f;
+        float alpha_acc = 0.0f;
 		filt_acc = alpha_acc * filt_acc + (1.0f - alpha_acc) * press_accel;
 
 		// 3. 加速度死区 (忽略微小的液压脉动，防止阀门无谓的高频动作)
-		float acc_deadband = 0.002f; // 归一化压力的 0.2%
+		float acc_deadband = 0.00002f; // 归一化压力的 0.2%
 		float valid_acc = (ABS_VAL(filt_acc) > acc_deadband) ? filt_acc : 0.0f;
 
 		// 4. 计算阻尼补偿量 (区分正负向增益)
-		if (valid_acc >= 0.0f) {
+		if (valid_acc > 0.0f) {
 			damping_acc = -(pid->fKff_a_pos * valid_acc); // 减速/防超调
 		} else {
-			damping_acc = -(pid->fKff_a_neg * valid_acc); // 加速/防跌落 (注意负负得正)
+			damping_acc = (pid->fKff_a_neg * valid_acc); // 加速/防跌落 (注意负负得正)
 		}
 
         feedforward = ff_sp;
@@ -313,7 +308,6 @@ float RBF_PID_Update(RBF_PID_Handle *pid, float setpoint, float feedback) {
     }
 
     // 9. 计算增量式 PID 输出
-    // 修复点: 微分项严格使用滤波后的 delta_temp
     pid->du = pid->KP * xc1 + pid->KI * xc2 + pid->KD * xc3 + feedforward + pid->fBaseBias;
 
     // 10. 抗积分饱和 (Anti-Windup) 机制 【核心修复】
@@ -332,13 +326,13 @@ float RBF_PID_Update(RBF_PID_Handle *pid, float setpoint, float feedback) {
     } else {
         max_out_limit = pid->fFlowRateLimit;
     }
-    float temp_output = pid->u_prev + pid->du;
 
-    if (temp_output > max_out_limit && pid->du > 0.0f) {
-        pid->du = max_out_limit - pid->u_prev; // 强制增量不突破上限
-    } else if (temp_output < MIN_OUTPUT && pid->du < 0.0f) {
-        pid->du = MIN_OUTPUT - pid->u_prev;    // 强制增量不突破下限
-    }
+//    float temp_output = pid->u_prev + pid->du;
+//    if (temp_output > max_out_limit && pid->du > 0.0f) {
+//        pid->du = max_out_limit - pid->u_prev; // 强制增量不突破上限
+//    } else if (temp_output < MIN_OUTPUT && pid->du < 0.0f) {
+//        pid->du = MIN_OUTPUT - pid->u_prev;    // 强制增量不突破下限
+//    }
 
     float base_output = pid->u_prev + pid->du;
     float output_total = base_output + damping_acc; // 加入阻尼补偿

@@ -559,12 +559,13 @@ void __HydMotion_framework_Publish()
             fb->AXIS_REF.velocity  = fb->_simFeedback.targetVelocity;
             fb->AXIS_REF.flow      = fb->_simFeedback.targetFlow;
             fb->AXIS_REF.pressure  = fb->_simFeedback.targetPressure;
+            fb->AXIS_REF.timestamp += deltaTime;
         }
     }
 
-    for (int i = 0; i < (int)nextAllocatedFB; i++) {
-        HYD_MotionControlFB_inst[i].AXIS_REF.timestamp += dfCycleTime;
-    }
+//    for (int i = 0; i < (int)nextAllocatedFB; i++) {
+//        HYD_MotionControlFB_inst[i].AXIS_REF.timestamp += dfCycleTime;
+//    }
 
     g_lastPublishTime = currentTime;
 }

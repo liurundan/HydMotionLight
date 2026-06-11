@@ -511,9 +511,9 @@ void HYD_PressureController_Execute(const HYD_MotionSegment* segment,
     }
 
     HYD_ResolvePressureControllerConfig(segment, state, input, &config);
-    filteredPressure = state->previousFilteredPressure +
-        config.filterAlpha * (input->measuredPressure - state->previousFilteredPressure);
-
+//    filteredPressure = state->previousFilteredPressure +
+//        config.filterAlpha * (input->measuredPressure - state->previousFilteredPressure);
+    filteredPressure = input->measuredPressure; /* 2026-06-03 调整：暂时禁用滤波，直接使用原始压力值。后续可根据实际情况调整滤波强度或实现更高级的滤波器。 */
     filteredPressureRate = state->previousFilteredPressureRate;
     if (config.dt > 0.0) {
         rawPressureRate = (filteredPressure - state->previousFilteredPressure) / config.dt;
