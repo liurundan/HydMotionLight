@@ -77,6 +77,42 @@ static int test_zero_speed_holds_zero_pressure(void) {
     return 1;
 }
 
+static int test_ten_rpm_converges_to_forty_bar(void) {
+    PressureModelParams params = make_deterministic_params();
+    PressureModelState state;
+    PressureModelOutput out;
+
+    memset(&out, 0, sizeof(out));
+    PressureModel_Reset(&state, 0x12345678u);
+
+    run_steps(&params, &state, 10.0f, 15000, DT_S, &out);
+
+    ASSERT_NEAR(out.real_pressure_bar, 40.0f, 1.5f);
+    ASSERT_NEAR(out.measured_pressure_bar, out.real_pressure_bar, 1e-3f);
+
+    return 1;
+}
+
+static int test_motor_state_is_continuous_across_steps(void) {
+    PressureModelParams params = make_deterministic_params();
+    PressureModelState state;
+    PressureModelOutput out0;
+    PressureModelOutput out1;
+
+    memset(&out0, 0, sizeof(out0));
+    memset(&out1, 0, sizeof(out1));
+    PressureModel_Reset(&state, 0x12345678u);
+
+    PressureModel_Step(&params, &state, 1000.0f, DT_S, &out0);
+    PressureModel_Step(&params, &state, 1000.0f, DT_S, &out1);
+
+    ASSERT_TRUE(out0.actual_motor_rpm > 0.0f);
+    ASSERT_TRUE(out0.actual_motor_rpm < 1000.0f);
+    ASSERT_TRUE(out1.actual_motor_rpm > out0.actual_motor_rpm);
+
+    return 1;
+}
+
 int main(void) {
     int passed = 0;
     int failed = 0;
@@ -87,6 +123,22 @@ int main(void) {
     } else {
         ++failed;
         printf("FAIL test_zero_speed_holds_zero_pressure\n");
+    }
+
+    if (test_ten_rpm_converges_to_forty_bar()) {
+        ++passed;
+        printf("PASS test_ten_rpm_converges_to_forty_bar\n");
+    } else {
+        ++failed;
+        printf("FAIL test_ten_rpm_converges_to_forty_bar\n");
+    }
+
+    if (test_motor_state_is_continuous_across_steps()) {
+        ++passed;
+        printf("PASS test_motor_state_is_continuous_across_steps\n");
+    } else {
+        ++failed;
+        printf("FAIL test_motor_state_is_continuous_across_steps\n");
     }
 
     printf("Passed: %d Failed: %d\n", passed, failed);

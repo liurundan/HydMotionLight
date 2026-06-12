@@ -16,6 +16,10 @@ static float pressure_model_clampf(float value, float min_value, float max_value
     return value;
 }
 
+static float pressure_model_maxf(float a, float b) {
+    return (a > b) ? a : b;
+}
+
 static uint32_t pressure_model_seed(uint32_t seed) {
     return seed == 0u ? 0xA341316Cu : seed;
 }
@@ -66,6 +70,11 @@ void PressureModel_Step(const PressureModelParams *params,
     float dt;
     float clamped_target;
     float alpha;
+    float q_pump;
+    float q_leak;
+    float q_relief;
+    float q_net;
+    float d_pressure;
 
     if (params == NULL || state == NULL || out == NULL) {
         return;
@@ -76,14 +85,27 @@ void PressureModel_Step(const PressureModelParams *params,
     alpha = dt / (params->motor_tau_s + dt);
 
     state->motor_rpm += alpha * (clamped_target - state->motor_rpm);
-    state->pressure_pa = state->pressure_pa < 0.0f ? 0.0f : state->pressure_pa;
+    state->motor_rpm = pressure_model_clampf(state->motor_rpm, params->min_rpm, params->max_rpm);
+
+    q_pump = params->pump_displacement_m3_rev * (state->motor_rpm / 60.0f);
+    q_leak = params->leak_coeff_m3_pa_s * state->pressure_pa;
+    q_relief = 0.0f;
+    if (state->pressure_pa > params->relief_set_pa) {
+        q_relief = params->relief_coeff_m3_pa_s * (state->pressure_pa - params->relief_set_pa);
+    }
+
+    q_net = q_pump - q_leak - q_relief;
+    d_pressure = (params->bulk_modulus_pa / params->chamber_volume_m3) * q_net * dt;
+    state->pressure_pa = pressure_model_maxf(0.0f, state->pressure_pa + d_pressure);
 
     out->actual_motor_rpm = state->motor_rpm;
     out->real_pressure_bar = state->pressure_pa * 1.0e-5f;
-    out->measured_pressure_bar = out->real_pressure_bar;
-    out->pump_flow_m3_s = 0.0f;
-    out->net_flow_m3_s = 0.0f;
-    out->relief_active = 0;
+    out->measured_pressure_bar = pressure_model_clampf(out->real_pressure_bar,
+                                                       0.0f,
+                                                       params->sensor_range_bar);
+    out->pump_flow_m3_s = q_pump;
+    out->net_flow_m3_s = q_net;
+    out->relief_active = (q_relief > 0.0f) ? 1 : 0;
 }
 
 float pressure_update(float target_rpm,
