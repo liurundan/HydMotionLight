@@ -5,8 +5,9 @@
 #define HYD_LEGACY_PRESSURE_FLOW_KP 1.5
 #define HYD_DEFAULT_PRESSURE_FILTER_ALPHA 0.1
 #define HYD_DEFAULT_PRESSURE_DERIVATIVE_FILTER_ALPHA 0.05
-#define HYD_DEFAULT_RBF_PID_SAMPLING_PERIOD 0.01
-#define HYD_DEFAULT_RBF_LEARNING_RATE 0.25
+#define HYD_DEFAULT_RBF_PID_SAMPLING_PERIOD 0.001
+#define HYD_DEFAULT_RBF_LEARNING_RATE 0.02
+#define HYD_DEFAULT_PID_LEARNING_RATE 0.1
 
 typedef struct {
     HYD_PressureControllerType strategy;
@@ -188,9 +189,9 @@ static void HYD_ResolveRbfPidConfig(const HYD_MotionSegment* segment,
     config->etaW = HYD_DEFAULT_RBF_LEARNING_RATE;
     config->etaC = HYD_DEFAULT_RBF_LEARNING_RATE;
     config->etaB = HYD_DEFAULT_RBF_LEARNING_RATE;
-    config->etaP = HYD_DEFAULT_RBF_LEARNING_RATE;
-    config->etaI = HYD_DEFAULT_RBF_LEARNING_RATE;
-    config->etaD = HYD_DEFAULT_RBF_LEARNING_RATE;
+    config->etaP = HYD_DEFAULT_PID_LEARNING_RATE;
+    config->etaI = HYD_DEFAULT_PID_LEARNING_RATE;
+    config->etaD = HYD_DEFAULT_PID_LEARNING_RATE;
 
     if (segment == NULL) {
         return;
@@ -256,7 +257,7 @@ static void HYD_ResolvePressureControllerConfig(const HYD_MotionSegment* segment
             config->dt = 0.0;
         }
     }
-
+    config->dt = 0.001; /* 强制固定 dt=1ms，使用内部自适应采样周期逻辑 */
     config->samplingPeriod = HYD_ResolveAdaptiveSamplingPeriod(state, config->dt);
     HYD_ResolveRbfPidConfig(segment, &config->rbf);
 }
@@ -299,7 +300,7 @@ static void HYD_EnsureRbfPidInitialized(HYD_PressureControllerState* state,
     state->rbfPid.sampling_period = (float)samplingPeriod;
     state->rbfPid.fMaxFlow = fMaxFlow;
     state->rbfPid.fFlowRateLimit = fFlowRateLimit;
-    state->rbfPid.enable = true;
+
 }
 
 static void HYD_ApplyRbfPidConfig(HYD_PressureControllerState* state,
@@ -394,45 +395,37 @@ static void HYD_SynchronizeRbfPidState(HYD_PressureControllerState* state,
     HYD_ApplyRbfPidConfig(state, config, segment,
                           flowToPumpSpeedGain, pumpSpeedLimit);
 
-    seededOutput = HYD_ClampReal(trackedOutputFlow, config->outputMin, config->outputMax);
-    if (seededOutput < (HYD_REAL)MIN_OUTPUT) {
-        seededOutput = (HYD_REAL)MIN_OUTPUT;
-    }
+//    seededOutput = HYD_ClampReal(trackedOutputFlow, config->outputMin, config->outputMax);
+//    if (seededOutput < (HYD_REAL)MIN_OUTPUT) {
+//        seededOutput = (HYD_REAL)MIN_OUTPUT;
+//    }
+//
+//    /* Use the same normalization scale that RBF_PID_Update will apply, so the
+//     * seeded Setpoint/Feedback/last_ref values remain consistent across the
+//     * sync→update boundary and bumpless tracking is preserved. Fallback to
+//     * MAX_PRESSURE when the per-segment scale is unconfigured (0). */
+//    normScale = (state->rbfPid.pressure_normalization_scale > 0.0f)
+//                ? (HYD_REAL)state->rbfPid.pressure_normalization_scale
+//                : (HYD_REAL)MAX_PRESSURE;
+//
+//    state->rbfPid.Output = (float)(seededOutput / (HYD_REAL)state->rbfPid.fMaxFlow);
+//    state->rbfPid.u_prev = (float)(seededOutput / (HYD_REAL)state->rbfPid.fMaxFlow);
+//    state->rbfPid.n_out = (float)(seededOutput / (HYD_REAL)state->rbfPid.fMaxFlow);
+//    state->rbfPid.P_set = (float)targetPressure;
+//    state->rbfPid.P_actual = (float)measuredPressure;
+//
+//    state->rbfPid.du = 0.0f;
+//    state->rbfPid.du_prev = 0.0f;
+//    /* Initialize error history to current error to prevent derivative kick on
+//     * first Update() call. Without this, raw_de = Error - 0 = Error on first
+//     * scan, causing a massive KD contribution that can produce >70% overshoot
+//     * even with gain compensation enabled. */
+//    state->rbfPid.e_prev1 = state->rbfPid.Error;
+//    state->rbfPid.e_prev2 = state->rbfPid.Error;
+//
+//    state->rbfPid.Status = 0;
+//    state->rbfPid.TuneResult = 0;
 
-    /* Use the same normalization scale that RBF_PID_Update will apply, so the
-     * seeded Setpoint/Feedback/last_ref values remain consistent across the
-     * sync→update boundary and bumpless tracking is preserved. Fallback to
-     * MAX_PRESSURE when the per-segment scale is unconfigured (0). */
-    normScale = (state->rbfPid.pressure_normalization_scale > 0.0f)
-                ? (HYD_REAL)state->rbfPid.pressure_normalization_scale
-                : (HYD_REAL)MAX_PRESSURE;
-
-    state->rbfPid.Output = (float)(seededOutput / (HYD_REAL)state->rbfPid.fMaxFlow);
-    state->rbfPid.u_prev = (float)(seededOutput / (HYD_REAL)state->rbfPid.fMaxFlow);
-    state->rbfPid.n_out = (float)(seededOutput / (HYD_REAL)state->rbfPid.fMaxFlow);
-    state->rbfPid.P_set = (float)targetPressure;
-    state->rbfPid.P_actual = (float)measuredPressure;
-    state->rbfPid.Setpoint = (float)(targetPressure / normScale);
-    state->rbfPid.Feedback = (float)(measuredPressure / normScale);
-    state->rbfPid.Error = state->rbfPid.Setpoint - state->rbfPid.Feedback;
-    state->rbfPid.y_prev1 = state->rbfPid.Feedback;
-    state->rbfPid.du = 0.0f;
-    state->rbfPid.du_prev = 0.0f;
-    /* Initialize error history to current error to prevent derivative kick on
-     * first Update() call. Without this, raw_de = Error - 0 = Error on first
-     * scan, causing a massive KD contribution that can produce >70% overshoot
-     * even with gain compensation enabled. */
-    state->rbfPid.e_prev1 = state->rbfPid.Error;
-    state->rbfPid.e_prev2 = state->rbfPid.Error;
-    state->rbfPid.delta_temp_prev = 0.0f;
-    state->rbfPid.fLastActPress = state->rbfPid.Feedback;
-    state->rbfPid.fLastActPress2 = state->rbfPid.Feedback;
-    state->rbfPid.fUffAcc = 0.0f;
-    state->rbfPid.last_ref = state->rbfPid.Setpoint;
-    state->rbfPid.Status = 0;
-    state->rbfPid.TuneResult = 0;
-    state->rbfPid.Reset = false;
-    state->rbfPid.FirstScan = false;
 }
 
 void HYD_PressureController_ClearState(HYD_PressureControllerState* state) {
@@ -561,9 +554,7 @@ void HYD_PressureController_Execute(const HYD_MotionSegment* segment,
                                        input->pumpSpeedLimit);
         }
 
-        effectiveTargetPressure = (error == 0.0) ? filteredPressure : input->targetPressure;
-        state->rbfPid.P_set = (float)effectiveTargetPressure;
-        state->rbfPid.P_actual = (float)filteredPressure;
+        effectiveTargetPressure = input->targetPressure; //(error == 0.0) ? filteredPressure :
         rawOutputFlow = (HYD_REAL)RBF_PID_Update(&state->rbfPid,
                                                  (float)effectiveTargetPressure,
                                                  (float)filteredPressure);

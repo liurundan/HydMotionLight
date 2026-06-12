@@ -144,6 +144,8 @@ void HydraulicSim_Step(HydraulicSimEnv* env, float dt_s);
 
 int HydraulicSim_NormalizeDirection(int direction);
 
+float pressure_update(float target_rpm, float t, float *P_state, float *real_P, float* actual_motor_rpm);
+
 #ifdef __cplusplus
 }
 #endif

@@ -82,6 +82,21 @@ typedef struct {
     __DECLARE_VAR(BOOL,BUSY)
 } HYD_READSIMAXIS;
 
+/* FUNCTION_BLOCK HYD_PRESSUREMODEL */
+typedef struct {
+    __DECLARE_VAR(BOOL,EN)
+    __DECLARE_VAR(BOOL,ENO)
+    __DECLARE_VAR(BOOL,ENABLE)
+    __DECLARE_VAR(REAL,MOTOR_RPM)
+	__DECLARE_VAR(REAL,TIME_S)
+
+    __DECLARE_VAR(BOOL,ACTIVE)
+    __DECLARE_VAR(REAL,MEASURED_PRESSURE_BAR)
+    __DECLARE_VAR(REAL,REAL_PRESSURE_BAR)
+    __DECLARE_VAR(REAL,ACTUAL_MOTOR_RPM)
+
+} HYD_PRESSUREMODEL;
+
 void HYD_HydraulicSimFB_Cycle(HYD_HydraulicSimFB* fb);
 
 extern int  __HydSimulator_framework_Init();
@@ -93,6 +108,7 @@ extern void __mcl_cmd_createSimAxis(HYD_CREATESIMAXIS *data__);
 extern void __mcl_cmd_moveSimAxis(HYD_MOVESIMAXIS *data__);
 extern void __mcl_cmd_readSimAxis(HYD_READSIMAXIS *data__);
 
+extern void __mcl_cmd_updatePressureModel(HYD_PRESSUREMODEL *data__);
 #ifdef __cplusplus
 }
 #endif

@@ -227,3 +227,29 @@ void __mcl_cmd_readSimAxis(HYD_READSIMAXIS *data__) {
     __SET_VAR(data__->, BUSY,, fb->active);
     __SET_VAR(data__->, ENO,, 1);
 }
+
+static float last_pressure = 0.0f;
+void __mcl_cmd_updatePressureModel(HYD_PRESSUREMODEL *data__)
+{
+    if (data__ == NULL) return;
+    if (!__GET_VAR(data__->ENABLE)) {
+    	last_pressure = 0.0f;
+        __SET_VAR(data__->, REAL_PRESSURE_BAR,, 0.0f);
+        __SET_VAR(data__->, MEASURED_PRESSURE_BAR,, 0.0f);
+        __SET_VAR(data__->, ACTUAL_MOTOR_RPM,, 0.0f);
+        __SET_VAR(data__->, ACTIVE,, 0);
+        return;
+    }
+    float current_time = __GET_VAR(data__->TIME_S);
+    float target_motor_speed = __GET_VAR(data__->MOTOR_RPM);
+
+    float real_pressure = 0.0f;
+    float actual_motor_rpm = 0.0f;
+    float new_pressure  = pressure_update(target_motor_speed, current_time, &last_pressure, &real_pressure, &actual_motor_rpm);
+
+    __SET_VAR(data__->, REAL_PRESSURE_BAR,, real_pressure);
+    __SET_VAR(data__->, MEASURED_PRESSURE_BAR,, new_pressure);
+    __SET_VAR(data__->, ACTUAL_MOTOR_RPM,, actual_motor_rpm);
+    __SET_VAR(data__->, ACTIVE,, 1);
+
+}

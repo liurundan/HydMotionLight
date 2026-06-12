@@ -41,7 +41,9 @@ void HYD_PumpConverter_Execute(const HYD_PumpConverterInput* input,
     output->commandFlow = HYD_ClampReal(requestedFlow,
         -maxFlowFromPumpLimit * HYD_PUMP_NEGATIVE_SPEED_RATIO,
         maxFlowFromPumpLimit);
+
     output->pumpSpeed = output->commandFlow * input->flowToPumpSpeedGain;
+
 }
 
 HYD_BOOL HYD_PumpConverter_ValidateConfig(HYD_REAL flowToPumpSpeedGain,

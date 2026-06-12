@@ -151,6 +151,54 @@
 					</ST>
 				</body>
 			</pou>
+			<pou name="HYD_PressureModel" pouType="functionBlock">
+				<interface>
+					<inputVars>
+						<variable name="ENABLE">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="MOTOR_RPM">
+							<type>
+								<REAL />
+							</type>
+						</variable>
+						<variable name="TIME_S">
+							<type>
+								<REAL />
+							</type>
+						</variable>
+					</inputVars>
+					<outputVars>
+						<variable name="ACTIVE">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="MEASURED_PRESSURE_BAR">
+							<type>
+								<REAL />
+							</type>
+						</variable>
+						<variable name="REAL_PRESSURE_BAR">
+							<type>
+								<REAL />
+							</type>
+						</variable>
+						<variable name="ACTUAL_MOTOR_RPM">
+							<type>
+								<REAL />
+							</type>
+						</variable>
+					</outputVars>
+				</interface>
+				<body>
+					<ST>
+						<xhtml:p><![CDATA[{{ extern void __mcl_cmd_updatePressureModel(HYD_PRESSUREMODEL *data__);	__mcl_cmd_updatePressureModel(data__);	 }}	]]></xhtml:p>
+					</ST>
+				</body>
+			</pou>
 		</pous>
 	</types>
 	<instances>
