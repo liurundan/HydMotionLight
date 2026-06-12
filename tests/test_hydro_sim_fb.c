@@ -327,6 +327,57 @@ static void test_invalid_axisid_is_safe_and_does_not_pollute_other_axes(void) {
                 "Invalid AXISID operations should not stop or corrupt a valid moving axis");
 }
 
+/* ==================================================================
+ * Test 9: PressureModel FB 必须跨拍保持状态，并在 disable 时复位
+ * ================================================================== */
+static void test_pressure_model_fb_persists_state_and_resets_on_disable(void) {
+    HYD_PRESSUREMODEL cmd;
+    double first_step_rpm;
+    double first_step_real_pressure;
+
+    memset(&cmd, 0, sizeof(cmd));
+
+    cmd.ENABLE.value = true;
+    cmd.MOTOR_RPM.value = 1000.0;
+    cmd.TIME_S.value = 0.000;
+    __mcl_cmd_updatePressureModel(&cmd);
+
+    first_step_rpm = cmd.ACTUAL_MOTOR_RPM.value;
+    first_step_real_pressure = cmd.REAL_PRESSURE_BAR.value;
+
+    ASSERT_TRUE(cmd.ACTIVE.value, "PressureModel FB should become active when enabled");
+    ASSERT_TRUE(first_step_rpm > 0.0, "First enabled step should accelerate the motor");
+
+    cmd.TIME_S.value = 0.001;
+    __mcl_cmd_updatePressureModel(&cmd);
+
+    ASSERT_TRUE(cmd.ACTUAL_MOTOR_RPM.value > first_step_rpm,
+                "Second enabled step should continue from prior motor state");
+    ASSERT_TRUE(cmd.REAL_PRESSURE_BAR.value >= first_step_real_pressure,
+                "Second enabled step should not restart the pressure state");
+
+    cmd.ENABLE.value = false;
+    __mcl_cmd_updatePressureModel(&cmd);
+
+    ASSERT_TRUE(!cmd.ACTIVE.value, "Disabling PressureModel FB should clear ACTIVE");
+    ASSERT_NEAR(cmd.REAL_PRESSURE_BAR.value, 0.0, TOLERANCE,
+                "Disabling PressureModel FB should reset real pressure output");
+    ASSERT_NEAR(cmd.MEASURED_PRESSURE_BAR.value, 0.0, TOLERANCE,
+                "Disabling PressureModel FB should reset measured pressure output");
+    ASSERT_NEAR(cmd.ACTUAL_MOTOR_RPM.value, 0.0, TOLERANCE,
+                "Disabling PressureModel FB should reset actual motor rpm output");
+
+    cmd.ENABLE.value = true;
+    cmd.MOTOR_RPM.value = 1000.0;
+    cmd.TIME_S.value = 0.000;
+    __mcl_cmd_updatePressureModel(&cmd);
+
+    ASSERT_NEAR(cmd.ACTUAL_MOTOR_RPM.value, first_step_rpm, 1e-6,
+                "Re-enable after reset should replay the same first-step motor rpm");
+    ASSERT_NEAR(cmd.REAL_PRESSURE_BAR.value, first_step_real_pressure, 1e-6,
+                "Re-enable after reset should replay the same first-step real pressure");
+}
+
 int main(void) {
     printf("=== HydraulicSimFB PLC Adapter Tests ===\n\n");
 
@@ -338,6 +389,7 @@ int main(void) {
     test_publish_steps_shared_env_once_per_scan();
     test_fault_injection_is_isolated_per_axis();
     test_invalid_axisid_is_safe_and_does_not_pollute_other_axes();
+    test_pressure_model_fb_persists_state_and_resets_on_disable();
 
     printf("\n=== Results: %d/%d passed ===\n", tests_passed, tests_run);
     return (tests_passed == tests_run) ? 0 : 1;

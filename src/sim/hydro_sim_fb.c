@@ -1,4 +1,5 @@
 #include "hydro_sim_fb.h"
+#include "pressure_model.h"
 
 #include <string.h>
 
@@ -8,6 +9,35 @@ static HydraulicSimEnv g_shared_env;
 static HYD_HydraulicSimFB _sim_fb[HYD_MAX_HYDRAULIC_SIM_FB];
 static int g_axis_slot_by_id[HYD_MAX_HYDRAULIC_SIM_FB];
 static unsigned int NextAllocatedHydraulicSimFB = 0U;
+static PressureModelParams g_pressure_model_params;
+static PressureModelState g_pressure_model_state;
+static int g_pressure_model_initialized = 0;
+static int g_pressure_model_have_time = 0;
+static float g_pressure_model_last_time_s = 0.0f;
+static const unsigned int kPressureModelSeed = 0x13572468u;
+
+static void PressureModelFb_ResetOutputs(HYD_PRESSUREMODEL *data__) {
+    __SET_VAR(data__->, REAL_PRESSURE_BAR,, 0.0f);
+    __SET_VAR(data__->, MEASURED_PRESSURE_BAR,, 0.0f);
+    __SET_VAR(data__->, ACTUAL_MOTOR_RPM,, 0.0f);
+    __SET_VAR(data__->, ACTIVE,, 0);
+}
+
+static void PressureModelFb_ResetState(void) {
+    PressureModel_Reset(&g_pressure_model_state, kPressureModelSeed);
+    g_pressure_model_have_time = 0;
+    g_pressure_model_last_time_s = 0.0f;
+}
+
+static void PressureModelFb_EnsureInitialized(void) {
+    if (g_pressure_model_initialized) {
+        return;
+    }
+
+    PressureModel_InitParams(&g_pressure_model_params);
+    PressureModelFb_ResetState();
+    g_pressure_model_initialized = 1;
+}
 
 static int Hyd_IsValidAxisType(int axis_type) {
     return (axis_type == (int)SIM_AXIS_CLAMP) || (axis_type == (int)SIM_AXIS_INJECT);
@@ -108,6 +138,10 @@ int __HydSimulator_framework_Init() {
 
     for (i = 0; i < HYD_MAX_HYDRAULIC_SIM_FB; ++i) {
         Hyd_ResetHandle(&_sim_fb[i]);
+    }
+
+    if (g_pressure_model_initialized) {
+        PressureModelFb_ResetState();
     }
 
     return 0;
@@ -228,28 +262,41 @@ void __mcl_cmd_readSimAxis(HYD_READSIMAXIS *data__) {
     __SET_VAR(data__->, ENO,, 1);
 }
 
-static float last_pressure = 0.0f;
 void __mcl_cmd_updatePressureModel(HYD_PRESSUREMODEL *data__)
 {
+    float current_time;
+    float dt_s;
+    float target_motor_speed;
+    PressureModelOutput out;
+
     if (data__ == NULL) return;
+    PressureModelFb_EnsureInitialized();
+
     if (!__GET_VAR(data__->ENABLE)) {
-    	last_pressure = 0.0f;
-        __SET_VAR(data__->, REAL_PRESSURE_BAR,, 0.0f);
-        __SET_VAR(data__->, MEASURED_PRESSURE_BAR,, 0.0f);
-        __SET_VAR(data__->, ACTUAL_MOTOR_RPM,, 0.0f);
-        __SET_VAR(data__->, ACTIVE,, 0);
+        PressureModelFb_ResetState();
+        PressureModelFb_ResetOutputs(data__);
         return;
     }
-    float current_time = __GET_VAR(data__->TIME_S);
-    float target_motor_speed = __GET_VAR(data__->MOTOR_RPM);
 
-    float real_pressure = 0.0f;
-    float actual_motor_rpm = 0.0f;
-    float new_pressure  = pressure_update(target_motor_speed, current_time, &last_pressure, &real_pressure, &actual_motor_rpm);
+    current_time = __GET_VAR(data__->TIME_S);
+    target_motor_speed = __GET_VAR(data__->MOTOR_RPM);
+    if (g_pressure_model_have_time && current_time > g_pressure_model_last_time_s) {
+        dt_s = current_time - g_pressure_model_last_time_s;
+    } else {
+        dt_s = 0.001f;
+    }
+    g_pressure_model_last_time_s = current_time;
+    g_pressure_model_have_time = 1;
 
-    __SET_VAR(data__->, REAL_PRESSURE_BAR,, real_pressure);
-    __SET_VAR(data__->, MEASURED_PRESSURE_BAR,, new_pressure);
-    __SET_VAR(data__->, ACTUAL_MOTOR_RPM,, actual_motor_rpm);
+    memset(&out, 0, sizeof(out));
+    PressureModel_Step(&g_pressure_model_params,
+                       &g_pressure_model_state,
+                       target_motor_speed,
+                       dt_s,
+                       &out);
+
+    __SET_VAR(data__->, REAL_PRESSURE_BAR,, out.real_pressure_bar);
+    __SET_VAR(data__->, MEASURED_PRESSURE_BAR,, out.measured_pressure_bar);
+    __SET_VAR(data__->, ACTUAL_MOTOR_RPM,, out.actual_motor_rpm);
     __SET_VAR(data__->, ACTIVE,, 1);
-
 }
