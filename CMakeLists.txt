@@ -100,6 +100,9 @@ target_link_libraries(test_parameter_iec PRIVATE HydroMotionLib)
 add_executable(test_hydro_sim_fb tests/test_hydro_sim_fb.c)
 target_link_libraries(test_hydro_sim_fb PRIVATE HydroSimLib)
 
+add_executable(test_pressure_model tests/test_pressure_model.c)
+target_link_libraries(test_pressure_model PRIVATE HydroSimLib)
+
 # ==================================================================
 # IEC FB接口层测试
 # ==================================================================
@@ -190,6 +193,7 @@ add_test(NAME test_direct_mode_simple
 add_test(NAME test_parameter_access COMMAND test_parameter_access)
 add_test(NAME test_parameter_iec COMMAND test_parameter_iec)
 add_test(NAME test_hydro_sim_fb COMMAND test_hydro_sim_fb)
+add_test(NAME test_pressure_model COMMAND test_pressure_model)
 add_test(NAME test_motion_interface_unit COMMAND test_motion_interface_unit)
 add_test(NAME test_motion_interface_arbitration COMMAND test_motion_interface_arbitration)
 add_test(NAME test_motion_interface_done_signals COMMAND test_motion_interface_done_signals)
