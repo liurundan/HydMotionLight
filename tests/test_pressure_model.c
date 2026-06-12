@@ -224,6 +224,25 @@ static int test_noise_control_is_repeatable_with_fixed_seed(void) {
     return 1;
 }
 
+static int test_legacy_pressure_update_keeps_motor_state_between_calls(void) {
+    float pressure_state = 0.0f;
+    float real_pressure0 = 0.0f;
+    float real_pressure1 = 0.0f;
+    float rpm0 = 0.0f;
+    float rpm1 = 0.0f;
+    float measured0;
+    float measured1;
+
+    measured0 = pressure_update(1000.0f, 0.000f, &pressure_state, &real_pressure0, &rpm0);
+    measured1 = pressure_update(1000.0f, 0.001f, &pressure_state, &real_pressure1, &rpm1);
+
+    ASSERT_TRUE(rpm1 > rpm0);
+    ASSERT_TRUE(real_pressure1 >= real_pressure0);
+    ASSERT_TRUE(measured0 >= 0.0f && measured1 >= 0.0f);
+
+    return 1;
+}
+
 int main(void) {
     int passed = 0;
     int failed = 0;
@@ -282,6 +301,14 @@ int main(void) {
     } else {
         ++failed;
         printf("FAIL test_noise_control_is_repeatable_with_fixed_seed\n");
+    }
+
+    if (test_legacy_pressure_update_keeps_motor_state_between_calls()) {
+        ++passed;
+        printf("PASS test_legacy_pressure_update_keeps_motor_state_between_calls\n");
+    } else {
+        ++failed;
+        printf("FAIL test_legacy_pressure_update_keeps_motor_state_between_calls\n");
     }
 
     printf("Passed: %d Failed: %d\n", passed, failed);

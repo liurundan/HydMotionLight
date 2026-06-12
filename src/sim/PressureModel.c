@@ -209,13 +209,14 @@ float pressure_update(float target_rpm,
     static int initialized = 0;
     static PressureModelParams params;
     static PressureModelState state;
+    static float last_time_s = 0.0f;
     PressureModelOutput out;
-
-    (void)t;
+    float dt_s;
 
     if (!initialized) {
         PressureModel_InitParams(&params);
         PressureModel_Reset(&state, 0x2468ace1u);
+        last_time_s = 0.0f;
         initialized = 1;
     }
 
@@ -223,7 +224,14 @@ float pressure_update(float target_rpm,
         state.pressure_pa = *P_state;
     }
 
-    PressureModel_Step(&params, &state, target_rpm, PRESSURE_MODEL_DEFAULT_DT_S, &out);
+    if (t > last_time_s) {
+        dt_s = t - last_time_s;
+    } else {
+        dt_s = PRESSURE_MODEL_DEFAULT_DT_S;
+    }
+    last_time_s = t;
+
+    PressureModel_Step(&params, &state, target_rpm, dt_s, &out);
 
     if (P_state != NULL) {
         *P_state = state.pressure_pa;
