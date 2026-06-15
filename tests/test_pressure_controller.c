@@ -288,7 +288,7 @@ static void test_rbf_pid_strategy_executes_within_limits_and_adapts(void) {
         assert(output.adaptiveActive);
         assert(state.activeStrategy == HYD_PRESSURE_CONTROLLER_RBF_PID);
         assert(state.rbfInitialized);
-        assert(state.rbfPid.Status == 1);
+        assert(state.rbfPid.Status == 2 || state.rbfPid.Status == 3);
         /* TuneResult is a reserved field, not set by current implementation */
         assert_rbf_pid_internal_limits(&state);
 
@@ -404,7 +404,7 @@ static void test_rbf_pid_strategy_switch_tracks_previous_output_bumplessly(void)
     assert(fabs(output1.outputFlow - output0.outputFlow) < 0.05);
     assert(state.activeStrategy == HYD_PRESSURE_CONTROLLER_RBF_PID);
     assert(state.rbfInitialized);
-    assert(state.rbfPid.Status == 1);
+    assert(state.rbfPid.Status == 2 || state.rbfPid.Status == 3);
     /* TuneResult is a reserved field, not set by current implementation */
     printf("✓ RBF-PID strategy switch bumpless tracking test passed\n");
 }
@@ -789,7 +789,7 @@ static HYD_MotionSegment make_rbf_pid_segment(HYD_REAL target_bar) {
      * systemGain = 5.4 * 20 = 108 bar/(L/min) */
     seg.systemGain = PLANT_K * PLANT_GAIN;  /* 5.4 * 20 = 108 bar/(L/min) */
     /* With gain compensation enabled, the anti-windup limit is automatically
-     * scaled to Setpoint * 1.2 in normalized space, preventing integral windup.
+     * scaled to Setpoint * 1.10 in normalized space, preventing integral windup.
      * KI bounds widened for gain-compensated operation; learning rates reduced
      * to avoid oscillation in the compensated output space. */
     seg.pressureRbfConfig.minKp = 0.3;

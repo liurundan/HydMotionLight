@@ -17,6 +17,12 @@ static float clamp_positive_or_default(float value, float fallback) {
     return value > 0.0f ? value : fallback;
 }
 
+static float rbf_pid_max_motor_output(const RBF_PID_Handle *pid) {
+    float max_output = pid->fMaxFlow * pid->fFlowRateLimit * pid->flowToPumpSpeedGain;
+
+    return max_output > 0.0f ? max_output : 500.0f;
+}
+
 static void sort_pair(float *low, float *high) {
     if (*low > *high) {
         float temp = *low;
@@ -178,6 +184,7 @@ static void rbf_pid_step_adaptive_gains(RBF_PID_Handle *pid, float error) {
 }
 
 static void rbf_pid_step_incremental_output(RBF_PID_Handle *pid, float error) {
+    float max_motor_output = rbf_pid_max_motor_output(pid);
     float raw_d_term = error - 2.0f * pid->e_prev1 + pid->e_prev2;
     float du = pid->KP * (error - pid->e_prev1) + pid->KI * error + pid->KD * raw_d_term;
     float actual_press = pid->P_set - error;
@@ -191,7 +198,7 @@ static void rbf_pid_step_incremental_output(RBF_PID_Handle *pid, float error) {
     du += dynamic_ff + f_uff;
 
     pid->du = du;
-    pid->Output = clampf(MIN_OUTPUT, pid->u_prev + du, 500.0f);
+    pid->Output = clampf(MIN_OUTPUT, pid->u_prev + du, max_motor_output);
     if (pid->P_set < 0.1f && actual_press < 0.5f) {
         pid->Output = 0.0f;
     }
@@ -249,6 +256,8 @@ void RBF_PID_Init(RBF_PID_Handle *pid, float sampling_period,
 }
 
 float RBF_PID_Update(RBF_PID_Handle *pid, float setpoint, float feedback) {
+    float max_motor_output = rbf_pid_max_motor_output(pid);
+    float effective_motor_output_limit = max_motor_output;
     float error;
     float raw_output;
 
@@ -264,13 +273,25 @@ float RBF_PID_Update(RBF_PID_Handle *pid, float setpoint, float feedback) {
 
     if (pid->gain_compensation_enabled) {
         pid->Output = raw_output * pid->gain_compensation_factor;
+        if (pid->K > 0.0f && pid->P_set > 0.0f) {
+            float gain_comp_limit =
+                (pid->P_set * 1.10f / pid->K) * pid->flowToPumpSpeedGain;
+            if (gain_comp_limit > 0.0f && gain_comp_limit < effective_motor_output_limit) {
+                effective_motor_output_limit = gain_comp_limit;
+            }
+        }
     }
-    pid->Output = clampf(MIN_OUTPUT, pid->Output, 500.0f);
+    pid->Output = clampf(MIN_OUTPUT, pid->Output, effective_motor_output_limit);
     pid->n_out = pid->Output;
     pid->y_prev1 = pid->P_actual;
     pid->e_prev2 = pid->e_prev1;
     pid->e_prev1 = error;
-    pid->u_prev = raw_output;
+    if (pid->gain_compensation_enabled &&
+        fabsf(pid->gain_compensation_factor) > 1.0e-6f) {
+        pid->u_prev = pid->Output / pid->gain_compensation_factor;
+    } else {
+        pid->u_prev = pid->Output;
+    }
     pid->du_prev = pid->du;
 
     rbf_pid_step_steady_state(pid);

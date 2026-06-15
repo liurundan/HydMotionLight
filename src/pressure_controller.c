@@ -257,7 +257,6 @@ static void HYD_ResolvePressureControllerConfig(const HYD_MotionSegment* segment
             config->dt = 0.0;
         }
     }
-    config->dt = 0.001; /* 强制固定 dt=1ms，使用内部自适应采样周期逻辑 */
     config->samplingPeriod = HYD_ResolveAdaptiveSamplingPeriod(state, config->dt);
     HYD_ResolveRbfPidConfig(segment, &config->rbf);
 }
@@ -300,6 +299,9 @@ static void HYD_EnsureRbfPidInitialized(HYD_PressureControllerState* state,
     state->rbfPid.sampling_period = (float)samplingPeriod;
     state->rbfPid.fMaxFlow = fMaxFlow;
     state->rbfPid.fFlowRateLimit = fFlowRateLimit;
+    if (flowToPumpSpeedGain > 0.0) {
+        state->rbfPid.flowToPumpSpeedGain = (float)flowToPumpSpeedGain;
+    }
 
 }
 
@@ -384,8 +386,10 @@ static void HYD_SynchronizeRbfPidState(HYD_PressureControllerState* state,
                                        const HYD_MotionSegment* segment,
                                        HYD_REAL flowToPumpSpeedGain,
                                        HYD_REAL pumpSpeedLimit) {
-    HYD_REAL seededOutput;
-    HYD_REAL normScale;
+    HYD_REAL seededFlow;
+    HYD_REAL seededMotorOutput;
+    HYD_REAL seededRawOutput;
+    HYD_REAL error;
 
     if (state == NULL || config == NULL) {
         return;
@@ -394,37 +398,39 @@ static void HYD_SynchronizeRbfPidState(HYD_PressureControllerState* state,
     RBF_PID_Reset(&state->rbfPid);
     HYD_ApplyRbfPidConfig(state, config, segment,
                           flowToPumpSpeedGain, pumpSpeedLimit);
+    seededFlow = HYD_ClampReal(trackedOutputFlow, config->outputMin, config->outputMax);
+    seededMotorOutput = seededFlow * (HYD_REAL)state->rbfPid.flowToPumpSpeedGain;
+    seededMotorOutput = HYD_ClampReal((HYD_REAL)MIN_OUTPUT,
+                                      seededMotorOutput,
+                                      (HYD_REAL)(state->rbfPid.fMaxFlow *
+                                                 state->rbfPid.fFlowRateLimit *
+                                                 state->rbfPid.flowToPumpSpeedGain));
 
-//    seededOutput = HYD_ClampReal(trackedOutputFlow, config->outputMin, config->outputMax);
-//    if (seededOutput < (HYD_REAL)MIN_OUTPUT) {
-//        seededOutput = (HYD_REAL)MIN_OUTPUT;
-//    }
-//
-//    /* Use the same normalization scale that RBF_PID_Update will apply, so the
-//     * seeded Setpoint/Feedback/last_ref values remain consistent across the
-//     * sync→update boundary and bumpless tracking is preserved. Fallback to
-//     * MAX_PRESSURE when the per-segment scale is unconfigured (0). */
-//    normScale = (state->rbfPid.pressure_normalization_scale > 0.0f)
-//                ? (HYD_REAL)state->rbfPid.pressure_normalization_scale
-//                : (HYD_REAL)MAX_PRESSURE;
-//
-//    state->rbfPid.Output = (float)(seededOutput / (HYD_REAL)state->rbfPid.fMaxFlow);
-//    state->rbfPid.u_prev = (float)(seededOutput / (HYD_REAL)state->rbfPid.fMaxFlow);
-//    state->rbfPid.n_out = (float)(seededOutput / (HYD_REAL)state->rbfPid.fMaxFlow);
-//    state->rbfPid.P_set = (float)targetPressure;
-//    state->rbfPid.P_actual = (float)measuredPressure;
-//
-//    state->rbfPid.du = 0.0f;
-//    state->rbfPid.du_prev = 0.0f;
-//    /* Initialize error history to current error to prevent derivative kick on
-//     * first Update() call. Without this, raw_de = Error - 0 = Error on first
-//     * scan, causing a massive KD contribution that can produce >70% overshoot
-//     * even with gain compensation enabled. */
-//    state->rbfPid.e_prev1 = state->rbfPid.Error;
-//    state->rbfPid.e_prev2 = state->rbfPid.Error;
-//
-//    state->rbfPid.Status = 0;
-//    state->rbfPid.TuneResult = 0;
+    if (state->rbfPid.gain_compensation_enabled &&
+        fabsf(state->rbfPid.gain_compensation_factor) > 1.0e-6f) {
+        seededRawOutput = seededMotorOutput / (HYD_REAL)state->rbfPid.gain_compensation_factor;
+    } else {
+        seededRawOutput = seededMotorOutput;
+    }
+
+    error = targetPressure - measuredPressure;
+
+    state->rbfPid.Output = (float)seededFlow;
+    state->rbfPid.u_prev = (float)seededRawOutput;
+    state->rbfPid.n_out = (float)seededMotorOutput;
+    state->rbfPid.P_set = (float)targetPressure;
+    state->rbfPid.P_actual = (float)measuredPressure;
+    state->rbfPid.Error = (float)error;
+    state->rbfPid.du = 0.0f;
+    state->rbfPid.du_prev = 0.0f;
+    state->rbfPid.e_prev1 = (float)error;
+    state->rbfPid.e_prev2 = (float)error;
+    state->rbfPid.y_prev1 = (float)measuredPressure;
+    state->rbfPid.fLastActPress = (float)measuredPressure;
+    state->rbfPid.fLastActPress2 = (float)measuredPressure;
+    state->rbfPid.last_ref = (float)targetPressure;
+    state->rbfPid.Status = 1;
+    state->rbfPid.TuneResult = 0;
 
 }
 
@@ -504,9 +510,8 @@ void HYD_PressureController_Execute(const HYD_MotionSegment* segment,
     }
 
     HYD_ResolvePressureControllerConfig(segment, state, input, &config);
-//    filteredPressure = state->previousFilteredPressure +
-//        config.filterAlpha * (input->measuredPressure - state->previousFilteredPressure);
-    filteredPressure = input->measuredPressure; /* 2026-06-03 调整：暂时禁用滤波，直接使用原始压力值。后续可根据实际情况调整滤波强度或实现更高级的滤波器。 */
+    filteredPressure = state->previousFilteredPressure +
+        config.filterAlpha * (input->measuredPressure - state->previousFilteredPressure);
     filteredPressureRate = state->previousFilteredPressureRate;
     if (config.dt > 0.0) {
         rawPressureRate = (filteredPressure - state->previousFilteredPressure) / config.dt;
@@ -538,7 +543,9 @@ void HYD_PressureController_Execute(const HYD_MotionSegment* segment,
         HYD_REAL rawOutputFlow;
         HYD_BOOL needsAdaptiveReset;
 
-        needsAdaptiveReset = trackingRequested || !state->rbfInitialized;
+        needsAdaptiveReset = trackingRequested ||
+            !state->rbfInitialized ||
+            (input->targetPressure + 1e-6 < (HYD_REAL)state->rbfPid.P_set);
         HYD_ApplyRbfPidConfig(state, &config, segment,
                               input->flowToPumpSpeedGain, input->pumpSpeedLimit);
 

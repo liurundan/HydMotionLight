@@ -129,7 +129,7 @@ void RBF_PID_Init(RBF_PID_Handle *pid, float sampling_period,
  * @param pid RBF_PID句柄指针
  * @param setpoint 设定值(压力, 原始单位)
  * @param feedback 反馈值(压力, 原始单位)
- * @return 控制器输出流量 [L/min], Task 3 当前限幅范围[MIN_OUTPUT, 500]
+ * @return 控制器输出流量 [L/min], 内部先按实例流量/转速上限完成限幅
  */
 float RBF_PID_Update(RBF_PID_Handle *pid, float setpoint, float feedback);
 
