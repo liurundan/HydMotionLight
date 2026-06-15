@@ -535,14 +535,35 @@ void __HydMotion_framework_Retrieve()
 
 void __HydMotion_framework_Publish()
 {
-    HYD_TIME currentTime = HYD_MotionControlFB_inst[0].AXIS_REF.timestamp;
-
+    HYD_TIME currentTime = 0.0;
     HYD_TIME deltaTime;
+    HYD_BOOL hasFeedbackTimestamp = false;
+    HYD_BOOL hasSimulationAxis = false;
 
-    /* Use the first allocated FB's timestamp as the master clock.
-     * If no timestamp is set yet (first cycle), default to 0 delta. */
-    if (g_lastPublishTime <= 0.0 || currentTime <= g_lastPublishTime) {
-        deltaTime = (currentTime > g_lastPublishTime) ? (currentTime - g_lastPublishTime) : 0.0;
+    for (int i = 0; i < (int)nextAllocatedFB; i++) {
+        HYD_MotionControlFB* fb = &HYD_MotionControlFB_inst[i];
+        if (fb->_useSimulation) {
+            hasSimulationAxis = true;
+            continue;
+        }
+
+        if (!hasFeedbackTimestamp || fb->AXIS_REF.timestamp > currentTime) {
+            currentTime = fb->AXIS_REF.timestamp;
+            hasFeedbackTimestamp = true;
+        }
+    }
+
+    if (!hasFeedbackTimestamp && hasSimulationAxis) {
+        currentTime = g_lastPublishTime + dfCycleTime;
+    }
+
+    if (currentTime <= g_lastPublishTime) {
+        if (hasSimulationAxis) {
+            currentTime = g_lastPublishTime + dfCycleTime;
+            deltaTime = dfCycleTime;
+        } else {
+            deltaTime = 0.0;
+        }
     } else {
         deltaTime = currentTime - g_lastPublishTime;
     }

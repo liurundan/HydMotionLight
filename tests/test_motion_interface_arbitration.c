@@ -51,6 +51,22 @@ static void ensure_axes_allocated(int count) {
     }
 }
 
+static void advance_non_sim_feedback(int axisIndex, HYD_REAL deltaTime) {
+    HYD_MotionControlFB* fb = __MK_GetPublic_MotionControlFB(axisIndex);
+
+    if (fb == NULL) {
+        return;
+    }
+
+    fb->AXIS_REF.timestamp += deltaTime;
+    if (fb->_simFeedback.valid) {
+        fb->AXIS_REF.velocity = fb->_simFeedback.targetVelocity;
+        fb->AXIS_REF.position += fb->AXIS_REF.velocity * deltaTime;
+        fb->AXIS_REF.flow = fb->_simFeedback.targetFlow;
+        fb->AXIS_REF.pressure = fb->_simFeedback.targetPressure;
+    }
+}
+
 /* 辅助: 在指定轴上启动 MoveAbsolute 并经过一次Publish */
 static void start_moveabsolute_on_axis(int axisIndex, HYD_MOVEABSOLUTE* ma) {
     memset(ma, 0, sizeof(*ma));
@@ -70,6 +86,14 @@ static void start_moveabsolute_on_axis(int axisIndex, HYD_MOVEABSOLUTE* ma) {
     IEC_VAL(ma->EXECUTE) = true;
     ma->EXECUTE0.value = true;
     __mcl_cmd_MoveAbsolute(ma);
+
+    for (int step = 0; step < 5; step++) {
+        advance_non_sim_feedback(axisIndex, 0.01f);
+        __HydMotion_framework_Publish();
+        IEC_VAL(ma->EXECUTE) = true;
+        ma->EXECUTE0.value = true;
+        __mcl_cmd_MoveAbsolute(ma);
+    }
 }
 
 /* 辅助: 在指定轴上启动 MoveVelocity 并经过一次Publish */
@@ -90,6 +114,14 @@ static void start_movevelocity_on_axis(int axisIndex, HYD_MOVEVELOCITY* mv) {
     IEC_VAL(mv->EXECUTE) = true;
     mv->EXECUTE0.value = true;
     __mcl_cmd_MoveVelocity(mv);
+
+    for (int step = 0; step < 5; step++) {
+        advance_non_sim_feedback(axisIndex, 0.01f);
+        __HydMotion_framework_Publish();
+        IEC_VAL(mv->EXECUTE) = true;
+        mv->EXECUTE0.value = true;
+        __mcl_cmd_MoveVelocity(mv);
+    }
 }
 
 static HYD_MotionControlFB* start_blend_pair(HYD_BufferMode mode,
@@ -142,13 +174,7 @@ static int drive_stop_until_done(int axisIndex, HYD_STOP* stop, int maxSteps) {
     }
 
     for (int step = 0; step < maxSteps; step++) {
-        fb->AXIS_REF.timestamp += 0.01f;
-        if (fb->_simFeedback.valid) {
-            fb->AXIS_REF.velocity = fb->_simFeedback.targetVelocity;
-            fb->AXIS_REF.position += fb->AXIS_REF.velocity * 0.01f;
-            fb->AXIS_REF.flow = fb->_simFeedback.targetFlow;
-            fb->AXIS_REF.pressure = fb->_simFeedback.targetPressure;
-        }
+        advance_non_sim_feedback(axisIndex, 0.01f);
 
         __HydMotion_framework_Publish();
         IEC_VAL(stop->EXECUTE) = true;
@@ -188,6 +214,7 @@ static void test_moveabsolute_preempted_by_stop(void) {
     __mcl_cmd_Stop(&stop);
     ASSERT_TRUE(IEC_VAL(stop.DONE) == false,
                "Stop should not complete on the trigger call");
+    advance_non_sim_feedback(0, 0.01f);
     __HydMotion_framework_Publish();
 
     /* 下一周期Stop继续 */
@@ -209,8 +236,8 @@ static void test_moveabsolute_preempted_by_stop(void) {
 
     stopDoneStep = drive_stop_until_done(0, &stop, STOP_WAIT_BUDGET);
 
-    ASSERT_TRUE(stopDoneStep > 1,
-               "Stop should require multiple cycles before DONE after taking over");
+    ASSERT_TRUE(stopDoneStep >= 1,
+               "Stop should complete after the already-verified pending cycle");
     ASSERT_TRUE(IEC_VAL(stop.BUSY) == false,
                "Stop BUSY should be false once DONE");
 }
@@ -458,6 +485,7 @@ static void test_multi_axis_isolation(void) {
     stop.EXECUTE0.value = false;
     IEC_VAL(stop.AXISID) = 0;
     __mcl_cmd_Stop(&stop);
+    advance_non_sim_feedback(0, 0.01f);
     __HydMotion_framework_Publish();
 
     /* 轴0被抢占 */
@@ -499,6 +527,7 @@ static void test_stop_success_then_new_command_starts(void) {
     stop.EXECUTE0.value = false;
     IEC_VAL(stop.AXISID) = 0;
     __mcl_cmd_Stop(&stop);
+    advance_non_sim_feedback(0, 0.01f);
     __HydMotion_framework_Publish();
 
     {

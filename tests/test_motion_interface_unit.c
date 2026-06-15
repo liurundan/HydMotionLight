@@ -67,6 +67,18 @@ static void ensure_recipe_axes_allocated(int count) {
     }
 }
 
+static int create_sim_axis(void) {
+    HYD_CREATEMOTION cm;
+    memset(&cm, 0, sizeof(cm));
+    IEC_VAL(cm.EN) = true;
+    IEC_VAL(cm.USE_RECIPE) = false;
+    IEC_VAL(cm.FLOW_TO_PUMPSPEED) = 1.0f;
+    IEC_VAL(cm.PUMPSPEED_LIMIT) = 3000.0f;
+    IEC_VAL(cm.USE_SIMULATION) = true;
+    __mcl_cmd_CreateMotion(&cm);
+    return (int)IEC_VAL(cm.AXISID);
+}
+
 /* ==================================================================
  * Test 1: Framework Init 归零FB池与分配器
  * ================================================================== */
@@ -83,6 +95,55 @@ static void test_framework_init_resets_pool(void) {
     __HydMotion_framework_Init();
     fb = __MK_GetPublic_MotionControlFB(0);
     ASSERT_TRUE(fb == NULL, "FB pool should still be clean after re-init");
+}
+
+static void test_publish_advances_simulation_feedback_time(void) {
+    HYD_MOVEABSOLUTE ma;
+    HYD_MotionControlFB* fb;
+    HYD_REAL firstTimestamp;
+    HYD_REAL firstPosition;
+    int axisId;
+
+    __HydMotion_framework_Init();
+    axisId = create_sim_axis();
+    fb = __MK_GetPublic_MotionControlFB(axisId);
+
+    ASSERT_TRUE(axisId >= 0, "CreateMotion should allocate a simulation axis");
+    ASSERT_TRUE(fb != NULL, "Simulation axis should expose a public FB instance");
+
+    memset(&ma, 0, sizeof(ma));
+    IEC_VAL(ma.EN) = true;
+    IEC_VAL(ma.EXECUTE) = true;
+    ma.EXECUTE0.value = false;
+    IEC_VAL(ma.AXISID) = axisId;
+    IEC_VAL(ma.POSITION) = 100.0f;
+    IEC_VAL(ma.VELOCITY) = 20.0f;
+    IEC_VAL(ma.ACCELERATION) = 200.0f;
+    IEC_VAL(ma.DECELERATION) = 200.0f;
+    IEC_VAL(ma.DIRECTION) = 1;
+
+    __mcl_cmd_MoveAbsolute(&ma);
+    __HydMotion_framework_Publish();
+
+    IEC_VAL(ma.EXECUTE) = true;
+    ma.EXECUTE0.value = true;
+    __mcl_cmd_MoveAbsolute(&ma);
+
+    firstTimestamp = fb->AXIS_REF.timestamp;
+    firstPosition = fb->AXIS_REF.position;
+
+    ASSERT_TRUE(firstTimestamp > 0.0,
+                "Publish should advance simulation timestamp on the first cycle");
+
+    __HydMotion_framework_Publish();
+    __mcl_cmd_MoveAbsolute(&ma);
+
+    ASSERT_TRUE(fb->AXIS_REF.timestamp > firstTimestamp,
+                "Publish should keep advancing simulation timestamp");
+    ASSERT_TRUE(fabs(fb->AXIS_REF.velocity) > 0.0,
+                "Publish should apply simulated velocity feedback");
+    ASSERT_TRUE(fb->AXIS_REF.position != firstPosition,
+                "Publish should integrate simulated position when velocity is non-zero");
 }
 
 /* ==================================================================
@@ -2596,6 +2657,7 @@ int main(void) {
     printf("=== Motion Interface Unit Tests ===\n\n");
 
     test_framework_init_resets_pool();
+    test_publish_advances_simulation_feedback_time();
     test_moveprofile_init_allocates_fb_with_recipe_mode();
     test_moveprofile_no_execute_does_not_start();
     test_moveprofile_execute_rising_triggers_motion();
