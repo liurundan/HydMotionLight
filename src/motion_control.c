@@ -1973,7 +1973,7 @@ static void HYD_MotionControlFB_RunRunningState(HYD_MotionControlFB* fb) {
     HYD_OutputLimiter_ExecuteWithProtection(&limiterInput, &fb->_limiterState, &limiterOutput);
 
     pumpOutput.commandFlow = limiterOutput.commandFlow;
-    //pumpOutput.pumpSpeed = limiterOutput.pumpSpeed;
+    pumpOutput.pumpSpeed = limiterOutput.pumpSpeed;
 
     plannerOutput.targetFlow = limiterOutput.commandFlow;
     executionReference.flowReference = limiterOutput.commandFlow;
