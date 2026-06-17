@@ -66,6 +66,8 @@ typedef struct {
     float tail_pressure_bar;
     float head_motor_rpm;
     float tail_motor_rpm;
+    float tail_tooth_span_bar;
+    float tail_tooth_min_phase;
     float tail_torque_trend;
 } PressureModelSectionSummary;
 
@@ -79,13 +81,20 @@ static void summarize_open_loop_section(const PressureModelParams *params,
     float head_motor_sum = 0.0f;
     float tail_motor_sum = 0.0f;
     float tail_torque_sum = 0.0f;
+    float bins[26];
+    int counts[26];
     int i;
 
     memset(&out, 0, sizeof(out));
     memset(summary, 0, sizeof(*summary));
+    memset(bins, 0, sizeof(bins));
+    memset(counts, 0, sizeof(counts));
     PressureModel_Reset(&state, 0x61616161u + (unsigned int)reference->command_rpm);
 
     for (i = 0; i < reference->sample_count; ++i) {
+        float tooth_phase;
+        int bin_index;
+
         PressureModel_Step(params, &state, reference->command_rpm, DT_S, &out);
         if (i < 2000) {
             head_pressure_sum += out.measured_pressure_bar;
@@ -96,6 +105,18 @@ static void summarize_open_loop_section(const PressureModelParams *params,
             tail_motor_sum += out.actual_motor_rpm;
             tail_torque_sum += out.estimated_torque_trend;
         }
+        if (i >= reference->sample_count - 5000) {
+            tooth_phase = fmodf(13.0f * state.pump_phase_rev, 1.0f);
+            if (tooth_phase < 0.0f) {
+                tooth_phase += 1.0f;
+            }
+            bin_index = (int)(tooth_phase * 26.0f);
+            if (bin_index > 25) {
+                bin_index = 25;
+            }
+            bins[bin_index] += out.measured_pressure_bar;
+            counts[bin_index] += 1;
+        }
     }
 
     summary->head_pressure_bar = head_pressure_sum / 2000.0f;
@@ -103,6 +124,30 @@ static void summarize_open_loop_section(const PressureModelParams *params,
     summary->head_motor_rpm = head_motor_sum / 2000.0f;
     summary->tail_motor_rpm = tail_motor_sum / 2000.0f;
     summary->tail_torque_trend = tail_torque_sum / 2000.0f;
+
+    {
+        float min_value = 1.0e30f;
+        float max_value = -1.0e30f;
+        int min_index = 0;
+
+        for (i = 0; i < 26; ++i) {
+            float mean_value;
+            if (counts[i] == 0) {
+                continue;
+            }
+            mean_value = bins[i] / (float)counts[i];
+            if (mean_value < min_value) {
+                min_value = mean_value;
+                min_index = i;
+            }
+            if (mean_value > max_value) {
+                max_value = mean_value;
+            }
+        }
+
+        summary->tail_tooth_span_bar = max_value - min_value;
+        summary->tail_tooth_min_phase = ((float)min_index + 0.5f) / 26.0f;
+    }
 }
 
 static int test_zero_speed_holds_zero_pressure(void) {
@@ -126,31 +171,37 @@ static int test_init_params_expose_open_loop_fit_knobs(void) {
     PressureModelParams params;
     PressureModelState state;
     PressureModelOutput out;
-    int i;
 
     memset(&out, 0, sizeof(out));
     PressureModel_InitParams(&params);
+    params.enable_sensor_noise = 0u;
+    params.enable_motor_noise = 0u;
+    params.enable_process_noise = 0u;
     PressureModel_Reset(&state, 0x51515151u);
     PressureModel_Step(&params, &state, 0.0f, DT_S, &out);
 
     ASSERT_NEAR(params.veff_base_m3, 4.4e-4f, 1e-9f);
     ASSERT_NEAR(params.leak_base_m3_pa_s, 1.2245e-12f, 1e-16f);
-    ASSERT_NEAR(params.tooth_drop_depth_base, 0.10f, 1e-6f);
+    ASSERT_NEAR(params.flow_ripple_ratio, 0.08f, 1e-6f);
+    ASSERT_NEAR(params.tooth_drop_depth_base, 0.16f, 1e-6f);
+    ASSERT_NEAR(params.tooth_drop_width_ratio, 0.20f, 1e-6f);
+    ASSERT_NEAR(params.tooth_drop_phase_base, 0.58f, 1e-6f);
     ASSERT_NEAR(params.veff_speed_scale[0], 1.18f, 1e-6f);
     ASSERT_NEAR(params.veff_speed_scale[1], 1.00f, 1e-6f);
     ASSERT_NEAR(params.veff_speed_scale[2], 0.86f, 1e-6f);
     ASSERT_NEAR(params.leak_speed_scale[0], 1.27f, 1e-6f);
     ASSERT_NEAR(params.leak_speed_scale[1], 1.00f, 1e-6f);
-    ASSERT_NEAR(params.leak_speed_scale[2], 0.87f, 1e-6f);
-    for (i = 0; i < 3; ++i) {
-        ASSERT_NEAR(params.drop_depth_scale[i], 1.0f, 1e-6f);
-        ASSERT_NEAR(params.drop_phase_offset[i], 0.0f, 1e-6f);
-    }
-    ASSERT_NEAR(params.tooth_drop_phase_base, 0.0f, 1e-6f);
-    ASSERT_NEAR(params.torque_bias, 0.0f, 1e-6f);
-    ASSERT_NEAR(params.torque_from_pressure_gain, 0.0f, 1e-6f);
-    ASSERT_NEAR(params.torque_from_speed_gain, 0.0f, 1e-6f);
-    ASSERT_NEAR(out.estimated_torque_trend, 0.0f, 1e-4f);
+    ASSERT_NEAR(params.leak_speed_scale[2], 0.875f, 1e-6f);
+    ASSERT_NEAR(params.drop_depth_scale[0], 1.00f, 1e-6f);
+    ASSERT_NEAR(params.drop_depth_scale[1], 0.62f, 1e-6f);
+    ASSERT_NEAR(params.drop_depth_scale[2], 0.30f, 1e-6f);
+    ASSERT_NEAR(params.drop_phase_offset[0], 0.00f, 1e-6f);
+    ASSERT_NEAR(params.drop_phase_offset[1], 0.07f, 1e-6f);
+    ASSERT_NEAR(params.drop_phase_offset[2], 0.11f, 1e-6f);
+    ASSERT_NEAR(params.torque_bias, 400.0f, 1e-6f);
+    ASSERT_NEAR(params.torque_from_pressure_gain, 110.0f, 1e-6f);
+    ASSERT_NEAR(params.torque_from_speed_gain, 8.0f, 1e-6f);
+    ASSERT_NEAR(out.estimated_torque_trend, 400.0f, 1e-4f);
 
     return 1;
 }
@@ -169,6 +220,27 @@ static int test_open_loop_sections_match_measured_pressure_envelope(void) {
         ASSERT_NEAR(summary.tail_pressure_bar, reference->tail_pressure_bar, 3.0f);
         ASSERT_NEAR(summary.head_motor_rpm, reference->head_motor_rpm, 0.8f);
         ASSERT_NEAR(summary.tail_motor_rpm, reference->tail_motor_rpm, 0.4f);
+    }
+
+    return 1;
+}
+
+static int test_open_loop_sections_match_tooth_phase_and_torque_trend(void) {
+    PressureModelParams params = make_deterministic_params();
+    float previous_tail_torque = -1.0f;
+    int i;
+
+    for (i = 0; i < PRESSURE_MODEL_OPEN_LOOP_REFERENCE_COUNT; ++i) {
+        PressureModelSectionSummary summary;
+        const PressureModelOpenLoopReference *reference = &kPressureModelOpenLoopReference[i];
+
+        summarize_open_loop_section(&params, reference, &summary);
+        ASSERT_NEAR(summary.tail_tooth_span_bar, reference->tail_tooth_span_bar, 1.5f);
+        ASSERT_NEAR(summary.tail_tooth_min_phase, reference->tail_tooth_min_phase, 0.08f);
+        ASSERT_TRUE(summary.tail_torque_trend > previous_tail_torque);
+        ASSERT_TRUE(summary.tail_torque_trend > reference->tail_torque_trend * 0.80f);
+        ASSERT_TRUE(summary.tail_torque_trend < reference->tail_torque_trend * 1.20f);
+        previous_tail_torque = summary.tail_torque_trend;
     }
 
     return 1;
@@ -470,6 +542,14 @@ int main(void) {
     } else {
         ++failed;
         printf("FAIL test_open_loop_sections_match_measured_pressure_envelope\n");
+    }
+
+    if (test_open_loop_sections_match_tooth_phase_and_torque_trend()) {
+        ++passed;
+        printf("PASS test_open_loop_sections_match_tooth_phase_and_torque_trend\n");
+    } else {
+        ++failed;
+        printf("FAIL test_open_loop_sections_match_tooth_phase_and_torque_trend\n");
     }
 
     if (test_motor_state_is_continuous_across_steps()) {

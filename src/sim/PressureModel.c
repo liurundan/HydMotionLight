@@ -66,6 +66,22 @@ static float pressure_model_leak_coeff(const PressureModelParams *params, float 
            legacy_scale;
 }
 
+static float pressure_model_tooth_drop_depth(const PressureModelParams *params, float motor_rpm) {
+    float legacy_scale = 1.0f;
+
+    if (PRESSURE_MODEL_DEFAULT_TOOTH_DROP_DEPTH_BASE > 0.0f) {
+        legacy_scale = params->tooth_drop_depth_ratio / PRESSURE_MODEL_DEFAULT_TOOTH_DROP_DEPTH_BASE;
+    }
+    return params->tooth_drop_depth_base *
+           pressure_model_interp3(params->drop_depth_scale, pressure_model_absf(motor_rpm)) *
+           legacy_scale;
+}
+
+static float pressure_model_tooth_drop_phase(const PressureModelParams *params, float motor_rpm) {
+    return params->tooth_drop_phase_base +
+           pressure_model_interp3(params->drop_phase_offset, pressure_model_absf(motor_rpm));
+}
+
 static float pressure_model_wrap_unit(float value) {
     while (value >= 1.0f) {
         value -= 1.0f;
@@ -141,26 +157,26 @@ void PressureModel_InitParams(PressureModelParams *params) {
     params->motor_tau_s = 0.06f;
     params->motor_noise_std_rpm = 2.0f;
     params->process_noise_std_m3_s = 0.0f;
-    params->flow_ripple_ratio = 0.10f;
+    params->flow_ripple_ratio = 0.08f;
     params->tooth_drop_depth_ratio = PRESSURE_MODEL_DEFAULT_TOOTH_DROP_DEPTH_BASE;
-    params->tooth_drop_depth_base = PRESSURE_MODEL_DEFAULT_TOOTH_DROP_DEPTH_BASE;
-    params->tooth_drop_width_ratio = 0.25f;
-    params->tooth_drop_phase_base = 0.0f;
+    params->tooth_drop_depth_base = 0.16f;
+    params->tooth_drop_width_ratio = 0.20f;
+    params->tooth_drop_phase_base = 0.58f;
     params->veff_speed_scale[0] = 1.18f;
     params->veff_speed_scale[1] = 1.0f;
     params->veff_speed_scale[2] = 0.86f;
     params->leak_speed_scale[0] = 1.27f;
     params->leak_speed_scale[1] = 1.0f;
-    params->leak_speed_scale[2] = 0.87f;
-    params->drop_depth_scale[0] = 1.0f;
-    params->drop_depth_scale[1] = 1.0f;
-    params->drop_depth_scale[2] = 1.0f;
-    params->drop_phase_offset[0] = 0.0f;
-    params->drop_phase_offset[1] = 0.0f;
-    params->drop_phase_offset[2] = 0.0f;
-    params->torque_bias = 0.0f;
-    params->torque_from_pressure_gain = 0.0f;
-    params->torque_from_speed_gain = 0.0f;
+    params->leak_speed_scale[2] = 0.875f;
+    params->drop_depth_scale[0] = 1.00f;
+    params->drop_depth_scale[1] = 0.62f;
+    params->drop_depth_scale[2] = 0.30f;
+    params->drop_phase_offset[0] = 0.00f;
+    params->drop_phase_offset[1] = 0.07f;
+    params->drop_phase_offset[2] = 0.11f;
+    params->torque_bias = 400.0f;
+    params->torque_from_pressure_gain = 110.0f;
+    params->torque_from_speed_gain = 8.0f;
     params->min_rpm = -100.0f;
     params->max_rpm = 2000.0f;
     params->enable_sensor_noise = 1u;
@@ -244,11 +260,14 @@ void PressureModel_Step(const PressureModelParams *params,
 
     visible_pressure_pa = state->pressure_pa;
     if (state->motor_rpm > 0.01f) {
-        tooth_phase = pressure_model_wrap_unit(13.0f * state->pump_phase_rev);
+        float depth = pressure_model_tooth_drop_depth(params, state->motor_rpm);
+        float phase = pressure_model_tooth_drop_phase(params, state->motor_rpm);
+
+        tooth_phase = pressure_model_wrap_unit(13.0f * state->pump_phase_rev - phase);
         if (tooth_phase < params->tooth_drop_width_ratio) {
-            float window = 0.5f * (1.0f + cosf((2.0f * PRESSURE_MODEL_PI * tooth_phase) /
+            float window = 0.5f * (1.0f + cosf((PRESSURE_MODEL_PI * tooth_phase) /
                                                params->tooth_drop_width_ratio));
-            float gain = 1.0f - params->tooth_drop_depth_ratio * window;
+            float gain = 1.0f - depth * window;
             visible_pressure_pa *= gain;
         }
     }
