@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "fixtures/pressure_model_open_loop_reference.h"
 #include "pressure_model.h"
 
 #define DT_S 0.001f
@@ -60,6 +61,50 @@ static void run_steps(const PressureModelParams *params,
     }
 }
 
+typedef struct {
+    float head_pressure_bar;
+    float tail_pressure_bar;
+    float head_motor_rpm;
+    float tail_motor_rpm;
+    float tail_torque_trend;
+} PressureModelSectionSummary;
+
+static void summarize_open_loop_section(const PressureModelParams *params,
+                                        const PressureModelOpenLoopReference *reference,
+                                        PressureModelSectionSummary *summary) {
+    PressureModelState state;
+    PressureModelOutput out;
+    float head_pressure_sum = 0.0f;
+    float tail_pressure_sum = 0.0f;
+    float head_motor_sum = 0.0f;
+    float tail_motor_sum = 0.0f;
+    float tail_torque_sum = 0.0f;
+    int i;
+
+    memset(&out, 0, sizeof(out));
+    memset(summary, 0, sizeof(*summary));
+    PressureModel_Reset(&state, 0x61616161u + (unsigned int)reference->command_rpm);
+
+    for (i = 0; i < reference->sample_count; ++i) {
+        PressureModel_Step(params, &state, reference->command_rpm, DT_S, &out);
+        if (i < 2000) {
+            head_pressure_sum += out.measured_pressure_bar;
+            head_motor_sum += out.actual_motor_rpm;
+        }
+        if (i >= reference->sample_count - 2000) {
+            tail_pressure_sum += out.measured_pressure_bar;
+            tail_motor_sum += out.actual_motor_rpm;
+            tail_torque_sum += out.estimated_torque_trend;
+        }
+    }
+
+    summary->head_pressure_bar = head_pressure_sum / 2000.0f;
+    summary->tail_pressure_bar = tail_pressure_sum / 2000.0f;
+    summary->head_motor_rpm = head_motor_sum / 2000.0f;
+    summary->tail_motor_rpm = tail_motor_sum / 2000.0f;
+    summary->tail_torque_trend = tail_torque_sum / 2000.0f;
+}
+
 static int test_zero_speed_holds_zero_pressure(void) {
     PressureModelParams params = make_deterministic_params();
     PressureModelState state;
@@ -88,14 +133,16 @@ static int test_init_params_expose_open_loop_fit_knobs(void) {
     PressureModel_Reset(&state, 0x51515151u);
     PressureModel_Step(&params, &state, 0.0f, DT_S, &out);
 
-    ASSERT_NEAR(params.veff_base_m3, 5.0e-4f, 1e-9f);
-    ASSERT_NEAR(params.leak_base_m3_pa_s,
-                (params.pump_displacement_m3_rev * (10.0f / 60.0f)) / (40.0f * 1.0e5f),
-                1e-12f);
+    ASSERT_NEAR(params.veff_base_m3, 4.4e-4f, 1e-9f);
+    ASSERT_NEAR(params.leak_base_m3_pa_s, 1.2245e-12f, 1e-16f);
     ASSERT_NEAR(params.tooth_drop_depth_base, 0.10f, 1e-6f);
+    ASSERT_NEAR(params.veff_speed_scale[0], 1.18f, 1e-6f);
+    ASSERT_NEAR(params.veff_speed_scale[1], 1.00f, 1e-6f);
+    ASSERT_NEAR(params.veff_speed_scale[2], 0.86f, 1e-6f);
+    ASSERT_NEAR(params.leak_speed_scale[0], 1.27f, 1e-6f);
+    ASSERT_NEAR(params.leak_speed_scale[1], 1.00f, 1e-6f);
+    ASSERT_NEAR(params.leak_speed_scale[2], 0.87f, 1e-6f);
     for (i = 0; i < 3; ++i) {
-        ASSERT_NEAR(params.veff_speed_scale[i], 1.0f, 1e-6f);
-        ASSERT_NEAR(params.leak_speed_scale[i], 1.0f, 1e-6f);
         ASSERT_NEAR(params.drop_depth_scale[i], 1.0f, 1e-6f);
         ASSERT_NEAR(params.drop_phase_offset[i], 0.0f, 1e-6f);
     }
@@ -108,18 +155,21 @@ static int test_init_params_expose_open_loop_fit_knobs(void) {
     return 1;
 }
 
-static int test_ten_rpm_converges_to_forty_bar(void) {
+static int test_open_loop_sections_match_measured_pressure_envelope(void) {
     PressureModelParams params = make_deterministic_params();
-    PressureModelState state;
-    PressureModelOutput out;
+    int i;
 
-    memset(&out, 0, sizeof(out));
-    PressureModel_Reset(&state, 0x12345678u);
+    for (i = 0; i < PRESSURE_MODEL_OPEN_LOOP_REFERENCE_COUNT; ++i) {
+        PressureModelSectionSummary summary;
+        const PressureModelOpenLoopReference *reference = &kPressureModelOpenLoopReference[i];
 
-    run_steps(&params, &state, 10.0f, 15000, DT_S, &out);
+        summarize_open_loop_section(&params, reference, &summary);
 
-    ASSERT_NEAR(out.real_pressure_bar, 40.0f, 1.5f);
-    ASSERT_NEAR(out.measured_pressure_bar, out.real_pressure_bar, 1e-3f);
+        ASSERT_NEAR(summary.head_pressure_bar, reference->head_pressure_bar, 4.0f);
+        ASSERT_NEAR(summary.tail_pressure_bar, reference->tail_pressure_bar, 3.0f);
+        ASSERT_NEAR(summary.head_motor_rpm, reference->head_motor_rpm, 0.8f);
+        ASSERT_NEAR(summary.tail_motor_rpm, reference->tail_motor_rpm, 0.4f);
+    }
 
     return 1;
 }
@@ -286,49 +336,6 @@ static int test_legacy_chamber_volume_still_controls_pressure_rise(void) {
     return 1;
 }
 
-static int test_new_physical_fit_fields_are_inert_for_task1(void) {
-    PressureModelParams baseline_params = make_deterministic_params();
-    PressureModelParams fitted_params = baseline_params;
-    PressureModelState baseline_state;
-    PressureModelState fitted_state;
-    PressureModelOutput baseline_out;
-    PressureModelOutput fitted_out;
-    float baseline_gap_bar;
-    float fitted_gap_bar;
-
-    fitted_params.veff_base_m3 = baseline_params.veff_base_m3 * 4.0f;
-    fitted_params.leak_base_m3_pa_s = baseline_params.leak_base_m3_pa_s * 0.25f;
-    fitted_params.tooth_drop_depth_base = 0.0f;
-    fitted_params.tooth_drop_phase_base = 0.25f;
-    fitted_params.veff_speed_scale[0] = 3.0f;
-    fitted_params.veff_speed_scale[1] = 3.0f;
-    fitted_params.veff_speed_scale[2] = 3.0f;
-    fitted_params.leak_speed_scale[0] = 0.1f;
-    fitted_params.leak_speed_scale[1] = 0.1f;
-    fitted_params.leak_speed_scale[2] = 0.1f;
-    fitted_params.drop_depth_scale[0] = 0.0f;
-    fitted_params.drop_depth_scale[1] = 0.0f;
-    fitted_params.drop_depth_scale[2] = 0.0f;
-    fitted_params.drop_phase_offset[0] = 0.5f;
-    fitted_params.drop_phase_offset[1] = 0.5f;
-    fitted_params.drop_phase_offset[2] = 0.5f;
-
-    memset(&baseline_out, 0, sizeof(baseline_out));
-    memset(&fitted_out, 0, sizeof(fitted_out));
-    PressureModel_Reset(&baseline_state, 0x2a2a2a2au);
-    PressureModel_Reset(&fitted_state, 0x2a2a2a2au);
-
-    run_steps(&baseline_params, &baseline_state, 10.0f, 500, DT_S, &baseline_out);
-    run_steps(&fitted_params, &fitted_state, 10.0f, 500, DT_S, &fitted_out);
-    baseline_gap_bar = baseline_out.real_pressure_bar - baseline_out.measured_pressure_bar;
-    fitted_gap_bar = fitted_out.real_pressure_bar - fitted_out.measured_pressure_bar;
-
-    ASSERT_NEAR(fitted_out.real_pressure_bar, baseline_out.real_pressure_bar, 1e-5f);
-    ASSERT_NEAR(fitted_gap_bar, baseline_gap_bar, 1e-5f);
-
-    return 1;
-}
-
 static int test_torque_speed_gain_affects_estimated_torque_trend(void) {
     PressureModelParams params = make_deterministic_params();
     PressureModelState state;
@@ -457,12 +464,12 @@ int main(void) {
         printf("FAIL test_init_params_expose_open_loop_fit_knobs\n");
     }
 
-    if (test_ten_rpm_converges_to_forty_bar()) {
+    if (test_open_loop_sections_match_measured_pressure_envelope()) {
         ++passed;
-        printf("PASS test_ten_rpm_converges_to_forty_bar\n");
+        printf("PASS test_open_loop_sections_match_measured_pressure_envelope\n");
     } else {
         ++failed;
-        printf("FAIL test_ten_rpm_converges_to_forty_bar\n");
+        printf("FAIL test_open_loop_sections_match_measured_pressure_envelope\n");
     }
 
     if (test_motor_state_is_continuous_across_steps()) {
@@ -511,14 +518,6 @@ int main(void) {
     } else {
         ++failed;
         printf("FAIL test_legacy_chamber_volume_still_controls_pressure_rise\n");
-    }
-
-    if (test_new_physical_fit_fields_are_inert_for_task1()) {
-        ++passed;
-        printf("PASS test_new_physical_fit_fields_are_inert_for_task1\n");
-    } else {
-        ++failed;
-        printf("FAIL test_new_physical_fit_fields_are_inert_for_task1\n");
     }
 
     if (test_torque_speed_gain_affects_estimated_torque_trend()) {

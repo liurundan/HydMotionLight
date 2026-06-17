@@ -30,6 +30,42 @@ static float pressure_model_absf(float value) {
     return (value < 0.0f) ? -value : value;
 }
 
+static float pressure_model_interp3(const float values[3], float abs_rpm) {
+    if (abs_rpm <= 20.0f) {
+        float t = abs_rpm / 20.0f;
+        return values[0] + (values[1] - values[0]) * t;
+    }
+    if (abs_rpm >= 40.0f) {
+        return values[2];
+    }
+    {
+        float t = (abs_rpm - 20.0f) / 20.0f;
+        return values[1] + (values[2] - values[1]) * t;
+    }
+}
+
+static float pressure_model_effective_volume(const PressureModelParams *params, float motor_rpm) {
+    float legacy_scale = 1.0f;
+
+    if (PRESSURE_MODEL_DEFAULT_VEFF_BASE_M3 > 0.0f) {
+        legacy_scale = params->chamber_volume_m3 / PRESSURE_MODEL_DEFAULT_VEFF_BASE_M3;
+    }
+    return params->veff_base_m3 *
+           pressure_model_interp3(params->veff_speed_scale, pressure_model_absf(motor_rpm)) *
+           legacy_scale;
+}
+
+static float pressure_model_leak_coeff(const PressureModelParams *params, float motor_rpm) {
+    float legacy_scale = 1.0f;
+
+    if (PRESSURE_MODEL_DEFAULT_LEAK_BASE_M3_PA_S > 0.0f) {
+        legacy_scale = params->leak_coeff_m3_pa_s / PRESSURE_MODEL_DEFAULT_LEAK_BASE_M3_PA_S;
+    }
+    return params->leak_base_m3_pa_s *
+           pressure_model_interp3(params->leak_speed_scale, pressure_model_absf(motor_rpm)) *
+           legacy_scale;
+}
+
 static float pressure_model_wrap_unit(float value) {
     while (value >= 1.0f) {
         value -= 1.0f;
@@ -94,15 +130,15 @@ void PressureModel_InitParams(PressureModelParams *params) {
     params->bulk_modulus_pa = 1.6e9f;
     params->chamber_volume_m3 = PRESSURE_MODEL_DEFAULT_VEFF_BASE_M3;
     params->leak_coeff_m3_pa_s = PRESSURE_MODEL_DEFAULT_LEAK_BASE_M3_PA_S;
-    /* Task 1 exposes fitted-model knobs but keeps legacy physical knobs authoritative until retuning tasks activate them. */
-    params->veff_base_m3 = PRESSURE_MODEL_DEFAULT_VEFF_BASE_M3;
-    params->leak_base_m3_pa_s = PRESSURE_MODEL_DEFAULT_LEAK_BASE_M3_PA_S;
+    /* Task 2 activates the fitted pressure skeleton while leaving legacy knobs available as compatibility multipliers. */
+    params->veff_base_m3 = 4.4e-4f;
+    params->leak_base_m3_pa_s = 1.2245e-12f;
     params->relief_set_pa = 250.0f * 1.0e5f;
     params->relief_coeff_m3_pa_s = 1.2e-9f;
     params->sensor_range_bar = 250.0f;
     params->sensor_noise_std_bar = 0.4f;
     params->sensor_bias_bar = 0.0f;
-    params->motor_tau_s = 0.05f;
+    params->motor_tau_s = 0.06f;
     params->motor_noise_std_rpm = 2.0f;
     params->process_noise_std_m3_s = 0.0f;
     params->flow_ripple_ratio = 0.10f;
@@ -110,12 +146,12 @@ void PressureModel_InitParams(PressureModelParams *params) {
     params->tooth_drop_depth_base = PRESSURE_MODEL_DEFAULT_TOOTH_DROP_DEPTH_BASE;
     params->tooth_drop_width_ratio = 0.25f;
     params->tooth_drop_phase_base = 0.0f;
-    params->veff_speed_scale[0] = 1.0f;
+    params->veff_speed_scale[0] = 1.18f;
     params->veff_speed_scale[1] = 1.0f;
-    params->veff_speed_scale[2] = 1.0f;
-    params->leak_speed_scale[0] = 1.0f;
+    params->veff_speed_scale[2] = 0.86f;
+    params->leak_speed_scale[0] = 1.27f;
     params->leak_speed_scale[1] = 1.0f;
-    params->leak_speed_scale[2] = 1.0f;
+    params->leak_speed_scale[2] = 0.87f;
     params->drop_depth_scale[0] = 1.0f;
     params->drop_depth_scale[1] = 1.0f;
     params->drop_depth_scale[2] = 1.0f;
@@ -194,14 +230,16 @@ void PressureModel_Step(const PressureModelParams *params,
         process_noise = pressure_model_gaussian(state, params->process_noise_std_m3_s);
     }
 
-    q_leak = params->leak_coeff_m3_pa_s * state->pressure_pa;
+    q_leak = pressure_model_leak_coeff(params, state->motor_rpm) * state->pressure_pa;
     q_relief = 0.0f;
     if (state->pressure_pa > params->relief_set_pa) {
         q_relief = params->relief_coeff_m3_pa_s * (state->pressure_pa - params->relief_set_pa);
     }
 
     q_net = q_pump - q_leak - q_relief + process_noise;
-    d_pressure = (params->bulk_modulus_pa / params->chamber_volume_m3) * q_net * dt;
+    d_pressure = (params->bulk_modulus_pa /
+                  pressure_model_effective_volume(params, state->motor_rpm)) *
+                 q_net * dt;
     state->pressure_pa = pressure_model_maxf(0.0f, state->pressure_pa + d_pressure);
 
     visible_pressure_pa = state->pressure_pa;
