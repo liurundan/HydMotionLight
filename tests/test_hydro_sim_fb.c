@@ -378,6 +378,74 @@ static void test_pressure_model_fb_persists_state_and_resets_on_disable(void) {
                 "Re-enable after reset should replay the same first-step real pressure");
 }
 
+static void test_pressure_model_fb_negative_speed_depressurizes_without_reset(void) {
+    HYD_PRESSUREMODEL reverse_cmd;
+    HYD_PRESSUREMODEL leak_cmd;
+    double reverse_charged_pressure;
+    double reverse_pressure;
+    double leak_charged_pressure;
+    double leak_pressure;
+    int i;
+
+    memset(&reverse_cmd, 0, sizeof(reverse_cmd));
+    reverse_cmd.ENABLE.value = false;
+    reverse_cmd.TIME_S.value = 0.0;
+    __mcl_cmd_updatePressureModel(&reverse_cmd);
+
+    for (i = 0; i < 12000; ++i) {
+        reverse_cmd.ENABLE.value = true;
+        reverse_cmd.MOTOR_RPM.value = 40.0;
+        reverse_cmd.TIME_S.value = 0.001 * (double)i;
+        __mcl_cmd_updatePressureModel(&reverse_cmd);
+    }
+
+    reverse_charged_pressure = reverse_cmd.REAL_PRESSURE_BAR.value;
+    ASSERT_TRUE(reverse_charged_pressure > 0.0,
+                "Positive-speed pressure build should charge the FB before reverse command");
+
+    reverse_cmd.MOTOR_RPM.value = -40.0;
+    for (i = 12000; i < 12100; ++i) {
+        reverse_cmd.TIME_S.value = 0.001 * (double)i;
+        __mcl_cmd_updatePressureModel(&reverse_cmd);
+    }
+    reverse_pressure = reverse_cmd.REAL_PRESSURE_BAR.value;
+
+    ASSERT_TRUE(reverse_cmd.ACTIVE.value,
+                "Negative-speed depressurization should keep the PressureModel FB active");
+    ASSERT_TRUE(reverse_pressure < reverse_charged_pressure,
+                "Negative-speed command should reduce the real pressure without a reset");
+    ASSERT_TRUE(reverse_pressure > 0.0,
+                "Negative-speed command should not reset the FB pressure state to zero");
+
+    memset(&leak_cmd, 0, sizeof(leak_cmd));
+    leak_cmd.ENABLE.value = false;
+    leak_cmd.TIME_S.value = 0.0;
+    __mcl_cmd_updatePressureModel(&leak_cmd);
+
+    for (i = 0; i < 12000; ++i) {
+        leak_cmd.ENABLE.value = true;
+        leak_cmd.MOTOR_RPM.value = 40.0;
+        leak_cmd.TIME_S.value = 0.001 * (double)i;
+        __mcl_cmd_updatePressureModel(&leak_cmd);
+    }
+
+    leak_charged_pressure = leak_cmd.REAL_PRESSURE_BAR.value;
+    ASSERT_NEAR(leak_charged_pressure, reverse_charged_pressure, TOLERANCE,
+                "Reset FB should reproduce the same charged pressure before comparison");
+
+    leak_cmd.MOTOR_RPM.value = 0.0;
+    for (i = 12000; i < 12100; ++i) {
+        leak_cmd.TIME_S.value = 0.001 * (double)i;
+        __mcl_cmd_updatePressureModel(&leak_cmd);
+    }
+    leak_pressure = leak_cmd.REAL_PRESSURE_BAR.value;
+
+    ASSERT_TRUE(reverse_pressure < leak_pressure,
+                "Negative-speed command should depressurize faster than passive leak at the FB layer");
+    ASSERT_TRUE(reverse_pressure >= 0.0,
+                "Negative-speed command must not drive real pressure below zero");
+}
+
 int main(void) {
     printf("=== HydraulicSimFB PLC Adapter Tests ===\n\n");
 
@@ -390,6 +458,7 @@ int main(void) {
     test_fault_injection_is_isolated_per_axis();
     test_invalid_axisid_is_safe_and_does_not_pollute_other_axes();
     test_pressure_model_fb_persists_state_and_resets_on_disable();
+    test_pressure_model_fb_negative_speed_depressurizes_without_reset();
 
     printf("\n=== Results: %d/%d passed ===\n", tests_passed, tests_run);
     return (tests_passed == tests_run) ? 0 : 1;
