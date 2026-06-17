@@ -1,0 +1,165 @@
+#include <assert.h>
+#include <math.h>
+#include <stdio.h>
+#include <string.h>
+
+#include "common_types.h"
+#include "pressure_controller.h"
+#include "pressure_model.h"
+
+#define HOLD_DT_S 0.001f
+#define HOLD_TOTAL_STEPS 30000
+#define HOLD_SETTLE_START_STEP 10000
+#define HOLD_TARGET_BAR 100.0f
+#define HOLD_FLOW_TO_SPEED_GAIN 20.0f
+#define HOLD_PUMP_SPEED_LIMIT 1800.0f
+
+typedef struct {
+    float target_bar;
+    int total_steps;
+    int settle_start_step;
+    float dt_s;
+    PressureModelParams params;
+    HYD_MotionSegment segment;
+} HoldCaseConfig;
+
+typedef struct {
+    float real_p2p_bar;
+    float measured_p2p_bar;
+    float filtered_p2p_bar;
+    float filtered_mae_bar;
+    float output_p2p_lmin;
+} HoldMetrics;
+
+static PressureModelParams make_default_model_params(void);
+static HYD_MotionSegment make_default_rbf_segment(float target_bar);
+static HoldCaseConfig make_default_hold_case(void);
+static void run_hold_case(const HoldCaseConfig *config, HoldMetrics *metrics);
+
+static PressureModelParams make_default_model_params(void) {
+    PressureModelParams params;
+
+    PressureModel_InitParams(&params);
+    return params;
+}
+
+static HYD_MotionSegment make_default_rbf_segment(float target_bar) {
+    HYD_MotionSegment segment;
+
+    memset(&segment, 0, sizeof(segment));
+    segment.mode = HYD_MODE_PRESSURE_CLOSED_LOOP;
+    segment.endCondition = HYD_END_TIME;
+    segment.direction = HYD_DIRECTION_HOLD;
+    segment.duration = (HYD_REAL)(HOLD_TOTAL_STEPS * HOLD_DT_S);
+    segment.targetPressure = target_bar;
+    segment.maxFlow = HOLD_PUMP_SPEED_LIMIT / HOLD_FLOW_TO_SPEED_GAIN;
+    segment.pressureController = HYD_PRESSURE_CONTROLLER_RBF_PID;
+    segment.pressureCeiling = 250.0;
+    segment.pressureFilterAlpha = 1.0;
+    segment.pressureDerivativeFilterAlpha = 1.0;
+    segment.systemGain = 150.0;
+    return segment;
+}
+
+static HoldCaseConfig make_default_hold_case(void) {
+    HoldCaseConfig config;
+
+    memset(&config, 0, sizeof(config));
+    config.target_bar = HOLD_TARGET_BAR;
+    config.total_steps = HOLD_TOTAL_STEPS;
+    config.settle_start_step = HOLD_SETTLE_START_STEP;
+    config.dt_s = HOLD_DT_S;
+    config.params = make_default_model_params();
+    config.segment = make_default_rbf_segment(config.target_bar);
+    return config;
+}
+
+static void run_hold_case(const HoldCaseConfig *config, HoldMetrics *metrics) {
+    PressureModelState plant_state;
+    PressureModelOutput plant_out;
+    HYD_PressureControllerState controller_state;
+    HYD_PressureControllerInput input;
+    HYD_PressureControllerOutput output;
+    float real_min = 1.0e30f;
+    float real_max = -1.0e30f;
+    float measured_min = 1.0e30f;
+    float measured_max = -1.0e30f;
+    float filtered_min = 1.0e30f;
+    float filtered_max = -1.0e30f;
+    float output_min = 1.0e30f;
+    float output_max = -1.0e30f;
+    float filtered_abs_error_sum = 0.0f;
+    int filtered_samples = 0;
+    int step;
+
+    memset(metrics, 0, sizeof(*metrics));
+    memset(&plant_out, 0, sizeof(plant_out));
+    memset(&input, 0, sizeof(input));
+    memset(&output, 0, sizeof(output));
+
+    PressureModel_Reset(&plant_state, 0x5a5a5a5au);
+    HYD_PressureController_InitState(&controller_state, 0.0, 0.0, 0.0);
+
+    for (step = 0; step < config->total_steps; ++step) {
+        float target_rpm;
+
+        input.targetPressure = config->target_bar;
+        input.measuredPressure = plant_out.measured_pressure_bar;
+        input.feedforwardFlow = 0.0;
+        input.outputMin = -5.0;
+        input.outputMax = config->segment.maxFlow;
+        input.flowToPumpSpeedGain = HOLD_FLOW_TO_SPEED_GAIN;
+        input.pumpSpeedLimit = HOLD_PUMP_SPEED_LIMIT;
+        input.timestamp = (HYD_REAL)((step + 1) * config->dt_s);
+
+        HYD_PressureController_Execute(&config->segment, &controller_state, &input, &output);
+
+        target_rpm = (float)(output.outputFlow * input.flowToPumpSpeedGain);
+        PressureModel_Step(&config->params, &plant_state, target_rpm, config->dt_s, &plant_out);
+
+        if (step >= config->settle_start_step) {
+            if (plant_out.real_pressure_bar < real_min) real_min = plant_out.real_pressure_bar;
+            if (plant_out.real_pressure_bar > real_max) real_max = plant_out.real_pressure_bar;
+            if (plant_out.measured_pressure_bar < measured_min)
+                measured_min = plant_out.measured_pressure_bar;
+            if (plant_out.measured_pressure_bar > measured_max)
+                measured_max = plant_out.measured_pressure_bar;
+            if ((float)output.filteredPressure < filtered_min)
+                filtered_min = (float)output.filteredPressure;
+            if ((float)output.filteredPressure > filtered_max)
+                filtered_max = (float)output.filteredPressure;
+            if ((float)output.outputFlow < output_min) output_min = (float)output.outputFlow;
+            if ((float)output.outputFlow > output_max) output_max = (float)output.outputFlow;
+            filtered_abs_error_sum += fabsf((float)output.filteredPressure - config->target_bar);
+            ++filtered_samples;
+        }
+    }
+
+    metrics->real_p2p_bar = real_max - real_min;
+    metrics->measured_p2p_bar = measured_max - measured_min;
+    metrics->filtered_p2p_bar = filtered_max - filtered_min;
+    metrics->filtered_mae_bar =
+        (filtered_samples > 0) ? (filtered_abs_error_sum / (float)filtered_samples) : 0.0f;
+    metrics->output_p2p_lmin = output_max - output_min;
+}
+
+static void test_hold_harness_produces_finite_metrics(void) {
+    HoldCaseConfig config = make_default_hold_case();
+    HoldMetrics metrics;
+
+    memset(&metrics, 0, sizeof(metrics));
+    run_hold_case(&config, &metrics);
+
+    assert(isfinite(metrics.real_p2p_bar));
+    assert(isfinite(metrics.measured_p2p_bar));
+    assert(isfinite(metrics.filtered_p2p_bar));
+    assert(isfinite(metrics.filtered_mae_bar));
+    assert(isfinite(metrics.output_p2p_lmin));
+}
+
+int main(void) {
+    printf("Running pressure hold diagnosis tests...\n\n");
+    test_hold_harness_produces_finite_metrics();
+    printf("\nPASS pressure hold diagnosis harness\n");
+    return 0;
+}
