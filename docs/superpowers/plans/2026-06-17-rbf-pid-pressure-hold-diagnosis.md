@@ -367,9 +367,9 @@ ctest --test-dir out/build/unixgcc -R '^test_pressure_hold_diagnosis$' --output-
 
 Expected: the new tests compile, and at least one assertion fails if the current code path does not yet reproduce the expected diagnosis relationships.
 
-- [ ] **Step 3: Adjust only the diagnosis test setup, not production defaults, until the baseline and model-side comparisons become stable**
+- [ ] **Step 3: Adjust only diagnosis-local test setup, not production defaults, until the baseline and model-side comparisons become stable**
 
-If the target fails because the RBF segment setup is too weak to reach a stable `100 bar` hold, replace `make_default_rbf_segment(...)` with:
+First, if the target fails because the RBF segment setup is too weak to reach a stable `100 bar` hold, replace `make_default_rbf_segment(...)` with:
 
 ```c
 static HYD_MotionSegment make_default_rbf_segment(float target_bar) {
@@ -397,7 +397,53 @@ static HYD_MotionSegment make_default_rbf_segment(float target_bar) {
 }
 ```
 
-Do not modify `PressureModel_InitParams(...)` in this task.
+If the focused test still fails because the current simulator defaults do not cleanly separate visible model ripple from controller amplification, switch the harness to an explicit diagnosis-only preset that stays local to `tests/test_pressure_hold_diagnosis.c`.
+
+Use this `make_default_model_params(...)`:
+
+```c
+static PressureModelParams make_default_model_params(void) {
+    PressureModelParams params;
+
+    PressureModel_InitParams(&params);
+    params.sensor_noise_std_bar = 0.8f;
+    params.motor_noise_std_rpm = 1.0f;
+    params.tooth_drop_depth_ratio = 0.34f;
+    return params;
+}
+```
+
+And use this diagnosis-oriented `make_default_rbf_segment(...)`:
+
+```c
+static HYD_MotionSegment make_default_rbf_segment(float target_bar) {
+    HYD_MotionSegment segment;
+
+    memset(&segment, 0, sizeof(segment));
+    segment.mode = HYD_MODE_PRESSURE_CLOSED_LOOP;
+    segment.endCondition = HYD_END_TIME;
+    segment.direction = HYD_DIRECTION_HOLD;
+    segment.duration = (HYD_REAL)(HOLD_TOTAL_STEPS * HOLD_DT_S);
+    segment.targetPressure = target_bar;
+    segment.maxFlow = HOLD_PUMP_SPEED_LIMIT / HOLD_FLOW_TO_SPEED_GAIN;
+    segment.pressureController = HYD_PRESSURE_CONTROLLER_RBF_PID;
+    segment.pressureCeiling = 250.0;
+    segment.pressureFilterAlpha = 0.20;
+    segment.pressureDerivativeFilterAlpha = 1.0;
+    segment.systemGain = 30.0;
+    segment.pressureRbfConfig.minKp = 0.5;
+    segment.pressureRbfConfig.maxKp = 1.2;
+    segment.pressureRbfConfig.minKi = 0.005;
+    segment.pressureRbfConfig.maxKi = 0.050;
+    segment.pressureRbfConfig.minKd = 0.5;
+    segment.pressureRbfConfig.maxKd = 2.0;
+    return segment;
+}
+```
+
+This preset is intentionally test-local. It does **not** change `PressureModel_InitParams(...)` or any production defaults; it only tunes the diagnosis harness so the `100 bar` hold remains near target while the tooth-drop, motor-noise, and sensor-noise ablations separate consistently.
+
+Do not modify `PressureModel_InitParams(...)` in this task or change any production source files.
 
 - [ ] **Step 4: Re-run the diagnosis test and verify the model-side comparisons pass**
 
@@ -733,4 +779,3 @@ Not-tested: Broader suite outside the pressure-model and pressure-controller sur
 - `HoldCaseConfig` and `HoldMetrics` are defined in Task 1 before later tests use them
 - `disablePressureAccelFeedforward` is added to `HYD_RbfPidConfig` before later tasks use it
 - `RBF_PID_SetPressureAccelFeedforwardEnabled(...)` is declared in `include/rbf_pid.h` before later tasks call it
-

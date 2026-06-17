@@ -35,11 +35,18 @@ static PressureModelParams make_default_model_params(void);
 static HYD_MotionSegment make_default_rbf_segment(float target_bar);
 static HoldCaseConfig make_default_hold_case(void);
 static void run_hold_case(const HoldCaseConfig *config, HoldMetrics *metrics);
+static void test_current_100_bar_hold_reproduces_large_visible_ripple(void);
+static void test_tooth_drop_ablation_reduces_measured_ripple_more_than_real_ripple(void);
+static void test_motor_noise_ablation_reduces_real_and_filtered_ripple(void);
+static void test_sensor_noise_ablation_preserves_real_pressure_more_than_measured_pressure(void);
 
 static PressureModelParams make_default_model_params(void) {
     PressureModelParams params;
 
     PressureModel_InitParams(&params);
+    params.sensor_noise_std_bar = 0.8f;
+    params.motor_noise_std_rpm = 1.0f;
+    params.tooth_drop_depth_ratio = 0.34f;
     return params;
 }
 
@@ -55,9 +62,15 @@ static HYD_MotionSegment make_default_rbf_segment(float target_bar) {
     segment.maxFlow = HOLD_PUMP_SPEED_LIMIT / HOLD_FLOW_TO_SPEED_GAIN;
     segment.pressureController = HYD_PRESSURE_CONTROLLER_RBF_PID;
     segment.pressureCeiling = 250.0;
-    segment.pressureFilterAlpha = 1.0;
+    segment.pressureFilterAlpha = 0.20;
     segment.pressureDerivativeFilterAlpha = 1.0;
-    segment.systemGain = 150.0;
+    segment.systemGain = 30.0;
+    segment.pressureRbfConfig.minKp = 0.5;
+    segment.pressureRbfConfig.maxKp = 1.2;
+    segment.pressureRbfConfig.minKi = 0.005;
+    segment.pressureRbfConfig.maxKi = 0.050;
+    segment.pressureRbfConfig.minKd = 0.5;
+    segment.pressureRbfConfig.maxKd = 2.0;
     return segment;
 }
 
@@ -157,9 +170,81 @@ static void test_hold_harness_produces_finite_metrics(void) {
     assert(isfinite(metrics.output_p2p_lmin));
 }
 
+static void test_current_100_bar_hold_reproduces_large_visible_ripple(void) {
+    HoldCaseConfig config = make_default_hold_case();
+    HoldMetrics metrics;
+
+    run_hold_case(&config, &metrics);
+
+    printf("baseline hold: real=%.2f measured=%.2f filtered=%.2f mae=%.2f output=%.2f\n",
+           metrics.real_p2p_bar,
+           metrics.measured_p2p_bar,
+           metrics.filtered_p2p_bar,
+           metrics.filtered_mae_bar,
+           metrics.output_p2p_lmin);
+
+    assert(metrics.measured_p2p_bar > metrics.real_p2p_bar + 5.0f);
+    assert(metrics.filtered_p2p_bar > 10.0f);
+    assert(metrics.filtered_mae_bar > 5.0f);
+}
+
+static void test_tooth_drop_ablation_reduces_measured_ripple_more_than_real_ripple(void) {
+    HoldCaseConfig baseline = make_default_hold_case();
+    HoldCaseConfig flat = baseline;
+    HoldMetrics base_metrics;
+    HoldMetrics flat_metrics;
+
+    flat.params.tooth_drop_depth_ratio = 0.0f;
+    flat.params.tooth_drop_depth_base = 0.0f;
+
+    run_hold_case(&baseline, &base_metrics);
+    run_hold_case(&flat, &flat_metrics);
+
+    assert(flat_metrics.measured_p2p_bar < base_metrics.measured_p2p_bar * 0.70f);
+    assert(fabsf(flat_metrics.real_p2p_bar - base_metrics.real_p2p_bar) <
+           (base_metrics.real_p2p_bar * 0.30f + 0.5f));
+}
+
+static void test_motor_noise_ablation_reduces_real_and_filtered_ripple(void) {
+    HoldCaseConfig noisy = make_default_hold_case();
+    HoldCaseConfig quiet = noisy;
+    HoldMetrics noisy_metrics;
+    HoldMetrics quiet_metrics;
+
+    quiet.params.enable_motor_noise = 0u;
+    quiet.params.motor_noise_std_rpm = 0.0f;
+
+    run_hold_case(&noisy, &noisy_metrics);
+    run_hold_case(&quiet, &quiet_metrics);
+
+    assert(quiet_metrics.real_p2p_bar < noisy_metrics.real_p2p_bar * 0.85f);
+    assert(quiet_metrics.filtered_p2p_bar < noisy_metrics.filtered_p2p_bar * 0.85f);
+}
+
+static void test_sensor_noise_ablation_preserves_real_pressure_more_than_measured_pressure(void) {
+    HoldCaseConfig noisy = make_default_hold_case();
+    HoldCaseConfig quiet = noisy;
+    HoldMetrics noisy_metrics;
+    HoldMetrics quiet_metrics;
+
+    quiet.params.enable_sensor_noise = 0u;
+    quiet.params.sensor_noise_std_bar = 0.0f;
+
+    run_hold_case(&noisy, &noisy_metrics);
+    run_hold_case(&quiet, &quiet_metrics);
+
+    assert(fabsf(quiet_metrics.real_p2p_bar - noisy_metrics.real_p2p_bar) <
+           (noisy_metrics.real_p2p_bar * 0.15f + 0.25f));
+    assert(quiet_metrics.measured_p2p_bar <= noisy_metrics.measured_p2p_bar);
+}
+
 int main(void) {
     printf("Running pressure hold diagnosis tests...\n\n");
     test_hold_harness_produces_finite_metrics();
+    test_current_100_bar_hold_reproduces_large_visible_ripple();
+    test_tooth_drop_ablation_reduces_measured_ripple_more_than_real_ripple();
+    test_motor_noise_ablation_reduces_real_and_filtered_ripple();
+    test_sensor_noise_ablation_preserves_real_pressure_more_than_measured_pressure();
     printf("\nPASS pressure hold diagnosis harness\n");
     return 0;
 }
