@@ -653,23 +653,23 @@ Not-tested: Full controller regression suite not run in this slice"
 Append these declarations above `main()`:
 
 ```c
-static void test_stronger_filter_reduces_filtered_ripple(void);
-static void test_disabling_pressure_accel_feedforward_reduces_output_hunting(void);
-static void test_disabling_gain_compensation_changes_hold_metrics_materially(void);
+static void test_stronger_filter_changes_closed_loop_hold_metrics(void);
+static void test_disabling_pressure_accel_feedforward_increases_filtered_ripple(void);
+static void test_disabling_gain_compensation_increases_hold_error_materially(void);
 ```
 
 Append these calls inside `main()` after the model-side tests:
 
 ```c
-    test_stronger_filter_reduces_filtered_ripple();
-    test_disabling_pressure_accel_feedforward_reduces_output_hunting();
-    test_disabling_gain_compensation_changes_hold_metrics_materially();
+    test_stronger_filter_changes_closed_loop_hold_metrics();
+    test_disabling_pressure_accel_feedforward_increases_filtered_ripple();
+    test_disabling_gain_compensation_increases_hold_error_materially();
 ```
 
 Append the test bodies above `main()`:
 
 ```c
-static void test_stronger_filter_reduces_filtered_ripple(void) {
+static void test_stronger_filter_changes_closed_loop_hold_metrics(void) {
     HoldCaseConfig raw = make_default_hold_case();
     HoldCaseConfig filtered = raw;
     HoldMetrics raw_metrics;
@@ -680,10 +680,11 @@ static void test_stronger_filter_reduces_filtered_ripple(void) {
     run_hold_case(&raw, &raw_metrics);
     run_hold_case(&filtered, &filtered_metrics);
 
-    assert(filtered_metrics.filtered_p2p_bar < raw_metrics.filtered_p2p_bar * 0.80f);
+    assert(fabsf(filtered_metrics.filtered_p2p_bar - raw_metrics.filtered_p2p_bar) > 0.50f);
+    assert(fabsf(filtered_metrics.filtered_mae_bar - raw_metrics.filtered_mae_bar) > 0.10f);
 }
 
-static void test_disabling_pressure_accel_feedforward_reduces_output_hunting(void) {
+static void test_disabling_pressure_accel_feedforward_increases_filtered_ripple(void) {
     HoldCaseConfig enabled = make_default_hold_case();
     HoldCaseConfig disabled = enabled;
     HoldMetrics enabled_metrics;
@@ -694,10 +695,10 @@ static void test_disabling_pressure_accel_feedforward_reduces_output_hunting(voi
     run_hold_case(&enabled, &enabled_metrics);
     run_hold_case(&disabled, &disabled_metrics);
 
-    assert(disabled_metrics.output_p2p_lmin < enabled_metrics.output_p2p_lmin * 0.90f);
+    assert(disabled_metrics.filtered_p2p_bar > enabled_metrics.filtered_p2p_bar + 0.5f);
 }
 
-static void test_disabling_gain_compensation_changes_hold_metrics_materially(void) {
+static void test_disabling_gain_compensation_increases_hold_error_materially(void) {
     HoldCaseConfig compensated = make_default_hold_case();
     HoldCaseConfig uncompensated = compensated;
     HoldMetrics compensated_metrics;
@@ -708,10 +709,11 @@ static void test_disabling_gain_compensation_changes_hold_metrics_materially(voi
     run_hold_case(&compensated, &compensated_metrics);
     run_hold_case(&uncompensated, &uncompensated_metrics);
 
-    assert(fabsf(compensated_metrics.filtered_mae_bar -
-                 uncompensated_metrics.filtered_mae_bar) > 0.5f);
+    assert(uncompensated_metrics.filtered_mae_bar > compensated_metrics.filtered_mae_bar + 0.5f);
 }
 ```
+
+Task 4 is controller-side diagnosis, so the assertions should stay comparative under the diagnosis-local preset instead of claiming a universal monotonic improvement from tighter filtering.
 
 - [ ] **Step 2: Run the diagnosis target and confirm it fails until the new feedforward hook is available through the controller path**
 

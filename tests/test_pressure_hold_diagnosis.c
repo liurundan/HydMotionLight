@@ -39,6 +39,9 @@ static void test_current_100_bar_hold_reproduces_large_visible_ripple(void);
 static void test_tooth_drop_ablation_reduces_measured_ripple_more_than_real_ripple(void);
 static void test_motor_noise_ablation_reduces_real_and_filtered_ripple(void);
 static void test_sensor_noise_ablation_preserves_real_pressure_more_than_measured_pressure(void);
+static void test_stronger_filter_changes_closed_loop_hold_metrics(void);
+static void test_disabling_pressure_accel_feedforward_increases_filtered_ripple(void);
+static void test_disabling_gain_compensation_increases_hold_error_materially(void);
 
 static PressureModelParams make_default_model_params(void) {
     PressureModelParams params;
@@ -238,6 +241,49 @@ static void test_sensor_noise_ablation_preserves_real_pressure_more_than_measure
     assert(quiet_metrics.measured_p2p_bar <= noisy_metrics.measured_p2p_bar);
 }
 
+static void test_stronger_filter_changes_closed_loop_hold_metrics(void) {
+    HoldCaseConfig raw = make_default_hold_case();
+    HoldCaseConfig filtered = raw;
+    HoldMetrics raw_metrics;
+    HoldMetrics filtered_metrics;
+
+    filtered.segment.pressureFilterAlpha = 0.10;
+
+    run_hold_case(&raw, &raw_metrics);
+    run_hold_case(&filtered, &filtered_metrics);
+
+    assert(fabsf(filtered_metrics.filtered_p2p_bar - raw_metrics.filtered_p2p_bar) > 0.50f);
+    assert(fabsf(filtered_metrics.filtered_mae_bar - raw_metrics.filtered_mae_bar) > 0.10f);
+}
+
+static void test_disabling_pressure_accel_feedforward_increases_filtered_ripple(void) {
+    HoldCaseConfig enabled = make_default_hold_case();
+    HoldCaseConfig disabled = enabled;
+    HoldMetrics enabled_metrics;
+    HoldMetrics disabled_metrics;
+
+    disabled.segment.pressureRbfConfig.disablePressureAccelFeedforward = 1.0;
+
+    run_hold_case(&enabled, &enabled_metrics);
+    run_hold_case(&disabled, &disabled_metrics);
+
+    assert(disabled_metrics.filtered_p2p_bar > enabled_metrics.filtered_p2p_bar + 0.5f);
+}
+
+static void test_disabling_gain_compensation_increases_hold_error_materially(void) {
+    HoldCaseConfig compensated = make_default_hold_case();
+    HoldCaseConfig uncompensated = compensated;
+    HoldMetrics compensated_metrics;
+    HoldMetrics uncompensated_metrics;
+
+    uncompensated.segment.systemGain = 0.0;
+
+    run_hold_case(&compensated, &compensated_metrics);
+    run_hold_case(&uncompensated, &uncompensated_metrics);
+
+    assert(uncompensated_metrics.filtered_mae_bar > compensated_metrics.filtered_mae_bar + 0.5f);
+}
+
 int main(void) {
     printf("Running pressure hold diagnosis tests...\n\n");
     test_hold_harness_produces_finite_metrics();
@@ -245,6 +291,9 @@ int main(void) {
     test_tooth_drop_ablation_reduces_measured_ripple_more_than_real_ripple();
     test_motor_noise_ablation_reduces_real_and_filtered_ripple();
     test_sensor_noise_ablation_preserves_real_pressure_more_than_measured_pressure();
+    test_stronger_filter_changes_closed_loop_hold_metrics();
+    test_disabling_pressure_accel_feedforward_increases_filtered_ripple();
+    test_disabling_gain_compensation_increases_hold_error_materially();
     printf("\nPASS pressure hold diagnosis harness\n");
     return 0;
 }
