@@ -6,6 +6,11 @@
 
 #define PRESSURE_MODEL_DEFAULT_DT_S 0.001f
 #define PRESSURE_MODEL_PI 3.14159265358979323846f
+#define PRESSURE_MODEL_DEFAULT_PUMP_DISPLACEMENT_M3_REV 20.0e-6f
+#define PRESSURE_MODEL_DEFAULT_VEFF_BASE_M3 5.0e-4f
+#define PRESSURE_MODEL_DEFAULT_LEAK_BASE_M3_PA_S \
+    ((PRESSURE_MODEL_DEFAULT_PUMP_DISPLACEMENT_M3_REV * (10.0f / 60.0f)) / (40.0f * 1.0e5f))
+#define PRESSURE_MODEL_DEFAULT_TOOTH_DROP_DEPTH_BASE 0.10f
 
 static float pressure_model_clampf(float value, float min_value, float max_value) {
     if (value < min_value) {
@@ -19,6 +24,10 @@ static float pressure_model_clampf(float value, float min_value, float max_value
 
 static float pressure_model_maxf(float a, float b) {
     return (a > b) ? a : b;
+}
+
+static float pressure_model_absf(float value) {
+    return (value < 0.0f) ? -value : value;
 }
 
 static float pressure_model_wrap_unit(float value) {
@@ -81,11 +90,13 @@ void PressureModel_InitParams(PressureModelParams *params) {
     }
 
     memset(params, 0, sizeof(*params));
-    params->pump_displacement_m3_rev = 20.0e-6f;
+    params->pump_displacement_m3_rev = PRESSURE_MODEL_DEFAULT_PUMP_DISPLACEMENT_M3_REV;
     params->bulk_modulus_pa = 1.6e9f;
-    params->chamber_volume_m3 = 5.0e-4f;
-    params->leak_coeff_m3_pa_s =
-        (params->pump_displacement_m3_rev * (10.0f / 60.0f)) / (40.0f * 1.0e5f);
+    params->chamber_volume_m3 = PRESSURE_MODEL_DEFAULT_VEFF_BASE_M3;
+    params->leak_coeff_m3_pa_s = PRESSURE_MODEL_DEFAULT_LEAK_BASE_M3_PA_S;
+    /* Task 1 exposes fitted-model knobs but keeps legacy physical knobs authoritative until retuning tasks activate them. */
+    params->veff_base_m3 = PRESSURE_MODEL_DEFAULT_VEFF_BASE_M3;
+    params->leak_base_m3_pa_s = PRESSURE_MODEL_DEFAULT_LEAK_BASE_M3_PA_S;
     params->relief_set_pa = 250.0f * 1.0e5f;
     params->relief_coeff_m3_pa_s = 1.2e-9f;
     params->sensor_range_bar = 250.0f;
@@ -95,8 +106,25 @@ void PressureModel_InitParams(PressureModelParams *params) {
     params->motor_noise_std_rpm = 2.0f;
     params->process_noise_std_m3_s = 0.0f;
     params->flow_ripple_ratio = 0.10f;
-    params->tooth_drop_depth_ratio = 0.10f;
+    params->tooth_drop_depth_ratio = PRESSURE_MODEL_DEFAULT_TOOTH_DROP_DEPTH_BASE;
+    params->tooth_drop_depth_base = PRESSURE_MODEL_DEFAULT_TOOTH_DROP_DEPTH_BASE;
     params->tooth_drop_width_ratio = 0.25f;
+    params->tooth_drop_phase_base = 0.0f;
+    params->veff_speed_scale[0] = 1.0f;
+    params->veff_speed_scale[1] = 1.0f;
+    params->veff_speed_scale[2] = 1.0f;
+    params->leak_speed_scale[0] = 1.0f;
+    params->leak_speed_scale[1] = 1.0f;
+    params->leak_speed_scale[2] = 1.0f;
+    params->drop_depth_scale[0] = 1.0f;
+    params->drop_depth_scale[1] = 1.0f;
+    params->drop_depth_scale[2] = 1.0f;
+    params->drop_phase_offset[0] = 0.0f;
+    params->drop_phase_offset[1] = 0.0f;
+    params->drop_phase_offset[2] = 0.0f;
+    params->torque_bias = 0.0f;
+    params->torque_from_pressure_gain = 0.0f;
+    params->torque_from_speed_gain = 0.0f;
     params->min_rpm = -100.0f;
     params->max_rpm = 2000.0f;
     params->enable_sensor_noise = 1u;
@@ -132,6 +160,7 @@ void PressureModel_Step(const PressureModelParams *params,
     float d_pressure;
     float tooth_phase;
     float visible_pressure_pa;
+    float abs_motor_rpm;
 
     if (params == NULL || state == NULL || out == NULL) {
         return;
@@ -152,6 +181,7 @@ void PressureModel_Step(const PressureModelParams *params,
     state->motor_rpm = pressure_model_clampf(state->motor_rpm, params->min_rpm, params->max_rpm);
     state->pump_phase_rev = pressure_model_wrap_unit(
         state->pump_phase_rev + (state->motor_rpm * dt / 60.0f));
+    abs_motor_rpm = pressure_model_absf(state->motor_rpm);
 
     q_base = params->pump_displacement_m3_rev * (state->motor_rpm / 60.0f);
     q_pump = q_base;
@@ -198,6 +228,11 @@ void PressureModel_Step(const PressureModelParams *params,
                                                        params->sensor_range_bar);
     out->pump_flow_m3_s = q_pump;
     out->net_flow_m3_s = q_net;
+    out->estimated_torque_trend = pressure_model_maxf(
+        0.0f,
+        params->torque_bias +
+            params->torque_from_pressure_gain * out->measured_pressure_bar +
+            params->torque_from_speed_gain * abs_motor_rpm);
     out->relief_active = (q_relief > 0.0f || state->pressure_pa > params->relief_set_pa) ? 1 : 0;
 }
 

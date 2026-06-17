@@ -28,6 +28,17 @@ typedef struct {
     unsigned char enable_sensor_noise;
     unsigned char enable_motor_noise;
     unsigned char enable_process_noise;
+    float veff_base_m3;
+    float leak_base_m3_pa_s;
+    float tooth_drop_depth_base;
+    float tooth_drop_phase_base;
+    float veff_speed_scale[3];
+    float leak_speed_scale[3];
+    float drop_depth_scale[3];
+    float drop_phase_offset[3];
+    float torque_bias;
+    float torque_from_pressure_gain;
+    float torque_from_speed_gain;
 } PressureModelParams;
 
 typedef struct {
@@ -46,6 +57,7 @@ typedef struct {
     float pump_flow_m3_s;
     float net_flow_m3_s;
     int relief_active;
+    float estimated_torque_trend;
 } PressureModelOutput;
 
 void PressureModel_InitParams(PressureModelParams *params);

@@ -77,6 +77,37 @@ static int test_zero_speed_holds_zero_pressure(void) {
     return 1;
 }
 
+static int test_init_params_expose_open_loop_fit_knobs(void) {
+    PressureModelParams params;
+    PressureModelState state;
+    PressureModelOutput out;
+    int i;
+
+    memset(&out, 0, sizeof(out));
+    PressureModel_InitParams(&params);
+    PressureModel_Reset(&state, 0x51515151u);
+    PressureModel_Step(&params, &state, 0.0f, DT_S, &out);
+
+    ASSERT_NEAR(params.veff_base_m3, 5.0e-4f, 1e-9f);
+    ASSERT_NEAR(params.leak_base_m3_pa_s,
+                (params.pump_displacement_m3_rev * (10.0f / 60.0f)) / (40.0f * 1.0e5f),
+                1e-12f);
+    ASSERT_NEAR(params.tooth_drop_depth_base, 0.10f, 1e-6f);
+    for (i = 0; i < 3; ++i) {
+        ASSERT_NEAR(params.veff_speed_scale[i], 1.0f, 1e-6f);
+        ASSERT_NEAR(params.leak_speed_scale[i], 1.0f, 1e-6f);
+        ASSERT_NEAR(params.drop_depth_scale[i], 1.0f, 1e-6f);
+        ASSERT_NEAR(params.drop_phase_offset[i], 0.0f, 1e-6f);
+    }
+    ASSERT_NEAR(params.tooth_drop_phase_base, 0.0f, 1e-6f);
+    ASSERT_NEAR(params.torque_bias, 0.0f, 1e-6f);
+    ASSERT_NEAR(params.torque_from_pressure_gain, 0.0f, 1e-6f);
+    ASSERT_NEAR(params.torque_from_speed_gain, 0.0f, 1e-6f);
+    ASSERT_NEAR(out.estimated_torque_trend, 0.0f, 1e-4f);
+
+    return 1;
+}
+
 static int test_ten_rpm_converges_to_forty_bar(void) {
     PressureModelParams params = make_deterministic_params();
     PressureModelState state;
@@ -179,6 +210,169 @@ static int test_tooth_drop_is_visible_once_per_tooth(void) {
     return 1;
 }
 
+static int test_legacy_tooth_drop_ratio_still_controls_visible_tooth_drop(void) {
+    PressureModelParams params = make_deterministic_params();
+    PressureModelState state;
+    PressureModelOutput out;
+    float max_gap_bar = 0.0f;
+    int i;
+
+    params.tooth_drop_depth_ratio = 0.0f;
+    params.sensor_range_bar = 10000.0f;
+
+    memset(&out, 0, sizeof(out));
+    PressureModel_Reset(&state, 0x26262626u);
+
+    run_steps(&params, &state, 600.0f, 2000, DT_S, &out);
+    for (i = 0; i < 100; ++i) {
+        PressureModel_Step(&params, &state, 600.0f, DT_S, &out);
+        if ((out.real_pressure_bar - out.measured_pressure_bar) > max_gap_bar) {
+            max_gap_bar = out.real_pressure_bar - out.measured_pressure_bar;
+        }
+    }
+
+    ASSERT_NEAR(max_gap_bar, 0.0f, 1e-3f);
+
+    return 1;
+}
+
+static int test_legacy_leak_coeff_still_controls_pressure_response(void) {
+    PressureModelParams baseline_params = make_deterministic_params();
+    PressureModelParams legacy_params = baseline_params;
+    PressureModelState baseline_state;
+    PressureModelState legacy_state;
+    PressureModelOutput baseline_out;
+    PressureModelOutput legacy_out;
+
+    legacy_params.leak_coeff_m3_pa_s = baseline_params.leak_coeff_m3_pa_s * 2.0f;
+    baseline_params.sensor_range_bar = 10000.0f;
+    legacy_params.sensor_range_bar = 10000.0f;
+
+    memset(&baseline_out, 0, sizeof(baseline_out));
+    memset(&legacy_out, 0, sizeof(legacy_out));
+    PressureModel_Reset(&baseline_state, 0x28282828u);
+    PressureModel_Reset(&legacy_state, 0x28282828u);
+
+    run_steps(&baseline_params, &baseline_state, 10.0f, 15000, DT_S, &baseline_out);
+    run_steps(&legacy_params, &legacy_state, 10.0f, 15000, DT_S, &legacy_out);
+
+    ASSERT_TRUE(legacy_out.real_pressure_bar < baseline_out.real_pressure_bar - 10.0f);
+
+    return 1;
+}
+
+static int test_legacy_chamber_volume_still_controls_pressure_rise(void) {
+    PressureModelParams baseline_params = make_deterministic_params();
+    PressureModelParams legacy_params = baseline_params;
+    PressureModelState baseline_state;
+    PressureModelState legacy_state;
+    PressureModelOutput baseline_out;
+    PressureModelOutput legacy_out;
+
+    legacy_params.chamber_volume_m3 = baseline_params.chamber_volume_m3 * 2.0f;
+    baseline_params.sensor_range_bar = 10000.0f;
+    legacy_params.sensor_range_bar = 10000.0f;
+
+    memset(&baseline_out, 0, sizeof(baseline_out));
+    memset(&legacy_out, 0, sizeof(legacy_out));
+    PressureModel_Reset(&baseline_state, 0x29292929u);
+    PressureModel_Reset(&legacy_state, 0x29292929u);
+
+    run_steps(&baseline_params, &baseline_state, 10.0f, 500, DT_S, &baseline_out);
+    run_steps(&legacy_params, &legacy_state, 10.0f, 500, DT_S, &legacy_out);
+
+    ASSERT_TRUE(legacy_out.real_pressure_bar < baseline_out.real_pressure_bar - 5.0f);
+
+    return 1;
+}
+
+static int test_new_physical_fit_fields_are_inert_for_task1(void) {
+    PressureModelParams baseline_params = make_deterministic_params();
+    PressureModelParams fitted_params = baseline_params;
+    PressureModelState baseline_state;
+    PressureModelState fitted_state;
+    PressureModelOutput baseline_out;
+    PressureModelOutput fitted_out;
+    float baseline_gap_bar;
+    float fitted_gap_bar;
+
+    fitted_params.veff_base_m3 = baseline_params.veff_base_m3 * 4.0f;
+    fitted_params.leak_base_m3_pa_s = baseline_params.leak_base_m3_pa_s * 0.25f;
+    fitted_params.tooth_drop_depth_base = 0.0f;
+    fitted_params.tooth_drop_phase_base = 0.25f;
+    fitted_params.veff_speed_scale[0] = 3.0f;
+    fitted_params.veff_speed_scale[1] = 3.0f;
+    fitted_params.veff_speed_scale[2] = 3.0f;
+    fitted_params.leak_speed_scale[0] = 0.1f;
+    fitted_params.leak_speed_scale[1] = 0.1f;
+    fitted_params.leak_speed_scale[2] = 0.1f;
+    fitted_params.drop_depth_scale[0] = 0.0f;
+    fitted_params.drop_depth_scale[1] = 0.0f;
+    fitted_params.drop_depth_scale[2] = 0.0f;
+    fitted_params.drop_phase_offset[0] = 0.5f;
+    fitted_params.drop_phase_offset[1] = 0.5f;
+    fitted_params.drop_phase_offset[2] = 0.5f;
+
+    memset(&baseline_out, 0, sizeof(baseline_out));
+    memset(&fitted_out, 0, sizeof(fitted_out));
+    PressureModel_Reset(&baseline_state, 0x2a2a2a2au);
+    PressureModel_Reset(&fitted_state, 0x2a2a2a2au);
+
+    run_steps(&baseline_params, &baseline_state, 10.0f, 500, DT_S, &baseline_out);
+    run_steps(&fitted_params, &fitted_state, 10.0f, 500, DT_S, &fitted_out);
+    baseline_gap_bar = baseline_out.real_pressure_bar - baseline_out.measured_pressure_bar;
+    fitted_gap_bar = fitted_out.real_pressure_bar - fitted_out.measured_pressure_bar;
+
+    ASSERT_NEAR(fitted_out.real_pressure_bar, baseline_out.real_pressure_bar, 1e-5f);
+    ASSERT_NEAR(fitted_gap_bar, baseline_gap_bar, 1e-5f);
+
+    return 1;
+}
+
+static int test_torque_speed_gain_affects_estimated_torque_trend(void) {
+    PressureModelParams params = make_deterministic_params();
+    PressureModelState state;
+    PressureModelOutput out;
+    float expected_speed_torque;
+
+    params.torque_bias = 0.0f;
+    params.torque_from_pressure_gain = 0.0f;
+    params.torque_from_speed_gain = 0.01f;
+
+    memset(&out, 0, sizeof(out));
+    PressureModel_Reset(&state, 0x27272727u);
+
+    run_steps(&params, &state, 100.0f, 200, DT_S, &out);
+
+    expected_speed_torque = params.torque_from_speed_gain * fabsf(out.actual_motor_rpm);
+    ASSERT_TRUE(out.actual_motor_rpm > 0.0f);
+    ASSERT_NEAR(out.estimated_torque_trend, expected_speed_torque, 1e-5f);
+
+    return 1;
+}
+
+static int test_torque_bias_and_pressure_gain_affect_estimated_torque_trend(void) {
+    PressureModelParams params = make_deterministic_params();
+    PressureModelState state;
+    PressureModelOutput out;
+    float expected_torque;
+
+    params.torque_bias = 1.25f;
+    params.torque_from_pressure_gain = 0.05f;
+    params.torque_from_speed_gain = 0.0f;
+
+    memset(&out, 0, sizeof(out));
+    PressureModel_Reset(&state, 0x2b2b2b2bu);
+
+    run_steps(&params, &state, 10.0f, 500, DT_S, &out);
+
+    expected_torque = params.torque_bias +
+                      params.torque_from_pressure_gain * out.measured_pressure_bar;
+    ASSERT_NEAR(out.estimated_torque_trend, expected_torque, 1e-5f);
+
+    return 1;
+}
+
 static int test_relief_caps_measured_output_at_two_hundred_fifty_bar(void) {
     PressureModelParams params = make_deterministic_params();
     PressureModelState state;
@@ -255,6 +449,14 @@ int main(void) {
         printf("FAIL test_zero_speed_holds_zero_pressure\n");
     }
 
+    if (test_init_params_expose_open_loop_fit_knobs()) {
+        ++passed;
+        printf("PASS test_init_params_expose_open_loop_fit_knobs\n");
+    } else {
+        ++failed;
+        printf("FAIL test_init_params_expose_open_loop_fit_knobs\n");
+    }
+
     if (test_ten_rpm_converges_to_forty_bar()) {
         ++passed;
         printf("PASS test_ten_rpm_converges_to_forty_bar\n");
@@ -285,6 +487,54 @@ int main(void) {
     } else {
         ++failed;
         printf("FAIL test_tooth_drop_is_visible_once_per_tooth\n");
+    }
+
+    if (test_legacy_tooth_drop_ratio_still_controls_visible_tooth_drop()) {
+        ++passed;
+        printf("PASS test_legacy_tooth_drop_ratio_still_controls_visible_tooth_drop\n");
+    } else {
+        ++failed;
+        printf("FAIL test_legacy_tooth_drop_ratio_still_controls_visible_tooth_drop\n");
+    }
+
+    if (test_legacy_leak_coeff_still_controls_pressure_response()) {
+        ++passed;
+        printf("PASS test_legacy_leak_coeff_still_controls_pressure_response\n");
+    } else {
+        ++failed;
+        printf("FAIL test_legacy_leak_coeff_still_controls_pressure_response\n");
+    }
+
+    if (test_legacy_chamber_volume_still_controls_pressure_rise()) {
+        ++passed;
+        printf("PASS test_legacy_chamber_volume_still_controls_pressure_rise\n");
+    } else {
+        ++failed;
+        printf("FAIL test_legacy_chamber_volume_still_controls_pressure_rise\n");
+    }
+
+    if (test_new_physical_fit_fields_are_inert_for_task1()) {
+        ++passed;
+        printf("PASS test_new_physical_fit_fields_are_inert_for_task1\n");
+    } else {
+        ++failed;
+        printf("FAIL test_new_physical_fit_fields_are_inert_for_task1\n");
+    }
+
+    if (test_torque_speed_gain_affects_estimated_torque_trend()) {
+        ++passed;
+        printf("PASS test_torque_speed_gain_affects_estimated_torque_trend\n");
+    } else {
+        ++failed;
+        printf("FAIL test_torque_speed_gain_affects_estimated_torque_trend\n");
+    }
+
+    if (test_torque_bias_and_pressure_gain_affect_estimated_torque_trend()) {
+        ++passed;
+        printf("PASS test_torque_bias_and_pressure_gain_affect_estimated_torque_trend\n");
+    } else {
+        ++failed;
+        printf("FAIL test_torque_bias_and_pressure_gain_affect_estimated_torque_trend\n");
     }
 
     if (test_relief_caps_measured_output_at_two_hundred_fifty_bar()) {
