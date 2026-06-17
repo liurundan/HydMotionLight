@@ -1,0 +1,116 @@
+<h2>开环压力模型路线对比</h2>
+<p class="subtitle">数据源：<code>open10203040-positive.csv</code>，压力单位为 0.1 bar，时间分辨率为 1 ms</p>
+
+<div class="section">
+  <div class="label">关键证据</div>
+  <div class="cards">
+    <div class="card">
+      <div class="card-body">
+        <h3>整段数据不是纯稳态</h3>
+        <p>每个 10/20/30/40 rpm 段都包含从近零压力开始的建压过程，前 2000 点与后 2000 点均值明显不同。</p>
+        <p>尾段均值约为 21.4 / 54.4 / 88.8 / 125.4 bar。</p>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-body">
+        <h3>存在齿同步压力谷值</h3>
+        <p>按 <code>反馈角度 mod (360/13)</code> 对齐后，四个稳态段都出现固定相位附近的谷值。</p>
+        <p>相位锁定脉动幅值约为 3.4 / 5.0 / 5.6 / 5.4 bar。</p>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-body">
+        <h3>平均压力随转速近似线性但并非完美比例</h3>
+        <p>10/20/30/40 rpm 的全段均值约为 21.2 / 54.7 / 90.3 / 123.1 bar。</p>
+        <p>这说明统一物理主模型可行，但可能还需要极少量测速相关修正。</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="label">方案比较</div>
+  <div class="options">
+    <div class="option" data-choice="a" onclick="toggleSelect(this)">
+      <div class="letter">A</div>
+      <div class="content">
+        <h3>纯统一物理模型</h3>
+        <p>一阶电机 + 压缩性 + 泄漏 + 13 齿流量脉动 + 测量噪声，不引入测速修正。</p>
+        <div class="pros-cons">
+          <div class="pros">
+            <h4>优点</h4>
+            <ul>
+              <li>结构最干净</li>
+              <li>负转速泄压天然成立</li>
+              <li>闭环控制器可解释性最好</li>
+            </ul>
+          </div>
+          <div class="cons">
+            <h4>缺点</h4>
+            <ul>
+              <li>可能压不住 20/30/40 rpm 的动态差异</li>
+              <li>齿谷深度和相位随转速变化时容易失真</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="option" data-choice="b" onclick="toggleSelect(this)">
+      <div class="letter">B</div>
+      <div class="content">
+        <h3>统一主模型 + 少量测速修正</h3>
+        <p><strong>推荐。</strong> 保留统一物理骨架，只对少数参数做弱速度相关修正，例如有效体积/泄漏、齿谷深度、齿谷相位。</p>
+        <div class="pros-cons">
+          <div class="pros">
+            <h4>优点</h4>
+            <ul>
+              <li>兼顾起压瞬态和稳态齿脉动</li>
+              <li>补偿项少，仍能外推到负转速泄压</li>
+              <li>适合闭环控制开发，不会退化成查表器</li>
+            </ul>
+          </div>
+          <div class="cons">
+            <h4>缺点</h4>
+            <ul>
+              <li>参数整定比 A 稍复杂</li>
+              <li>需要明确哪些量允许随转速变化</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="option" data-choice="c" onclick="toggleSelect(this)">
+      <div class="letter">C</div>
+      <div class="content">
+        <h3>分段经验拟合 + 齿脉动叠加</h3>
+        <p>按 10/20/30/40 rpm 各自拟合建压曲线，再覆盖一个统一的齿脉动层。</p>
+        <div class="pros-cons">
+          <div class="pros">
+            <h4>优点</h4>
+            <ul>
+              <li>当前这份数据上的贴合度最高</li>
+              <li>实现直观</li>
+            </ul>
+          </div>
+          <div class="cons">
+            <h4>缺点</h4>
+            <ul>
+              <li>超出测点后外推能力差</li>
+              <li>不利于闭环控制器参数迁移</li>
+              <li>负转速建模会变得生硬</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="mockup">
+  <div class="mockup-header">我的建议</div>
+  <div class="mockup-body">
+    <p>优先走 <strong>B</strong>：用统一主模型承接电机、泵、油液压缩和 13 齿同步脉动，只允许极少数参数带弱速度依赖。这样既能解释真实机理，也更容易支持后续闭环控制器开发。</p>
+  </div>
+</div>

@@ -1,0 +1,141 @@
+<h2>pidmainer50-fix.csv 概览</h2>
+<p class="subtitle">先确认这份实测压力数据的物理含义和拟合目标，再进入齿脉动、噪声和参数逼近分析。</p>
+
+<div class="section">
+  <div class="split">
+    <div class="mockup">
+      <div class="mockup-header">数据集摘要</div>
+      <div class="mockup-body">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div style="background:var(--bg-primary);border:1px solid var(--border);border-radius:8px;padding:12px">
+            <div class="label">Rows</div>
+            <div style="font-size:1.4rem;font-weight:600">41,826</div>
+          </div>
+          <div style="background:var(--bg-primary);border:1px solid var(--border);border-radius:8px;padding:12px">
+            <div class="label">Columns</div>
+            <div style="font-size:1.4rem;font-weight:600">8</div>
+          </div>
+          <div style="background:var(--bg-primary);border:1px solid var(--border);border-radius:8px;padding:12px">
+            <div class="label">Feedback / Raw Pressure</div>
+            <div style="font-size:1.2rem;font-weight:600">0 .. 569 / 0 .. 569</div>
+          </div>
+          <div style="background:var(--bg-primary);border:1px solid var(--border);border-radius:8px;padding:12px">
+            <div class="label">Set Pressure</div>
+            <div style="font-size:1.2rem;font-weight:600">0 or 500</div>
+          </div>
+        </div>
+        <div style="margin-top:14px;color:var(--text-secondary);font-size:0.92rem">
+          这份文件是 <code>gb18030</code> 编码。设定压力只有两段：第 11550 行从 0 切到 500，第 39730 行从 500 回到 0。
+        </div>
+      </div>
+    </div>
+
+    <div class="mockup">
+      <div class="mockup-header">从数据能先确认的事实</div>
+      <div class="mockup-body">
+        <div class="options">
+          <div class="option selected">
+            <div class="letter">1</div>
+            <div class="content">
+              <h3>这是高压死挡平台数据，不是匀速扫转速标定</h3>
+              <p>压力在高压段长时间贴近 500 附近，并伴随超调到 569，更像憋死工况下的建压、保压和卸压。</p>
+            </div>
+          </div>
+          <div class="option selected">
+            <div class="letter">2</div>
+            <div class="content">
+              <h3>电机转速列包含正反转与卸压动作</h3>
+              <p>范围是 -171 到 53，负转速样本 21316 个，说明文件里确实带有反转卸压特征。</p>
+            </div>
+          </div>
+          <div class="option selected">
+            <div class="letter">3</div>
+            <div class="content">
+              <h3>反馈压力和原始压力非常接近，但原始压力更适合看齿脉动</h3>
+              <p>两路峰值和爬升点几乎一致，后续可把“原始压力”当传感器侧目标，把“反馈压力”当控制器侧输出。</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="mockup">
+    <div class="mockup-header">压力轮廓概览</div>
+    <div class="mockup-body">
+      <svg viewBox="0 0 820 240" width="100%" height="240" role="img" aria-label="pressure overview">
+        <rect x="0" y="0" width="820" height="240" rx="10" fill="var(--bg-primary)"></rect>
+        <line x1="60" y1="24" x2="60" y2="200" stroke="var(--border)" stroke-width="1"></line>
+        <line x1="60" y1="200" x2="790" y2="200" stroke="var(--border)" stroke-width="1"></line>
+        <line x1="60" y1="42" x2="790" y2="42" stroke="var(--border)" stroke-width="1" stroke-dasharray="4 4"></line>
+        <line x1="60" y1="120" x2="790" y2="120" stroke="var(--border)" stroke-width="1" stroke-dasharray="4 4"></line>
+        <text x="18" y="46" font-size="12" fill="var(--text-secondary)">500</text>
+        <text x="18" y="124" font-size="12" fill="var(--text-secondary)">250</text>
+        <text x="24" y="204" font-size="12" fill="var(--text-secondary)">0</text>
+
+        <polyline
+          fill="none"
+          stroke="#0a84ff"
+          stroke-width="4"
+          points="60,198 240,198 252,196 264,188 276,168 288,136 300,102 312,76 324,58 336,49 360,44 420,42 520,40 620,42 700,44 744,47 768,50 790,64" />
+
+        <polyline
+          fill="none"
+          stroke="#ff9f0a"
+          stroke-width="3"
+          stroke-dasharray="8 6"
+          points="60,200 260,200 260,42 752,42 752,200 790,200" />
+
+        <text x="352" y="32" font-size="12" fill="#0a84ff">反馈压力/原始压力</text>
+        <text x="630" y="32" font-size="12" fill="#ff9f0a">设置压力</text>
+      </svg>
+      <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-top:14px;font-size:0.9rem">
+        <div style="background:var(--bg-primary);border:1px solid var(--border);border-radius:8px;padding:10px">
+          <div class="label">SP 跳到 500</div>
+          <div>index 11550</div>
+        </div>
+        <div style="background:var(--bg-primary);border:1px solid var(--border);border-radius:8px;padding:10px">
+          <div class="label">FB 首次 ≥ 500</div>
+          <div>index 11647</div>
+        </div>
+        <div style="background:var(--bg-primary);border:1px solid var(--border);border-radius:8px;padding:10px">
+          <div class="label">FB 峰值</div>
+          <div>569 @ 11674</div>
+        </div>
+        <div style="background:var(--bg-primary);border:1px solid var(--border);border-radius:8px;padding:10px">
+          <div class="label">SP 回到 0</div>
+          <div>index 39730</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<h2>先回答一个问题</h2>
+<p class="subtitle">后面的分析和仿真逼近，会优先对齐哪一路压力信号？</p>
+
+<div class="options">
+  <div class="option" data-choice="feedback-first" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>先拟合反馈压力</h3>
+      <p>优先匹配控制器实际看到的那一路。适合关注闭环行为、平台压力和卸压时序。</p>
+    </div>
+  </div>
+  <div class="option" data-choice="raw-first" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>先拟合原始压力</h3>
+      <p>优先匹配传感器侧波形。适合关注 13 齿脉动、噪声、量化和瞬态尖峰。</p>
+    </div>
+  </div>
+  <div class="option" data-choice="both-layered" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>两层一起做</h3>
+      <p>先让模型产出原始压力，再通过滤波/发布链路得到反馈压力。我更推荐这个，因为它最接近现有 `PressureModel.c` 的结构。</p>
+    </div>
+  </div>
+</div>

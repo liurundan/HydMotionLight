@@ -1,0 +1,111 @@
+<h2>设计第 1 节：模型架构与补偿边界</h2>
+<p class="subtitle">目标：保留统一物理主模型，只允许极少数弱速度相关修正，同时兼顾建压瞬态、稳态平台、13 齿同步脉动、负转速泄压能力。</p>
+
+<div class="split">
+  <div class="mockup">
+    <div class="mockup-header">统一主模型块图</div>
+    <div class="mockup-body">
+      <div class="section">
+        <div class="label">输入</div>
+        <div class="mock-input">target_rpm, dt_s</div>
+      </div>
+      <div class="section">
+        <div class="label">1. 电机子模型</div>
+        <div class="placeholder">一阶滞后 + 小幅转速噪声<br>输出：actual_motor_rpm</div>
+      </div>
+      <div class="section">
+        <div class="label">2. 泵流量子模型</div>
+        <div class="placeholder">Q_base = D * n / 60<br>13 齿流量脉动 + 相位累积</div>
+      </div>
+      <div class="section">
+        <div class="label">3. 憋压压力状态</div>
+        <div class="placeholder">dP/dt = 压缩建压 - 泄漏 - 溢流 - 负速回压/卸压</div>
+      </div>
+      <div class="section">
+        <div class="label">4. 测量层</div>
+        <div class="placeholder">按齿相位施加可见压力谷值 + 传感器噪声</div>
+      </div>
+      <div class="section">
+        <div class="label">输出</div>
+        <div class="mock-content">measured_pressure_bar<br>real_pressure_bar<br>actual_motor_rpm<br>estimated_torque_trend</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="mockup">
+    <div class="mockup-header">允许的最小修正集合</div>
+    <div class="mockup-body">
+      <div class="cards">
+        <div class="card">
+          <div class="card-body">
+            <h3>Veff(n)</h3>
+            <p>有效困油体积随转速弱变化，用来修正建压斜率和瞬态滞后。</p>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-body">
+            <h3>Cleak(n)</h3>
+            <p>有效泄漏系数随转速弱变化，用来修正不同转速下的稳态平台偏差。</p>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-body">
+            <h3>Adrop(n)</h3>
+            <p>齿谷深度随转速弱变化，用来匹配 13 齿压力谷值幅度。</p>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-body">
+            <h3>Phidrop(n)</h3>
+            <p>齿谷相位偏移随转速微调，用来对齐角度相关谷值位置。</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="label">边界规则</div>
+        <ul>
+          <li>禁止直接做 10/20/30/40 rpm 四段独立压力查表。</li>
+          <li>禁止把整个时域曲线拆成“每个转速一条经验曲线”。</li>
+          <li>修正项只能是少数、单调、弱速度依赖的函数或稀疏折线。</li>
+          <li>负转速必须沿同一主方程工作，只允许增加统一的卸压/回压分支。</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="label">这一节的核心决定</div>
+  <div class="mockup">
+    <div class="mockup-header">推荐落点</div>
+    <div class="mockup-body">
+      <p>主干方程保持统一：电机速度 → 泵流量 → 油液压缩建压 → 齿同步测量层。</p>
+      <p>只开放四个低自由度修正口：<code>Veff(n)</code>、<code>Cleak(n)</code>、<code>Adrop(n)</code>、<code>Phidrop(n)</code>。如果这四个口还不够，再优先考虑全局压力相关刚度修正，而不是转速分段查表。</p>
+    </div>
+  </div>
+</div>
+
+<div class="options">
+  <div class="option" data-choice="section1-ok" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>这一节正确</h3>
+      <p>统一主模型 + 四个弱速度修正口的边界合理。</p>
+    </div>
+  </div>
+  <div class="option" data-choice="section1-less-correction" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>修正项还要更少</h3>
+      <p>希望继续收紧，只保留最必要的 2~3 个修正口。</p>
+    </div>
+  </div>
+  <div class="option" data-choice="section1-more-physics" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>物理层还要更强</h3>
+      <p>希望增加更明确的回油、摩擦、死区或压力相关刚度描述。</p>
+    </div>
+  </div>
+</div>

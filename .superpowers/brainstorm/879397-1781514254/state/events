@@ -1,0 +1,1 @@
+{"type":"click","text":"C\n    \n      两层一起做\n      先让模型产出原始压力，再通过滤波/发布链路得到反馈压力。我更推荐这个，因为它最接近现有 `PressureModel.c` 的结构。","choice":"both-layered","id":null,"timestamp":1781516872953}

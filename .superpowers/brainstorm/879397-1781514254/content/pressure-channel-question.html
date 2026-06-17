@@ -1,0 +1,54 @@
+<h2>Pressure Fit Target</h2>
+<p class="subtitle">CSV is GBK-encoded and exposes both a filtered feedback channel and a raw pressure channel. Before I analyze ripple, noise, and model fitting, I need to know which one you want the model to match first.</p>
+
+<div class="section">
+  <div class="mockup">
+    <div class="mockup-header">Detected CSV columns</div>
+    <div class="mockup-body">
+      <div style="display:grid;grid-template-columns:1.1fr 1.4fr;gap:12px;">
+        <div>
+          <div class="label">Columns</div>
+          <ul>
+            <li><code>时间戳</code></li>
+            <li><code>反馈压力</code></li>
+            <li><code>电机转速</code></li>
+            <li><code>原始压力</code></li>
+            <li><code>设置压力</code></li>
+            <li><code>设定速度</code></li>
+            <li><code>转矩</code></li>
+            <li><code>补偿</code></li>
+          </ul>
+        </div>
+        <div>
+          <div class="label">Why this matters</div>
+          <p><code>反馈压力</code> usually reflects the controller-visible signal, often after filtering or scaling.</p>
+          <p><code>原始压力</code> usually exposes more tooth ripple and sensor noise, which is better for calibrating pulsation and measurement noise.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="options">
+  <div class="option" data-choice="feedback-first" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Fit feedback pressure first</h3>
+      <p>Use <code>反馈压力</code> as the primary target. Best when you care about matching the controller-facing signal.</p>
+    </div>
+  </div>
+  <div class="option" data-choice="raw-first" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Fit raw pressure first</h3>
+      <p>Use <code>原始压力</code> as the primary target. Best when you care about tooth ripple, quantization, and sensor-side noise.</p>
+    </div>
+  </div>
+  <div class="option" data-choice="both-layered" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Fit both as a two-layer model</h3>
+      <p>Treat <code>原始压力</code> as plant-plus-sensor output, then derive <code>反馈压力</code> as a filtered/scaled published signal.</p>
+    </div>
+  </div>
+</div>
