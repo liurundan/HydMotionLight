@@ -3,6 +3,8 @@
 #include <stdio.h>
 #include "rbf_pid.h"
 
+static void test_pressure_accel_feedforward_toggle_changes_incremental_output(void);
+
 static void test_init_sets_ready_defaults(void) {
     RBF_PID_Handle pid;
 
@@ -219,6 +221,29 @@ static void test_rbf_pid_negative_output(void) {
     printf("✓ RBF-PID negative output test passed (n_out=%.3f)\n", output);
 }
 
+static void test_pressure_accel_feedforward_toggle_changes_incremental_output(void) {
+    RBF_PID_Handle enabled;
+    RBF_PID_Handle disabled;
+    float out_enabled;
+    float out_disabled;
+
+    printf("Testing pressure acceleration feedforward toggle...\n");
+
+    RBF_PID_Init(&enabled, 0.001f, 90.0f, 1.0f);
+    RBF_PID_Init(&disabled, 0.001f, 90.0f, 1.0f);
+
+    (void)RBF_PID_Update(&enabled, 100.0f, 98.0f);
+    (void)RBF_PID_Update(&disabled, 100.0f, 98.0f);
+
+    RBF_PID_SetPressureAccelFeedforwardEnabled(&disabled, false);
+
+    out_enabled = RBF_PID_Update(&enabled, 100.0f, 101.0f);
+    out_disabled = RBF_PID_Update(&disabled, 100.0f, 101.0f);
+
+    assert(fabsf(out_enabled - out_disabled) > 1e-5f);
+    printf("✓ Pressure acceleration feedforward toggle test passed\n");
+}
+
 int main(void) {
     printf("Running RBF_PID tests...\n\n");
 
@@ -230,6 +255,7 @@ int main(void) {
     test_pressure_normalization_and_gain_compensation_are_configurable();
     test_network_initialization_is_deterministic_without_seed_hookup();
     test_rbf_pid_negative_output();
+    test_pressure_accel_feedforward_toggle_changes_incremental_output();
 
     printf("\n✅ All RBF_PID tests passed successfully!\n");
     return 0;

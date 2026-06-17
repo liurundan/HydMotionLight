@@ -51,6 +51,7 @@ typedef struct {
     float K;                        // 系统增益 (bar per L/min, 稳态压力/流量比)
     float fGainCompensation;        // 兼容字段：保留最近一次计算的补偿因子
     bool gain_compensation_enabled; // 是否在输出末端应用兼容增益补偿
+    bool pressure_accel_ff_enabled;
     float gain_compensation_factor; // 输出补偿因子，默认 1.0
 
     /* 最近一次控制结果 */
@@ -177,6 +178,8 @@ void RBF_PID_SetPressureNormalization(RBF_PID_Handle *pid, float scale);
  *       补偿因子会随压力归一化标量变化而同步刷新，避免 setter 调用顺序造成陈旧状态。
  */
 void RBF_PID_SetGainCompensation(RBF_PID_Handle *pid, float systemGain);
+
+void RBF_PID_SetPressureAccelFeedforwardEnabled(RBF_PID_Handle *pid, bool enabled);
 
 /**
  * @brief 设置网络初始化种子兼容字段

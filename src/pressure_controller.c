@@ -29,6 +29,7 @@ typedef struct {
     HYD_REAL etaP;
     HYD_REAL etaI;
     HYD_REAL etaD;
+    HYD_BOOL disablePressureAccelFeedforward;
 } HYD_RbfPidResolvedConfig;
 
 typedef struct {
@@ -192,6 +193,7 @@ static void HYD_ResolveRbfPidConfig(const HYD_MotionSegment* segment,
     config->etaP = HYD_DEFAULT_PID_LEARNING_RATE;
     config->etaI = HYD_DEFAULT_PID_LEARNING_RATE;
     config->etaD = HYD_DEFAULT_PID_LEARNING_RATE;
+    config->disablePressureAccelFeedforward = false;
 
     if (segment == NULL) {
         return;
@@ -209,6 +211,8 @@ static void HYD_ResolveRbfPidConfig(const HYD_MotionSegment* segment,
     config->etaP = HYD_ResolvePositiveOrDefault(segment->pressureRbfConfig.etaP, config->etaP);
     config->etaI = HYD_ResolvePositiveOrDefault(segment->pressureRbfConfig.etaI, config->etaI);
     config->etaD = HYD_ResolvePositiveOrDefault(segment->pressureRbfConfig.etaD, config->etaD);
+    config->disablePressureAccelFeedforward =
+        segment->pressureRbfConfig.disablePressureAccelFeedforward > 0.0 ? true : false;
 }
 
 static void HYD_ResolvePressureControllerConfig(const HYD_MotionSegment* segment,
@@ -330,6 +334,9 @@ static void HYD_ApplyRbfPidConfig(HYD_PressureControllerState* state,
                              (float)config->rbf.etaP,
                              (float)config->rbf.etaI,
                              (float)config->rbf.etaD);
+    RBF_PID_SetPressureAccelFeedforwardEnabled(
+        &state->rbfPid,
+        config->rbf.disablePressureAccelFeedforward ? false : true);
     state->rbfPid.KP = (float)HYD_ClampReal((HYD_REAL)state->rbfPid.KP,
                                             config->rbf.minKp,
                                             config->rbf.maxKp);

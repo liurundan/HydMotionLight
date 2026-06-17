@@ -190,7 +190,7 @@ static void rbf_pid_step_incremental_output(RBF_PID_Handle *pid, float error) {
     float actual_press = pid->P_set - error;
     float f_delta_press = actual_press - pid->fLastActPress;
     float f_dd_press = f_delta_press - (pid->fLastActPress - pid->fLastActPress2);
-    float f_uff = -0.5f * f_dd_press;
+    float f_uff = pid->pressure_accel_ff_enabled ? (-0.5f * f_dd_press) : 0.0f;
     float ref_change = pid->P_set - pid->last_ref;
     float ref_rate = clampf(-10.0f, ref_change, 10.0f);
     float dynamic_ff = 0.02f * ref_rate;
@@ -248,6 +248,7 @@ void RBF_PID_Init(RBF_PID_Handle *pid, float sampling_period,
     pid->TuneResult = 66;
     pid->alpha = 0.05f;
     pid->flowToPumpSpeedGain = 20.0f;
+    pid->pressure_accel_ff_enabled = true;
     rbf_pid_apply_default_limits(pid);
     rbf_pid_apply_default_learning_rates(pid);
     rbf_pid_apply_default_gains(pid);
@@ -340,6 +341,10 @@ void RBF_PID_SetPressureNormalization(RBF_PID_Handle *pid, float scale) {
 void RBF_PID_SetGainCompensation(RBF_PID_Handle *pid, float systemGain) {
     pid->K = systemGain;
     rbf_pid_refresh_gain_compensation(pid);
+}
+
+void RBF_PID_SetPressureAccelFeedforwardEnabled(RBF_PID_Handle *pid, bool enabled) {
+    pid->pressure_accel_ff_enabled = enabled;
 }
 
 void RBF_PID_SetSeed(RBF_PID_Handle *pid, uint32_t seed) {

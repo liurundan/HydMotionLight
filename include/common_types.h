@@ -221,6 +221,7 @@ typedef struct {
     HYD_REAL etaP;
     HYD_REAL etaI;
     HYD_REAL etaD;
+    HYD_REAL disablePressureAccelFeedforward; /* >0 disables the internal -0.5 * d2P term, 0 keeps the default enabled */
 } HYD_RbfPidConfig;
 
 typedef struct {
