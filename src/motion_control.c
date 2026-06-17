@@ -2380,7 +2380,7 @@ void HYD_MotionControlFB_Init(HYD_MotionControlFB* fb) {
     /* Set parameter defaults (matching previous hardcoded values in motion_interface.c) */
     fb->_params.positionTolerance = 0.1f;
     fb->_params.velocityTolerance = 5.0f;
-    fb->_params.flowTolerance = 1.0f;
+    fb->_params.flowTolerance = 0.0f;// default diabled
     fb->_params.pressureTolerance = 0.5f;
     fb->_params.timeoutLimit = 0.0f; // default diabled, since not all recipes may have a meaningful timeout condition
     fb->_params.velocityToFlowGain = 0.2f;

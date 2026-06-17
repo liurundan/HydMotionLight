@@ -46,7 +46,7 @@
  * 最小: 4段（至少支持基本的注塑周期）
  * 影响: RAM占用约 sizeof(HYD_MotionSegment) * HYD_MAX_SEGMENTS 字节
  */
-#define HYD_MAX_SEGMENTS 4
+#define HYD_MAX_SEGMENTS 1
 
 /* 段标签最大值
  * 默认: 255 (uint8_t full range)
@@ -255,8 +255,8 @@ typedef HYD_REAL HYD_TIME;
  * ============================================================================ */
 
 /* 编译时验证配置的合理性 */
-#if HYD_MAX_SEGMENTS < 4
-    #error "HYD_MAX_SEGMENTS must be at least 4"
+#if HYD_MAX_SEGMENTS < 1
+    #error "HYD_MAX_SEGMENTS must be at least 1"
 #endif
 
 /* HYD_DIAG_HISTORY_DEPTH validation removed — depth is no longer used at
