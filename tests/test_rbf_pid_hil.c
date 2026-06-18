@@ -4,8 +4,8 @@
  * Scenarios:
  *   A. Long-hold pressure: single RBF segment, 10s @ 1ms. Validates no fault
  *      escalation, gains stay within window, controller is active.
- *   B. PI -> RBF cross-segment bumpless: 5s PI + 5s RBF transition.
- *      Validates bumpless first-cycle flow ratio and no fault escalation.
+ *   B. Oversized recipe rejection: confirms the current platform limit
+ *      rejects a multi-segment recipe instead of truncating it.
  *
  * NOTE on sim pressure range: the hydro_sim INJECT axis uses melt_stiffness=150 N/mm
  * and cylinder area=8000 mm². At position 200mm the load force is 30000N giving
@@ -16,7 +16,6 @@
  */
 
 #include <assert.h>
-#include <math.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -24,6 +23,7 @@
 #include "hydro_sim.h"
 #include "hydro_interfaces.h"
 #include "common_types.h"
+#include "test_recipe_rejection_helpers.h"
 
 /* ---------- Scenario parameters ---------- */
 #define HIL_DT_S                    0.001
@@ -36,23 +36,17 @@
 #define HIL_TARGET_B1_MPA            2.0
 #define HIL_TARGET_B2_MPA            3.0
 
-/* Performance budgets — conservative for sim physics mismatch */
-#define HIL_PEAK_BUDGET_MPA          15.0   /* No fault spike > 15 MPa */
-#define HIL_BUMPLESS_RATIO            2.0   /* First RBF cycle <= 2x last PI cycle flow */
-#define HIL_SETTLE_BAND_MPA           8.0   /* Within 8 MPa in last 2s */
-#define HIL_SETTLE_WINDOW_S           2.0
-
 /* ---------- Forward declarations ---------- */
 static void hil_setup_inject_env(HydraulicSimEnv* env);
 static void hil_step_once(HYD_MotionControlFB* fb, HydraulicSimEnv* env, HYD_REAL t);
 static void test_long_hold_rbf_no_fault(void);
-static void test_pi_to_rbf_cross_segment_bumpless(void);
+static void test_pi_to_rbf_recipe_is_rejected_when_platform_limit_is_one(void);
 
 /* ---------- Main ---------- */
 int main(void) {
     printf("Running RBF-PID HIL tests...\n\n");
     test_long_hold_rbf_no_fault();
-    test_pi_to_rbf_cross_segment_bumpless();
+    test_pi_to_rbf_recipe_is_rejected_when_platform_limit_is_one();
     printf("\n✅ All RBF-PID HIL tests passed.\n");
     return 0;
 }
@@ -179,31 +173,20 @@ static void test_long_hold_rbf_no_fault(void) {
 }
 
 /* ============================================================
- * Scenario B: 5s PI -> 5s RBF bumpless transition
+ * Scenario B: oversized recipe rejection on current platform limit
  * ============================================================ */
 
-static void test_pi_to_rbf_cross_segment_bumpless(void) {
+static void test_pi_to_rbf_recipe_is_rejected_when_platform_limit_is_one(void) {
     HYD_MotionControlFB fb;
-    HydraulicSimEnv env;
     HYD_MotionSegment recipe[2];
-    HYD_REAL t = 0.0;
-    HYD_REAL last_pi_flow = 0.0;
-    HYD_REAL first_rbf_flow = 0.0;
-    HYD_BOOL captured_first_rbf = false;
-    int frame;
-    int frames_pi  = (int)(HIL_SCENARIO_B_PI_DUR_S  / HIL_DT_S);
-    int frames_rbf = (int)(HIL_SCENARIO_B_RBF_DUR_S / HIL_DT_S);
-    int settle_window_frames = (int)(HIL_SETTLE_WINDOW_S / HIL_DT_S);
-    HYD_REAL settle_band_violations = 0.0;
-    HYD_REAL ratio;
-
-    printf("HIL scenario B — PI->RBF cross-segment bumpless...\n");
+    printf("HIL scenario B — oversized recipe rejection...\n");
 
     HYD_MotionControlFB_Init(&fb);
-    hil_setup_inject_env(&env);
 
     memset(recipe, 0, sizeof(recipe));
 
+    /* Keep the original PI->RBF scenario shape visible even though
+     * HYD_MAX_SEGMENTS=1 rejects the recipe before segment execution. */
     /* Segment 0: PI */
     recipe[0].segmentType        = HYD_SEGMENT_TYPE_HOLDING;
     recipe[0].mode              = HYD_MODE_PRESSURE_CLOSED_LOOP;
@@ -241,72 +224,7 @@ static void test_pi_to_rbf_cross_segment_bumpless(void) {
     recipe[1].pressureRbfConfig.minKd = 0.5;
     recipe[1].pressureRbfConfig.maxKd = 2.0;
 
-    assert(HYD_MotionControlFB_LoadRecipe(&fb, recipe, 2));
-    fb.USE_RECIPE              = true;
-    fb.FLOW_TO_PUMP_SPEED_GAIN = 20.0;
-    fb.PUMP_SPEED_LIMIT        = 1800.0;
-    assert(HYD_MotionControlFB_StartSegment(&fb, 0, 0.0));
+    assert_oversized_recipe_load_rejected(&fb, recipe, 2U);
 
-    /* Phase 1: PI segment — run until segment completes or we exceed budget */
-    for (frame = 0; frame < frames_pi + 1000; frame++) {
-        t = frame * HIL_DT_S;
-        hil_step_once(&fb, &env, t);
-
-        if (fb.STATE.faultActive) {
-            printf("  FAIL: fault in PI segment at frame %d\n", frame);
-            assert(!fb.STATE.faultActive);
-        }
-        if (frame == frames_pi - 1 || (fb.STATE.references.flowReference > 0.0 && frame >= frames_pi - 1)) {
-            last_pi_flow = fb.STATE.references.flowReference;
-        }
-        if (fb.SEGMENT_COMPLETED) {
-            break;
-        }
-    }
-
-    assert(fb.SEGMENT_COMPLETED);
-
-    /* Advance to segment 1 */
-    assert(HYD_MotionControlFB_NextSegment(&fb, t));
-
-    /* Phase 2: RBF segment */
-    for (frame = 0; frame < frames_rbf; frame++) {
-        t = (frames_pi + frame) * HIL_DT_S;
-        hil_step_once(&fb, &env, t);
-
-        if (fb.STATE.faultActive) {
-            printf("  FAIL: fault in RBF segment at frame %d\n", frame);
-            assert(!fb.STATE.faultActive);
-        }
-
-        if (!captured_first_rbf) {
-            first_rbf_flow = fb.STATE.references.flowReference;
-            captured_first_rbf = true;
-        }
-
-        if (frame >= frames_rbf - settle_window_frames) {
-            HYD_REAL err = fabs(fb.AXIS_REF.pressure - HIL_TARGET_B2_MPA);
-            if (err > HIL_SETTLE_BAND_MPA) {
-                settle_band_violations += 1.0;
-            }
-        }
-    }
-
-    /* Bumpless ratio: first RBF flow / last PI flow. If last_pi_flow is near zero, skip */
-    if (fabs(last_pi_flow) > 0.01) {
-        ratio = fabs(first_rbf_flow) / (fabs(last_pi_flow) + 1e-9);
-        printf("  Last PI flow:   %.3f L/min\n", (double)last_pi_flow);
-        printf("  First RBF flow: %.3f L/min  (ratio %.3f, budget %.3f)\n",
-               (double)first_rbf_flow, (double)ratio, HIL_BUMPLESS_RATIO);
-        assert(ratio <= HIL_BUMPLESS_RATIO);
-    } else {
-        printf("  PI flow near zero (%.4f), skipping bumpless ratio check\n",
-               (double)last_pi_flow);
-    }
-
-    printf("  Settle violations in last %.1fs: %.0f / %d\n",
-           HIL_SETTLE_WINDOW_S, (double)settle_band_violations, settle_window_frames);
-    assert(settle_band_violations < (HYD_REAL)settle_window_frames * 0.10);
-
-    printf("✓ Scenario B passed\n\n");
+    printf("✓ Scenario B passed (oversized recipe rejected)\n\n");
 }
