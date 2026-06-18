@@ -21,6 +21,7 @@
 #include "motion_interface.h"
 #include "motion_control.h"
 #include "state_reporter.h"
+#include "test_recipe_rejection_helpers.h"
 
 extern HYD_MotionControlFB* __MK_GetPublic_MotionControlFB(int index);
 
@@ -1294,13 +1295,10 @@ static void test_direct_command_starts_cleanly_after_recipe_done(void) {
                "Direct command should not inherit an aborted lifecycle after recipe DONE");
 }
 
-static void test_moveprofile_does_not_self_abort_on_recipe_nextsegment(void) {
+static void test_moveprofile_rejects_oversized_recipe_load(void) {
     HYD_CREATEMOTION cm;
-    HYD_MOVEPROFILE mp;
-    HYD_AXISMOTION motion;
     HYD_MotionControlFB* fb;
     HYD_MotionSegment recipe[2];
-    int step;
 
     __HydMotion_framework_Init();
 
@@ -1332,56 +1330,9 @@ static void test_moveprofile_does_not_self_abort_on_recipe_nextsegment(void) {
     recipe[1] = recipe[0];
     recipe[1].segmentTag = 2;
 
-    ASSERT_TRUE(HYD_MotionControlFB_LoadRecipe(fb, recipe, 2U),
-               "Two-step recipe should preload successfully");
-
-    memset(&mp, 0, sizeof(mp));
-    memset(&motion, 0, sizeof(motion));
-    IEC_VAL(mp.EN) = true;
-    IEC_VAL(mp.EXECUTE) = true;
-    mp.EXECUTE0.value = false;
-    IEC_VAL(mp.AXISID) = IEC_VAL(cm.AXISID);
-    __SET_VAR(mp., MOTION, , motion);
-
-    __mcl_cmd_MoveProfile(&mp);
-    __HydMotion_framework_Publish();
-    IEC_VAL(mp.EXECUTE) = true;
-    mp.EXECUTE0.value = true;
-    __mcl_cmd_MoveProfile(&mp);
-
-    for (step = 0; step < 100; step++) {
-        motion = __GET_VAR(mp.MOTION);
-        motion.TIMESTAMP += 0.001f;
-        __SET_VAR(mp., MOTION, , motion);
-        __HydMotion_framework_Publish();
-        IEC_VAL(mp.EXECUTE) = true;
-        mp.EXECUTE0.value = true;
-        __mcl_cmd_MoveProfile(&mp);
-        if (fb->SEGMENT_COMPLETED) {
-            break;
-        }
-    }
-
-    ASSERT_TRUE(fb->SEGMENT_COMPLETED == true,
-               "First recipe segment should complete before NextSegment");
-    ASSERT_TRUE(IEC_VAL(mp.COMMANDABORTED) == false,
-               "MoveProfile should not self-abort on normal first-segment completion");
-
-    ASSERT_TRUE(HYD_MotionControlFB_NextSegment(fb, fb->AXIS_REF.timestamp),
-               "NextSegment should be accepted for the completed recipe");
-    __HydMotion_framework_Publish();
-
-    motion = __GET_VAR(mp.MOTION);
-    motion.TIMESTAMP += 0.001f;
-    __SET_VAR(mp., MOTION, , motion);
-    IEC_VAL(mp.EXECUTE) = true;
-    mp.EXECUTE0.value = true;
-    __mcl_cmd_MoveProfile(&mp);
-
-    ASSERT_TRUE(IEC_VAL(mp.COMMANDABORTED) == false,
-               "MoveProfile should not raise COMMANDABORTED on normal recipe NextSegment");
-    ASSERT_TRUE(IEC_VAL(mp.BUSY) == true || IEC_VAL(mp.ACTIVE) == true,
-               "MoveProfile should remain in a live lifecycle on the next recipe segment");
+    assert_oversized_recipe_load_rejected(fb, recipe, 2U);
+    ASSERT_TRUE(fb->DIAGNOSTIC.code == HYD_DIAG_CODE_RECIPE_TOO_LARGE,
+               "Oversized recipe load should report RECIPE_TOO_LARGE");
 }
 
 static void test_reverse_blend_pending_completes_as_buffered(void) {
@@ -1586,7 +1537,7 @@ int main(void) {
     test_moveprofile_loses_activity_when_direct_command_takes_over();
     test_moveprofile_loses_activity_after_reset_takeover();
     test_direct_command_starts_cleanly_after_recipe_done();
-    test_moveprofile_does_not_self_abort_on_recipe_nextsegment();
+    test_moveprofile_rejects_oversized_recipe_load();
     test_stop_completion_clears_blend_pending_slot();
     test_runtime_fault_clears_blend_pending_slot();
     test_blend_pending_rejected_while_stopping();

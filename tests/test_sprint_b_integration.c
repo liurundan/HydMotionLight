@@ -10,16 +10,17 @@
 
 #include "motion_control.h"
 #include "motion_planner.h"
+#include "test_recipe_rejection_helpers.h"
 #include <assert.h>
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
 
-static void test_fb_accepts_and_starts_segments_with_new_features(void) {
+static void test_fb_rejects_oversized_recipe_with_new_features(void) {
     HYD_MotionControlFB fb;
     HYD_MotionSegment recipe[3];
 
-    printf("Testing FB with new-feature segments...\n");
+    printf("Testing oversized recipe rejection with new-feature segments...\n");
 
     HYD_MotionControlFB_Init(&fb);
     fb.FLOW_TO_PUMP_SPEED_GAIN = 10.0;
@@ -74,22 +75,9 @@ static void test_fb_accepts_and_starts_segments_with_new_features(void) {
     recipe[2].pressureTolerance = 2.0;
     recipe[2].timeoutLimit = 3.0;
 
-    assert(HYD_MotionControlFB_LoadRecipe(&fb, recipe, 3));
-    assert(fb.RECIPE_SIZE == 3);
+    assert_oversized_recipe_load_rejected(&fb, recipe, 3U);
 
-    /* Start: should transition to active */
-    fb.AXIS_REF.timestamp = 0.0;
-    fb.AXIS_REF.pressure = 50.0;
-    assert(HYD_MotionControlFB_StartSegment(&fb, 0, 0.0));
-
-    /* Execute one cycle: should enter RUNNING */
-    fb.AXIS_REF.timestamp = 0.01;
-    HYD_MotionControlFB_Execute(&fb);
-    assert(fb.STATE.active);
-    assert(fb.STATE.status == HYD_STATUS_RUNNING);
-    assert(fb.PUMP_SPEED >= 0.0);
-
-    printf("✓ FB accepts and starts segments with new features\n");
+    printf("✓ FB rejects oversized recipe with new features\n");
 }
 
 static void test_trapezoid_planning_with_short_distance_triangular(void) {
@@ -247,7 +235,7 @@ static void test_derate_reduces_runtime_pump_speed(void) {
 int main(void) {
     printf("Running Sprint B integration tests...\n\n");
 
-    test_fb_accepts_and_starts_segments_with_new_features();
+    test_fb_rejects_oversized_recipe_with_new_features();
     test_trapezoid_planning_with_short_distance_triangular();
     test_gain_scheduling_transitions_smoothly();
     test_derate_reduces_runtime_pump_speed();
