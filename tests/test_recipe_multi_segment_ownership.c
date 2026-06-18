@@ -1,24 +1,17 @@
 /**
  * @file test_recipe_multi_segment_ownership.c
- * @brief MoveProfile ownership stability across recipe advance (Sprint 0 spec C-2)
+ * @brief HYD_MAX_SEGMENTS=1 guard for recipe rejection and Stop ownership
  *
  * Background:
- *   The IEC FB ownership tracking uses an execution-id epoch. Previously the
- *   same epoch (_executionId) advanced on every HYD_BeginSegment, including
- *   recipe NextSegment. So the IEC adapter's recipeExecutionLostOwnership()
- *   saw an id mismatch on every recipe advance and falsely raised
- *   COMMANDABORTED on the outer MoveProfile FB instance.
+ *   HYD_MAX_SEGMENTS=1 makes multi-segment recipe ownership coverage
+ *   unreachable on this target. This file therefore carries one oversized-
+ *   recipe rejection guard plus one surviving single-segment Stop takeover
+ *   regression to protect the ownership path that remains reachable.
  *
- *   Fix: split ownership into per-segment epoch (_executionId, direct path)
- *   and per-recipe batch epoch (_recipeBatchId, MoveProfile path). Recipe
- *   NextSegment advances _executionId but NOT _recipeBatchId.
+ * Test 1: build a 3-segment recipe, reject it as RECIPE_TOO_LARGE.
  *
- * Test 1: 3-segment recipe; manually call NextSegment after each segment
- *         completes. MoveProfile must NEVER raise COMMANDABORTED. After all
- *         three segments finish, DONE must be true.
- *
- * Test 2: 1-segment recipe; rising-edge MoveProfile, then issue Stop. The
- *         next MoveProfile scan MUST raise COMMANDABORTED (real takeover).
+ * Test 2: load one segment, issue Stop, and verify the next MoveProfile scan
+ *         still reports COMMANDABORTED for a real takeover.
  */
 
 #include <stdio.h>
@@ -30,6 +23,7 @@
 #include "motion_interface.h"
 #include "motion_control.h"
 #include "action_profile.h"
+#include "test_recipe_rejection_helpers.h"
 
 extern HYD_MotionControlFB* __MK_GetPublic_MotionControlFB(int index);
 
@@ -63,34 +57,19 @@ static void build_clamp_close_segment(HYD_MotionSegment* seg,
 }
 
 /* ====================================================================
- * Test 1: Multi-segment recipe — NextSegment must NOT raise COMMANDABORTED
- *         on the outer MoveProfile FB.
+ * Test 1: Oversized recipes must be rejected up front on this platform.
  *
- * Setup:
- *   - Create simulation axis with USE_RECIPE=true
- *   - Pre-load a 3-segment recipe (clamp close 30/60/100mm) directly into
- *     the core FB (bypassing IEC) so MoveProfile's rising-edge sees a
- *     multi-segment recipe rather than building one from MOTION.
- *   - Rising edge MoveProfile -> starts segment 0
- *   - Spin Publish + steady-state MoveProfile until SEGMENT_COMPLETE,
- *     then call NextSegment manually. Repeat for segments 1, 2.
- *
- * Pre-fix expected: FAIL (the very first NextSegment bumps _executionId,
- * the adapter sees mismatch and raises COMMANDABORTED).
- * Post-fix expected: PASS.
+ * The platform limit is HYD_MAX_SEGMENTS=1, so a 3-segment recipe should
+ * fail to load and report RECIPE_TOO_LARGE.
  * ==================================================================== */
-static void test_moveprofile_survives_recipe_advance(void) {
+static void test_moveprofile_rejects_oversized_recipe_load(void) {
     HYD_CREATEMOTION cm;
-    HYD_MOVEPROFILE mp;
-    HYD_AXISMOTION motion;
     HYD_MotionSegment seg[3];
     HYD_MotionControlFB* fb;
-    int step;
     int i;
     int axisIndex;
-    int nextSegmentCount = 0;
 
-    printf("Running: test_moveprofile_survives_recipe_advance\n");
+    printf("Running: test_moveprofile_rejects_oversized_recipe_load\n");
 
     __HydMotion_framework_Init();
 
@@ -108,69 +87,11 @@ static void test_moveprofile_survives_recipe_advance(void) {
     fb = __MK_GetPublic_MotionControlFB(axisIndex);
     ASSERT_TRUE(fb != NULL, "Should fetch axis FB");
 
-    /* Pre-load a 3-segment recipe directly. MoveProfile's execRising path
-     * will see RECIPE_SIZE != 0 and skip the 1-segment build-from-MOTION. */
+    /* Build a 3-segment recipe and confirm the platform rejects it. */
     for (i = 0; i < 3; i++) {
         build_clamp_close_segment(&seg[i], (HYD_UINT8)(i + 1), (HYD_REAL)((i + 1) * 30));
     }
-    ASSERT_TRUE(HYD_MotionControlFB_LoadRecipe(fb, seg, 3),
-                "LoadRecipe with 3 segments should succeed");
-
-    /* Rising edge: MoveProfile uses the preloaded recipe. */
-    memset(&mp, 0, sizeof(mp));
-    memset(&motion, 0, sizeof(motion));
-    IEC_VAL(mp.EN) = true;
-    IEC_VAL(mp.EXECUTE) = true;
-    mp.EXECUTE0.value = false;
-    IEC_VAL(mp.AXISID) = axisIndex;
-    IEC_VAL(mp.BUFFERMODE) = HYD_BUFFER_MODE_ABORT;
-    motion.TIMESTAMP = 0.0f;
-    __SET_VAR(mp., MOTION, , motion);
-
-    __mcl_cmd_MoveProfile(&mp);
-    __HydMotion_framework_Publish();
-
-    /* Spin: steady-state MoveProfile + Publish, calling NextSegment when the
-     * core FB reports SEGMENT_COMPLETE. Each scan, assert COMMANDABORTED
-     * stayed false (this is the bug under test). Bound the loop to 4000
-     * iterations to prevent run-away. */
-    for (step = 1; step < 4000; step++) {
-        IEC_VAL(mp.EXECUTE) = true;
-        mp.EXECUTE0.value = true;
-        __mcl_cmd_MoveProfile(&mp);
-
-        if (IEC_VAL(mp.COMMANDABORTED)) {
-            printf("  FAIL: MoveProfile COMMANDABORTED at step %d, fb->FB_STATE=%d, "
-                   "currentSegmentIndex=%u, nextSegmentCount=%d\n",
-                   step, (int)fb->FB_STATE,
-                   (unsigned)fb->STATE.currentSegmentIndex, nextSegmentCount);
-            tests_run++;
-            return;
-        }
-
-        if (fb->FB_STATE == HYD_FB_STATE_SEGMENT_COMPLETE) {
-            HYD_MotionControlFB_NextSegment(fb, fb->AXIS_REF.timestamp);
-            nextSegmentCount++;
-        }
-
-        if (HYD_MotionControlFB_IsDone(fb) && fb->STATE.finished) {
-            break;
-        }
-
-        __HydMotion_framework_Publish();
-    }
-
-    /* Drive one more scan so MoveProfile latches the DONE state. */
-    IEC_VAL(mp.EXECUTE) = true;
-    mp.EXECUTE0.value = true;
-    __mcl_cmd_MoveProfile(&mp);
-
-    ASSERT_TRUE(IEC_VAL(mp.COMMANDABORTED) == false,
-                "MoveProfile must NOT report COMMANDABORTED after multi-segment recipe");
-    ASSERT_TRUE(IEC_VAL(mp.DONE) == true,
-                "MoveProfile must report DONE after all 3 segments complete");
-    ASSERT_TRUE(nextSegmentCount >= 2,
-                "Should have invoked NextSegment at least twice (3 segments => 2 advances)");
+    assert_oversized_recipe_load_rejected(fb, seg, 3U);
 }
 
 /* ====================================================================
@@ -255,7 +176,7 @@ static void test_moveprofile_aborted_by_stop_takeover(void) {
 }
 
 int main(void) {
-    test_moveprofile_survives_recipe_advance();
+    test_moveprofile_rejects_oversized_recipe_load();
     test_moveprofile_aborted_by_stop_takeover();
 
     printf("\n[recipe_multi_segment_ownership] %d/%d assertions passed\n",
