@@ -4,6 +4,7 @@
 #include <string.h>
 #include "recipe_validator.h"
 #include "segment_limits.h"
+#include "test_recipe_rejection_helpers.h"
 
 static HYD_MotionSegment make_valid_segment(void) {
     HYD_MotionSegment segment = {0};
@@ -31,17 +32,27 @@ static HYD_MotionSegment make_valid_segment(void) {
 }
 
 static void test_validate_recipe_success(void) {
-    HYD_MotionSegment recipe[2];
+    HYD_MotionSegment recipe[1];
     HYD_DiagnosticCode code = HYD_DIAG_CODE_INTERNAL_ERROR;
 
     printf("Testing recipe validator success path...\n");
     recipe[0] = make_valid_segment();
+
+    assert(HYD_RecipeValidator_ValidateRecipe(recipe, 1U, &code));
+    assert(code == HYD_DIAG_CODE_NONE);
+    printf("✓ Recipe validator success path test passed\n");
+}
+
+static void test_validate_recipe_rejects_oversized_recipe(void) {
+    HYD_MotionSegment recipe[2];
+
+    printf("Testing oversized recipe rejection...\n");
+    recipe[0] = make_valid_segment();
     recipe[1] = make_valid_segment();
     recipe[1].direction = HYD_DIRECTION_RETRACT;
 
-    assert(HYD_RecipeValidator_ValidateRecipe(recipe, 2, &code));
-    assert(code == HYD_DIAG_CODE_NONE);
-    printf("✓ Recipe validator success path test passed\n");
+    assert_oversized_recipe_validation_rejected(recipe, 2U);
+    printf("✓ Oversized recipe rejection test passed\n");
 }
 
 static void test_validate_recipe_rejects_speed_ramp_non_time_planner(void) {
@@ -343,6 +354,7 @@ int main(void) {
     printf("Running RecipeValidator tests...\n\n");
 
     test_validate_recipe_success();
+    test_validate_recipe_rejects_oversized_recipe();
     test_validate_recipe_rejects_speed_ramp_non_time_planner();
     test_validate_runtime_config();
     test_validate_pressure_derivative_filter_alpha();
