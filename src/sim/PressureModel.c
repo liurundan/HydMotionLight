@@ -177,6 +177,10 @@ void PressureModel_InitParams(PressureModelParams *params) {
     params->torque_bias = 400.0f;
     params->torque_from_pressure_gain = 110.0f;
     params->torque_from_speed_gain = 8.0f;
+    params->model_type = PRESSURE_MODEL_TYPE_PHYSICAL;
+    params->first_order_k_bar_per_rpm = 0.0f;
+    params->first_order_tau_s = 0.2f;
+    params->first_order_delay_s = 0.0f;
     params->min_rpm = -100.0f;
     params->max_rpm = 2000.0f;
     params->enable_sensor_noise = 1u;
@@ -191,6 +195,114 @@ void PressureModel_Reset(PressureModelState *state, uint32_t seed) {
 
     memset(state, 0, sizeof(*state));
     state->rng_state = pressure_model_seed(seed);
+    state->active_model_type = PRESSURE_MODEL_TYPE_PHYSICAL;
+    state->first_order_prev_pressure_bar = 0.0f;
+    state->first_order_buffer_index = 0;
+}
+
+static unsigned char pressure_model_normalize_type(unsigned char model_type) {
+    return (model_type == PRESSURE_MODEL_TYPE_FIRST_ORDER)
+               ? PRESSURE_MODEL_TYPE_FIRST_ORDER
+               : PRESSURE_MODEL_TYPE_PHYSICAL;
+}
+
+static int pressure_model_first_order_delay_steps(float delay_s, float dt_s) {
+    float clamped_delay = pressure_model_clampf(delay_s, 0.0f, 1.0f);
+    float ratio = clamped_delay / dt_s;
+    int steps = (int)ratio;
+
+    if (steps < 0) {
+        steps = 0;
+    }
+    if (steps >= PRESSURE_MODEL_FIRST_ORDER_MAX_DELAY_STEPS) {
+        steps = PRESSURE_MODEL_FIRST_ORDER_MAX_DELAY_STEPS - 1;
+    }
+    return steps;
+}
+
+static void pressure_model_fill_first_order_history(PressureModelState *state, float pressure_bar) {
+    int i;
+
+    for (i = 0; i < PRESSURE_MODEL_FIRST_ORDER_MAX_DELAY_STEPS; ++i) {
+        state->first_order_delay_buffer[i] = pressure_bar;
+    }
+    state->first_order_buffer_index = 0;
+}
+
+static void pressure_model_step_first_order(const PressureModelParams *params,
+                                            PressureModelState *state,
+                                            float dt,
+                                            float abs_motor_rpm,
+                                            PressureModelOutput *out) {
+    float gain = pressure_model_maxf(0.0f, params->first_order_k_bar_per_rpm);
+    float tau = pressure_model_maxf(0.0f, params->first_order_tau_s);
+    float undelayed_bar;
+    float delayed_bar;
+    int delay_steps;
+
+    if (tau > 0.0f) {
+        undelayed_bar = ((gain * state->motor_rpm * dt) +
+                         (tau * state->first_order_prev_pressure_bar)) /
+                        (tau + dt);
+    } else {
+        undelayed_bar = gain * state->motor_rpm;
+    }
+
+    undelayed_bar = pressure_model_clampf(undelayed_bar, 0.0f, 250.0f);
+    delay_steps = pressure_model_first_order_delay_steps(params->first_order_delay_s, dt);
+
+    state->first_order_delay_buffer[state->first_order_buffer_index] = undelayed_bar;
+    if (delay_steps == 0) {
+        delayed_bar = undelayed_bar;
+    } else {
+        int read_index = (state->first_order_buffer_index +
+                          PRESSURE_MODEL_FIRST_ORDER_MAX_DELAY_STEPS -
+                          delay_steps) %
+                         PRESSURE_MODEL_FIRST_ORDER_MAX_DELAY_STEPS;
+        delayed_bar = state->first_order_delay_buffer[read_index];
+    }
+
+    state->first_order_buffer_index =
+        (state->first_order_buffer_index + 1) % PRESSURE_MODEL_FIRST_ORDER_MAX_DELAY_STEPS;
+    state->first_order_prev_pressure_bar = undelayed_bar;
+    state->pressure_pa = delayed_bar * 1.0e5f;
+
+    out->actual_motor_rpm = state->motor_rpm;
+    out->real_pressure_bar = delayed_bar;
+    out->measured_pressure_bar = delayed_bar;
+    out->pump_flow_m3_s = 0.0f;
+    out->net_flow_m3_s = 0.0f;
+    out->relief_active = (undelayed_bar >= 250.0f) ? 1 : 0;
+    out->estimated_torque_trend = pressure_model_maxf(
+        0.0f,
+        params->torque_bias +
+            params->torque_from_pressure_gain * out->measured_pressure_bar +
+            params->torque_from_speed_gain * abs_motor_rpm);
+}
+
+static void pressure_model_write_switch_hold_output(const PressureModelParams *params,
+                                                    PressureModelState *state,
+                                                    float abs_motor_rpm,
+                                                    float preserved_pressure_bar,
+                                                    int first_order_mode,
+                                                    PressureModelOutput *out) {
+    if (first_order_mode) {
+        state->first_order_prev_pressure_bar = preserved_pressure_bar;
+        pressure_model_fill_first_order_history(state, preserved_pressure_bar);
+    }
+
+    state->pressure_pa = preserved_pressure_bar * 1.0e5f;
+    out->actual_motor_rpm = state->motor_rpm;
+    out->real_pressure_bar = preserved_pressure_bar;
+    out->measured_pressure_bar = preserved_pressure_bar;
+    out->pump_flow_m3_s = 0.0f;
+    out->net_flow_m3_s = 0.0f;
+    out->relief_active = 0;
+    out->estimated_torque_trend = pressure_model_maxf(
+        0.0f,
+        params->torque_bias +
+            params->torque_from_pressure_gain * out->measured_pressure_bar +
+            params->torque_from_speed_gain * abs_motor_rpm);
 }
 
 void PressureModel_Step(const PressureModelParams *params,
@@ -234,6 +346,35 @@ void PressureModel_Step(const PressureModelParams *params,
     state->pump_phase_rev = pressure_model_wrap_unit(
         state->pump_phase_rev + (state->motor_rpm * dt / 60.0f));
     abs_motor_rpm = pressure_model_absf(state->motor_rpm);
+
+    {
+        unsigned char requested_type = pressure_model_normalize_type(params->model_type);
+        float preserved_pressure_bar = state->pressure_pa * 1.0e-5f;
+
+        if (requested_type != state->active_model_type) {
+            if (requested_type == PRESSURE_MODEL_TYPE_FIRST_ORDER &&
+                state->active_model_type == PRESSURE_MODEL_TYPE_PHYSICAL &&
+                preserved_pressure_bar <= 0.0f) {
+                state->first_order_prev_pressure_bar = preserved_pressure_bar;
+                pressure_model_fill_first_order_history(state, preserved_pressure_bar);
+            } else {
+                pressure_model_write_switch_hold_output(params,
+                                                        state,
+                                                        abs_motor_rpm,
+                                                        preserved_pressure_bar,
+                                                        requested_type == PRESSURE_MODEL_TYPE_FIRST_ORDER,
+                                                        out);
+                state->active_model_type = requested_type;
+                return;
+            }
+        }
+
+        if (requested_type == PRESSURE_MODEL_TYPE_FIRST_ORDER) {
+            pressure_model_step_first_order(params, state, dt, abs_motor_rpm, out);
+            state->active_model_type = PRESSURE_MODEL_TYPE_FIRST_ORDER;
+            return;
+        }
+    }
 
     q_base = params->pump_displacement_m3_rev * (state->motor_rpm / 60.0f);
     q_pump = q_base;
@@ -291,6 +432,7 @@ void PressureModel_Step(const PressureModelParams *params,
             params->torque_from_pressure_gain * out->measured_pressure_bar +
             params->torque_from_speed_gain * abs_motor_rpm);
     out->relief_active = (q_relief > 0.0f || state->pressure_pa > params->relief_set_pa) ? 1 : 0;
+    state->active_model_type = PRESSURE_MODEL_TYPE_PHYSICAL;
 }
 
 float pressure_update(float target_rpm,

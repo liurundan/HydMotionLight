@@ -48,6 +48,19 @@ static PressureModelParams make_deterministic_params(void) {
     return params;
 }
 
+static PressureModelParams make_first_order_params(float gain, float tau_s, float delay_s) {
+    PressureModelParams params = make_deterministic_params();
+
+    params.model_type = PRESSURE_MODEL_TYPE_FIRST_ORDER;
+    params.first_order_k_bar_per_rpm = gain;
+    params.first_order_tau_s = tau_s;
+    params.first_order_delay_s = delay_s;
+    params.sensor_range_bar = 10000.0f;
+    params.motor_tau_s = 0.0f;
+
+    return params;
+}
+
 static void run_steps(const PressureModelParams *params,
                       PressureModelState *state,
                       float target_rpm,
@@ -167,6 +180,29 @@ static int test_zero_speed_holds_zero_pressure(void) {
     return 1;
 }
 
+static int test_init_params_default_to_physical_mode(void) {
+    PressureModelParams params;
+    PressureModelState state;
+    PressureModelParams first_order_params = make_first_order_params(0.25f, 0.2f, 0.01f);
+
+    PressureModel_InitParams(&params);
+    PressureModel_Reset(&state, 0x51515151u);
+
+    ASSERT_TRUE(params.model_type == PRESSURE_MODEL_TYPE_PHYSICAL);
+    ASSERT_NEAR(params.first_order_k_bar_per_rpm, 0.0f, 1e-6f);
+    ASSERT_NEAR(params.first_order_tau_s, 0.2f, 1e-6f);
+    ASSERT_NEAR(params.first_order_delay_s, 0.0f, 1e-6f);
+    ASSERT_TRUE(state.active_model_type == PRESSURE_MODEL_TYPE_PHYSICAL);
+    ASSERT_NEAR(state.first_order_prev_pressure_bar, 0.0f, 1e-6f);
+    ASSERT_TRUE(state.first_order_buffer_index == 0);
+    ASSERT_TRUE(first_order_params.model_type == PRESSURE_MODEL_TYPE_FIRST_ORDER);
+    ASSERT_NEAR(first_order_params.first_order_k_bar_per_rpm, 0.25f, 1e-6f);
+    ASSERT_NEAR(first_order_params.first_order_tau_s, 0.2f, 1e-6f);
+    ASSERT_NEAR(first_order_params.first_order_delay_s, 0.01f, 1e-6f);
+
+    return 1;
+}
+
 static int test_init_params_expose_open_loop_fit_knobs(void) {
     PressureModelParams params;
     PressureModelState state;
@@ -262,6 +298,173 @@ static int test_motor_state_is_continuous_across_steps(void) {
     ASSERT_TRUE(out0.actual_motor_rpm > 0.0f);
     ASSERT_TRUE(out0.actual_motor_rpm < 1000.0f);
     ASSERT_TRUE(out1.actual_motor_rpm > out0.actual_motor_rpm);
+
+    return 1;
+}
+
+static int test_first_order_zero_input_holds_zero_pressure(void) {
+    PressureModelParams params = make_first_order_params(0.5f, 0.2f, 0.0f);
+    PressureModelState state;
+    PressureModelOutput out;
+
+    memset(&out, 0, sizeof(out));
+    PressureModel_Reset(&state, 0x78787878u);
+
+    run_steps(&params, &state, 0.0f, 200, DT_S, &out);
+
+    ASSERT_NEAR(out.real_pressure_bar, 0.0f, PRESSURE_EPS);
+    ASSERT_NEAR(out.measured_pressure_bar, 0.0f, PRESSURE_EPS);
+    ASSERT_NEAR(out.actual_motor_rpm, 0.0f, RPM_EPS);
+
+    return 1;
+}
+
+static int test_first_order_tau_zero_matches_gain_times_actual_rpm(void) {
+    PressureModelParams params = make_first_order_params(0.25f, 0.0f, 0.0f);
+    PressureModelState state;
+    PressureModelOutput out;
+
+    memset(&out, 0, sizeof(out));
+    PressureModel_Reset(&state, 0x79797979u);
+    PressureModel_Step(&params, &state, 120.0f, DT_S, &out);
+
+    ASSERT_NEAR(out.real_pressure_bar,
+                params.first_order_k_bar_per_rpm * out.actual_motor_rpm,
+                1e-4f);
+    ASSERT_NEAR(out.measured_pressure_bar, out.real_pressure_bar, 1e-6f);
+
+    return 1;
+}
+
+static int test_first_order_tau_positive_matches_discrete_recurrence_from_reset(void) {
+    PressureModelParams params = make_first_order_params(0.5f, 0.2f, 0.0f);
+    PressureModelState state;
+    PressureModelOutput out;
+    float expected_pressure_bar = 0.0f;
+    int i;
+
+    memset(&out, 0, sizeof(out));
+    PressureModel_Reset(&state, 0x7c7c7c7cu);
+
+    for (i = 0; i < 4; ++i) {
+        PressureModel_Step(&params, &state, 100.0f, DT_S, &out);
+        expected_pressure_bar =
+            ((params.first_order_k_bar_per_rpm * 100.0f * DT_S) +
+             (params.first_order_tau_s * expected_pressure_bar)) /
+            (params.first_order_tau_s + DT_S);
+
+        ASSERT_NEAR(out.actual_motor_rpm, 100.0f, RPM_EPS);
+        ASSERT_NEAR(out.real_pressure_bar, expected_pressure_bar, 1e-6f);
+        ASSERT_NEAR(out.measured_pressure_bar, expected_pressure_bar, 1e-6f);
+    }
+
+    return 1;
+}
+
+static int test_first_order_delay_defers_visible_output(void) {
+    PressureModelParams params = make_first_order_params(0.5f, 0.0f, 0.003f);
+    PressureModelState state;
+    PressureModelOutput out;
+
+    memset(&out, 0, sizeof(out));
+    PressureModel_Reset(&state, 0x7a7a7a7au);
+
+    PressureModel_Step(&params, &state, 100.0f, DT_S, &out);
+    ASSERT_NEAR(out.real_pressure_bar, 0.0f, 1e-6f);
+    PressureModel_Step(&params, &state, 100.0f, DT_S, &out);
+    ASSERT_NEAR(out.real_pressure_bar, 0.0f, 1e-6f);
+    PressureModel_Step(&params, &state, 100.0f, DT_S, &out);
+    ASSERT_NEAR(out.real_pressure_bar, 0.0f, 1e-6f);
+    PressureModel_Step(&params, &state, 100.0f, DT_S, &out);
+    ASSERT_TRUE(out.real_pressure_bar > 0.0f);
+
+    return 1;
+}
+
+static int test_first_order_outputs_measured_equal_real_and_zero_flow_terms(void) {
+    PressureModelParams params = make_first_order_params(0.1f, 0.2f, 0.0f);
+    PressureModelState state;
+    PressureModelOutput out;
+
+    memset(&out, 0, sizeof(out));
+    PressureModel_Reset(&state, 0x7b7b7b7bu);
+    run_steps(&params, &state, 250.0f, 50, DT_S, &out);
+
+    ASSERT_NEAR(out.measured_pressure_bar, out.real_pressure_bar, 1e-6f);
+    ASSERT_NEAR(out.pump_flow_m3_s, 0.0f, 1e-6f);
+    ASSERT_NEAR(out.net_flow_m3_s, 0.0f, 1e-6f);
+
+    return 1;
+}
+
+static int test_invalid_model_type_matches_physical_branch(void) {
+    PressureModelParams physical_params = make_deterministic_params();
+    PressureModelParams invalid_params = physical_params;
+    PressureModelState physical_state;
+    PressureModelState invalid_state;
+    PressureModelOutput physical_out;
+    PressureModelOutput invalid_out;
+    int i;
+
+    invalid_params.model_type = 99u;
+    memset(&physical_out, 0, sizeof(physical_out));
+    memset(&invalid_out, 0, sizeof(invalid_out));
+    PressureModel_Reset(&physical_state, 0x7c7c7c7cu);
+    PressureModel_Reset(&invalid_state, 0x7c7c7c7cu);
+
+    for (i = 0; i < 500; ++i) {
+        PressureModel_Step(&physical_params, &physical_state, 40.0f, DT_S, &physical_out);
+        PressureModel_Step(&invalid_params, &invalid_state, 40.0f, DT_S, &invalid_out);
+    }
+
+    ASSERT_NEAR(invalid_out.real_pressure_bar, physical_out.real_pressure_bar, 1e-6f);
+    ASSERT_NEAR(invalid_out.measured_pressure_bar, physical_out.measured_pressure_bar, 1e-6f);
+    ASSERT_NEAR(invalid_out.actual_motor_rpm, physical_out.actual_motor_rpm, 1e-6f);
+
+    return 1;
+}
+
+static int test_switch_from_physical_to_first_order_preserves_pressure(void) {
+    PressureModelParams params = make_deterministic_params();
+    PressureModelState state;
+    PressureModelOutput out;
+    float charged_pressure;
+
+    memset(&out, 0, sizeof(out));
+    PressureModel_Reset(&state, 0x7d7d7d7du);
+    run_steps(&params, &state, 40.0f, 12000, DT_S, &out);
+    charged_pressure = out.real_pressure_bar;
+
+    params.model_type = PRESSURE_MODEL_TYPE_FIRST_ORDER;
+    params.first_order_k_bar_per_rpm = 1.0f;
+    params.first_order_tau_s = 0.2f;
+    params.first_order_delay_s = 0.0f;
+    PressureModel_Step(&params, &state, 40.0f, DT_S, &out);
+
+    ASSERT_NEAR(out.real_pressure_bar, charged_pressure, 1e-6f);
+    ASSERT_NEAR(out.measured_pressure_bar, charged_pressure, 1e-6f);
+    ASSERT_TRUE(state.active_model_type == PRESSURE_MODEL_TYPE_FIRST_ORDER);
+
+    return 1;
+}
+
+static int test_switch_from_first_order_to_physical_preserves_pressure(void) {
+    PressureModelParams params = make_first_order_params(0.5f, 0.2f, 0.0f);
+    PressureModelState state;
+    PressureModelOutput out;
+    float charged_pressure;
+
+    memset(&out, 0, sizeof(out));
+    PressureModel_Reset(&state, 0x7e7e7e7eu);
+    run_steps(&params, &state, 200.0f, 400, DT_S, &out);
+    charged_pressure = out.real_pressure_bar;
+
+    params = make_deterministic_params();
+    PressureModel_Step(&params, &state, 200.0f, DT_S, &out);
+
+    ASSERT_NEAR(out.real_pressure_bar, charged_pressure, 1e-6f);
+    ASSERT_NEAR(out.measured_pressure_bar, charged_pressure, 1e-6f);
+    ASSERT_TRUE(state.active_model_type == PRESSURE_MODEL_TYPE_PHYSICAL);
 
     return 1;
 }
@@ -527,6 +730,13 @@ int main(void) {
         ++failed;
         printf("FAIL test_zero_speed_holds_zero_pressure\n");
     }
+    if (test_init_params_default_to_physical_mode()) {
+        ++passed;
+        printf("PASS test_init_params_default_to_physical_mode\n");
+    } else {
+        ++failed;
+        printf("FAIL test_init_params_default_to_physical_mode\n");
+    }
 
     if (test_init_params_expose_open_loop_fit_knobs()) {
         ++passed;
@@ -558,6 +768,70 @@ int main(void) {
     } else {
         ++failed;
         printf("FAIL test_motor_state_is_continuous_across_steps\n");
+    }
+
+    if (test_first_order_zero_input_holds_zero_pressure()) {
+        ++passed;
+        printf("PASS test_first_order_zero_input_holds_zero_pressure\n");
+    } else {
+        ++failed;
+        printf("FAIL test_first_order_zero_input_holds_zero_pressure\n");
+    }
+
+    if (test_first_order_tau_zero_matches_gain_times_actual_rpm()) {
+        ++passed;
+        printf("PASS test_first_order_tau_zero_matches_gain_times_actual_rpm\n");
+    } else {
+        ++failed;
+        printf("FAIL test_first_order_tau_zero_matches_gain_times_actual_rpm\n");
+    }
+
+    if (test_first_order_tau_positive_matches_discrete_recurrence_from_reset()) {
+        ++passed;
+        printf("PASS test_first_order_tau_positive_matches_discrete_recurrence_from_reset\n");
+    } else {
+        ++failed;
+        printf("FAIL test_first_order_tau_positive_matches_discrete_recurrence_from_reset\n");
+    }
+
+    if (test_first_order_delay_defers_visible_output()) {
+        ++passed;
+        printf("PASS test_first_order_delay_defers_visible_output\n");
+    } else {
+        ++failed;
+        printf("FAIL test_first_order_delay_defers_visible_output\n");
+    }
+
+    if (test_first_order_outputs_measured_equal_real_and_zero_flow_terms()) {
+        ++passed;
+        printf("PASS test_first_order_outputs_measured_equal_real_and_zero_flow_terms\n");
+    } else {
+        ++failed;
+        printf("FAIL test_first_order_outputs_measured_equal_real_and_zero_flow_terms\n");
+    }
+
+    if (test_invalid_model_type_matches_physical_branch()) {
+        ++passed;
+        printf("PASS test_invalid_model_type_matches_physical_branch\n");
+    } else {
+        ++failed;
+        printf("FAIL test_invalid_model_type_matches_physical_branch\n");
+    }
+
+    if (test_switch_from_physical_to_first_order_preserves_pressure()) {
+        ++passed;
+        printf("PASS test_switch_from_physical_to_first_order_preserves_pressure\n");
+    } else {
+        ++failed;
+        printf("FAIL test_switch_from_physical_to_first_order_preserves_pressure\n");
+    }
+
+    if (test_switch_from_first_order_to_physical_preserves_pressure()) {
+        ++passed;
+        printf("PASS test_switch_from_first_order_to_physical_preserves_pressure\n");
+    } else {
+        ++failed;
+        printf("FAIL test_switch_from_first_order_to_physical_preserves_pressure\n");
     }
 
     if (test_negative_speed_depressurizes_faster_than_passive_leak()) {

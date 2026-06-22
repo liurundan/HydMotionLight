@@ -13,6 +13,7 @@
 
 #include "hydro_sim_fb.h"
 #include "hydro_sim.h"
+#include "pressure_model.h"
 
 extern HYD_HydraulicSimFB* __MK_GetPublic_HydraulicSimFB(int index);
 
@@ -72,6 +73,14 @@ static void read_axis(HYD_READSIMAXIS* cmd, int axis_id, bool enable) {
     cmd->ENABLE.value = enable;
     cmd->AXISID.value = axis_id;
     __mcl_cmd_readSimAxis(cmd);
+}
+
+static void reset_pressure_model_cmd(HYD_PRESSUREMODEL *cmd) {
+    memset(cmd, 0, sizeof(*cmd));
+    cmd->MODEL_TYPE.value = PRESSURE_MODEL_TYPE_PHYSICAL;
+    cmd->K_NUM.value = 0.0;
+    cmd->TTAU.value = 0.2;
+    cmd->DELAYTIME.value = 0.0;
 }
 
 /* ==================================================================
@@ -335,7 +344,7 @@ static void test_pressure_model_fb_persists_state_and_resets_on_disable(void) {
     double first_step_rpm;
     double first_step_real_pressure;
 
-    memset(&cmd, 0, sizeof(cmd));
+    reset_pressure_model_cmd(&cmd);
 
     cmd.ENABLE.value = true;
     cmd.MOTOR_RPM.value = 1000.0;
@@ -376,6 +385,25 @@ static void test_pressure_model_fb_persists_state_and_resets_on_disable(void) {
                 "Re-enable after reset should replay the same first-step motor rpm");
     ASSERT_NEAR(cmd.REAL_PRESSURE_BAR.value, first_step_real_pressure, 1e-6,
                 "Re-enable after reset should replay the same first-step real pressure");
+}
+
+static void test_pressure_model_fb_exposes_first_order_inputs(void) {
+    HYD_PRESSUREMODEL cmd;
+
+    memset(&cmd, 0, sizeof(cmd));
+    cmd.MODEL_TYPE.value = PRESSURE_MODEL_TYPE_FIRST_ORDER;
+    cmd.K_NUM.value = 0.25;
+    cmd.TTAU.value = 0.2;
+    cmd.DELAYTIME.value = 0.01;
+
+    ASSERT_TRUE(cmd.MODEL_TYPE.value == PRESSURE_MODEL_TYPE_FIRST_ORDER,
+                "PressureModel FB should expose MODEL_TYPE");
+    ASSERT_NEAR(cmd.K_NUM.value, 0.25, TOLERANCE,
+                "PressureModel FB should expose K_NUM");
+    ASSERT_NEAR(cmd.TTAU.value, 0.2, TOLERANCE,
+                "PressureModel FB should expose TTAU");
+    ASSERT_NEAR(cmd.DELAYTIME.value, 0.01, TOLERANCE,
+                "PressureModel FB should expose DELAYTIME");
 }
 
 static void test_pressure_model_fb_negative_speed_depressurizes_without_reset(void) {
@@ -446,6 +474,120 @@ static void test_pressure_model_fb_negative_speed_depressurizes_without_reset(vo
                 "Negative-speed command must not drive real pressure below zero");
 }
 
+static void test_pressure_model_fb_first_order_mode_outputs_equal_real_and_measured(void) {
+    HYD_PRESSUREMODEL cmd;
+    double expected_pressure;
+    int i;
+
+    reset_pressure_model_cmd(&cmd);
+    cmd.ENABLE.value = false;
+    cmd.TIME_S.value = 0.0;
+    __mcl_cmd_updatePressureModel(&cmd);
+
+    for (i = 0; i < 300; ++i) {
+        cmd.ENABLE.value = true;
+        cmd.MODEL_TYPE.value = PRESSURE_MODEL_TYPE_FIRST_ORDER;
+        cmd.K_NUM.value = 0.20;
+        cmd.TTAU.value = 0.0;
+        cmd.DELAYTIME.value = 0.0;
+        cmd.MOTOR_RPM.value = 120.0;
+        cmd.TIME_S.value = 0.001 * (double)i;
+        __mcl_cmd_updatePressureModel(&cmd);
+    }
+
+    ASSERT_TRUE(cmd.ACTIVE.value,
+                "First-order PressureModel FB should stay active while enabled");
+    expected_pressure = 0.20 * cmd.ACTUAL_MOTOR_RPM.value;
+    ASSERT_TRUE(cmd.REAL_PRESSURE_BAR.value > 0.0,
+                "First-order PressureModel FB should build pressure for positive rpm");
+    ASSERT_NEAR(cmd.REAL_PRESSURE_BAR.value, expected_pressure, 1e-4,
+                "First-order tau=0 output should equal K_NUM times actual motor rpm");
+    ASSERT_NEAR(cmd.REAL_PRESSURE_BAR.value, cmd.MEASURED_PRESSURE_BAR.value, TOLERANCE,
+                "First-order PressureModel FB should report equal real and measured pressure");
+}
+
+static void test_pressure_model_fb_online_model_switch_preserves_pressure(void) {
+    HYD_PRESSUREMODEL cmd;
+    double charged_pressure;
+    int i;
+
+    reset_pressure_model_cmd(&cmd);
+    cmd.ENABLE.value = false;
+    cmd.TIME_S.value = 0.0;
+    __mcl_cmd_updatePressureModel(&cmd);
+
+    for (i = 0; i < 12000; ++i) {
+        cmd.ENABLE.value = true;
+        cmd.MODEL_TYPE.value = PRESSURE_MODEL_TYPE_PHYSICAL;
+        cmd.MOTOR_RPM.value = 40.0;
+        cmd.TIME_S.value = 0.001 * (double)i;
+        __mcl_cmd_updatePressureModel(&cmd);
+    }
+    charged_pressure = cmd.REAL_PRESSURE_BAR.value;
+
+    cmd.MODEL_TYPE.value = PRESSURE_MODEL_TYPE_FIRST_ORDER;
+    cmd.K_NUM.value = 0.0;
+    cmd.TTAU.value = 0.0;
+    cmd.DELAYTIME.value = 0.0;
+    cmd.TIME_S.value = 12.000;
+    __mcl_cmd_updatePressureModel(&cmd);
+
+    ASSERT_TRUE(cmd.ACTIVE.value,
+                "Switching model type online should keep the PressureModel FB active");
+    ASSERT_NEAR(cmd.REAL_PRESSURE_BAR.value, charged_pressure, 1e-6,
+                "Switching to first-order mode should preserve the current real pressure");
+    ASSERT_NEAR(cmd.MEASURED_PRESSURE_BAR.value, charged_pressure, 1e-6,
+                "Switching to first-order mode should preserve the current measured pressure");
+
+    cmd.TIME_S.value = 12.001;
+    __mcl_cmd_updatePressureModel(&cmd);
+
+    ASSERT_NEAR(cmd.REAL_PRESSURE_BAR.value, 0.0, 1e-6,
+                "The scan after switching to zero-gain first-order mode should use first-order dynamics");
+    ASSERT_NEAR(cmd.MEASURED_PRESSURE_BAR.value, 0.0, 1e-6,
+                "Measured pressure should follow the zero-gain first-order output after the switch");
+}
+
+static void test_pressure_model_fb_hot_updates_first_order_parameters(void) {
+    HYD_PRESSUREMODEL cmd;
+    double low_gain_pressure;
+    double expected_low_gain_pressure;
+    double expected_high_gain_pressure;
+    int i;
+
+    reset_pressure_model_cmd(&cmd);
+    cmd.ENABLE.value = false;
+    cmd.TIME_S.value = 0.0;
+    __mcl_cmd_updatePressureModel(&cmd);
+
+    for (i = 0; i < 500; ++i) {
+        cmd.ENABLE.value = true;
+        cmd.MODEL_TYPE.value = PRESSURE_MODEL_TYPE_FIRST_ORDER;
+        cmd.K_NUM.value = 0.05;
+        cmd.TTAU.value = 0.0;
+        cmd.DELAYTIME.value = 0.0;
+        cmd.MOTOR_RPM.value = 200.0;
+        cmd.TIME_S.value = 0.001 * (double)i;
+        __mcl_cmd_updatePressureModel(&cmd);
+    }
+    low_gain_pressure = cmd.REAL_PRESSURE_BAR.value;
+    expected_low_gain_pressure = 0.05 * cmd.ACTUAL_MOTOR_RPM.value;
+    ASSERT_NEAR(low_gain_pressure, expected_low_gain_pressure, 1e-4,
+                "Low-gain first-order pressure should match K_NUM times actual motor rpm");
+
+    for (i = 500; i < 503; ++i) {
+        cmd.K_NUM.value = 0.10;
+        cmd.TIME_S.value = 0.001 * (double)i;
+        __mcl_cmd_updatePressureModel(&cmd);
+    }
+    expected_high_gain_pressure = 0.10 * cmd.ACTUAL_MOTOR_RPM.value;
+
+    ASSERT_TRUE(cmd.REAL_PRESSURE_BAR.value > low_gain_pressure + 5.0,
+                "Increasing K_NUM online should raise the first-order pressure output");
+    ASSERT_NEAR(cmd.REAL_PRESSURE_BAR.value, expected_high_gain_pressure, 1e-4,
+                "Hot-updated first-order pressure should match the new K_NUM times actual motor rpm");
+}
+
 int main(void) {
     printf("=== HydraulicSimFB PLC Adapter Tests ===\n\n");
 
@@ -458,7 +600,11 @@ int main(void) {
     test_fault_injection_is_isolated_per_axis();
     test_invalid_axisid_is_safe_and_does_not_pollute_other_axes();
     test_pressure_model_fb_persists_state_and_resets_on_disable();
+    test_pressure_model_fb_exposes_first_order_inputs();
     test_pressure_model_fb_negative_speed_depressurizes_without_reset();
+    test_pressure_model_fb_first_order_mode_outputs_equal_real_and_measured();
+    test_pressure_model_fb_online_model_switch_preserves_pressure();
+    test_pressure_model_fb_hot_updates_first_order_parameters();
 
     printf("\n=== Results: %d/%d passed ===\n", tests_passed, tests_run);
     return (tests_passed == tests_run) ? 0 : 1;
