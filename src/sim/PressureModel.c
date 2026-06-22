@@ -206,15 +206,6 @@ static unsigned char pressure_model_normalize_type(unsigned char model_type) {
                : PRESSURE_MODEL_TYPE_PHYSICAL;
 }
 
-static void pressure_model_fill_first_order_history(PressureModelState *state, float pressure_bar) {
-    int i;
-
-    for (i = 0; i < PRESSURE_MODEL_FIRST_ORDER_MAX_DELAY_STEPS; ++i) {
-        state->first_order_delay_buffer[i] = pressure_bar;
-    }
-    state->first_order_buffer_index = 0;
-}
-
 static int pressure_model_first_order_delay_steps(float delay_s, float dt_s) {
     float clamped_delay = pressure_model_clampf(delay_s, 0.0f, 1.0f);
     float ratio = clamped_delay / dt_s;
@@ -323,9 +314,6 @@ void PressureModel_Step(const PressureModelParams *params,
     abs_motor_rpm = pressure_model_absf(state->motor_rpm);
 
     if (pressure_model_normalize_type(params->model_type) == PRESSURE_MODEL_TYPE_FIRST_ORDER) {
-        if (state->active_model_type != PRESSURE_MODEL_TYPE_FIRST_ORDER) {
-            pressure_model_fill_first_order_history(state, state->first_order_prev_pressure_bar);
-        }
         pressure_model_step_first_order(params, state, dt, abs_motor_rpm, out);
         state->active_model_type = PRESSURE_MODEL_TYPE_FIRST_ORDER;
         return;
