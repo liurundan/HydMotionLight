@@ -336,6 +336,31 @@ static int test_first_order_tau_zero_matches_gain_times_actual_rpm(void) {
     return 1;
 }
 
+static int test_first_order_tau_positive_matches_discrete_recurrence_from_reset(void) {
+    PressureModelParams params = make_first_order_params(0.5f, 0.2f, 0.0f);
+    PressureModelState state;
+    PressureModelOutput out;
+    float expected_pressure_bar = 0.0f;
+    int i;
+
+    memset(&out, 0, sizeof(out));
+    PressureModel_Reset(&state, 0x7c7c7c7cu);
+
+    for (i = 0; i < 4; ++i) {
+        PressureModel_Step(&params, &state, 100.0f, DT_S, &out);
+        expected_pressure_bar =
+            ((params.first_order_k_bar_per_rpm * 100.0f * DT_S) +
+             (params.first_order_tau_s * expected_pressure_bar)) /
+            (params.first_order_tau_s + DT_S);
+
+        ASSERT_NEAR(out.actual_motor_rpm, 100.0f, RPM_EPS);
+        ASSERT_NEAR(out.real_pressure_bar, expected_pressure_bar, 1e-6f);
+        ASSERT_NEAR(out.measured_pressure_bar, expected_pressure_bar, 1e-6f);
+    }
+
+    return 1;
+}
+
 static int test_first_order_delay_defers_visible_output(void) {
     PressureModelParams params = make_first_order_params(0.5f, 0.0f, 0.003f);
     PressureModelState state;
@@ -687,6 +712,14 @@ int main(void) {
     } else {
         ++failed;
         printf("FAIL test_first_order_tau_zero_matches_gain_times_actual_rpm\n");
+    }
+
+    if (test_first_order_tau_positive_matches_discrete_recurrence_from_reset()) {
+        ++passed;
+        printf("PASS test_first_order_tau_positive_matches_discrete_recurrence_from_reset\n");
+    } else {
+        ++failed;
+        printf("FAIL test_first_order_tau_positive_matches_discrete_recurrence_from_reset\n");
     }
 
     if (test_first_order_delay_defers_visible_output()) {
