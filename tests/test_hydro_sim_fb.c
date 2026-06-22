@@ -13,6 +13,7 @@
 
 #include "hydro_sim_fb.h"
 #include "hydro_sim.h"
+#include "pressure_model.h"
 
 extern HYD_HydraulicSimFB* __MK_GetPublic_HydraulicSimFB(int index);
 
@@ -378,6 +379,25 @@ static void test_pressure_model_fb_persists_state_and_resets_on_disable(void) {
                 "Re-enable after reset should replay the same first-step real pressure");
 }
 
+static void test_pressure_model_fb_exposes_first_order_inputs(void) {
+    HYD_PRESSUREMODEL cmd;
+
+    memset(&cmd, 0, sizeof(cmd));
+    cmd.MODEL_TYPE.value = PRESSURE_MODEL_TYPE_FIRST_ORDER;
+    cmd.K_NUM.value = 0.25;
+    cmd.TTAU.value = 0.2;
+    cmd.DELAYTIME.value = 0.01;
+
+    ASSERT_TRUE(cmd.MODEL_TYPE.value == PRESSURE_MODEL_TYPE_FIRST_ORDER,
+                "PressureModel FB should expose MODEL_TYPE");
+    ASSERT_NEAR(cmd.K_NUM.value, 0.25, TOLERANCE,
+                "PressureModel FB should expose K_NUM");
+    ASSERT_NEAR(cmd.TTAU.value, 0.2, TOLERANCE,
+                "PressureModel FB should expose TTAU");
+    ASSERT_NEAR(cmd.DELAYTIME.value, 0.01, TOLERANCE,
+                "PressureModel FB should expose DELAYTIME");
+}
+
 static void test_pressure_model_fb_negative_speed_depressurizes_without_reset(void) {
     HYD_PRESSUREMODEL reverse_cmd;
     HYD_PRESSUREMODEL leak_cmd;
@@ -458,6 +478,7 @@ int main(void) {
     test_fault_injection_is_isolated_per_axis();
     test_invalid_axisid_is_safe_and_does_not_pollute_other_axes();
     test_pressure_model_fb_persists_state_and_resets_on_disable();
+    test_pressure_model_fb_exposes_first_order_inputs();
     test_pressure_model_fb_negative_speed_depressurizes_without_reset();
 
     printf("\n=== Results: %d/%d passed ===\n", tests_passed, tests_run);

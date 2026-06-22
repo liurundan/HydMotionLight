@@ -48,6 +48,19 @@ static PressureModelParams make_deterministic_params(void) {
     return params;
 }
 
+static PressureModelParams make_first_order_params(float gain, float tau_s, float delay_s) {
+    PressureModelParams params = make_deterministic_params();
+
+    params.model_type = PRESSURE_MODEL_TYPE_FIRST_ORDER;
+    params.first_order_k_bar_per_rpm = gain;
+    params.first_order_tau_s = tau_s;
+    params.first_order_delay_s = delay_s;
+    params.sensor_range_bar = 10000.0f;
+    params.motor_tau_s = 0.0f;
+
+    return params;
+}
+
 static void run_steps(const PressureModelParams *params,
                       PressureModelState *state,
                       float target_rpm,
@@ -163,6 +176,29 @@ static int test_zero_speed_holds_zero_pressure(void) {
     ASSERT_NEAR(out.actual_motor_rpm, 0.0f, RPM_EPS);
     ASSERT_NEAR(out.real_pressure_bar, 0.0f, PRESSURE_EPS);
     ASSERT_NEAR(out.measured_pressure_bar, 0.0f, PRESSURE_EPS);
+
+    return 1;
+}
+
+static int test_init_params_default_to_physical_mode(void) {
+    PressureModelParams params;
+    PressureModelState state;
+    PressureModelParams first_order_params = make_first_order_params(0.25f, 0.2f, 0.01f);
+
+    PressureModel_InitParams(&params);
+    PressureModel_Reset(&state, 0x51515151u);
+
+    ASSERT_TRUE(params.model_type == PRESSURE_MODEL_TYPE_PHYSICAL);
+    ASSERT_NEAR(params.first_order_k_bar_per_rpm, 0.0f, 1e-6f);
+    ASSERT_NEAR(params.first_order_tau_s, 0.2f, 1e-6f);
+    ASSERT_NEAR(params.first_order_delay_s, 0.0f, 1e-6f);
+    ASSERT_TRUE(state.active_model_type == PRESSURE_MODEL_TYPE_PHYSICAL);
+    ASSERT_NEAR(state.first_order_prev_pressure_bar, 0.0f, 1e-6f);
+    ASSERT_TRUE(state.first_order_buffer_index == 0);
+    ASSERT_TRUE(first_order_params.model_type == PRESSURE_MODEL_TYPE_FIRST_ORDER);
+    ASSERT_NEAR(first_order_params.first_order_k_bar_per_rpm, 0.25f, 1e-6f);
+    ASSERT_NEAR(first_order_params.first_order_tau_s, 0.2f, 1e-6f);
+    ASSERT_NEAR(first_order_params.first_order_delay_s, 0.01f, 1e-6f);
 
     return 1;
 }
@@ -526,6 +562,13 @@ int main(void) {
     } else {
         ++failed;
         printf("FAIL test_zero_speed_holds_zero_pressure\n");
+    }
+    if (test_init_params_default_to_physical_mode()) {
+        ++passed;
+        printf("PASS test_init_params_default_to_physical_mode\n");
+    } else {
+        ++failed;
+        printf("FAIL test_init_params_default_to_physical_mode\n");
     }
 
     if (test_init_params_expose_open_loop_fit_knobs()) {

@@ -7,6 +7,13 @@
 extern "C" {
 #endif
 
+#define PRESSURE_MODEL_FIRST_ORDER_MAX_DELAY_STEPS 1000
+
+typedef enum {
+    PRESSURE_MODEL_TYPE_PHYSICAL = 0u,
+    PRESSURE_MODEL_TYPE_FIRST_ORDER = 1u
+} PressureModelType;
+
 typedef struct {
     float pump_displacement_m3_rev;
     float bulk_modulus_pa;
@@ -39,6 +46,10 @@ typedef struct {
     float torque_bias;
     float torque_from_pressure_gain;
     float torque_from_speed_gain;
+    unsigned char model_type;
+    float first_order_k_bar_per_rpm;
+    float first_order_tau_s;
+    float first_order_delay_s;
 } PressureModelParams;
 
 typedef struct {
@@ -48,6 +59,10 @@ typedef struct {
     uint32_t rng_state;
     int has_spare_gauss;
     float spare_gauss;
+    unsigned char active_model_type;
+    float first_order_prev_pressure_bar;
+    int first_order_buffer_index;
+    float first_order_delay_buffer[PRESSURE_MODEL_FIRST_ORDER_MAX_DELAY_STEPS];
 } PressureModelState;
 
 typedef struct {
