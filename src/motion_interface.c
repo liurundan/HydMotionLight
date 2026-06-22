@@ -512,7 +512,14 @@ static HYD_BOOL startDirectSegmentExecution(HYD_MotionControlFB* fb,
 /* ======================================================================
  * 框架生命周期函数
  * ====================================================================== */
-extern int LogMessage(uint8_t level, char* buf, uint32_t size); // in beremiz.h
+HYD_WEAK int LogMessage(uint8_t level, char* buf, uint32_t size)
+{
+    (void)level;
+    (void)buf;
+    (void)size;
+    return 0;
+}
+
 int __HydMotion_framework_Init()
 {
     for (int i = 0; i < HYD_MAX_AXIS_MOTION; i++) {
