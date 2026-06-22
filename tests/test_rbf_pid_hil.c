@@ -16,6 +16,7 @@
  */
 
 #include <assert.h>
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -23,6 +24,7 @@
 #include "hydro_sim.h"
 #include "hydro_interfaces.h"
 #include "common_types.h"
+#include "pump_converter.h"
 #include "test_recipe_rejection_helpers.h"
 
 /* ---------- Scenario parameters ---------- */
@@ -89,6 +91,20 @@ static void hil_step_once(HYD_MotionControlFB* fb, HydraulicSimEnv* env, HYD_REA
 
     /* 2. Tick FB. */
     HYD_MotionControlFB_Execute(fb);
+
+    if (fb->STATE.pressureLoop.adaptiveActive) {
+        HYD_PumpConverterInput pump_input;
+        HYD_PumpConverterOutput pump_output;
+        memset(&pump_input, 0, sizeof(pump_input));
+        memset(&pump_output, 0, sizeof(pump_output));
+        pump_input.requestedFlow = fb->STATE.plannedFlow;
+        pump_input.flowToPumpSpeedGain = fb->FLOW_TO_PUMP_SPEED_GAIN;
+        pump_input.pumpSpeedLimit = fb->PUMP_SPEED_LIMIT;
+        pump_input.direction = fb->STATE.plannedDirection;
+
+        HYD_PumpConverter_Execute(&pump_input, &pump_output);
+        assert(fabs((double)fb->PUMP_SPEED - (double)pump_output.pumpSpeed) < 1e-6);
+    }
 
     /* 3. Apply FB pump speed back to sim.
      *    Direction: use plannedDirection from STATE.
