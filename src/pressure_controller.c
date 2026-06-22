@@ -557,6 +557,7 @@ void HYD_PressureController_Execute(const HYD_MotionSegment* segment,
         output->adaptiveJacobian = (HYD_REAL)state->rbfPid.Jacobian;
         output->saturated = (outputFlow != rawOutputFlow);
 
+        state->rbfPid.output_saturated = output->saturated ? true : false;
         state->rbfPid.Output = (float)outputFlow;
         state->rbfPid.u_prev = (float)outputFlow;
         state->rbfPid.n_out = (float)outputFlow;

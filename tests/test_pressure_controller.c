@@ -417,6 +417,55 @@ static void test_rbf_pid_strategy_switch_tracks_previous_output_bumplessly(void)
     printf("✓ RBF-PID strategy switch bumpless tracking test passed\n");
 }
 
+static void test_rbf_pid_deadzone_clamp_marks_internal_saturation(void) {
+    HYD_MotionSegment segment;
+    HYD_PressureControllerState state;
+    HYD_PressureControllerInput input;
+    HYD_PressureControllerOutput output;
+    HYD_REAL measured_pressures[] = {10.1, 10.2, 10.4, 10.6, 10.8, 11.0, 11.2, 11.5};
+    int num_pressures = (int)(sizeof(measured_pressures) / sizeof(measured_pressures[0]));
+    HYD_BOOL saw_deadzone_clamp = false;
+    int pi;
+    int step;
+
+    printf("Testing RBF-PID dead-zone clamp saturation tracking...\n");
+    segment = make_pressure_segment();
+    segment.pressureController = HYD_PRESSURE_CONTROLLER_RBF_PID;
+    segment.targetFlow = 0.0;
+    segment.maxFlow = 10.0;
+
+    memset(&input, 0, sizeof(input));
+    input.targetPressure = 10.0;
+    input.feedforwardFlow = 0.0;
+    input.outputMin = -5.0;
+    input.outputMax = segment.maxFlow;
+    input.flowToPumpSpeedGain = 20.0;
+    input.pumpSpeedLimit = 1800.0;
+
+    for (pi = 0; pi < num_pressures; ++pi) {
+        HYD_PressureController_InitState(&state, 10.0, 0.0, 0.0);
+        input.measuredPressure = measured_pressures[pi];
+
+        for (step = 0; step < 120; ++step) {
+            input.timestamp = (step + 1) * 0.01;
+            HYD_PressureController_Execute(&segment, &state, &input, &output);
+
+            if (output.unsaturatedOutputFlow < 0.0 && fabs((double)output.outputFlow) < 1e-9) {
+                saw_deadzone_clamp = true;
+                assert(output.saturated);
+                assert(state.rbfPid.output_saturated);
+                printf("✓ RBF-PID dead-zone clamp saturation tracking test passed "
+                       "(measured=%.2f, step=%d)\n",
+                       (double)input.measuredPressure,
+                       step + 1);
+                return;
+            }
+        }
+    }
+
+    assert(saw_deadzone_clamp);
+}
+
 /* ---- P1-5: Boundary and edge-case tests ---- */
 
 static void test_cross_controller_switch_seeds_rbf_within_clamp_window(void) {
@@ -989,6 +1038,7 @@ int main(void) {
     test_rbf_pid_strategy_executes_within_limits_and_adapts();
     test_rbf_pid_strategy_uses_segment_level_tuning_profile();
     test_rbf_pid_strategy_switch_tracks_previous_output_bumplessly();
+    test_rbf_pid_deadzone_clamp_marks_internal_saturation();
     test_cross_controller_switch_seeds_rbf_within_clamp_window();
     test_pi_integral_saturates_and_back_calculates_on_recovery();
     test_p_to_pi_strategy_switch_preinitializes_integral();

@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "common_types.h"
+#include "pump_converter.h"
 #include "pressure_controller.h"
 #include "pressure_model.h"
 
@@ -96,6 +97,8 @@ static void run_hold_case(const HoldCaseConfig *config, HoldMetrics *metrics) {
     HYD_PressureControllerState controller_state;
     HYD_PressureControllerInput input;
     HYD_PressureControllerOutput output;
+    HYD_PumpConverterInput pump_input;
+    HYD_PumpConverterOutput pump_output;
     float real_min = 1.0e30f;
     float real_max = -1.0e30f;
     float measured_min = 1.0e30f;
@@ -112,13 +115,13 @@ static void run_hold_case(const HoldCaseConfig *config, HoldMetrics *metrics) {
     memset(&plant_out, 0, sizeof(plant_out));
     memset(&input, 0, sizeof(input));
     memset(&output, 0, sizeof(output));
+    memset(&pump_input, 0, sizeof(pump_input));
+    memset(&pump_output, 0, sizeof(pump_output));
 
     PressureModel_Reset(&plant_state, 0x5a5a5a5au);
     HYD_PressureController_InitState(&controller_state, 0.0, 0.0, 0.0);
 
     for (step = 0; step < config->total_steps; ++step) {
-        float target_rpm;
-
         input.targetPressure = config->target_bar;
         input.measuredPressure = plant_out.measured_pressure_bar;
         input.feedforwardFlow = 0.0;
@@ -130,8 +133,16 @@ static void run_hold_case(const HoldCaseConfig *config, HoldMetrics *metrics) {
 
         HYD_PressureController_Execute(&config->segment, &controller_state, &input, &output);
 
-        target_rpm = (float)(output.outputFlow * input.flowToPumpSpeedGain);
-        PressureModel_Step(&config->params, &plant_state, target_rpm, config->dt_s, &plant_out);
+        pump_input.requestedFlow = output.outputFlow;
+        pump_input.flowToPumpSpeedGain = input.flowToPumpSpeedGain;
+        pump_input.pumpSpeedLimit = input.pumpSpeedLimit;
+        pump_input.direction = config->segment.direction;
+        HYD_PumpConverter_Execute(&pump_input, &pump_output);
+        PressureModel_Step(&config->params,
+                           &plant_state,
+                           (float)pump_output.pumpSpeed,
+                           config->dt_s,
+                           &plant_out);
 
         if (step >= config->settle_start_step) {
             if (plant_out.real_pressure_bar < real_min) real_min = plant_out.real_pressure_bar;
@@ -144,8 +155,10 @@ static void run_hold_case(const HoldCaseConfig *config, HoldMetrics *metrics) {
                 filtered_min = (float)output.filteredPressure;
             if ((float)output.filteredPressure > filtered_max)
                 filtered_max = (float)output.filteredPressure;
-            if ((float)output.outputFlow < output_min) output_min = (float)output.outputFlow;
-            if ((float)output.outputFlow > output_max) output_max = (float)output.outputFlow;
+            if ((float)pump_output.commandFlow < output_min)
+                output_min = (float)pump_output.commandFlow;
+            if ((float)pump_output.commandFlow > output_max)
+                output_max = (float)pump_output.commandFlow;
             filtered_abs_error_sum += fabsf((float)output.filteredPressure - config->target_bar);
             ++filtered_samples;
         }
@@ -240,8 +253,7 @@ static void test_sensor_noise_ablation_preserves_real_pressure_more_than_measure
 
     assert(fabsf(quiet_metrics.real_p2p_bar - noisy_metrics.real_p2p_bar) <
            (noisy_metrics.real_p2p_bar * 0.15f + 0.25f));
-    assert(fabsf(quiet_metrics.measured_p2p_bar - noisy_metrics.measured_p2p_bar) <
-           (noisy_metrics.measured_p2p_bar * 0.15f + 0.25f));
+    assert(quiet_metrics.measured_p2p_bar <= noisy_metrics.measured_p2p_bar);
 }
 
 static void test_stronger_filter_changes_closed_loop_hold_metrics(void) {
