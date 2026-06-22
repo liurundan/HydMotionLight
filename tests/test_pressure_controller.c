@@ -2,6 +2,7 @@
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
+#include "pump_converter.h"
 #include "pressure_controller.h"
 
 static HYD_MotionSegment make_pressure_segment(void) {
@@ -289,6 +290,11 @@ static void test_rbf_pid_strategy_executes_within_limits_and_adapts(void) {
         assert(state.activeStrategy == HYD_PRESSURE_CONTROLLER_RBF_PID);
         assert(state.rbfInitialized);
         assert(state.rbfPid.Status == 2 || state.rbfPid.Status == 3);
+        assert(fabs((double)state.rbfPid.Output - (double)output.outputFlow) < 1e-6);
+        assert(fabs((double)state.rbfPid.n_out - (double)output.outputFlow) < 1e-6);
+        assert(fabs((double)state.rbfPid.u_prev - (double)output.outputFlow) < 1.0);
+        assert(state.rbfPid.flow_normalization_scale > 0.0f);
+        assert(state.rbfPid.pressure_normalization_scale > 0.0f);
         /* TuneResult is a reserved field, not set by current implementation */
         assert_rbf_pid_internal_limits(&state);
 
@@ -402,6 +408,8 @@ static void test_rbf_pid_strategy_switch_tracks_previous_output_bumplessly(void)
     assert(output1.trackingApplied);
     assert(output1.appliedStrategy == HYD_PRESSURE_CONTROLLER_RBF_PID);
     assert(fabs(output1.outputFlow - output0.outputFlow) < 0.05);
+    assert(fabs((double)state.rbfPid.Output - (double)output1.outputFlow) < 0.05);
+    assert(fabs((double)state.rbfPid.n_out - (double)output1.outputFlow) < 0.05);
     assert(state.activeStrategy == HYD_PRESSURE_CONTROLLER_RBF_PID);
     assert(state.rbfInitialized);
     assert(state.rbfPid.Status == 2 || state.rbfPid.Status == 3);
@@ -766,8 +774,19 @@ static HYD_REAL plant_model_step(HYD_REAL pressure_bar, HYD_REAL pump_speed) {
 }
 
 static HYD_REAL pump_convert(HYD_REAL flow_lmin) {
-    HYD_REAL speed = flow_lmin * PLANT_GAIN;
-    return HYD_ClampReal(speed, 0.0, PLANT_PUMP_LIMIT);
+    HYD_PumpConverterInput input;
+    HYD_PumpConverterOutput output;
+
+    memset(&input, 0, sizeof(input));
+    memset(&output, 0, sizeof(output));
+    input.requestedFlow = flow_lmin;
+    input.flowToPumpSpeedGain = PLANT_GAIN;
+    input.pumpSpeedLimit = PLANT_PUMP_LIMIT;
+    input.direction = HYD_DIRECTION_HOLD;
+
+    HYD_PumpConverter_Execute(&input, &output);
+    assert(fabs(output.pumpSpeed - output.commandFlow * PLANT_GAIN) < 1e-6);
+    return output.pumpSpeed;
 }
 
 static HYD_MotionSegment make_rbf_pid_segment(HYD_REAL target_bar) {
@@ -788,19 +807,18 @@ static HYD_MotionSegment make_rbf_pid_segment(HYD_REAL target_bar) {
      * In flow space: u = flow * GAIN, so p = K * flow * GAIN = flow * systemGain
      * systemGain = 5.4 * 20 = 108 bar/(L/min) */
     seg.systemGain = PLANT_K * PLANT_GAIN;  /* 5.4 * 20 = 108 bar/(L/min) */
-    /* With gain compensation enabled, the anti-windup limit is automatically
-     * scaled to Setpoint * 1.10 in normalized space, preventing integral windup.
-     * KI bounds widened for gain-compensated operation; learning rates reduced
-     * to avoid oscillation in the compensated output space. */
-    seg.pressureRbfConfig.minKp = 0.3;
-    seg.pressureRbfConfig.maxKp = 1.5;
-    seg.pressureRbfConfig.minKi = 0.001;
-    seg.pressureRbfConfig.maxKi = 0.050;
-    seg.pressureRbfConfig.minKd = 0.3;
-    seg.pressureRbfConfig.maxKd = 3.0;
-    seg.pressureRbfConfig.etaP = 0.10;
-    seg.pressureRbfConfig.etaI = 0.10;
-    seg.pressureRbfConfig.etaD = 0.10;
+    seg.pressureRbfConfig.minKp = 0.030;
+    seg.pressureRbfConfig.maxKp = 0.090;
+    seg.pressureRbfConfig.minKi = 0.0005;
+    seg.pressureRbfConfig.maxKi = 0.0040;
+    seg.pressureRbfConfig.minKd = 0.010;
+    seg.pressureRbfConfig.maxKd = 0.080;
+    seg.pressureRbfConfig.etaW = 0.005;
+    seg.pressureRbfConfig.etaC = 0.005;
+    seg.pressureRbfConfig.etaB = 0.005;
+    seg.pressureRbfConfig.etaP = 0.00025;
+    seg.pressureRbfConfig.etaI = 0.00025;
+    seg.pressureRbfConfig.etaD = 0.00025;
     return seg;
 }
 

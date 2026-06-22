@@ -303,10 +303,6 @@ static void HYD_EnsureRbfPidInitialized(HYD_PressureControllerState* state,
     state->rbfPid.sampling_period = (float)samplingPeriod;
     state->rbfPid.fMaxFlow = fMaxFlow;
     state->rbfPid.fFlowRateLimit = fFlowRateLimit;
-    if (flowToPumpSpeedGain > 0.0) {
-        state->rbfPid.flowToPumpSpeedGain = (float)flowToPumpSpeedGain;
-    }
-
 }
 
 static void HYD_ApplyRbfPidConfig(HYD_PressureControllerState* state,
@@ -337,6 +333,10 @@ static void HYD_ApplyRbfPidConfig(HYD_PressureControllerState* state,
     RBF_PID_SetPressureAccelFeedforwardEnabled(
         &state->rbfPid,
         config->rbf.disablePressureAccelFeedforward ? false : true);
+    RBF_PID_SetFlowNormalization(
+        &state->rbfPid,
+        (float)HYD_ResolvePositiveOrDefault(config->outputMax,
+                                            (HYD_REAL)state->rbfPid.fMaxFlow));
     state->rbfPid.KP = (float)HYD_ClampReal((HYD_REAL)state->rbfPid.KP,
                                             config->rbf.minKp,
                                             config->rbf.maxKp);
@@ -347,41 +347,22 @@ static void HYD_ApplyRbfPidConfig(HYD_PressureControllerState* state,
                                             config->rbf.minKd,
                                             config->rbf.maxKd);
 
-    /* Per-segment RBF pressure normalization scale.
-     *
-     * 策略 (2026-06-03 修复):
-     *   优先使用 pressureCeiling（显式上限）。
-     *   否则使用 MAX(250, targetPressure * 5.0) 作为归一化标量。
-     *   这确保低压目标（如2-3 bar）时归一化标量不会过小，
-     *   避免归一化后的输出被过度放大（与系统物理增益失配）。
-     *
-     *   原因: 当 targetPressure=2 bar 时，旧逻辑使用 4 bar 作为标量，
-     *   归一化后的 PID 输出 du≈0.4，乘以 fMaxFlow=90 → n_out≈36 L/min，
-     *   在系统增益 K=5.4 时产生 36*5.4=194 bar 的稳态压力，远超目标。
-     *
-     *   新逻辑使用 250 bar（满量程）作为标量，归一化后 du≈0.01，
-     *   n_out≈0.9 L/min，稳态压力≈4.9 bar — 仍在 PID 可调节范围内。
-     *   配合增益补偿因子进一步精确匹配。 */
     {
         HYD_REAL pressureScale = 0.0;
-        if (segment != NULL) {
-            if (segment->pressureCeiling > 0.0) {
-                pressureScale = segment->pressureCeiling;
-            } else if (segment->targetPressure > 0.0) {
-                /* 使用较大的归一化标量，避免低压时归一化空间压缩 segment->targetPressure * 5.0f*/
-                HYD_REAL candidate = MAX_PRESSURE;
-                pressureScale = (candidate > (HYD_REAL)MAX_PRESSURE) ? candidate : (HYD_REAL)MAX_PRESSURE;
-            }
+        if (segment != NULL && segment->pressureCeiling > 0.0) {
+            pressureScale = segment->pressureCeiling;
+        } else if (segment != NULL && segment->targetPressure > 0.0) {
+            HYD_REAL candidate = segment->targetPressure * 3.0;
+            pressureScale = (candidate > (HYD_REAL)MAX_PRESSURE) ?
+                candidate : (HYD_REAL)MAX_PRESSURE;
         }
         RBF_PID_SetPressureNormalization(&state->rbfPid, (float)pressureScale);
     }
 
-    /* 设置系统增益补偿: 将段配置的系统增益 K 传递给 RBF PID，
-     * 使其能正确缩放输出以匹配物理系统的压力/流量关系。
-     * K = deltaPressure / deltaFlow [bar/(L/min)]
-     * 当 segment->systemGain > 0 时启用补偿。 */
     if (segment != NULL && segment->systemGain > 0.0) {
         RBF_PID_SetGainCompensation(&state->rbfPid, (float)segment->systemGain);
+    } else {
+        RBF_PID_SetGainCompensation(&state->rbfPid, 0.0f);
     }
 }
 
@@ -394,8 +375,6 @@ static void HYD_SynchronizeRbfPidState(HYD_PressureControllerState* state,
                                        HYD_REAL flowToPumpSpeedGain,
                                        HYD_REAL pumpSpeedLimit) {
     HYD_REAL seededFlow;
-    HYD_REAL seededMotorOutput;
-    HYD_REAL seededRawOutput;
     HYD_REAL error;
 
     if (state == NULL || config == NULL) {
@@ -406,25 +385,12 @@ static void HYD_SynchronizeRbfPidState(HYD_PressureControllerState* state,
     HYD_ApplyRbfPidConfig(state, config, segment,
                           flowToPumpSpeedGain, pumpSpeedLimit);
     seededFlow = HYD_ClampReal(trackedOutputFlow, config->outputMin, config->outputMax);
-    seededMotorOutput = seededFlow * (HYD_REAL)state->rbfPid.flowToPumpSpeedGain;
-    seededMotorOutput = HYD_ClampReal((HYD_REAL)MIN_OUTPUT,
-                                      seededMotorOutput,
-                                      (HYD_REAL)(state->rbfPid.fMaxFlow *
-                                                 state->rbfPid.fFlowRateLimit *
-                                                 state->rbfPid.flowToPumpSpeedGain));
-
-    if (state->rbfPid.gain_compensation_enabled &&
-        fabsf(state->rbfPid.gain_compensation_factor) > 1.0e-6f) {
-        seededRawOutput = seededMotorOutput / (HYD_REAL)state->rbfPid.gain_compensation_factor;
-    } else {
-        seededRawOutput = seededMotorOutput;
-    }
 
     error = targetPressure - measuredPressure;
 
     state->rbfPid.Output = (float)seededFlow;
-    state->rbfPid.u_prev = (float)seededRawOutput;
-    state->rbfPid.n_out = (float)seededMotorOutput;
+    state->rbfPid.u_prev = (float)seededFlow;
+    state->rbfPid.n_out = (float)seededFlow;
     state->rbfPid.P_set = (float)targetPressure;
     state->rbfPid.P_actual = (float)measuredPressure;
     state->rbfPid.Error = (float)error;
@@ -433,12 +399,13 @@ static void HYD_SynchronizeRbfPidState(HYD_PressureControllerState* state,
     state->rbfPid.e_prev1 = (float)error;
     state->rbfPid.e_prev2 = (float)error;
     state->rbfPid.y_prev1 = (float)measuredPressure;
+    state->rbfPid.y_prev2 = (float)measuredPressure;
     state->rbfPid.fLastActPress = (float)measuredPressure;
     state->rbfPid.fLastActPress2 = (float)measuredPressure;
     state->rbfPid.last_ref = (float)targetPressure;
+    state->rbfPid.output_saturated = false;
     state->rbfPid.Status = 1;
     state->rbfPid.TuneResult = 0;
-
 }
 
 void HYD_PressureController_ClearState(HYD_PressureControllerState* state) {
@@ -589,6 +556,10 @@ void HYD_PressureController_Execute(const HYD_MotionSegment* segment,
         output->adaptiveKd = (HYD_REAL)state->rbfPid.KD;
         output->adaptiveJacobian = (HYD_REAL)state->rbfPid.Jacobian;
         output->saturated = (outputFlow != rawOutputFlow);
+
+        state->rbfPid.Output = (float)outputFlow;
+        state->rbfPid.u_prev = (float)outputFlow;
+        state->rbfPid.n_out = (float)outputFlow;
 
         state->initialized = true;
         state->trackingRequested = false;
