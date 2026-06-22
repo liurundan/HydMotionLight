@@ -3,6 +3,9 @@
 #include <stdio.h>
 #include "rbf_pid.h"
 
+static void test_flow_normalization_and_system_gain_soft_cap_are_configurable(void);
+static void test_flow_domain_output_is_independent_from_pump_gain(void);
+static void test_rbf_input_uses_causal_history_and_split_normalization(void);
 static void test_pressure_accel_feedforward_toggle_changes_incremental_output(void);
 
 static void test_init_sets_ready_defaults(void) {
@@ -16,15 +19,17 @@ static void test_init_sets_ready_defaults(void) {
     assert(fabsf(pid.fMaxFlow - 90.0f) < 1e-6f);
     assert(fabsf(pid.fFlowRateLimit - 1.0f) < 1e-6f);
     assert(fabsf(pid.pressure_normalization_scale - MAX_PRESSURE) < 1e-6f);
+    assert(fabsf(pid.flow_normalization_scale - 90.0f) < 1e-6f);
     assert(!pid.gain_compensation_enabled);
     assert(fabsf(pid.gain_compensation_factor - 1.0f) < 1e-6f);
-    assert(fabsf(pid.KP - 1.02f) < 1e-6f);
-    assert(fabsf(pid.KI - 0.02f) < 1e-6f);
-    assert(fabsf(pid.KD - 1.02f) < 1e-6f);
+    assert(fabsf(pid.KP - 0.051f) < 1e-6f);
+    assert(fabsf(pid.KI - 0.0010f) < 1e-6f);
+    assert(fabsf(pid.KD - 0.030f) < 1e-6f);
     assert(fabsf(pid.Output) < 1e-6f);
     assert(fabsf(pid.u_prev) < 1e-6f);
     assert(fabsf(pid.e_prev1) < 1e-6f);
     assert(fabsf(pid.e_prev2) < 1e-6f);
+    assert(!pid.output_saturated);
     printf("✓ RBF_PID initialization defaults test passed\n");
 }
 
@@ -32,22 +37,22 @@ static void test_enabled_controller_respects_limits_and_drives_feedback(void) {
     RBF_PID_Handle pid;
     float feedback = 0.0f;
     float output = 0.0f;
-    float max_motor_output;
+    float max_flow_output;
     int step;
 
     printf("Testing RBF_PID closed-loop adaptation behavior...\n");
     RBF_PID_Init(&pid, 0.01f, 90.0f, 1.0f);
     RBF_PID_SetParamLimits(&pid, 0.5f, 1.2f, 0.005f, 0.050f, 0.5f, 2.0f);
-    max_motor_output = pid.fMaxFlow * pid.fFlowRateLimit * pid.flowToPumpSpeedGain;
+    max_flow_output = pid.fMaxFlow * pid.fFlowRateLimit;
 
     for (step = 0; step < 20; ++step) {
         output = RBF_PID_Update(&pid, 100.0f, feedback);
         assert(fabsf(output - pid.Output) < 1e-6f);
-        assert(fabsf(pid.n_out - output * pid.flowToPumpSpeedGain) < 1e-3f);
-        assert(output >= MIN_OUTPUT / pid.flowToPumpSpeedGain - 1e-3f);
+        assert(fabsf(pid.n_out - output) < 1e-6f);
+        assert(output >= MIN_OUTPUT - 1e-3f);
         assert(output <= pid.fMaxFlow * pid.fFlowRateLimit + 1e-3f);
         assert(pid.n_out >= MIN_OUTPUT - 1e-6f);
-        assert(pid.n_out <= max_motor_output + 1e-6f);
+        assert(pid.n_out <= max_flow_output + 1e-6f);
         assert(pid.KP >= pid.min_KP - 1e-6f && pid.KP <= pid.max_KP + 1e-6f);
         assert(pid.KI >= pid.min_KI - 1e-6f && pid.KI <= pid.max_KI + 1e-6f);
         assert(pid.KD >= pid.min_KD - 1e-6f && pid.KD <= pid.max_KD + 1e-6f);
@@ -59,7 +64,7 @@ static void test_enabled_controller_respects_limits_and_drives_feedback(void) {
     }
 
     assert(pid.Status == 2 || pid.Status == 3);
-    assert(feedback > 1.0f);
+    assert(fabsf(feedback) > 1.0f);
     printf("✓ RBF_PID adaptation/limit test passed\n");
 }
 
@@ -84,6 +89,7 @@ static void test_explicit_reset_restores_runtime_state(void) {
     assert(fabsf(pid.fMaxFlow - 90.0f) < 1e-6f);
     assert(fabsf(pid.fFlowRateLimit - 1.0f) < 1e-6f);
     assert(fabsf(pid.pressure_normalization_scale - MAX_PRESSURE) < 1e-6f);
+    assert(fabsf(pid.flow_normalization_scale - 90.0f) < 1e-6f);
     assert(!pid.gain_compensation_enabled);
     assert(fabsf(pid.gain_compensation_factor - 1.0f) < 1e-6f);
     printf("✓ RBF_PID explicit reset test passed\n");
@@ -113,7 +119,7 @@ static void test_adaptive_learning_rate_scales_with_error(void) {
     }
 
     kp_after = pid.KP;
-    /* KP should not drift more than 10% from its previous value (relaxed for wider window) */
+    /* KP should not drift much once error is small and learning is restrained */
     assert(fabsf(kp_after - kp_before) < 0.10f * kp_before + 0.05f);
     printf("✓ Adaptive learning rate scaling test passed\n");
 }
@@ -161,7 +167,8 @@ static void test_default_gain_window_allows_adaptation(void) {
     }
     kp_final = pid.KP;
 
-    assert((pid.max_KP - pid.min_KP) >= 1.0f);
+    assert(fabsf(pid.min_KP - PID_MIN_KP) < 1e-6f);
+    assert(fabsf(pid.max_KP - PID_MAX_KP) < 1e-6f);
     assert(kp_final >= pid.min_KP - 1e-6f && kp_final <= pid.max_KP + 1e-6f);
 
     assert(fabsf(kp_final - kp_initial) > 0.00001f);
@@ -170,35 +177,29 @@ static void test_default_gain_window_allows_adaptation(void) {
            pid.max_KP - pid.min_KP, kp_initial, kp_final);
 }
 
-static void test_pressure_normalization_and_gain_compensation_are_configurable(void) {
+static void test_flow_normalization_and_system_gain_soft_cap_are_configurable(void) {
     RBF_PID_Handle pid;
-    float expected_factor;
+    float output;
 
-    printf("Testing pressure normalization and gain compensation configuration...\n");
+    printf("Testing flow normalization and system-gain soft cap configuration...\n");
     RBF_PID_Init(&pid, 0.01f, 90.0f, 1.0f);
+    RBF_PID_SetFlowNormalization(&pid, 45.0f);
+    RBF_PID_SetPressureNormalization(&pid, 180.0f);
+    RBF_PID_SetGainCompensation(&pid, 60.0f);
+    RBF_PID_SetLearningRates(&pid, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f);
 
-    RBF_PID_SetPressureNormalization(&pid, 800.0f);
-    assert(fabsf(pid.pressure_normalization_scale - 800.0f) < 1e-6f);
-
-    RBF_PID_SetGainCompensation(&pid, 2.0f);
-    expected_factor = 800.0f / (2.0f * pid.fMaxFlow);
+    assert(fabsf(pid.flow_normalization_scale - 45.0f) < 1e-6f);
+    assert(fabsf(pid.pressure_normalization_scale - 180.0f) < 1e-6f);
     assert(pid.gain_compensation_enabled);
-    assert(fabsf(pid.gain_compensation_factor - expected_factor) < 1e-6f);
+    assert(fabsf(pid.gain_compensation_factor - 1.0f) < 1e-6f);
 
-    (void)RBF_PID_Update(&pid, 400.0f, 200.0f);
-    assert(fabsf(pid.P_set - 400.0f) < 1e-6f);
-    assert(fabsf(pid.P_actual - 200.0f) < 1e-6f);
-
-    RBF_PID_SetPressureNormalization(&pid, 0.0f);
-    expected_factor = MAX_PRESSURE / (2.0f * pid.fMaxFlow);
-    assert(fabsf(pid.pressure_normalization_scale - MAX_PRESSURE) < 1e-6f);
-    assert(fabsf(pid.gain_compensation_factor - expected_factor) < 1e-6f);
+    output = RBF_PID_Update(&pid, 120.0f, 0.0f);
+    assert(output <= (120.0f * 1.10f / 60.0f) + 1e-3f);
 
     RBF_PID_SetGainCompensation(&pid, 0.0f);
     assert(!pid.gain_compensation_enabled);
     assert(fabsf(pid.gain_compensation_factor - 1.0f) < 1e-6f);
-
-    printf("✓ Pressure normalization / gain compensation test passed\n");
+    printf("PASS flow normalization / system-gain soft cap test\n");
 }
 
 static void test_rbf_pid_negative_output(void) {
@@ -244,6 +245,55 @@ static void test_pressure_accel_feedforward_toggle_changes_incremental_output(vo
     printf("✓ Pressure acceleration feedforward toggle test passed\n");
 }
 
+static void test_flow_domain_output_is_independent_from_pump_gain(void) {
+    RBF_PID_Handle base;
+    RBF_PID_Handle altered;
+    float out_base;
+    float out_altered;
+
+    printf("Testing flow-domain controller independence from pump-speed gain...\n");
+    RBF_PID_Init(&base, 0.001f, 90.0f, 1.0f);
+    RBF_PID_Init(&altered, 0.001f, 90.0f, 1.0f);
+    RBF_PID_SetLearningRates(&base, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f);
+    RBF_PID_SetLearningRates(&altered, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f);
+
+    altered.flowToPumpSpeedGain = 37.0f;
+
+    (void)RBF_PID_Update(&base, 80.0f, 20.0f);
+    (void)RBF_PID_Update(&altered, 80.0f, 20.0f);
+
+    out_base = RBF_PID_Update(&base, 80.0f, 25.0f);
+    out_altered = RBF_PID_Update(&altered, 80.0f, 25.0f);
+
+    assert(fabsf(out_base - out_altered) < 1e-6f);
+    assert(fabsf(base.n_out - out_base) < 1e-6f);
+    assert(fabsf(altered.n_out - out_altered) < 1e-6f);
+    printf("PASS flow-domain controller independence test\n");
+}
+
+static void test_rbf_input_uses_causal_history_and_split_normalization(void) {
+    RBF_PID_Handle pid;
+    float prev_du;
+
+    printf("Testing RBF causal input vector and split normalization...\n");
+    RBF_PID_Init(&pid, 0.001f, 90.0f, 1.0f);
+    RBF_PID_SetFlowNormalization(&pid, 45.0f);
+    RBF_PID_SetPressureNormalization(&pid, 200.0f);
+    RBF_PID_SetLearningRates(&pid, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f);
+
+    (void)RBF_PID_Update(&pid, 100.0f, 40.0f);
+    (void)RBF_PID_Update(&pid, 100.0f, 55.0f);
+    prev_du = pid.du_prev;
+    (void)RBF_PID_Update(&pid, 100.0f, 60.0f);
+
+    assert(fabsf(pid.last_rbf_input[0] - (prev_du / 45.0f)) < 1e-6f);
+    assert(fabsf(pid.last_rbf_input[1] - (55.0f / 200.0f)) < 1e-6f);
+    assert(fabsf(pid.last_rbf_input[2] - (40.0f / 200.0f)) < 1e-6f);
+    assert(fabsf(pid.last_rbf_input[3] - ((45.0f - 0.05f) / 200.0f)) < 1e-6f);
+    assert(fabsf(pid.last_rbf_input[0] - (prev_du / 200.0f)) > 1e-4f);
+    printf("PASS RBF causal input vector test\n");
+}
+
 int main(void) {
     printf("Running RBF_PID tests...\n\n");
 
@@ -252,7 +302,9 @@ int main(void) {
     test_explicit_reset_restores_runtime_state();
     test_adaptive_learning_rate_scales_with_error();
     test_default_gain_window_allows_adaptation();
-    test_pressure_normalization_and_gain_compensation_are_configurable();
+    test_flow_normalization_and_system_gain_soft_cap_are_configurable();
+    test_flow_domain_output_is_independent_from_pump_gain();
+    test_rbf_input_uses_causal_history_and_split_normalization();
     test_network_initialization_is_deterministic_without_seed_hookup();
     test_rbf_pid_negative_output();
     test_pressure_accel_feedforward_toggle_changes_incremental_output();

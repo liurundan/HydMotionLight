@@ -17,10 +17,10 @@ static float clamp_positive_or_default(float value, float fallback) {
     return value > 0.0f ? value : fallback;
 }
 
-static float rbf_pid_max_motor_output(const RBF_PID_Handle *pid) {
-    float max_output = pid->fMaxFlow * pid->fFlowRateLimit * pid->flowToPumpSpeedGain;
+static float rbf_pid_max_flow_output(const RBF_PID_Handle *pid) {
+    float max_output = pid->fMaxFlow * pid->fFlowRateLimit;
 
-    return max_output > 0.0f ? max_output : 500.0f;
+    return max_output > 0.0f ? max_output : 90.0f;
 }
 
 static void sort_pair(float *low, float *high) {
@@ -41,31 +41,24 @@ static void rbf_pid_apply_default_limits(RBF_PID_Handle *pid) {
 }
 
 static void rbf_pid_apply_default_learning_rates(RBF_PID_Handle *pid) {
-    pid->eta_w = 0.02f;
-    pid->eta_c = 0.02f;
-    pid->eta_b = 0.02f;
-    pid->eta_p = 0.1f;
-    pid->eta_i = 0.1f;
-    pid->eta_d = 0.1f;
+    pid->eta_w = 0.005f;
+    pid->eta_c = 0.005f;
+    pid->eta_b = 0.005f;
+    pid->eta_p = 0.00025f;
+    pid->eta_i = 0.00025f;
+    pid->eta_d = 0.00025f;
 }
 
 static void rbf_pid_apply_default_gains(RBF_PID_Handle *pid) {
-    pid->KP = 1.02f;
-    pid->KI = 0.02f;
-    pid->KD = 1.02f;
+    pid->KP = 0.051f;
+    pid->KI = 0.0010f;
+    pid->KD = 0.030f;
 }
 
 static void rbf_pid_refresh_gain_compensation(RBF_PID_Handle *pid) {
-    if (pid->K > 0.0f && pid->fMaxFlow > 0.0f) {
-        pid->gain_compensation_enabled = true;
-        pid->gain_compensation_factor =
-            pid->pressure_normalization_scale / (pid->K * pid->fMaxFlow);
-    } else {
-        pid->gain_compensation_enabled = false;
-        pid->gain_compensation_factor = 1.0f;
-    }
-
-    pid->fGainCompensation = pid->gain_compensation_factor;
+    pid->gain_compensation_enabled = (pid->K > 0.0f);
+    pid->gain_compensation_factor = 1.0f;
+    pid->fGainCompensation = pid->K;
 }
 
 static void rbf_pid_init_network(RBF_PID_Handle *pid) {
@@ -94,69 +87,90 @@ static float rbf_pid_apply_deadband(float error) {
     return error > 0.0f ? error - deadband : error + deadband;
 }
 
-static void rbf_pid_step_rbf_nn(RBF_PID_Handle *pid, float error) {
+static float rbf_pid_effective_flow_scale(const RBF_PID_Handle *pid) {
+    return clamp_positive_or_default(pid->flow_normalization_scale,
+                                     rbf_pid_max_flow_output(pid));
+}
+
+static float rbf_pid_effective_pressure_scale(const RBF_PID_Handle *pid) {
+    return clamp_positive_or_default(pid->pressure_normalization_scale,
+                                     MAX_PRESSURE);
+}
+
+static void rbf_pid_step_rbf_nn(RBF_PID_Handle *pid) {
     float h[RBF_HNUM];
+    float flow_scale = rbf_pid_effective_flow_scale(pid);
+    float pressure_scale = rbf_pid_effective_pressure_scale(pid);
     float x[RBF_INPUT_DIM] = {
-        pid->du_prev / pid->pressure_normalization_scale,
-        pid->P_actual / pid->pressure_normalization_scale,
-        pid->y_prev1 / pid->pressure_normalization_scale,
-        error / pid->pressure_normalization_scale
+        pid->du_prev / flow_scale,
+        pid->y_prev1 / pressure_scale,
+        pid->y_prev2 / pressure_scale,
+        pid->e_prev1 / pressure_scale
     };
-    float error_rbf;
-    float y_hat = 0.0f;
+    float y_n = pid->P_actual / pressure_scale;
+    float y_hat_n = 0.0f;
+    float jacobian_n = 0.0f;
+    float error_rbf_n;
+    int i;
+
+    memcpy(pid->last_rbf_input, x, sizeof(x));
 
     pid->Jacobian = 0.0f;
 
-    for (int i = 0; i < RBF_HNUM; ++i) {
+    for (i = 0; i < RBF_HNUM; ++i) {
         float norm_val = 0.0f;
-        for (int j = 0; j < RBF_INPUT_DIM; ++j) {
+        int j;
+
+        for (j = 0; j < RBF_INPUT_DIM; ++j) {
             float diff = x[j] - pid->c[i][j];
             norm_val += diff * diff;
         }
 
         h[i] = expf(-norm_val / (2.0f * pid->b_rbf[i] * pid->b_rbf[i]));
-        y_hat += pid->w[i] * h[i];
-        pid->Jacobian += pid->w[i] * h[i] * (pid->c[i][0] - x[0]) /
+        y_hat_n += pid->w[i] * h[i];
+        jacobian_n += pid->w[i] * h[i] * (pid->c[i][0] - x[0]) /
             (pid->b_rbf[i] * pid->b_rbf[i]);
     }
 
-    pid->Jacobian = clampf(-5.0f, pid->Jacobian / pid->pressure_normalization_scale, 50.0f);
+    pid->Jacobian = clampf(-5.0f,
+        (pressure_scale / flow_scale) * jacobian_n,
+        50.0f);
+    error_rbf_n = y_n - y_hat_n;
 
-    error_rbf = pid->P_actual - y_hat;
-
-    for (int i = 0; i < RBF_HNUM; ++i) {
-        float delta_w = pid->eta_w * error_rbf * h[i] +
+    for (i = 0; i < RBF_HNUM; ++i) {
+        float delta_w = pid->eta_w * error_rbf_n * h[i] +
             pid->alpha * (pid->w[i] - pid->w_1[i]);
-        pid->w[i] += delta_w;
-    }
-
-    for (int i = 0; i < RBF_HNUM; ++i) {
         float width = pid->b_rbf[i];
         float width_sq = width * width;
         float width_cu = width_sq * width;
         float norm_val = 0.0f;
+        int j;
 
-        for (int j = 0; j < RBF_INPUT_DIM; ++j) {
-            float delta_center = pid->eta_c * error_rbf * pid->w[i] * h[i] *
+        pid->w[i] += delta_w;
+
+        for (j = 0; j < RBF_INPUT_DIM; ++j) {
+            float delta_center = pid->eta_c * error_rbf_n * pid->w[i] * h[i] *
                 (x[j] - pid->c[i][j]) / width_sq +
                 pid->alpha * (pid->ci_1[i][j] - pid->ci_2[i][j]);
-            pid->c[i][j] = clampf(-20.0f, pid->c[i][j] + delta_center, 30.0f);
+            pid->c[i][j] = clampf(-2.0f, pid->c[i][j] + delta_center, 2.0f);
         }
 
-        for (int j = 0; j < RBF_INPUT_DIM; ++j) {
+        for (j = 0; j < RBF_INPUT_DIM; ++j) {
             float diff = x[j] - pid->c[i][j];
             norm_val += diff * diff;
         }
 
-        pid->b_rbf[i] = clampf(5.0f,
-            pid->b_rbf[i] + pid->eta_b * error_rbf * pid->w[i] * h[i] *
+        pid->b_rbf[i] = clampf(0.2f,
+            pid->b_rbf[i] + pid->eta_b * error_rbf_n * pid->w[i] * h[i] *
             norm_val / width_cu +
             pid->alpha * (pid->bi_1[i] - pid->bi_2[i]),
-            50.5f);
+            5.0f);
     }
 
-    for (int i = 0; i < RBF_HNUM; ++i) {
-        for (int j = 0; j < RBF_INPUT_DIM; ++j) {
+    for (i = 0; i < RBF_HNUM; ++i) {
+        int j;
+
+        for (j = 0; j < RBF_INPUT_DIM; ++j) {
             pid->ci_2[i][j] = pid->ci_1[i][j];
             pid->ci_1[i][j] = pid->c[i][j];
         }
@@ -168,23 +182,42 @@ static void rbf_pid_step_rbf_nn(RBF_PID_Handle *pid, float error) {
     }
 }
 
+static float rbf_pid_compute_soft_flow_cap(const RBF_PID_Handle *pid) {
+    float hard_limit = rbf_pid_max_flow_output(pid);
+
+    if (pid->K <= 0.0f || pid->P_set <= 0.0f) {
+        return hard_limit;
+    }
+
+    return clampf(0.0f, (pid->P_set * 1.10f) / pid->K, hard_limit);
+}
+
 static void rbf_pid_step_adaptive_gains(RBF_PID_Handle *pid, float error) {
     float de = error - pid->e_prev1;
     float dde = de - (pid->e_prev1 - pid->e_prev2);
+    float learning_scale = (fabsf(error) <= 1.0f) ? 0.20f : 1.0f;
+
+    if (pid->output_saturated &&
+        ((pid->Output >= rbf_pid_compute_soft_flow_cap(pid) - 1.0e-6f && error > 0.0f) ||
+         (pid->Output <= MIN_OUTPUT + 1.0e-6f && error < 0.0f))) {
+        return;
+    }
 
     pid->KP = clampf(pid->min_KP,
-        pid->KP + pid->eta_p * error * pid->Jacobian * de,
+        pid->KP + learning_scale * pid->eta_p * error * pid->Jacobian * de,
         pid->max_KP);
     pid->KI = clampf(pid->min_KI,
-        pid->KI + pid->eta_i * error * pid->Jacobian * error,
+        pid->KI + learning_scale * pid->eta_i * error * pid->Jacobian * error,
         pid->max_KI);
     pid->KD = clampf(pid->min_KD,
-        pid->KD + pid->eta_d * error * pid->Jacobian * dde,
+        pid->KD + learning_scale * pid->eta_d * error * pid->Jacobian * dde,
         pid->max_KD);
 }
 
 static void rbf_pid_step_incremental_output(RBF_PID_Handle *pid, float error) {
-    float max_motor_output = rbf_pid_max_motor_output(pid);
+    float hard_limit = rbf_pid_max_flow_output(pid);
+    float flow_cap = rbf_pid_compute_soft_flow_cap(pid);
+    float output_limit = (flow_cap < hard_limit) ? flow_cap : hard_limit;
     float raw_d_term = error - 2.0f * pid->e_prev1 + pid->e_prev2;
     float du = pid->KP * (error - pid->e_prev1) + pid->KI * error + pid->KD * raw_d_term;
     float actual_press = pid->P_set - error;
@@ -198,9 +231,14 @@ static void rbf_pid_step_incremental_output(RBF_PID_Handle *pid, float error) {
     du += dynamic_ff + f_uff;
 
     pid->du = du;
-    pid->Output = clampf(MIN_OUTPUT, pid->u_prev + du, max_motor_output);
+    pid->Output = clampf(MIN_OUTPUT, pid->u_prev + du, output_limit);
+    pid->output_saturated = (pid->Output <= MIN_OUTPUT + 1.0e-6f) ||
+        (pid->Output >= output_limit - 1.0e-6f);
+    pid->n_out = pid->Output;
     if (pid->P_set < 0.1f && actual_press < 0.5f) {
         pid->Output = 0.0f;
+        pid->n_out = 0.0f;
+        pid->output_saturated = false;
     }
 
     pid->fLastActPress2 = pid->fLastActPress;
@@ -244,6 +282,9 @@ void RBF_PID_Init(RBF_PID_Handle *pid, float sampling_period,
     pid->fMaxFlow = clamp_positive_or_default(max_flow_lmin, 0.0f);
     pid->fFlowRateLimit = clampf(0.0f, flow_rate_limit_pct, 1.0f);
     pid->pressure_normalization_scale = 250.0f;
+    pid->flow_normalization_scale = (pid->fMaxFlow > 0.0f) ? pid->fMaxFlow : 90.0f;
+    pid->output_saturated = false;
+    memset(pid->last_rbf_input, 0, sizeof(pid->last_rbf_input));
     pid->Status = 1;
     pid->TuneResult = 66;
     pid->alpha = 0.05f;
@@ -257,47 +298,26 @@ void RBF_PID_Init(RBF_PID_Handle *pid, float sampling_period,
 }
 
 float RBF_PID_Update(RBF_PID_Handle *pid, float setpoint, float feedback) {
-    float max_motor_output = rbf_pid_max_motor_output(pid);
-    float effective_motor_output_limit = max_motor_output;
     float error;
-    float raw_output;
 
     pid->P_set = setpoint;
     pid->P_actual = feedback;
     error = rbf_pid_apply_deadband(setpoint - feedback);
     pid->Error = error;
 
-    rbf_pid_step_rbf_nn(pid, error);
+    rbf_pid_step_rbf_nn(pid);
     rbf_pid_step_adaptive_gains(pid, error);
     rbf_pid_step_incremental_output(pid, error);
-    raw_output = pid->Output;
 
-    if (pid->gain_compensation_enabled) {
-        pid->Output = raw_output * pid->gain_compensation_factor;
-        if (pid->K > 0.0f && pid->P_set > 0.0f) {
-            float gain_comp_limit =
-                (pid->P_set * 1.10f / pid->K) * pid->flowToPumpSpeedGain;
-            if (gain_comp_limit > 0.0f && gain_comp_limit < effective_motor_output_limit) {
-                effective_motor_output_limit = gain_comp_limit;
-            }
-        }
-    }
-    pid->Output = clampf(MIN_OUTPUT, pid->Output, effective_motor_output_limit);
-    pid->n_out = pid->Output;
+    pid->y_prev2 = pid->y_prev1;
     pid->y_prev1 = pid->P_actual;
     pid->e_prev2 = pid->e_prev1;
     pid->e_prev1 = error;
-    if (pid->gain_compensation_enabled &&
-        fabsf(pid->gain_compensation_factor) > 1.0e-6f) {
-        pid->u_prev = pid->Output / pid->gain_compensation_factor;
-    } else {
-        pid->u_prev = pid->Output;
-    }
+    pid->u_prev = pid->Output;
     pid->du_prev = pid->du;
 
     rbf_pid_step_steady_state(pid);
     pid->Status = pid->steady_state ? 3 : 2;
-    pid->Output = pid->Output / pid->flowToPumpSpeedGain; // motor speed transfer to flow request
     return pid->Output;
 }
 
@@ -338,8 +358,22 @@ void RBF_PID_SetPressureNormalization(RBF_PID_Handle *pid, float scale) {
     rbf_pid_refresh_gain_compensation(pid);
 }
 
+void RBF_PID_SetFlowNormalization(RBF_PID_Handle *pid, float scale) {
+    if (pid == NULL) {
+        return;
+    }
+
+    pid->flow_normalization_scale = clamp_positive_or_default(
+        scale,
+        (pid->fMaxFlow > 0.0f) ? pid->fMaxFlow : 90.0f);
+}
+
 void RBF_PID_SetGainCompensation(RBF_PID_Handle *pid, float systemGain) {
-    pid->K = systemGain;
+    if (pid == NULL) {
+        return;
+    }
+
+    pid->K = (systemGain > 0.0f) ? systemGain : 0.0f;
     rbf_pid_refresh_gain_compensation(pid);
 }
 

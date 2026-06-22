@@ -18,12 +18,12 @@
 /* PID 参数限幅默认窗。
  * Task 2 要求初始化/复位恢复到确定性的内置窗口，后续可通过
  * RBF_PID_SetParamLimits() 覆盖。 */
-#define PID_MIN_KP          6.0f
-#define PID_MAX_KP          8.0f
-#define PID_MIN_KI          0.2f
-#define PID_MAX_KI          1.5f
-#define PID_MIN_KD          10.0f
-#define PID_MAX_KD          15.0f
+#define PID_MIN_KP          0.030f
+#define PID_MAX_KP          0.090f
+#define PID_MIN_KI          0.0005f
+#define PID_MAX_KI          0.0040f
+#define PID_MIN_KD          0.010f
+#define PID_MAX_KD          0.080f
 
 /* Task 3 增量控制输出限幅 */
 #define MIN_OUTPUT          -50.0f
@@ -45,7 +45,8 @@ typedef struct {
      * 0 或负值 -> 落回内置默认 MAX_PRESSURE. 调用 RBF_PID_SetPressureNormalization()
      * 配置；推荐由 pressure_controller.c 在每段 Resolve 时根据段配置写入。 */
     float pressure_normalization_scale;
-    float flowToPumpSpeedGain;
+    float flow_normalization_scale;
+    float flowToPumpSpeedGain;      /* retained for outer integration only */
 
     /* 兼容配置 */
     float K;                        // 系统增益 (bar per L/min, 稳态压力/流量比)
@@ -55,22 +56,22 @@ typedef struct {
     float gain_compensation_factor; // 输出补偿因子，默认 1.0
 
     /* 最近一次控制结果 */
-    float Output;                   // 控制器原始输出
-    float KP;                       // 比例系数
-    float KI;                       // 积分系数
-    float KD;                       // 微分系数
-    float du;                       // 本次控制增量
-    float Error;                    // 当前误差
-    float Jacobian;                 // Jacobian估计值
-    float min_KP;                   // 比例系数下限
-    float max_KP;                   // 比例系数上限
-    float min_KI;                   // 积分系数下限
-    float max_KI;                   // 积分系数上限
-    float min_KD;                   // 微分系数下限
-    float max_KD;                   // 微分系数上限
-    int32_t Status;                 // 状态代码(1:初始化完成, 2:运行中, 3:稳态)
-    int32_t TuneResult;             // 调谐结果标志
-    float n_out;                    // 输出流量 [L/min]
+    float Output;                   /* last commanded flow [L/min] */
+    float KP;
+    float KI;
+    float KD;
+    float du;
+    float Error;
+    float Jacobian;
+    float min_KP;
+    float max_KP;
+    float min_KI;
+    float max_KI;
+    float min_KD;
+    float max_KD;
+    int32_t Status;
+    int32_t TuneResult;
+    float n_out;                    /* mirrored flow-domain command [L/min] */
 
     /* RBF神经网络参数 */
     float c[RBF_HNUM][RBF_INPUT_DIM];   // 中心向量
@@ -97,13 +98,16 @@ typedef struct {
     float w_2[RBF_HNUM];
 
     /* 控制器状态变量 */
-    float u_prev;                   // 上一次控制输出
-    float e_prev1;                  // 前一次误差
-    float e_prev2;                  // 前两次误差
-    float du_prev;                  // 上一次控制增量
-    int32_t steady_count;           // 稳态条件连续满足计数
-    bool steady_state;              // 稳态标志
-    float y_prev1;                  // 前一次反馈值
+    float u_prev;
+    float e_prev1;
+    float e_prev2;
+    float du_prev;
+    int32_t steady_count;
+    bool steady_state;
+    bool output_saturated;
+    float y_prev1;
+    float y_prev2;
+    float last_rbf_input[RBF_INPUT_DIM];
 
     /* 前馈控制相关 */
     float fLastActPress;            // 上一次压力反馈
@@ -130,7 +134,7 @@ void RBF_PID_Init(RBF_PID_Handle *pid, float sampling_period,
  * @param pid RBF_PID句柄指针
  * @param setpoint 设定值(压力, 原始单位)
  * @param feedback 反馈值(压力, 原始单位)
- * @return 控制器输出流量 [L/min], 内部先按实例流量/转速上限完成限幅
+ * @return 控制器输出流量 [L/min], 不在此函数内执行 flow -> rpm 转换
  */
 float RBF_PID_Update(RBF_PID_Handle *pid, float setpoint, float feedback);
 
@@ -169,6 +173,7 @@ void RBF_PID_SetLearningRates(RBF_PID_Handle *pid,
  * @note 推荐在每段开始时调用一次；运行中改变会导致归一化基准跳变。
  */
 void RBF_PID_SetPressureNormalization(RBF_PID_Handle *pid, float scale);
+void RBF_PID_SetFlowNormalization(RBF_PID_Handle *pid, float scale);
 
 /**
  * @brief 设置系统物理增益兼容参数
