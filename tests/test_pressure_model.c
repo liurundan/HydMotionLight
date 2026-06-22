@@ -397,6 +397,78 @@ static int test_first_order_outputs_measured_equal_real_and_zero_flow_terms(void
     return 1;
 }
 
+static int test_invalid_model_type_matches_physical_branch(void) {
+    PressureModelParams physical_params = make_deterministic_params();
+    PressureModelParams invalid_params = physical_params;
+    PressureModelState physical_state;
+    PressureModelState invalid_state;
+    PressureModelOutput physical_out;
+    PressureModelOutput invalid_out;
+    int i;
+
+    invalid_params.model_type = 99u;
+    memset(&physical_out, 0, sizeof(physical_out));
+    memset(&invalid_out, 0, sizeof(invalid_out));
+    PressureModel_Reset(&physical_state, 0x7c7c7c7cu);
+    PressureModel_Reset(&invalid_state, 0x7c7c7c7cu);
+
+    for (i = 0; i < 500; ++i) {
+        PressureModel_Step(&physical_params, &physical_state, 40.0f, DT_S, &physical_out);
+        PressureModel_Step(&invalid_params, &invalid_state, 40.0f, DT_S, &invalid_out);
+    }
+
+    ASSERT_NEAR(invalid_out.real_pressure_bar, physical_out.real_pressure_bar, 1e-6f);
+    ASSERT_NEAR(invalid_out.measured_pressure_bar, physical_out.measured_pressure_bar, 1e-6f);
+    ASSERT_NEAR(invalid_out.actual_motor_rpm, physical_out.actual_motor_rpm, 1e-6f);
+
+    return 1;
+}
+
+static int test_switch_from_physical_to_first_order_preserves_pressure(void) {
+    PressureModelParams params = make_deterministic_params();
+    PressureModelState state;
+    PressureModelOutput out;
+    float charged_pressure;
+
+    memset(&out, 0, sizeof(out));
+    PressureModel_Reset(&state, 0x7d7d7d7du);
+    run_steps(&params, &state, 40.0f, 12000, DT_S, &out);
+    charged_pressure = out.real_pressure_bar;
+
+    params.model_type = PRESSURE_MODEL_TYPE_FIRST_ORDER;
+    params.first_order_k_bar_per_rpm = 1.0f;
+    params.first_order_tau_s = 0.2f;
+    params.first_order_delay_s = 0.0f;
+    PressureModel_Step(&params, &state, 40.0f, DT_S, &out);
+
+    ASSERT_NEAR(out.real_pressure_bar, charged_pressure, 1e-6f);
+    ASSERT_NEAR(out.measured_pressure_bar, charged_pressure, 1e-6f);
+    ASSERT_TRUE(state.active_model_type == PRESSURE_MODEL_TYPE_FIRST_ORDER);
+
+    return 1;
+}
+
+static int test_switch_from_first_order_to_physical_preserves_pressure(void) {
+    PressureModelParams params = make_first_order_params(0.5f, 0.2f, 0.0f);
+    PressureModelState state;
+    PressureModelOutput out;
+    float charged_pressure;
+
+    memset(&out, 0, sizeof(out));
+    PressureModel_Reset(&state, 0x7e7e7e7eu);
+    run_steps(&params, &state, 200.0f, 400, DT_S, &out);
+    charged_pressure = out.real_pressure_bar;
+
+    params = make_deterministic_params();
+    PressureModel_Step(&params, &state, 200.0f, DT_S, &out);
+
+    ASSERT_NEAR(out.real_pressure_bar, charged_pressure, 1e-6f);
+    ASSERT_NEAR(out.measured_pressure_bar, charged_pressure, 1e-6f);
+    ASSERT_TRUE(state.active_model_type == PRESSURE_MODEL_TYPE_PHYSICAL);
+
+    return 1;
+}
+
 static int count_visible_tooth_valleys(const float *measured,
                                        const float *real,
                                        int samples,
@@ -736,6 +808,30 @@ int main(void) {
     } else {
         ++failed;
         printf("FAIL test_first_order_outputs_measured_equal_real_and_zero_flow_terms\n");
+    }
+
+    if (test_invalid_model_type_matches_physical_branch()) {
+        ++passed;
+        printf("PASS test_invalid_model_type_matches_physical_branch\n");
+    } else {
+        ++failed;
+        printf("FAIL test_invalid_model_type_matches_physical_branch\n");
+    }
+
+    if (test_switch_from_physical_to_first_order_preserves_pressure()) {
+        ++passed;
+        printf("PASS test_switch_from_physical_to_first_order_preserves_pressure\n");
+    } else {
+        ++failed;
+        printf("FAIL test_switch_from_physical_to_first_order_preserves_pressure\n");
+    }
+
+    if (test_switch_from_first_order_to_physical_preserves_pressure()) {
+        ++passed;
+        printf("PASS test_switch_from_first_order_to_physical_preserves_pressure\n");
+    } else {
+        ++failed;
+        printf("FAIL test_switch_from_first_order_to_physical_preserves_pressure\n");
     }
 
     if (test_negative_speed_depressurizes_faster_than_passive_leak()) {
