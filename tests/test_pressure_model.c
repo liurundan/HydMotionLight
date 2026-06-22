@@ -302,6 +302,76 @@ static int test_motor_state_is_continuous_across_steps(void) {
     return 1;
 }
 
+static int test_first_order_zero_input_holds_zero_pressure(void) {
+    PressureModelParams params = make_first_order_params(0.5f, 0.2f, 0.0f);
+    PressureModelState state;
+    PressureModelOutput out;
+
+    memset(&out, 0, sizeof(out));
+    PressureModel_Reset(&state, 0x78787878u);
+
+    run_steps(&params, &state, 0.0f, 200, DT_S, &out);
+
+    ASSERT_NEAR(out.real_pressure_bar, 0.0f, PRESSURE_EPS);
+    ASSERT_NEAR(out.measured_pressure_bar, 0.0f, PRESSURE_EPS);
+    ASSERT_NEAR(out.actual_motor_rpm, 0.0f, RPM_EPS);
+
+    return 1;
+}
+
+static int test_first_order_tau_zero_matches_gain_times_actual_rpm(void) {
+    PressureModelParams params = make_first_order_params(0.25f, 0.0f, 0.0f);
+    PressureModelState state;
+    PressureModelOutput out;
+
+    memset(&out, 0, sizeof(out));
+    PressureModel_Reset(&state, 0x79797979u);
+    PressureModel_Step(&params, &state, 120.0f, DT_S, &out);
+
+    ASSERT_NEAR(out.real_pressure_bar,
+                params.first_order_k_bar_per_rpm * out.actual_motor_rpm,
+                1e-4f);
+    ASSERT_NEAR(out.measured_pressure_bar, out.real_pressure_bar, 1e-6f);
+
+    return 1;
+}
+
+static int test_first_order_delay_defers_visible_output(void) {
+    PressureModelParams params = make_first_order_params(0.5f, 0.0f, 0.003f);
+    PressureModelState state;
+    PressureModelOutput out;
+
+    memset(&out, 0, sizeof(out));
+    PressureModel_Reset(&state, 0x7a7a7a7au);
+
+    PressureModel_Step(&params, &state, 100.0f, DT_S, &out);
+    ASSERT_NEAR(out.real_pressure_bar, 0.0f, 1e-6f);
+    PressureModel_Step(&params, &state, 100.0f, DT_S, &out);
+    ASSERT_NEAR(out.real_pressure_bar, 0.0f, 1e-6f);
+    PressureModel_Step(&params, &state, 100.0f, DT_S, &out);
+    ASSERT_NEAR(out.real_pressure_bar, 0.0f, 1e-6f);
+    PressureModel_Step(&params, &state, 100.0f, DT_S, &out);
+    ASSERT_TRUE(out.real_pressure_bar > 0.0f);
+
+    return 1;
+}
+
+static int test_first_order_outputs_measured_equal_real_and_zero_flow_terms(void) {
+    PressureModelParams params = make_first_order_params(0.1f, 0.2f, 0.0f);
+    PressureModelState state;
+    PressureModelOutput out;
+
+    memset(&out, 0, sizeof(out));
+    PressureModel_Reset(&state, 0x7b7b7b7bu);
+    run_steps(&params, &state, 250.0f, 50, DT_S, &out);
+
+    ASSERT_NEAR(out.measured_pressure_bar, out.real_pressure_bar, 1e-6f);
+    ASSERT_NEAR(out.pump_flow_m3_s, 0.0f, 1e-6f);
+    ASSERT_NEAR(out.net_flow_m3_s, 0.0f, 1e-6f);
+
+    return 1;
+}
+
 static int count_visible_tooth_valleys(const float *measured,
                                        const float *real,
                                        int samples,
@@ -601,6 +671,38 @@ int main(void) {
     } else {
         ++failed;
         printf("FAIL test_motor_state_is_continuous_across_steps\n");
+    }
+
+    if (test_first_order_zero_input_holds_zero_pressure()) {
+        ++passed;
+        printf("PASS test_first_order_zero_input_holds_zero_pressure\n");
+    } else {
+        ++failed;
+        printf("FAIL test_first_order_zero_input_holds_zero_pressure\n");
+    }
+
+    if (test_first_order_tau_zero_matches_gain_times_actual_rpm()) {
+        ++passed;
+        printf("PASS test_first_order_tau_zero_matches_gain_times_actual_rpm\n");
+    } else {
+        ++failed;
+        printf("FAIL test_first_order_tau_zero_matches_gain_times_actual_rpm\n");
+    }
+
+    if (test_first_order_delay_defers_visible_output()) {
+        ++passed;
+        printf("PASS test_first_order_delay_defers_visible_output\n");
+    } else {
+        ++failed;
+        printf("FAIL test_first_order_delay_defers_visible_output\n");
+    }
+
+    if (test_first_order_outputs_measured_equal_real_and_zero_flow_terms()) {
+        ++passed;
+        printf("PASS test_first_order_outputs_measured_equal_real_and_zero_flow_terms\n");
+    } else {
+        ++failed;
+        printf("FAIL test_first_order_outputs_measured_equal_real_and_zero_flow_terms\n");
     }
 
     if (test_negative_speed_depressurizes_faster_than_passive_leak()) {
