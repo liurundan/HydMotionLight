@@ -512,7 +512,7 @@ static HYD_BOOL startDirectSegmentExecution(HYD_MotionControlFB* fb,
 /* ======================================================================
  * 框架生命周期函数
  * ====================================================================== */
-
+extern int LogMessage(uint8_t level, char* buf, uint32_t size); // in beremiz.h
 int __HydMotion_framework_Init()
 {
     for (int i = 0; i < HYD_MAX_AXIS_MOTION; i++) {
@@ -520,6 +520,10 @@ int __HydMotion_framework_Init()
     }
     nextAllocatedFB = 0;
     g_lastPublishTime = 0.0;
+
+	char mstr[256];
+    snprintf(mstr, 255, "HydMotion Release: %s\r\n", HYD_VERSION_BUILD_TIME);
+    LogMessage(2, mstr, strlen(mstr));
     return 0;
 }
 
