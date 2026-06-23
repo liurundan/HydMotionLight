@@ -198,9 +198,16 @@ static int test_explicit_first_order_tuning_contract(void) {
 
     PressureModel_Step(&params, &state, 100.0f, DT_S, &out);
 
-    ASSERT_TRUE(state.active_model_type == PRESSURE_MODEL_TYPE_FIRST_ORDER);
-    ASSERT_NEAR(out.measured_pressure_bar, out.real_pressure_bar, 1e-6f);
-    ASSERT_TRUE(out.real_pressure_bar > 0.0f);
+    {
+        float expected_pressure_bar =
+            ((params.first_order_k_bar_per_rpm * out.actual_motor_rpm * DT_S) +
+             (params.first_order_tau_s * 0.0f)) /
+            (params.first_order_tau_s + DT_S);
+
+        ASSERT_TRUE(state.active_model_type == PRESSURE_MODEL_TYPE_FIRST_ORDER);
+        ASSERT_NEAR(out.measured_pressure_bar, out.real_pressure_bar, 1e-6f);
+        ASSERT_NEAR(out.real_pressure_bar, expected_pressure_bar, 1e-6f);
+    }
 
     return 1;
 }

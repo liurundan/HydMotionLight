@@ -883,7 +883,6 @@ static HYD_REAL pump_convert(HYD_REAL flow_lmin) {
     input.direction = HYD_DIRECTION_HOLD;
 
     HYD_PumpConverter_Execute(&input, &output);
-    assert(fabs(output.pumpSpeed - output.commandFlow * PLANT_GAIN) < 1e-6);
     return output.pumpSpeed;
 }
 
@@ -958,6 +957,20 @@ static void test_rbf_pid_single_setpoint_plant_convergence(void) {
             HYD_PressureController_Execute(&segment, &state, &input, &output);
 
             pump_speed = pump_convert(output.outputFlow);
+            {
+                HYD_REAL expected_pump_speed = output.outputFlow * (HYD_REAL)PLANT_GAIN;
+                HYD_REAL speed_error = fabs(pump_speed - expected_pump_speed);
+                if (!(speed_error < 1e-6)) {
+                    printf("  pump-convert mismatch: target=%.0f step=%d flow=%.6f pump=%.6f expected=%.6f err=%.9f\n",
+                           (double)target,
+                           k,
+                           (double)output.outputFlow,
+                           (double)pump_speed,
+                           (double)expected_pump_speed,
+                           (double)speed_error);
+                }
+                assert(speed_error < 1e-6);
+            }
             assert(pump_speed >= -1e-6);
             assert(pump_speed <= PLANT_PUMP_LIMIT + 1e-6);
             assert(output.outputFlow >= -1e-6);
