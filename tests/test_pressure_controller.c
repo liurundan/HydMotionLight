@@ -924,18 +924,20 @@ static HYD_REAL pump_convert(HYD_REAL flow_lmin) {
 
 static HYD_MotionSegment make_rbf_pid_segment(HYD_REAL target_bar) {
     HYD_MotionSegment seg;
+    /* Approved first-order plant-test tuning recipe for K=5.4, tau=1.0,
+     * delay=0, and the 50/100/200 bar acceptance loop. */
     memset(&seg, 0, sizeof(seg));
     seg.mode = HYD_MODE_PRESSURE_CLOSED_LOOP;
     seg.endCondition = HYD_END_TIME;
     seg.direction = HYD_DIRECTION_HOLD;
     seg.targetPressure = target_bar;
-    seg.maxFlow = PLANT_PUMP_LIMIT / PLANT_GAIN;
+    seg.maxFlow = PLANT_PUMP_LIMIT / PLANT_GAIN;  /* 90 L/min at the configured pump-speed conversion. */
     seg.duration = 10.0;
     seg.pressureController = HYD_PRESSURE_CONTROLLER_RBF_PID;
     seg.pressureCeiling = target_bar * 3.0;
     seg.pressureFilterAlpha = 1.0;
     seg.pressureDerivativeFilterAlpha = 1.0;
-    seg.systemGain = PLANT_K * PLANT_GAIN;
+    seg.systemGain = PLANT_K * PLANT_GAIN;  /* Converts first-order plant gain into bar/(L/min). */
     seg.pressureRbfConfig.minKp = 0.040;
     seg.pressureRbfConfig.maxKp = 0.060;
     seg.pressureRbfConfig.minKi = 0.0008;
@@ -948,6 +950,9 @@ static HYD_MotionSegment make_rbf_pid_segment(HYD_REAL target_bar) {
     seg.pressureRbfConfig.etaP = 0.00010;
     seg.pressureRbfConfig.etaI = 0.00005;
     seg.pressureRbfConfig.etaD = 0.00010;
+    /* This no-dead-time first-order harness relies on bounded PID/RBF
+     * adaptation; keep pressure-acceleration FF disabled to avoid
+     * unnecessary transient shaping here. */
     seg.pressureRbfConfig.disablePressureAccelFeedforward = 1.0;
     return seg;
 }
