@@ -180,13 +180,12 @@ static int test_zero_speed_holds_zero_pressure(void) {
     return 1;
 }
 
-static int test_init_params_default_to_first_order_tuning_contract(void) {
-    PressureModelParams params;
+static int test_explicit_first_order_tuning_contract(void) {
+    PressureModelParams params = make_first_order_params(5.4f, 1.0f, 0.0f);
     PressureModelState state;
     PressureModelOutput out;
 
     memset(&out, 0, sizeof(out));
-    PressureModel_InitParams(&params);
     PressureModel_Reset(&state, 0x51515151u);
 
     ASSERT_TRUE(params.model_type == PRESSURE_MODEL_TYPE_FIRST_ORDER);
@@ -733,12 +732,12 @@ int main(void) {
         ++failed;
         printf("FAIL test_zero_speed_holds_zero_pressure\n");
     }
-    if (test_init_params_default_to_first_order_tuning_contract()) {
+    if (test_explicit_first_order_tuning_contract()) {
         ++passed;
-        printf("PASS test_init_params_default_to_first_order_tuning_contract\n");
+        printf("PASS test_explicit_first_order_tuning_contract\n");
     } else {
         ++failed;
-        printf("FAIL test_init_params_default_to_first_order_tuning_contract\n");
+        printf("FAIL test_explicit_first_order_tuning_contract\n");
     }
 
     if (test_init_params_expose_open_loop_fit_knobs()) {

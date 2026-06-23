@@ -883,7 +883,7 @@ static HYD_REAL pump_convert(HYD_REAL flow_lmin) {
     input.direction = HYD_DIRECTION_HOLD;
 
     HYD_PumpConverter_Execute(&input, &output);
-    assert(fabs(output.pumpSpeed - output.commandFlow * PLANT_GAIN) < 1e-3);
+    assert(fabs(output.pumpSpeed - output.commandFlow * PLANT_GAIN) < 1e-6);
     return output.pumpSpeed;
 }
 
