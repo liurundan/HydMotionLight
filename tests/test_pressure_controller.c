@@ -956,15 +956,22 @@ static void test_rbf_pid_single_setpoint_plant_convergence(void) {
 
             HYD_PressureController_Execute(&segment, &state, &input, &output);
 
+            HYD_REAL clamped_flow;
             pump_speed = pump_convert(output.outputFlow);
+            assert(output.outputFlow >= -1e-6);
+            assert(output.outputFlow <= segment.maxFlow + 1e-6);
+            clamped_flow = HYD_ClampReal(output.outputFlow,
+                                         0.0,
+                                         segment.maxFlow);
             {
-                HYD_REAL expected_pump_speed = output.outputFlow * (HYD_REAL)PLANT_GAIN;
+                HYD_REAL expected_pump_speed = clamped_flow * (HYD_REAL)PLANT_GAIN;
                 HYD_REAL speed_error = fabs(pump_speed - expected_pump_speed);
                 if (!(speed_error < 1e-6)) {
-                    printf("  pump-convert mismatch: target=%.0f step=%d flow=%.6f pump=%.6f expected=%.6f err=%.9f\n",
+                    printf("  pump-convert mismatch: target=%.0f step=%d flow=%.6f clamped=%.6f pump=%.6f expected=%.6f err=%.9f\n",
                            (double)target,
                            k,
                            (double)output.outputFlow,
+                           (double)clamped_flow,
                            (double)pump_speed,
                            (double)expected_pump_speed,
                            (double)speed_error);
@@ -973,8 +980,6 @@ static void test_rbf_pid_single_setpoint_plant_convergence(void) {
             }
             assert(pump_speed >= -1e-6);
             assert(pump_speed <= PLANT_PUMP_LIMIT + 1e-6);
-            assert(output.outputFlow >= -1e-6);
-            assert(output.outputFlow <= segment.maxFlow + 1e-6);
 
             pressure_bar = plant_model_step(pressure_bar, pump_speed);
             plant_step_metrics_record(&metrics, target, pressure_bar, k, tail_start_step);
