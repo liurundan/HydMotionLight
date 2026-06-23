@@ -48,6 +48,14 @@ static PressureModelParams make_deterministic_params(void) {
     return params;
 }
 
+static PressureModelParams make_physical_params(void) {
+    PressureModelParams params = make_deterministic_params();
+
+    params.model_type = PRESSURE_MODEL_TYPE_PHYSICAL;
+
+    return params;
+}
+
 static PressureModelParams make_first_order_params(float gain, float tau_s, float delay_s) {
     PressureModelParams params = make_deterministic_params();
 
@@ -255,7 +263,7 @@ static int test_init_params_expose_open_loop_fit_knobs(void) {
 }
 
 static int test_open_loop_sections_match_measured_pressure_envelope(void) {
-    PressureModelParams params = make_deterministic_params();
+    PressureModelParams params = make_physical_params();
     int i;
 
     for (i = 0; i < PRESSURE_MODEL_OPEN_LOOP_REFERENCE_COUNT; ++i) {
@@ -274,7 +282,7 @@ static int test_open_loop_sections_match_measured_pressure_envelope(void) {
 }
 
 static int test_open_loop_sections_match_tooth_phase_and_torque_trend(void) {
-    PressureModelParams params = make_deterministic_params();
+    PressureModelParams params = make_physical_params();
     float previous_tail_torque = -1.0f;
     int i;
 
@@ -295,7 +303,7 @@ static int test_open_loop_sections_match_tooth_phase_and_torque_trend(void) {
 }
 
 static int test_motor_state_is_continuous_across_steps(void) {
-    PressureModelParams params = make_deterministic_params();
+    PressureModelParams params = make_physical_params();
     PressureModelState state;
     PressureModelOutput out0;
     PressureModelOutput out1;
@@ -410,7 +418,7 @@ static int test_first_order_outputs_measured_equal_real_and_zero_flow_terms(void
 }
 
 static int test_invalid_model_type_matches_physical_branch(void) {
-    PressureModelParams physical_params = make_deterministic_params();
+    PressureModelParams physical_params = make_physical_params();
     PressureModelParams invalid_params = physical_params;
     PressureModelState physical_state;
     PressureModelState invalid_state;
@@ -437,7 +445,7 @@ static int test_invalid_model_type_matches_physical_branch(void) {
 }
 
 static int test_switch_from_physical_to_first_order_preserves_pressure(void) {
-    PressureModelParams params = make_deterministic_params();
+    PressureModelParams params = make_physical_params();
     PressureModelState state;
     PressureModelOutput out;
     float charged_pressure;
@@ -471,7 +479,7 @@ static int test_switch_from_first_order_to_physical_preserves_pressure(void) {
     run_steps(&params, &state, 200.0f, 400, DT_S, &out);
     charged_pressure = out.real_pressure_bar;
 
-    params = make_deterministic_params();
+    params = make_physical_params();
     PressureModel_Step(&params, &state, 200.0f, DT_S, &out);
 
     ASSERT_NEAR(out.real_pressure_bar, charged_pressure, 1e-6f);
@@ -500,7 +508,7 @@ static int count_visible_tooth_valleys(const float *measured,
 }
 
 static int test_negative_speed_depressurizes_faster_than_passive_leak(void) {
-    PressureModelParams params = make_deterministic_params();
+    PressureModelParams params = make_physical_params();
     PressureModelState charged_state;
     PressureModelState leak_only_state;
     PressureModelState reverse_state;
@@ -523,7 +531,7 @@ static int test_negative_speed_depressurizes_faster_than_passive_leak(void) {
 }
 
 static int test_tooth_drop_is_visible_once_per_tooth(void) {
-    PressureModelParams params = make_deterministic_params();
+    PressureModelParams params = make_physical_params();
     PressureModelState state;
     PressureModelOutput out;
     float measured[100];
@@ -548,7 +556,7 @@ static int test_tooth_drop_is_visible_once_per_tooth(void) {
 }
 
 static int test_legacy_tooth_drop_ratio_still_controls_visible_tooth_drop(void) {
-    PressureModelParams params = make_deterministic_params();
+    PressureModelParams params = make_physical_params();
     PressureModelState state;
     PressureModelOutput out;
     float max_gap_bar = 0.0f;
@@ -574,7 +582,7 @@ static int test_legacy_tooth_drop_ratio_still_controls_visible_tooth_drop(void) 
 }
 
 static int test_legacy_leak_coeff_still_controls_pressure_response(void) {
-    PressureModelParams baseline_params = make_deterministic_params();
+    PressureModelParams baseline_params = make_physical_params();
     PressureModelParams legacy_params = baseline_params;
     PressureModelState baseline_state;
     PressureModelState legacy_state;
@@ -599,7 +607,7 @@ static int test_legacy_leak_coeff_still_controls_pressure_response(void) {
 }
 
 static int test_legacy_chamber_volume_still_controls_pressure_rise(void) {
-    PressureModelParams baseline_params = make_deterministic_params();
+    PressureModelParams baseline_params = make_physical_params();
     PressureModelParams legacy_params = baseline_params;
     PressureModelState baseline_state;
     PressureModelState legacy_state;
@@ -624,7 +632,7 @@ static int test_legacy_chamber_volume_still_controls_pressure_rise(void) {
 }
 
 static int test_torque_speed_gain_affects_estimated_torque_trend(void) {
-    PressureModelParams params = make_deterministic_params();
+    PressureModelParams params = make_physical_params();
     PressureModelState state;
     PressureModelOutput out;
     float expected_speed_torque;
@@ -646,7 +654,7 @@ static int test_torque_speed_gain_affects_estimated_torque_trend(void) {
 }
 
 static int test_torque_bias_and_pressure_gain_affect_estimated_torque_trend(void) {
-    PressureModelParams params = make_deterministic_params();
+    PressureModelParams params = make_physical_params();
     PressureModelState state;
     PressureModelOutput out;
     float expected_torque;
@@ -668,7 +676,7 @@ static int test_torque_bias_and_pressure_gain_affect_estimated_torque_trend(void
 }
 
 static int test_relief_caps_measured_output_at_two_hundred_fifty_bar(void) {
-    PressureModelParams params = make_deterministic_params();
+    PressureModelParams params = make_physical_params();
     PressureModelState state;
     PressureModelOutput out;
 
@@ -691,7 +699,7 @@ static int test_noise_control_is_repeatable_with_fixed_seed(void) {
     PressureModelOutput out_b;
     int i;
 
-    PressureModel_InitParams(&params);
+    params = make_physical_params();
     params.enable_sensor_noise = 1u;
     params.enable_motor_noise = 1u;
     params.enable_process_noise = 1u;
