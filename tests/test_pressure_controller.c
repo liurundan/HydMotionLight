@@ -308,6 +308,40 @@ static void test_rbf_pid_strategy_executes_within_limits_and_adapts(void) {
     printf("✓ Adaptive RBF-PID pressure strategy integration test passed\n");
 }
 
+static void test_rbf_pid_strategy_uses_library_default_tuning_profile(void) {
+    HYD_MotionSegment segment;
+    HYD_PressureControllerState state;
+    HYD_PressureControllerInput input;
+    HYD_PressureControllerOutput output;
+
+    printf("Testing RBF-PID library default tuning profile mapping...\n");
+    segment = make_pressure_segment();
+    segment.pressureController = HYD_PRESSURE_CONTROLLER_RBF_PID;
+    memset(&segment.pressureRbfConfig, 0, sizeof(segment.pressureRbfConfig));
+
+    HYD_PressureController_InitState(&state, 5.0, segment.targetFlow, 0.0);
+
+    input.targetPressure = 20.0;
+    input.measuredPressure = 5.0;
+    input.feedforwardFlow = segment.targetFlow;
+    input.outputMin = 0.0;
+    input.outputMax = segment.maxFlow;
+    input.flowToPumpSpeedGain = 20.0;
+    input.pumpSpeedLimit = 1800.0;
+    input.timestamp = 0.02;
+
+    HYD_PressureController_Execute(&segment, &state, &input, &output);
+
+    assert(fabsf(state.rbfPid.eta_w - 0.005f) < 1e-6f);
+    assert(fabsf(state.rbfPid.eta_c - 0.005f) < 1e-6f);
+    assert(fabsf(state.rbfPid.eta_b - 0.005f) < 1e-6f);
+    assert(fabsf(state.rbfPid.eta_p - 0.00025f) < 1e-6f);
+    assert(fabsf(state.rbfPid.eta_i - 0.00025f) < 1e-6f);
+    assert(fabsf(state.rbfPid.eta_d - 0.00025f) < 1e-6f);
+    assert(output.adaptiveActive);
+    printf("✓ RBF-PID library default tuning profile test passed\n");
+}
+
 static void test_rbf_pid_strategy_uses_segment_level_tuning_profile(void) {
     HYD_MotionSegment segment;
     HYD_PressureControllerState state;
@@ -1091,6 +1125,7 @@ int main(void) {
     test_pid_derivative_uses_measurement_rate_and_filter();
     test_strategy_switch_uses_descriptor_based_tracking();
     test_rbf_pid_strategy_executes_within_limits_and_adapts();
+    test_rbf_pid_strategy_uses_library_default_tuning_profile();
     test_rbf_pid_strategy_uses_segment_level_tuning_profile();
     test_rbf_pid_strategy_switch_tracks_previous_output_bumplessly();
     test_rbf_pid_deadzone_clamp_marks_internal_saturation();
