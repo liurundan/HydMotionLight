@@ -7,6 +7,8 @@ static void test_flow_normalization_and_system_gain_soft_cap_are_configurable(vo
 static void test_flow_domain_output_is_independent_from_pump_gain(void);
 static void test_rbf_input_uses_causal_history_and_split_normalization(void);
 static void test_pressure_accel_feedforward_toggle_changes_incremental_output(void);
+static void test_pressure_accel_feedforward_is_suppressed_inside_near_target_band(void);
+static void test_pressure_accel_feedforward_remains_active_outside_near_target_band(void);
 static void test_target_relative_small_error_reduces_gain_drift(void);
 
 static void test_init_sets_ready_defaults(void) {
@@ -246,6 +248,56 @@ static void test_pressure_accel_feedforward_toggle_changes_incremental_output(vo
     printf("✓ Pressure acceleration feedforward toggle test passed\n");
 }
 
+static void test_pressure_accel_feedforward_is_suppressed_inside_near_target_band(void) {
+    RBF_PID_Handle enabled;
+    RBF_PID_Handle disabled;
+    float out_enabled;
+    float out_disabled;
+
+    printf("Testing near-target pressure acceleration feedforward suppression...\n");
+
+    RBF_PID_Init(&enabled, 0.001f, 90.0f, 1.0f);
+    RBF_PID_Init(&disabled, 0.001f, 90.0f, 1.0f);
+    RBF_PID_SetLearningRates(&enabled, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f);
+    RBF_PID_SetLearningRates(&disabled, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f);
+
+    (void)RBF_PID_Update(&enabled, 100.0f, 70.0f);
+    (void)RBF_PID_Update(&disabled, 100.0f, 70.0f);
+
+    RBF_PID_SetPressureAccelFeedforwardEnabled(&disabled, false);
+
+    out_enabled = RBF_PID_Update(&enabled, 100.0f, 98.5f);
+    out_disabled = RBF_PID_Update(&disabled, 100.0f, 98.5f);
+
+    assert(fabsf(out_enabled - out_disabled) < 1e-6f);
+    printf("PASS near-target feedforward suppression test\n");
+}
+
+static void test_pressure_accel_feedforward_remains_active_outside_near_target_band(void) {
+    RBF_PID_Handle enabled;
+    RBF_PID_Handle disabled;
+    float out_enabled;
+    float out_disabled;
+
+    printf("Testing outside-band pressure acceleration feedforward activity...\n");
+
+    RBF_PID_Init(&enabled, 0.001f, 90.0f, 1.0f);
+    RBF_PID_Init(&disabled, 0.001f, 90.0f, 1.0f);
+    RBF_PID_SetLearningRates(&enabled, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f);
+    RBF_PID_SetLearningRates(&disabled, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f);
+
+    (void)RBF_PID_Update(&enabled, 1.0f, 0.80f);
+    (void)RBF_PID_Update(&disabled, 1.0f, 0.80f);
+
+    RBF_PID_SetPressureAccelFeedforwardEnabled(&disabled, false);
+
+    out_enabled = RBF_PID_Update(&enabled, 1.0f, 0.96f);
+    out_disabled = RBF_PID_Update(&disabled, 1.0f, 0.96f);
+
+    assert(fabsf(out_enabled - out_disabled) > 1e-5f);
+    printf("PASS outside-band feedforward activity test\n");
+}
+
 static void test_flow_domain_output_is_independent_from_pump_gain(void) {
     RBF_PID_Handle base;
     RBF_PID_Handle altered;
@@ -338,6 +390,8 @@ int main(void) {
     test_network_initialization_is_deterministic_without_seed_hookup();
     test_rbf_pid_negative_output();
     test_pressure_accel_feedforward_toggle_changes_incremental_output();
+    test_pressure_accel_feedforward_is_suppressed_inside_near_target_band();
+    test_pressure_accel_feedforward_remains_active_outside_near_target_band();
     test_target_relative_small_error_reduces_gain_drift();
 
     printf("\n✅ All RBF_PID tests passed successfully!\n");

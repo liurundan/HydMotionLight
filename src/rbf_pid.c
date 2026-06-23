@@ -3,6 +3,18 @@
 #include <math.h>
 #include <string.h>
 
+static const float RBF_PID_ERROR_DEADBAND = 0.05f;
+static const float RBF_PID_SOFT_CAP_RATIO = 1.05f;
+static const float RBF_PID_LEARNING_RATIO_TIGHT = 0.01f;
+static const float RBF_PID_LEARNING_RATIO_NEAR = 0.05f;
+static const float RBF_PID_LEARNING_RATIO_MID = 0.10f;
+static const float RBF_PID_LEARNING_SCALE_TIGHT = 0.02f;
+static const float RBF_PID_LEARNING_SCALE_NEAR = 0.10f;
+static const float RBF_PID_LEARNING_SCALE_MID = 0.25f;
+static const float RBF_PID_NEAR_TARGET_RATIO = 0.02f;
+static const float RBF_PID_ACCEL_FF_GAIN = -0.15f;
+static const float RBF_PID_DYNAMIC_FF_GAIN = 0.01f;
+
 static float clampf(float min_value, float value, float max_value) {
     if (value < min_value) {
         return min_value;
@@ -78,13 +90,11 @@ static void rbf_pid_init_network(RBF_PID_Handle *pid) {
 }
 
 static float rbf_pid_apply_deadband(float error) {
-    const float deadband = 0.05f;
-
-    if (fabsf(error) <= deadband) {
+    if (fabsf(error) <= RBF_PID_ERROR_DEADBAND) {
         return 0.0f;
     }
 
-    return error > 0.0f ? error - deadband : error + deadband;
+    return error > 0.0f ? error - RBF_PID_ERROR_DEADBAND : error + RBF_PID_ERROR_DEADBAND;
 }
 
 static float rbf_pid_effective_flow_scale(const RBF_PID_Handle *pid) {
@@ -189,29 +199,29 @@ static float rbf_pid_compute_soft_flow_cap(const RBF_PID_Handle *pid) {
         return hard_limit;
     }
 
-    return clampf(0.0f, (pid->P_set * 1.05f) / pid->K, hard_limit);
+    return clampf(0.0f, (pid->P_set * RBF_PID_SOFT_CAP_RATIO) / pid->K, hard_limit);
 }
 
-static float rbf_pid_target_relative_learning_scale(const RBF_PID_Handle *pid, float error) {
+static float rbf_pid_target_relative_learning_scale(const RBF_PID_Handle *pid, float raw_error) {
     float setpoint_scale = clamp_positive_or_default(fabsf(pid->P_set), 1.0f);
-    float error_ratio = fabsf(error) / setpoint_scale;
+    float error_ratio = fabsf(raw_error) / setpoint_scale;
 
-    if (error_ratio <= 0.01f) {
-        return 0.02f;
+    if (error_ratio <= RBF_PID_LEARNING_RATIO_TIGHT) {
+        return RBF_PID_LEARNING_SCALE_TIGHT;
     }
-    if (error_ratio <= 0.05f) {
-        return 0.10f;
+    if (error_ratio <= RBF_PID_LEARNING_RATIO_NEAR) {
+        return RBF_PID_LEARNING_SCALE_NEAR;
     }
-    if (error_ratio <= 0.10f) {
-        return 0.25f;
+    if (error_ratio <= RBF_PID_LEARNING_RATIO_MID) {
+        return RBF_PID_LEARNING_SCALE_MID;
     }
     return 1.0f;
 }
 
-static void rbf_pid_step_adaptive_gains(RBF_PID_Handle *pid, float error) {
+static void rbf_pid_step_adaptive_gains(RBF_PID_Handle *pid, float error, float raw_error) {
     float de = error - pid->e_prev1;
     float dde = de - (pid->e_prev1 - pid->e_prev2);
-    float learning_scale = rbf_pid_target_relative_learning_scale(pid, error);
+    float learning_scale = rbf_pid_target_relative_learning_scale(pid, raw_error);
 
     if (pid->output_saturated &&
         ((pid->Output >= rbf_pid_compute_soft_flow_cap(pid) - 1.0e-6f && error > 0.0f) ||
@@ -230,21 +240,21 @@ static void rbf_pid_step_adaptive_gains(RBF_PID_Handle *pid, float error) {
         pid->max_KD);
 }
 
-static void rbf_pid_step_incremental_output(RBF_PID_Handle *pid, float error) {
+static void rbf_pid_step_incremental_output(RBF_PID_Handle *pid, float error, float raw_error) {
     float hard_limit = rbf_pid_max_flow_output(pid);
     float flow_cap = rbf_pid_compute_soft_flow_cap(pid);
     float output_limit = (flow_cap < hard_limit) ? flow_cap : hard_limit;
     float raw_d_term = error - 2.0f * pid->e_prev1 + pid->e_prev2;
     float du = pid->KP * (error - pid->e_prev1) + pid->KI * error + pid->KD * raw_d_term;
-    float actual_press = pid->P_set - error;
+    float actual_press = pid->P_actual;
     float f_delta_press = actual_press - pid->fLastActPress;
     float f_dd_press = f_delta_press - (pid->fLastActPress - pid->fLastActPress2);
     float setpoint_scale = clamp_positive_or_default(fabsf(pid->P_set), 1.0f);
-    float near_target = fabsf(error) <= 0.02f * setpoint_scale;
-    float f_uff = (pid->pressure_accel_ff_enabled && !near_target) ? (-0.15f * f_dd_press) : 0.0f;
+    float near_target = fabsf(raw_error) <= RBF_PID_NEAR_TARGET_RATIO * setpoint_scale;
+    float f_uff = (pid->pressure_accel_ff_enabled && !near_target) ? (RBF_PID_ACCEL_FF_GAIN * f_dd_press) : 0.0f;
     float ref_change = pid->P_set - pid->last_ref;
     float ref_rate = clampf(-10.0f, ref_change, 10.0f);
-    float dynamic_ff = near_target ? 0.0f : (0.01f * ref_rate);
+    float dynamic_ff = near_target ? 0.0f : (RBF_PID_DYNAMIC_FF_GAIN * ref_rate);
 
     du += dynamic_ff + f_uff;
 
@@ -316,16 +326,18 @@ void RBF_PID_Init(RBF_PID_Handle *pid, float sampling_period,
 }
 
 float RBF_PID_Update(RBF_PID_Handle *pid, float setpoint, float feedback) {
+    float raw_error;
     float error;
 
     pid->P_set = setpoint;
     pid->P_actual = feedback;
-    error = rbf_pid_apply_deadband(setpoint - feedback);
+    raw_error = setpoint - feedback;
+    error = rbf_pid_apply_deadband(raw_error);
     pid->Error = error;
 
     rbf_pid_step_rbf_nn(pid);
-    rbf_pid_step_adaptive_gains(pid, error);
-    rbf_pid_step_incremental_output(pid, error);
+    rbf_pid_step_adaptive_gains(pid, error, raw_error);
+    rbf_pid_step_incremental_output(pid, error, raw_error);
 
     pid->y_prev2 = pid->y_prev1;
     pid->y_prev1 = pid->P_actual;
