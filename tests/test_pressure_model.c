@@ -180,25 +180,28 @@ static int test_zero_speed_holds_zero_pressure(void) {
     return 1;
 }
 
-static int test_init_params_default_to_physical_mode(void) {
+static int test_init_params_default_to_first_order_tuning_contract(void) {
     PressureModelParams params;
     PressureModelState state;
-    PressureModelParams first_order_params = make_first_order_params(0.25f, 0.2f, 0.01f);
+    PressureModelOutput out;
 
+    memset(&out, 0, sizeof(out));
     PressureModel_InitParams(&params);
     PressureModel_Reset(&state, 0x51515151u);
 
-    ASSERT_TRUE(params.model_type == PRESSURE_MODEL_TYPE_PHYSICAL);
-    ASSERT_NEAR(params.first_order_k_bar_per_rpm, 0.0f, 1e-6f);
-    ASSERT_NEAR(params.first_order_tau_s, 0.2f, 1e-6f);
+    ASSERT_TRUE(params.model_type == PRESSURE_MODEL_TYPE_FIRST_ORDER);
+    ASSERT_NEAR(params.first_order_k_bar_per_rpm, 5.4f, 1e-6f);
+    ASSERT_NEAR(params.first_order_tau_s, 1.0f, 1e-6f);
     ASSERT_NEAR(params.first_order_delay_s, 0.0f, 1e-6f);
     ASSERT_TRUE(state.active_model_type == PRESSURE_MODEL_TYPE_PHYSICAL);
     ASSERT_NEAR(state.first_order_prev_pressure_bar, 0.0f, 1e-6f);
     ASSERT_TRUE(state.first_order_buffer_index == 0);
-    ASSERT_TRUE(first_order_params.model_type == PRESSURE_MODEL_TYPE_FIRST_ORDER);
-    ASSERT_NEAR(first_order_params.first_order_k_bar_per_rpm, 0.25f, 1e-6f);
-    ASSERT_NEAR(first_order_params.first_order_tau_s, 0.2f, 1e-6f);
-    ASSERT_NEAR(first_order_params.first_order_delay_s, 0.01f, 1e-6f);
+
+    PressureModel_Step(&params, &state, 100.0f, DT_S, &out);
+
+    ASSERT_TRUE(state.active_model_type == PRESSURE_MODEL_TYPE_FIRST_ORDER);
+    ASSERT_NEAR(out.measured_pressure_bar, out.real_pressure_bar, 1e-6f);
+    ASSERT_TRUE(out.real_pressure_bar > 0.0f);
 
     return 1;
 }
@@ -730,12 +733,12 @@ int main(void) {
         ++failed;
         printf("FAIL test_zero_speed_holds_zero_pressure\n");
     }
-    if (test_init_params_default_to_physical_mode()) {
+    if (test_init_params_default_to_first_order_tuning_contract()) {
         ++passed;
-        printf("PASS test_init_params_default_to_physical_mode\n");
+        printf("PASS test_init_params_default_to_first_order_tuning_contract\n");
     } else {
         ++failed;
-        printf("FAIL test_init_params_default_to_physical_mode\n");
+        printf("FAIL test_init_params_default_to_first_order_tuning_contract\n");
     }
 
     if (test_init_params_expose_open_loop_fit_knobs()) {
