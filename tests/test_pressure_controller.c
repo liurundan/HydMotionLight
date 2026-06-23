@@ -365,6 +365,7 @@ static void test_rbf_pid_strategy_uses_segment_level_tuning_profile(void) {
     segment.pressureRbfConfig.etaP = 0.11;
     segment.pressureRbfConfig.etaI = 0.12;
     segment.pressureRbfConfig.etaD = 0.13;
+    segment.pressureRbfConfig.disablePressureAccelFeedforward = 1.0;
 
     HYD_PressureController_InitState(&state, 5.0, segment.targetFlow, 0.0);
 
@@ -395,6 +396,7 @@ static void test_rbf_pid_strategy_uses_segment_level_tuning_profile(void) {
     assert(fabsf(state.rbfPid.eta_p - 0.11f) < 1e-6f);
     assert(fabsf(state.rbfPid.eta_i - 0.12f) < 1e-6f);
     assert(fabsf(state.rbfPid.eta_d - 0.13f) < 1e-6f);
+    assert(!state.rbfPid.pressure_accel_ff_enabled);
     assert(output.adaptiveKp >= 0.81 - 1e-6 && output.adaptiveKp <= 0.82 + 1e-6);
     assert(output.adaptiveKi >= 0.019 - 1e-6 && output.adaptiveKi <= 0.021 + 1e-6);
     assert(output.adaptiveKd >= 1.24 - 1e-6 && output.adaptiveKd <= 1.26 + 1e-6);
@@ -927,29 +929,26 @@ static HYD_MotionSegment make_rbf_pid_segment(HYD_REAL target_bar) {
     seg.endCondition = HYD_END_TIME;
     seg.direction = HYD_DIRECTION_HOLD;
     seg.targetPressure = target_bar;
-    seg.maxFlow = PLANT_PUMP_LIMIT / PLANT_GAIN;  /* 90 L/min */
+    seg.maxFlow = PLANT_PUMP_LIMIT / PLANT_GAIN;
     seg.duration = 10.0;
     seg.pressureController = HYD_PRESSURE_CONTROLLER_RBF_PID;
     seg.pressureCeiling = target_bar * 3.0;
     seg.pressureFilterAlpha = 1.0;
     seg.pressureDerivativeFilterAlpha = 1.0;
-    /* System physical gain for output compensation.
-     * Plant: T*dp/dt + p = K*u, K=5.4 bar/RPM, T=1.0s
-     * In flow space: u = flow * GAIN, so p = K * flow * GAIN = flow * systemGain
-     * systemGain = 5.4 * 20 = 108 bar/(L/min) */
-    seg.systemGain = PLANT_K * PLANT_GAIN;  /* 5.4 * 20 = 108 bar/(L/min) */
-    seg.pressureRbfConfig.minKp = 0.030;
-    seg.pressureRbfConfig.maxKp = 0.090;
-    seg.pressureRbfConfig.minKi = 0.0005;
-    seg.pressureRbfConfig.maxKi = 0.0040;
-    seg.pressureRbfConfig.minKd = 0.010;
-    seg.pressureRbfConfig.maxKd = 0.080;
-    seg.pressureRbfConfig.etaW = 0.005;
-    seg.pressureRbfConfig.etaC = 0.005;
-    seg.pressureRbfConfig.etaB = 0.005;
-    seg.pressureRbfConfig.etaP = 0.00025;
-    seg.pressureRbfConfig.etaI = 0.00025;
-    seg.pressureRbfConfig.etaD = 0.00025;
+    seg.systemGain = PLANT_K * PLANT_GAIN;
+    seg.pressureRbfConfig.minKp = 0.040;
+    seg.pressureRbfConfig.maxKp = 0.060;
+    seg.pressureRbfConfig.minKi = 0.0008;
+    seg.pressureRbfConfig.maxKi = 0.0016;
+    seg.pressureRbfConfig.minKd = 0.015;
+    seg.pressureRbfConfig.maxKd = 0.035;
+    seg.pressureRbfConfig.etaW = 0.0020;
+    seg.pressureRbfConfig.etaC = 0.0020;
+    seg.pressureRbfConfig.etaB = 0.0010;
+    seg.pressureRbfConfig.etaP = 0.00010;
+    seg.pressureRbfConfig.etaI = 0.00005;
+    seg.pressureRbfConfig.etaD = 0.00010;
+    seg.pressureRbfConfig.disablePressureAccelFeedforward = 1.0;
     return seg;
 }
 
