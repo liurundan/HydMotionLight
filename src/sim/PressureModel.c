@@ -177,9 +177,9 @@ void PressureModel_InitParams(PressureModelParams *params) {
     params->torque_bias = 400.0f;
     params->torque_from_pressure_gain = 110.0f;
     params->torque_from_speed_gain = 8.0f;
-    params->model_type = PRESSURE_MODEL_TYPE_PHYSICAL;
-    params->first_order_k_bar_per_rpm = 0.0f;
-    params->first_order_tau_s = 0.2f;
+    params->model_type = PRESSURE_MODEL_TYPE_FIRST_ORDER;
+    params->first_order_k_bar_per_rpm = 5.4f;
+    params->first_order_tau_s = 1.0f;
     params->first_order_delay_s = 0.0f;
     params->min_rpm = -100.0f;
     params->max_rpm = 2000.0f;
