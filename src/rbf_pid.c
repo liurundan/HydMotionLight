@@ -50,9 +50,9 @@ static void rbf_pid_apply_default_learning_rates(RBF_PID_Handle *pid) {
 }
 
 static void rbf_pid_apply_default_gains(RBF_PID_Handle *pid) {
-    pid->KP = 0.051f;
-    pid->KI = 0.0010f;
-    pid->KD = 0.030f;
+    pid->KP = 0.048f;
+    pid->KI = 0.0008f;
+    pid->KD = 0.020f;
 }
 
 static void rbf_pid_refresh_gain_compensation(RBF_PID_Handle *pid) {
@@ -189,13 +189,29 @@ static float rbf_pid_compute_soft_flow_cap(const RBF_PID_Handle *pid) {
         return hard_limit;
     }
 
-    return clampf(0.0f, (pid->P_set * 1.10f) / pid->K, hard_limit);
+    return clampf(0.0f, (pid->P_set * 1.05f) / pid->K, hard_limit);
+}
+
+static float rbf_pid_target_relative_learning_scale(const RBF_PID_Handle *pid, float error) {
+    float setpoint_scale = clamp_positive_or_default(fabsf(pid->P_set), 1.0f);
+    float error_ratio = fabsf(error) / setpoint_scale;
+
+    if (error_ratio <= 0.01f) {
+        return 0.02f;
+    }
+    if (error_ratio <= 0.05f) {
+        return 0.10f;
+    }
+    if (error_ratio <= 0.10f) {
+        return 0.25f;
+    }
+    return 1.0f;
 }
 
 static void rbf_pid_step_adaptive_gains(RBF_PID_Handle *pid, float error) {
     float de = error - pid->e_prev1;
     float dde = de - (pid->e_prev1 - pid->e_prev2);
-    float learning_scale = (fabsf(error) <= 1.0f) ? 0.20f : 1.0f;
+    float learning_scale = rbf_pid_target_relative_learning_scale(pid, error);
 
     if (pid->output_saturated &&
         ((pid->Output >= rbf_pid_compute_soft_flow_cap(pid) - 1.0e-6f && error > 0.0f) ||
@@ -223,10 +239,12 @@ static void rbf_pid_step_incremental_output(RBF_PID_Handle *pid, float error) {
     float actual_press = pid->P_set - error;
     float f_delta_press = actual_press - pid->fLastActPress;
     float f_dd_press = f_delta_press - (pid->fLastActPress - pid->fLastActPress2);
-    float f_uff = pid->pressure_accel_ff_enabled ? (-0.5f * f_dd_press) : 0.0f;
+    float setpoint_scale = clamp_positive_or_default(fabsf(pid->P_set), 1.0f);
+    float near_target = fabsf(error) <= 0.02f * setpoint_scale;
+    float f_uff = (pid->pressure_accel_ff_enabled && !near_target) ? (-0.15f * f_dd_press) : 0.0f;
     float ref_change = pid->P_set - pid->last_ref;
     float ref_rate = clampf(-10.0f, ref_change, 10.0f);
-    float dynamic_ff = 0.02f * ref_rate;
+    float dynamic_ff = near_target ? 0.0f : (0.01f * ref_rate);
 
     du += dynamic_ff + f_uff;
 

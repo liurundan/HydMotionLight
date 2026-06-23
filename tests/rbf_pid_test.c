@@ -7,6 +7,7 @@ static void test_flow_normalization_and_system_gain_soft_cap_are_configurable(vo
 static void test_flow_domain_output_is_independent_from_pump_gain(void);
 static void test_rbf_input_uses_causal_history_and_split_normalization(void);
 static void test_pressure_accel_feedforward_toggle_changes_incremental_output(void);
+static void test_target_relative_small_error_reduces_gain_drift(void);
 
 static void test_init_sets_ready_defaults(void) {
     RBF_PID_Handle pid;
@@ -22,9 +23,9 @@ static void test_init_sets_ready_defaults(void) {
     assert(fabsf(pid.flow_normalization_scale - 90.0f) < 1e-6f);
     assert(!pid.gain_compensation_enabled);
     assert(fabsf(pid.gain_compensation_factor - 1.0f) < 1e-6f);
-    assert(fabsf(pid.KP - 0.051f) < 1e-6f);
-    assert(fabsf(pid.KI - 0.0010f) < 1e-6f);
-    assert(fabsf(pid.KD - 0.030f) < 1e-6f);
+    assert(fabsf(pid.KP - 0.048f) < 1e-6f);
+    assert(fabsf(pid.KI - 0.0008f) < 1e-6f);
+    assert(fabsf(pid.KD - 0.020f) < 1e-6f);
     assert(fabsf(pid.Output) < 1e-6f);
     assert(fabsf(pid.u_prev) < 1e-6f);
     assert(fabsf(pid.e_prev1) < 1e-6f);
@@ -194,7 +195,7 @@ static void test_flow_normalization_and_system_gain_soft_cap_are_configurable(vo
     assert(fabsf(pid.gain_compensation_factor - 1.0f) < 1e-6f);
 
     output = RBF_PID_Update(&pid, 120.0f, 0.0f);
-    assert(output <= (120.0f * 1.10f / 60.0f) + 1e-3f);
+    assert(output <= (120.0f * 1.05f / 60.0f) + 1e-3f);
 
     RBF_PID_SetGainCompensation(&pid, 0.0f);
     assert(!pid.gain_compensation_enabled);
@@ -233,13 +234,13 @@ static void test_pressure_accel_feedforward_toggle_changes_incremental_output(vo
     RBF_PID_Init(&enabled, 0.001f, 90.0f, 1.0f);
     RBF_PID_Init(&disabled, 0.001f, 90.0f, 1.0f);
 
-    (void)RBF_PID_Update(&enabled, 100.0f, 98.0f);
-    (void)RBF_PID_Update(&disabled, 100.0f, 98.0f);
+    (void)RBF_PID_Update(&enabled, 100.0f, 70.0f);
+    (void)RBF_PID_Update(&disabled, 100.0f, 70.0f);
 
     RBF_PID_SetPressureAccelFeedforwardEnabled(&disabled, false);
 
-    out_enabled = RBF_PID_Update(&enabled, 100.0f, 101.0f);
-    out_disabled = RBF_PID_Update(&disabled, 100.0f, 101.0f);
+    out_enabled = RBF_PID_Update(&enabled, 100.0f, 60.0f);
+    out_disabled = RBF_PID_Update(&disabled, 100.0f, 60.0f);
 
     assert(fabsf(out_enabled - out_disabled) > 1e-5f);
     printf("✓ Pressure acceleration feedforward toggle test passed\n");
@@ -294,6 +295,35 @@ static void test_rbf_input_uses_causal_history_and_split_normalization(void) {
     printf("PASS RBF causal input vector test\n");
 }
 
+static void test_target_relative_small_error_reduces_gain_drift(void) {
+    RBF_PID_Handle pid;
+    float kp_before;
+    float ki_before;
+    float kd_before;
+    int step;
+
+    printf("Testing target-relative small-error learning restraint...\n");
+    RBF_PID_Init(&pid, 0.001f, 90.0f, 1.0f);
+    RBF_PID_SetParamLimits(&pid, 0.030f, 0.090f, 0.0005f, 0.0040f, 0.010f, 0.080f);
+
+    for (step = 0; step < 100; ++step) {
+        (void)RBF_PID_Update(&pid, 200.0f, 150.0f + (float)step * 0.4f);
+    }
+
+    kp_before = pid.KP;
+    ki_before = pid.KI;
+    kd_before = pid.KD;
+
+    for (step = 0; step < 200; ++step) {
+        (void)RBF_PID_Update(&pid, 200.0f, 198.5f);
+    }
+
+    assert(fabsf(pid.KP - kp_before) < 0.0025f);
+    assert(fabsf(pid.KI - ki_before) < 0.0003f);
+    assert(fabsf(pid.KD - kd_before) < 0.0030f);
+    printf("PASS target-relative small-error learning restraint test\n");
+}
+
 int main(void) {
     printf("Running RBF_PID tests...\n\n");
 
@@ -308,6 +338,7 @@ int main(void) {
     test_network_initialization_is_deterministic_without_seed_hookup();
     test_rbf_pid_negative_output();
     test_pressure_accel_feedforward_toggle_changes_incremental_output();
+    test_target_relative_small_error_reduces_gain_drift();
 
     printf("\n✅ All RBF_PID tests passed successfully!\n");
     return 0;
