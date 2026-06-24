@@ -524,6 +524,11 @@ int __HydMotion_framework_Init()
     return 0;
 }
 
+char* __HydMotion_framework_GetVersion()
+{
+	return (char*)HYD_VERSION_BUILD_TIME;
+}
+
 void __HydMotion_framework_Cleanup()
 {
     /* 当前无动态资源需要释放 */

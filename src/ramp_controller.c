@@ -8,6 +8,7 @@ void HYD_RampController_Init(HYD_RampController* controller, HYD_REAL initialPre
     controller->lastTimestamp = initialTime;
 }
 
+
 void HYD_RampController_Execute(HYD_RampController* controller, const HYD_RampControllerInput* input, HYD_RampControllerOutput* output) {
     if (controller == NULL || input == NULL || output == NULL) {
         return;
@@ -34,5 +35,6 @@ void HYD_RampController_Execute(HYD_RampController* controller, const HYD_RampCo
         controller->rampedPressure = input->targetPressure;
     }
 
-    output->rampedPressure = controller->rampedPressure;
+ //    output->rampedPressure = controller->rampedPressure;
+   output->rampedPressure = input->targetPressure;
 }

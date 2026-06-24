@@ -5,9 +5,6 @@
 #define HYD_LEGACY_PRESSURE_FLOW_KP 1.5
 #define HYD_DEFAULT_PRESSURE_FILTER_ALPHA 0.1
 #define HYD_DEFAULT_PRESSURE_DERIVATIVE_FILTER_ALPHA 0.05
-#define HYD_DEFAULT_RBF_PID_SAMPLING_PERIOD 0.001
-#define HYD_DEFAULT_RBF_LEARNING_RATE 0.005
-#define HYD_DEFAULT_PID_LEARNING_RATE 0.00025
 
 typedef struct {
     HYD_PressureControllerType strategy;
@@ -187,12 +184,12 @@ static void HYD_ResolveRbfPidConfig(const HYD_MotionSegment* segment,
     config->maxKi = (HYD_REAL)PID_MAX_KI;
     config->minKd = (HYD_REAL)PID_MIN_KD;
     config->maxKd = (HYD_REAL)PID_MAX_KD;
-    config->etaW = HYD_DEFAULT_RBF_LEARNING_RATE;
-    config->etaC = HYD_DEFAULT_RBF_LEARNING_RATE;
-    config->etaB = HYD_DEFAULT_RBF_LEARNING_RATE;
-    config->etaP = HYD_DEFAULT_PID_LEARNING_RATE;
-    config->etaI = HYD_DEFAULT_PID_LEARNING_RATE;
-    config->etaD = HYD_DEFAULT_PID_LEARNING_RATE;
+    config->etaW = (HYD_REAL)HYD_DEFAULT_RBF_W_LEARNING_RATE;
+    config->etaC = (HYD_REAL)HYD_DEFAULT_RBF_B_LEARNING_RATE;
+    config->etaB = (HYD_REAL)HYD_DEFAULT_RBF_C_LEARNING_RATE;
+    config->etaP = (HYD_REAL)HYD_DEFAULT_PID_P_LEARNING_RATE;
+    config->etaI = (HYD_REAL)HYD_DEFAULT_PID_I_LEARNING_RATE;
+    config->etaD = (HYD_REAL)HYD_DEFAULT_PID_D_LEARNING_RATE;
     config->disablePressureAccelFeedforward = false;
 
     if (segment == NULL) {
@@ -247,9 +244,10 @@ static void HYD_ResolvePressureControllerConfig(const HYD_MotionSegment* segment
     config->derivativeFilterAlpha = HYD_ResolveDerivativeFilterAlpha(segment);
     config->outputMin = (input != NULL) ? input->outputMin : 0.0;
     /* M4: 泄压目标下限钳位：防止过度泄压导致空穴 */
-    if (input != NULL && input->targetPressure < 5.0) {
+    if (input != NULL && input->targetPressure < 5.0 && input->measuredPressure < 1.0 ) {
         config->outputMin = 0.0; /* 目标压力 < 5 bar 时禁止负流量 */
     }
+
     config->outputMax = (input != NULL) ? input->outputMax : 0.0;
     if (config->outputMax < config->outputMin) {
         config->outputMax = config->outputMin;
@@ -484,6 +482,7 @@ void HYD_PressureController_Execute(const HYD_MotionSegment* segment,
     }
 
     HYD_ResolvePressureControllerConfig(segment, state, input, &config);
+
     filteredPressure = state->previousFilteredPressure +
         config.filterAlpha * (input->measuredPressure - state->previousFilteredPressure);
     filteredPressureRate = state->previousFilteredPressureRate;
@@ -539,10 +538,11 @@ void HYD_PressureController_Execute(const HYD_MotionSegment* segment,
         rawOutputFlow = (HYD_REAL)RBF_PID_Update(&state->rbfPid,
                                                  (float)effectiveTargetPressure,
                                                  (float)filteredPressure);
+
         outputFlow = HYD_ClampReal(rawOutputFlow, config.outputMin, config.outputMax);
 
         /* 负流量死区：仅当压力偏差 <= -2.0 bar（超压 >= 2 bar）时才允许负流量 */
-        if (config.outputMin < 0.0 && outputFlow < 0.0 && error > -2.0) {
+        if (config.outputMin < 0.0 && outputFlow < 0.0 && fabs(error) < 5.0) {
             outputFlow = 0.0; /* 小偏差时不使用负流量，防止0附近震荡 */
         }
 

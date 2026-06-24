@@ -18,12 +18,22 @@
 /* PID 参数限幅默认窗。
  * Task 2 要求初始化/复位恢复到确定性的内置窗口，后续可通过
  * RBF_PID_SetParamLimits() 覆盖。 */
-#define PID_MIN_KP          0.030f
-#define PID_MAX_KP          0.090f
-#define PID_MIN_KI          0.0005f
-#define PID_MAX_KI          0.0040f
-#define PID_MIN_KD          0.010f
-#define PID_MAX_KD          0.080f
+#define PID_MIN_KP          0.4f // 0.04
+#define PID_MAX_KP          0.6f // 0.06
+#define PID_MIN_KI          0.0008f // 0.0008
+#define PID_MAX_KI          0.0015f // 0.0016
+#define PID_MIN_KD          0.015f
+#define PID_MAX_KD          0.055f
+
+#define HYD_DEFAULT_RBF_W_LEARNING_RATE 0.002f
+#define HYD_DEFAULT_RBF_C_LEARNING_RATE 0.002f
+#define HYD_DEFAULT_RBF_B_LEARNING_RATE 0.002f
+#define HYD_DEFAULT_PID_P_LEARNING_RATE 0.0001f
+#define HYD_DEFAULT_PID_I_LEARNING_RATE 0.0001f
+#define HYD_DEFAULT_PID_D_LEARNING_RATE 0.0001f
+
+#define HYD_DEFAULT_RBF_PID_SAMPLING_PERIOD 0.001
+
 
 /* Task 3 增量控制输出限幅 */
 #define MIN_OUTPUT          -50.0f
@@ -113,7 +123,7 @@ typedef struct {
     float fLastActPress;            // 上一次压力反馈
     float fLastActPress2;           // 上上次压力反馈
     float last_ref;                 // 上一次设定值
-
+    float prev_d_term;                // 上一次微分项
     /* 网络初始化种子 */
     uint32_t network_seed;          // 兼容保留字段：当前仅存储，尚未接入网络初始化流程
 } RBF_PID_Handle;

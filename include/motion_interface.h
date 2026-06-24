@@ -524,6 +524,7 @@ extern int  __HydMotion_framework_Init();
 extern void __HydMotion_framework_Cleanup();
 extern void __HydMotion_framework_Retrieve();
 extern void __HydMotion_framework_Publish();
+extern char* __HydMotion_framework_GetVersion();
 
 extern void __mcl_cmd_CreateMotion(HYD_CREATEMOTION *data__);
 extern void __mcl_cmd_LoadProfile(HYD_LOADPROFILE *data__);
