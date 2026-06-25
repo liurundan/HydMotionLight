@@ -2,6 +2,9 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "common_types.h"
+#include "pump_converter.h"
+#include "pressure_controller.h"
 #include "fixtures/pressure_model_open_loop_reference.h"
 #include "pressure_model.h"
 
@@ -92,6 +95,22 @@ typedef struct {
     float tail_torque_trend;
 } PressureModelSectionSummary;
 
+typedef struct {
+    float peak_real_pressure_bar;
+    float tail_filtered_min_bar;
+    float tail_filtered_max_bar;
+} ClosedLoopPressureMetrics;
+
+typedef struct {
+    float target_bar;
+    int total_steps;
+    int tail_start_step;
+    float flow_to_speed_gain;
+    float pump_speed_limit_rpm;
+    PressureModelParams params;
+    HYD_MotionSegment segment;
+} ClosedLoopPressureCase;
+
 static void summarize_open_loop_section(const PressureModelParams *params,
                                         const PressureModelOpenLoopReference *reference,
                                         PressureModelSectionSummary *summary) {
@@ -168,6 +187,152 @@ static void summarize_open_loop_section(const PressureModelParams *params,
 
         summary->tail_tooth_span_bar = max_value - min_value;
         summary->tail_tooth_min_phase = ((float)min_index + 0.5f) / 26.0f;
+    }
+}
+
+static HYD_MotionSegment make_closed_loop_pressure_segment(float target_bar,
+                                                           float flow_to_speed_gain,
+                                                           float pump_speed_limit_rpm,
+                                                           float system_gain) {
+    HYD_MotionSegment segment;
+
+    memset(&segment, 0, sizeof(segment));
+    segment.mode = HYD_MODE_PRESSURE_CLOSED_LOOP;
+    segment.endCondition = HYD_END_TIME;
+    segment.direction = HYD_DIRECTION_HOLD;
+    segment.duration = 10.0;
+    segment.targetPressure = target_bar;
+    segment.maxFlow = pump_speed_limit_rpm / flow_to_speed_gain;
+    segment.pressureController = HYD_PRESSURE_CONTROLLER_RBF_PID;
+    segment.pressureCeiling = target_bar * 3.0f;
+    segment.pressureFilterAlpha = 1.0f;
+    segment.pressureDerivativeFilterAlpha = 1.0f;
+    segment.systemGain = system_gain;
+    segment.pressureRbfConfig.minKp = 0.040f;
+    segment.pressureRbfConfig.maxKp = 0.060f;
+    segment.pressureRbfConfig.minKi = 0.0008f;
+    segment.pressureRbfConfig.maxKi = 0.0016f;
+    segment.pressureRbfConfig.minKd = 0.015f;
+    segment.pressureRbfConfig.maxKd = 0.035f;
+    segment.pressureRbfConfig.etaW = 0.0020f;
+    segment.pressureRbfConfig.etaC = 0.0020f;
+    segment.pressureRbfConfig.etaB = 0.0010f;
+    segment.pressureRbfConfig.etaP = 0.00010f;
+    segment.pressureRbfConfig.etaI = 0.00005f;
+    segment.pressureRbfConfig.etaD = 0.00010f;
+    segment.pressureRbfConfig.disablePressureAccelFeedforward = 1.0f;
+
+    return segment;
+}
+
+static ClosedLoopPressureCase make_first_order_closed_loop_case(void) {
+    ClosedLoopPressureCase test_case;
+
+    memset(&test_case, 0, sizeof(test_case));
+    test_case.target_bar = 100.0f;
+    test_case.total_steps = 8000;
+    test_case.tail_start_step = 7000;
+    test_case.flow_to_speed_gain = 20.0f;
+    test_case.pump_speed_limit_rpm = 1800.0f;
+    test_case.params = make_first_order_params(5.4f, 1.0f, 0.0f);
+    test_case.segment = make_closed_loop_pressure_segment(test_case.target_bar,
+                                                          test_case.flow_to_speed_gain,
+                                                          test_case.pump_speed_limit_rpm,
+                                                          5.4f * test_case.flow_to_speed_gain);
+    return test_case;
+}
+
+static ClosedLoopPressureCase make_physical_closed_loop_case(void) {
+    ClosedLoopPressureCase test_case;
+
+    memset(&test_case, 0, sizeof(test_case));
+    test_case.target_bar = 100.0f;
+    test_case.total_steps = 30000;
+    test_case.tail_start_step = 29000;
+    test_case.flow_to_speed_gain = 20.0f;
+    test_case.pump_speed_limit_rpm = 1800.0f;
+    test_case.params = make_physical_params();
+    test_case.params.sensor_range_bar = 10000.0f;
+    test_case.params.flow_ripple_ratio = 0.0f;
+    test_case.params.tooth_drop_depth_ratio = 0.0f;
+    test_case.params.tooth_drop_depth_base = 0.0f;
+    test_case.segment = make_closed_loop_pressure_segment(test_case.target_bar,
+                                                          test_case.flow_to_speed_gain,
+                                                          test_case.pump_speed_limit_rpm,
+                                                          30.0f);
+    test_case.segment.pressureController = HYD_PRESSURE_CONTROLLER_PI;
+    test_case.segment.pressureFilterAlpha = 0.20f;
+    test_case.segment.pressureKp = 0.05f;
+    test_case.segment.pressureKi = 0.005f;
+    test_case.segment.pressureIntegralLimit = test_case.segment.maxFlow;
+    return test_case;
+}
+
+static float closed_loop_tail_filtered_p2p_bar(const ClosedLoopPressureMetrics *metrics) {
+    return metrics->tail_filtered_max_bar - metrics->tail_filtered_min_bar;
+}
+
+static void run_closed_loop_pressure_case(const ClosedLoopPressureCase *test_case,
+                                          ClosedLoopPressureMetrics *metrics) {
+    PressureModelState plant_state;
+    PressureModelOutput plant_out;
+    HYD_PressureControllerState controller_state;
+    HYD_PressureControllerInput input;
+    HYD_PressureControllerOutput output;
+    HYD_PumpConverterInput pump_input;
+    HYD_PumpConverterOutput pump_output;
+    int step;
+
+    memset(metrics, 0, sizeof(*metrics));
+    memset(&plant_out, 0, sizeof(plant_out));
+    memset(&input, 0, sizeof(input));
+    memset(&output, 0, sizeof(output));
+    memset(&pump_input, 0, sizeof(pump_input));
+    memset(&pump_output, 0, sizeof(pump_output));
+    metrics->tail_filtered_min_bar = 1.0e30f;
+    metrics->tail_filtered_max_bar = -1.0e30f;
+
+    PressureModel_Reset(&plant_state, 0x5a5a5a5au);
+    HYD_PressureController_InitState(&controller_state, 0.0, 0.0, 0.0);
+
+    for (step = 0; step < test_case->total_steps; ++step) {
+        input.targetPressure = test_case->target_bar;
+        input.measuredPressure = plant_out.measured_pressure_bar;
+        input.feedforwardFlow = 0.0;
+        input.outputMin = 0.0;
+        input.outputMax = test_case->segment.maxFlow;
+        input.flowToPumpSpeedGain = test_case->flow_to_speed_gain;
+        input.pumpSpeedLimit = test_case->pump_speed_limit_rpm;
+        input.timestamp = (HYD_REAL)((step + 1) * DT_S);
+
+        HYD_PressureController_Execute(&test_case->segment, &controller_state, &input, &output);
+
+        pump_input.requestedFlow = output.outputFlow;
+        pump_input.flowToPumpSpeedGain = input.flowToPumpSpeedGain;
+        pump_input.pumpSpeedLimit = input.pumpSpeedLimit;
+        pump_input.direction = test_case->segment.direction;
+        HYD_PumpConverter_Execute(&pump_input, &pump_output);
+
+        PressureModel_Step(&test_case->params,
+                           &plant_state,
+                           (float)pump_output.pumpSpeed,
+                           DT_S,
+                           &plant_out);
+
+        if (plant_out.real_pressure_bar > metrics->peak_real_pressure_bar) {
+            metrics->peak_real_pressure_bar = plant_out.real_pressure_bar;
+        }
+
+        if (step >= test_case->tail_start_step) {
+            float filtered_pressure_bar = (float)output.filteredPressure;
+
+            if (filtered_pressure_bar < metrics->tail_filtered_min_bar) {
+                metrics->tail_filtered_min_bar = filtered_pressure_bar;
+            }
+            if (filtered_pressure_bar > metrics->tail_filtered_max_bar) {
+                metrics->tail_filtered_max_bar = filtered_pressure_bar;
+            }
+        }
     }
 }
 
@@ -720,6 +885,50 @@ static int test_noise_control_is_repeatable_with_fixed_seed(void) {
     return 1;
 }
 
+static int test_physical_closed_loop_overshoot_within_five_percent_of_pset(void) {
+    ClosedLoopPressureCase test_case = make_physical_closed_loop_case();
+    ClosedLoopPressureMetrics metrics;
+
+    run_closed_loop_pressure_case(&test_case, &metrics);
+
+    ASSERT_TRUE(metrics.peak_real_pressure_bar <= test_case.target_bar * 1.05f);
+
+    return 1;
+}
+
+static int test_physical_closed_loop_steady_state_ripple_below_one_percent_of_pset(void) {
+    ClosedLoopPressureCase test_case = make_physical_closed_loop_case();
+    ClosedLoopPressureMetrics metrics;
+
+    run_closed_loop_pressure_case(&test_case, &metrics);
+
+    ASSERT_TRUE(closed_loop_tail_filtered_p2p_bar(&metrics) < test_case.target_bar * 0.01f);
+
+    return 1;
+}
+
+static int test_first_order_closed_loop_overshoot_within_five_percent_of_pset(void) {
+    ClosedLoopPressureCase test_case = make_first_order_closed_loop_case();
+    ClosedLoopPressureMetrics metrics;
+
+    run_closed_loop_pressure_case(&test_case, &metrics);
+
+    ASSERT_TRUE(metrics.peak_real_pressure_bar <= test_case.target_bar * 1.05f);
+
+    return 1;
+}
+
+static int test_first_order_closed_loop_steady_state_ripple_below_one_percent_of_pset(void) {
+    ClosedLoopPressureCase test_case = make_first_order_closed_loop_case();
+    ClosedLoopPressureMetrics metrics;
+
+    run_closed_loop_pressure_case(&test_case, &metrics);
+
+    ASSERT_TRUE(closed_loop_tail_filtered_p2p_bar(&metrics) < test_case.target_bar * 0.01f);
+
+    return 1;
+}
+
 static int test_legacy_pressure_update_keeps_motor_state_between_calls(void) {
     float pressure_state = 0.0f;
     float real_pressure0 = 0.0f;
@@ -924,6 +1133,38 @@ int main(void) {
     } else {
         ++failed;
         printf("FAIL test_noise_control_is_repeatable_with_fixed_seed\n");
+    }
+
+    if (test_physical_closed_loop_overshoot_within_five_percent_of_pset()) {
+        ++passed;
+        printf("PASS test_physical_closed_loop_overshoot_within_five_percent_of_pset\n");
+    } else {
+        ++failed;
+        printf("FAIL test_physical_closed_loop_overshoot_within_five_percent_of_pset\n");
+    }
+
+    if (test_physical_closed_loop_steady_state_ripple_below_one_percent_of_pset()) {
+        ++passed;
+        printf("PASS test_physical_closed_loop_steady_state_ripple_below_one_percent_of_pset\n");
+    } else {
+        ++failed;
+        printf("FAIL test_physical_closed_loop_steady_state_ripple_below_one_percent_of_pset\n");
+    }
+
+    if (test_first_order_closed_loop_overshoot_within_five_percent_of_pset()) {
+        ++passed;
+        printf("PASS test_first_order_closed_loop_overshoot_within_five_percent_of_pset\n");
+    } else {
+        ++failed;
+        printf("FAIL test_first_order_closed_loop_overshoot_within_five_percent_of_pset\n");
+    }
+
+    if (test_first_order_closed_loop_steady_state_ripple_below_one_percent_of_pset()) {
+        ++passed;
+        printf("PASS test_first_order_closed_loop_steady_state_ripple_below_one_percent_of_pset\n");
+    } else {
+        ++failed;
+        printf("FAIL test_first_order_closed_loop_steady_state_ripple_below_one_percent_of_pset\n");
     }
 
     if (test_legacy_pressure_update_keeps_motor_state_between_calls()) {

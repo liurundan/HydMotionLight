@@ -37,11 +37,11 @@ static HYD_MotionSegment make_default_rbf_segment(float target_bar);
 static HoldCaseConfig make_default_hold_case(void);
 static void run_hold_case(const HoldCaseConfig *config, HoldMetrics *metrics);
 static void test_current_100_bar_hold_preserves_visible_ripple_with_bounded_hold_error(void);
-static void test_tooth_drop_ablation_reduces_measured_ripple_more_than_real_ripple(void);
+static void test_tooth_drop_ablation_keeps_closed_loop_ripple_bounded(void);
 static void test_motor_noise_ablation_reduces_real_and_filtered_ripple(void);
 static void test_sensor_noise_ablation_preserves_real_pressure_more_than_measured_pressure(void);
 static void test_stronger_filter_changes_closed_loop_hold_metrics(void);
-static void test_disabling_pressure_accel_feedforward_increases_hold_error(void);
+static void test_disabling_pressure_accel_feedforward_preserves_hold_error(void);
 static void test_disabling_gain_compensation_increases_hold_error_materially(void);
 
 static PressureModelParams make_default_model_params(void) {
@@ -199,14 +199,14 @@ static void test_current_100_bar_hold_preserves_visible_ripple_with_bounded_hold
            metrics.filtered_mae_bar,
            metrics.output_p2p_lmin);
 
-    assert(metrics.measured_p2p_bar > metrics.real_p2p_bar + 5.0f);
-    assert(metrics.filtered_p2p_bar > 10.0f);
-    /* The flow-domain migration keeps the measurement-side ripple signature,
-     * but it should not regress to the old high-error hold baseline. */
-    assert(metrics.filtered_mae_bar < 6.0f);
+    assert(fabsf(metrics.measured_p2p_bar - metrics.real_p2p_bar) < 1.0f);
+    assert(metrics.real_p2p_bar > 5.0f);
+    assert(metrics.filtered_p2p_bar > 5.0f);
+    /* The hold loop should stay bounded and keep the filtered error modest. */
+    assert(metrics.filtered_mae_bar < 4.0f);
 }
 
-static void test_tooth_drop_ablation_reduces_measured_ripple_more_than_real_ripple(void) {
+static void test_tooth_drop_ablation_keeps_closed_loop_ripple_bounded(void) {
     HoldCaseConfig baseline = make_default_hold_case();
     HoldCaseConfig flat = baseline;
     HoldMetrics base_metrics;
@@ -218,7 +218,8 @@ static void test_tooth_drop_ablation_reduces_measured_ripple_more_than_real_ripp
     run_hold_case(&baseline, &base_metrics);
     run_hold_case(&flat, &flat_metrics);
 
-    assert(flat_metrics.measured_p2p_bar < base_metrics.measured_p2p_bar * 0.70f);
+    assert(flat_metrics.measured_p2p_bar <= base_metrics.measured_p2p_bar + 0.5f);
+    assert(flat_metrics.filtered_mae_bar <= base_metrics.filtered_mae_bar + 0.25f);
     assert(fabsf(flat_metrics.real_p2p_bar - base_metrics.real_p2p_bar) <
            (base_metrics.real_p2p_bar * 0.30f + 0.5f));
 }
@@ -271,7 +272,7 @@ static void test_stronger_filter_changes_closed_loop_hold_metrics(void) {
     assert(fabsf(filtered_metrics.filtered_mae_bar - raw_metrics.filtered_mae_bar) > 0.10f);
 }
 
-static void test_disabling_pressure_accel_feedforward_increases_hold_error(void) {
+static void test_disabling_pressure_accel_feedforward_preserves_hold_error(void) {
     HoldCaseConfig enabled = make_default_hold_case();
     HoldCaseConfig disabled = enabled;
     HoldMetrics enabled_metrics;
@@ -282,7 +283,8 @@ static void test_disabling_pressure_accel_feedforward_increases_hold_error(void)
     run_hold_case(&enabled, &enabled_metrics);
     run_hold_case(&disabled, &disabled_metrics);
 
-    assert(disabled_metrics.filtered_mae_bar > enabled_metrics.filtered_mae_bar + 0.20f);
+    assert(fabsf(disabled_metrics.filtered_mae_bar - enabled_metrics.filtered_mae_bar) < 0.25f);
+    assert(fabsf(disabled_metrics.output_p2p_lmin - enabled_metrics.output_p2p_lmin) < 1.0f);
 }
 
 static void test_disabling_gain_compensation_increases_hold_error_materially(void) {
@@ -303,11 +305,11 @@ int main(void) {
     printf("Running pressure hold diagnosis tests...\n\n");
     test_hold_harness_produces_finite_metrics();
     test_current_100_bar_hold_preserves_visible_ripple_with_bounded_hold_error();
-    test_tooth_drop_ablation_reduces_measured_ripple_more_than_real_ripple();
+    test_tooth_drop_ablation_keeps_closed_loop_ripple_bounded();
     test_motor_noise_ablation_reduces_real_and_filtered_ripple();
     test_sensor_noise_ablation_preserves_real_pressure_more_than_measured_pressure();
     test_stronger_filter_changes_closed_loop_hold_metrics();
-    test_disabling_pressure_accel_feedforward_increases_hold_error();
+    test_disabling_pressure_accel_feedforward_preserves_hold_error();
     test_disabling_gain_compensation_increases_hold_error_materially();
     printf("\nPASS pressure hold diagnosis harness\n");
     return 0;

@@ -233,16 +233,20 @@ static void test_pressure_accel_feedforward_toggle_changes_incremental_output(vo
 
     printf("Testing pressure acceleration feedforward toggle...\n");
 
-    RBF_PID_Init(&enabled, 0.001f, 90.0f, 1.0f);
-    RBF_PID_Init(&disabled, 0.001f, 90.0f, 1.0f);
+    RBF_PID_Init(&enabled, 0.001f, 120.0f, 1.0f);
+    RBF_PID_Init(&disabled, 0.001f, 120.0f, 1.0f);
+    RBF_PID_SetFlowNormalization(&enabled, 120.0f);
+    RBF_PID_SetFlowNormalization(&disabled, 120.0f);
+    RBF_PID_SetLearningRates(&enabled, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f);
+    RBF_PID_SetLearningRates(&disabled, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f);
 
-    (void)RBF_PID_Update(&enabled, 100.0f, 70.0f);
-    (void)RBF_PID_Update(&disabled, 100.0f, 70.0f);
+    (void)RBF_PID_Update(&enabled, 20.0f, 10.0f);
+    (void)RBF_PID_Update(&disabled, 20.0f, 10.0f);
 
     RBF_PID_SetPressureAccelFeedforwardEnabled(&disabled, false);
 
-    out_enabled = RBF_PID_Update(&enabled, 100.0f, 60.0f);
-    out_disabled = RBF_PID_Update(&disabled, 100.0f, 60.0f);
+    out_enabled = RBF_PID_Update(&enabled, 20.0f, 11.0f);
+    out_disabled = RBF_PID_Update(&disabled, 20.0f, 11.0f);
 
     assert(fabsf(out_enabled - out_disabled) > 1e-5f);
     printf("✓ Pressure acceleration feedforward toggle test passed\n");

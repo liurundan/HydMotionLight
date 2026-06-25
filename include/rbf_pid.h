@@ -18,26 +18,33 @@
 /* PID 参数限幅默认窗。
  * Task 2 要求初始化/复位恢复到确定性的内置窗口，后续可通过
  * RBF_PID_SetParamLimits() 覆盖。 */
-#define PID_MIN_KP          0.4f // 0.04
-#define PID_MAX_KP          0.6f // 0.06
+#define PID_MIN_KP          0.04f
+#define PID_MAX_KP          0.06f
 #define PID_MIN_KI          0.0008f // 0.0008
-#define PID_MAX_KI          0.0015f // 0.0016
+#define PID_MAX_KI          0.0016f
 #define PID_MIN_KD          0.015f
-#define PID_MAX_KD          0.055f
+#define PID_MAX_KD          0.035f
 
-#define HYD_DEFAULT_RBF_W_LEARNING_RATE 0.002f
-#define HYD_DEFAULT_RBF_C_LEARNING_RATE 0.002f
-#define HYD_DEFAULT_RBF_B_LEARNING_RATE 0.002f
-#define HYD_DEFAULT_PID_P_LEARNING_RATE 0.0001f
-#define HYD_DEFAULT_PID_I_LEARNING_RATE 0.0001f
-#define HYD_DEFAULT_PID_D_LEARNING_RATE 0.0001f
+#define HYD_DEFAULT_RBF_W_LEARNING_RATE 0.005f
+#define HYD_DEFAULT_RBF_C_LEARNING_RATE 0.005f
+#define HYD_DEFAULT_RBF_B_LEARNING_RATE 0.005f
+#define HYD_DEFAULT_PID_P_LEARNING_RATE 0.00025f
+#define HYD_DEFAULT_PID_I_LEARNING_RATE 0.00025f
+#define HYD_DEFAULT_PID_D_LEARNING_RATE 0.00025f
 
 #define HYD_DEFAULT_RBF_PID_SAMPLING_PERIOD 0.001
 
 
 /* Task 3 增量控制输出限幅 */
-#define MIN_OUTPUT          -50.0f
+#define MIN_OUTPUT          -5.0f
 #define MAX_PRESSURE        250.0f
+
+typedef enum {
+    RBF_PID_CONTROL_STATE_INIT = 0,
+    RBF_PID_CONTROL_STATE_BOOST,
+    RBF_PID_CONTROL_STATE_HOLD,
+    RBF_PID_CONTROL_STATE_RELIEF
+} RBF_PID_ControlState;
 
 /**
  * @brief RBF-PID控制器状态结构体
@@ -50,6 +57,8 @@ typedef struct {
     float sampling_period;          // 采样时间(s)
     float fMaxFlow;                 // 最大泵流量 [L/min]
     float fFlowRateLimit;           // 兼容配置：保留流量限幅比例 [0,1]
+    float output_min_flow;          // 输出下限 [L/min]，0 表示使用物理默认值
+    float output_max_flow;          // 输出上限 [L/min]，0 表示按 fMaxFlow/fFlowRateLimit 推导
 
     /* 压力归一化标量（MPa 等设定/反馈单位的满量程）.
      * 0 或负值 -> 落回内置默认 MAX_PRESSURE. 调用 RBF_PID_SetPressureNormalization()
@@ -115,6 +124,7 @@ typedef struct {
     int32_t steady_count;
     bool steady_state;
     bool output_saturated;
+    RBF_PID_ControlState control_state;
     float y_prev1;
     float y_prev2;
     float last_rbf_input[RBF_INPUT_DIM];

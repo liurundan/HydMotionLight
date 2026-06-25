@@ -243,8 +243,10 @@ static void HYD_ResolvePressureControllerConfig(const HYD_MotionSegment* segment
     config->filterAlpha = HYD_ResolveFilterAlpha(segment);
     config->derivativeFilterAlpha = HYD_ResolveDerivativeFilterAlpha(segment);
     config->outputMin = (input != NULL) ? input->outputMin : 0.0;
-    /* M4: 泄压目标下限钳位：防止过度泄压导致空穴 */
-    if (input != NULL && input->targetPressure < 5.0 && input->measuredPressure < 1.0 ) {
+    /* M4: 泄压目标下限钳位：仅在目标压和反馈压都进入低压区时禁止负流量 */
+    if (input != NULL &&
+        input->targetPressure < 5.0 &&
+        input->measuredPressure < 5.0) {
         config->outputMin = 0.0; /* 目标压力 < 5 bar 时禁止负流量 */
     }
 
@@ -301,6 +303,8 @@ static void HYD_EnsureRbfPidInitialized(HYD_PressureControllerState* state,
     state->rbfPid.sampling_period = (float)samplingPeriod;
     state->rbfPid.fMaxFlow = fMaxFlow;
     state->rbfPid.fFlowRateLimit = fFlowRateLimit;
+    state->rbfPid.output_min_flow = (float)MIN_OUTPUT;
+    state->rbfPid.output_max_flow = (float)resolvedOutputMax;
 }
 
 static void HYD_ApplyRbfPidConfig(HYD_PressureControllerState* state,
@@ -314,6 +318,8 @@ static void HYD_ApplyRbfPidConfig(HYD_PressureControllerState* state,
 
     HYD_EnsureRbfPidInitialized(state, config->samplingPeriod, config->outputMax,
                                 flowToPumpSpeedGain, pumpSpeedLimit);
+    state->rbfPid.output_min_flow = (float)config->outputMin;
+    state->rbfPid.output_max_flow = (float)config->outputMax;
     RBF_PID_SetParamLimits(&state->rbfPid,
                            (float)config->rbf.minKp,
                            (float)config->rbf.maxKp,

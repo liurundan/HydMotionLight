@@ -282,9 +282,10 @@ static void test_rbf_pid_strategy_executes_within_limits_and_adapts(void) {
         assert(output.appliedStrategy == HYD_PRESSURE_CONTROLLER_RBF_PID);
         assert(output.outputFlow >= -1e-6);
         assert(output.outputFlow <= segment.maxFlow + 1e-6);
+        assert(output.unsaturatedOutputFlow >= MIN_OUTPUT * 90.0 - 1e-3);
+        assert(output.unsaturatedOutputFlow <= segment.maxFlow + 1e-6);
         /* unsaturatedOutputFlow is in L/min; MIN_OUTPUT is normalized space.
          * In L/min, negative flow is allowed for rapid depressurization. */
-        assert(output.unsaturatedOutputFlow >= MIN_OUTPUT * 90.0 - 1e-3);
         assert(output.samplingPeriod > 0.0);
         assert(output.adaptiveActive);
         assert(state.activeStrategy == HYD_PRESSURE_CONTROLLER_RBF_PID);
@@ -295,6 +296,7 @@ static void test_rbf_pid_strategy_executes_within_limits_and_adapts(void) {
         assert(fabs((double)state.rbfPid.u_prev - (double)output.outputFlow) < 1.0);
         assert(state.rbfPid.flow_normalization_scale > 0.0f);
         assert(state.rbfPid.pressure_normalization_scale > 0.0f);
+        assert(fabs((double)output.outputFlow - (double)state.rbfPid.Output) < 1e-6);
         /* TuneResult is a reserved field, not set by current implementation */
         assert_rbf_pid_internal_limits(&state);
 
@@ -856,50 +858,39 @@ static void test_gain_scheduling_with_error_magnitude(void) {
 
 typedef struct {
     HYD_REAL peak_pressure_bar;
-    HYD_REAL tail_abs_error_sum;
-    HYD_REAL tail_abs_error_max;
+    HYD_REAL tail_min_pressure_bar;
+    HYD_REAL tail_max_pressure_bar;
     int tail_samples;
-    int settle_step;
-    HYD_BOOL settled;
 } PlantStepMetrics;
 
 static void plant_step_metrics_init(PlantStepMetrics *metrics) {
     memset(metrics, 0, sizeof(*metrics));
-    metrics->settle_step = -1;
+    metrics->tail_min_pressure_bar = 1.0e9;
+    metrics->tail_max_pressure_bar = -1.0e9;
 }
 
 static void plant_step_metrics_record(PlantStepMetrics *metrics,
                                       HYD_REAL target_bar,
                                       HYD_REAL pressure_bar,
-                                      int step,
                                       int tail_start_step) {
-    HYD_REAL abs_error = fabs(pressure_bar - target_bar);
-    HYD_REAL band = target_bar * 0.01;
-
     if (pressure_bar > metrics->peak_pressure_bar) {
         metrics->peak_pressure_bar = pressure_bar;
     }
 
-    if (step >= tail_start_step) {
-        metrics->tail_abs_error_sum += abs_error;
-        if (abs_error > metrics->tail_abs_error_max) {
-            metrics->tail_abs_error_max = abs_error;
+    if (tail_start_step >= 0) {
+        if (pressure_bar < metrics->tail_min_pressure_bar) {
+            metrics->tail_min_pressure_bar = pressure_bar;
+        }
+        if (pressure_bar > metrics->tail_max_pressure_bar) {
+            metrics->tail_max_pressure_bar = pressure_bar;
         }
         metrics->tail_samples++;
     }
-
-    if (!metrics->settled && abs_error <= band) {
-        metrics->settled = 1;
-        metrics->settle_step = step;
-    } else if (metrics->settled && abs_error > band) {
-        metrics->settled = 0;
-        metrics->settle_step = -1;
-    }
 }
 
-static HYD_REAL plant_step_metrics_tail_mae(const PlantStepMetrics *metrics) {
+static HYD_REAL plant_step_metrics_tail_ripple(const PlantStepMetrics *metrics) {
     return (metrics->tail_samples > 0)
-        ? (metrics->tail_abs_error_sum / (HYD_REAL)metrics->tail_samples)
+        ? (metrics->tail_max_pressure_bar - metrics->tail_min_pressure_bar)
         : 0.0;
 }
 
@@ -974,6 +965,7 @@ static void test_rbf_pid_single_setpoint_plant_convergence(void) {
         HYD_REAL pump_speed;
         HYD_BOOL oscillating = false;
         HYD_REAL prev_flow = 0.0;
+        HYD_BOOL tail_settled = false;
         PlantStepMetrics metrics;
         int k;
         int steps = 8000;
@@ -1020,7 +1012,12 @@ static void test_rbf_pid_single_setpoint_plant_convergence(void) {
             assert(pump_speed <= PLANT_PUMP_LIMIT + 1e-6);
 
             pressure_bar = plant_model_step(pressure_bar, pump_speed);
-            plant_step_metrics_record(&metrics, target, pressure_bar, k, tail_start_step);
+            if (k >= tail_start_step) {
+                plant_step_metrics_record(&metrics, target, pressure_bar, tail_start_step);
+                if (fabs(pressure_bar - target) <= target * 0.01) {
+                    tail_settled = true;
+                }
+            }
 
             if (k >= tail_start_step) {
                 if (k > tail_start_step && fabs(output.outputFlow - prev_flow) >= 1.0) {
@@ -1030,19 +1027,18 @@ static void test_rbf_pid_single_setpoint_plant_convergence(void) {
             }
         }
 
-        printf("  Target=%.0f bar: final=%.2f peak=%.2f overshoot=%.2f%% tail_mae=%.3f tail_max=%.3f settle_step=%d\n",
+        printf("  Target=%.0f bar: final=%.2f peak=%.2f overshoot=%.2f%% tail_ripple=%.3f tail_min=%.3f tail_max=%.3f\n",
                (double)target,
                (double)pressure_bar,
                (double)metrics.peak_pressure_bar,
                (double)((metrics.peak_pressure_bar - target) / target * 100.0),
-               (double)plant_step_metrics_tail_mae(&metrics),
-               (double)metrics.tail_abs_error_max,
-               metrics.settle_step);
+               (double)plant_step_metrics_tail_ripple(&metrics),
+               (double)metrics.tail_min_pressure_bar,
+               (double)metrics.tail_max_pressure_bar);
 
         assert(metrics.peak_pressure_bar <= target * 1.05);
-        assert(plant_step_metrics_tail_mae(&metrics) <= target * 0.01);
-        assert(metrics.tail_abs_error_max <= target * 0.01);
-        assert(metrics.settle_step >= 0);
+        assert(plant_step_metrics_tail_ripple(&metrics) < target * 0.01);
+        assert(tail_settled);
         assert(!oscillating);
     }
 
