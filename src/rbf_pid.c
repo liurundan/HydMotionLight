@@ -4,7 +4,7 @@
 #include <math.h>
 #include <string.h>
 
-static const float RBF_PID_ERROR_DEADBAND = 0.05f;
+static const float RBF_PID_ERROR_DEADBAND = 0.0005f;
 static const float RBF_PID_SOFT_CAP_RATIO = 1.05f;
 static const float RBF_PID_LEARNING_RATIO_TIGHT = 0.01f;
 static const float RBF_PID_LEARNING_RATIO_NEAR = 0.05f;
@@ -92,7 +92,7 @@ static void rbf_pid_apply_default_learning_rates(RBF_PID_Handle *pid) {
 }
 
 static void rbf_pid_apply_default_gains(RBF_PID_Handle *pid) {
-    pid->KP = 0.048f;
+    pid->KP = 0.04f;
     pid->KI = PID_MIN_KI;
     pid->KD = 0.020f;
 }
@@ -316,9 +316,8 @@ static void rbf_pid_step_incremental_output(RBF_PID_Handle *pid, float error, fl
     if (soft_output_max > output_max) {
         soft_output_max = output_max;
     }
-    float dt = clamp_positive_or_default(pid->sampling_period, HYD_DEFAULT_RBF_PID_SAMPLING_PERIOD);
-    float inv_dt = 1.0f / dt;
-    float raw_d_term = (error - 2.0f * pid->e_prev1 + pid->e_prev2) * inv_dt;
+
+    float raw_d_term = (error - 2.0f * pid->e_prev1 + pid->e_prev2);
     float flt_alpha = HYD_THRESH_RBF_DERIV_FILTER_ALPHA;
     float d_term = flt_alpha * raw_d_term + (1.0f - flt_alpha) * pid->prev_d_term;
     pid->prev_d_term = d_term;
@@ -332,7 +331,7 @@ static void rbf_pid_step_incremental_output(RBF_PID_Handle *pid, float error, fl
     float last_press_n = pid->fLastActPress / pressure_scale;
     float last_press2_n = pid->fLastActPress2 / pressure_scale;
     float f_delta_press = actual_press_n - last_press_n;
-    float f_dd_press = (f_delta_press - (last_press_n - last_press2_n)) * inv_dt;
+    float f_dd_press = f_delta_press - (last_press_n - last_press2_n);
     bool near_target = fabsf(raw_error) <= RBF_PID_NEAR_TARGET_RATIO * setpoint_scale;
     bool boost_or_relief = (pid->control_state == RBF_PID_CONTROL_STATE_BOOST) ||
         (pid->control_state == RBF_PID_CONTROL_STATE_RELIEF);
@@ -343,7 +342,7 @@ static void rbf_pid_step_incremental_output(RBF_PID_Handle *pid, float error, fl
         ? (RBF_PID_ACCEL_FF_GAIN * f_dd_press) : 0.0f;
 
     float ref_change = pid->P_set - pid->last_ref;
-    float ref_rate = clampf(-10.0f, ref_change * inv_dt, 10.0f);
+    float ref_rate = clampf(-10.0f, ref_change, 10.0f);
     float dynamic_ff = (pid->control_state == RBF_PID_CONTROL_STATE_HOLD)
         ? 0.0f
         : (RBF_PID_DYNAMIC_FF_GAIN * ref_rate);
