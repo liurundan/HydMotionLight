@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "motion_planner.h"
+#include "segment_limits.h"
 
 static HYD_AxisRef create_test_axis_ref(HYD_REAL position) {
     HYD_AxisRef axisRef = {0};
@@ -880,6 +881,45 @@ static void test_position_based_online_trapezoid_direction_reversal_is_continuou
     printf("✓ Position-based online trapezoid direction reversal continuity test passed\n");
 }
 
+static void test_position_based_online_trapezoid_lower_maxvelocity_decelerates_continuously(void) {
+    HYD_AxisRef axisRef;
+    HYD_MotionSegment segment;
+    HYD_MotionPlannerState state;
+    HYD_MotionPlannerInput input;
+    HYD_MotionPlannerOutput output;
+
+    printf("Testing position-based online trapezoid lower maxVelocity continuity...\n");
+
+    memset(&state, 0, sizeof(state));
+    state.initialized = true;
+    state.lastTargetVelocity = 20.0;
+    axisRef = create_test_axis_ref(10.0);
+    axisRef.velocity = 20.0;
+
+    segment = create_test_segment();
+    segment.planner = HYD_PLANNER_POSITION_BASED;
+    segment.direction = HYD_DIRECTION_EXTEND;
+    segment.targetPosition = 1000.0;
+    segment.maxVelocity = 10.0;
+    segment.maxAcceleration = 200.0;
+    segment.maxDeceleration = 5.0;
+    segment.maxFlow = 500.0;
+
+    memset(&input, 0, sizeof(input));
+    input.axisRef = &axisRef;
+    input.segment = &segment;
+    input.deltaTime = 0.1;
+    input.elapsedTime = 0.1;
+    input.state = &state;
+
+    HYD_MotionPlanner_Execute(&input, &output);
+
+    assert(output.targetVelocity < 20.0);
+    assert(output.targetVelocity > 10.0);
+    assert(fabs(output.targetVelocity - 19.5) < 0.001);
+    printf("✓ Position-based online trapezoid lower maxVelocity continuity test passed\n");
+}
+
 static void test_position_based_blend_terminal_velocity_inside_tolerance(void) {
     HYD_AxisRef axisRef;
     HYD_MotionSegment segment;
@@ -1106,6 +1146,7 @@ int main(void) {
     test_position_based_online_trapezoid_auto_direction_decelerates_inside_tolerance();
     test_position_based_explicit_hold_stays_zero_with_previous_velocity();
     test_position_based_online_trapezoid_direction_reversal_is_continuous();
+    test_position_based_online_trapezoid_lower_maxvelocity_decelerates_continuously();
     test_position_based_blend_terminal_velocity_inside_tolerance();
     test_position_based_blend_terminal_velocity_cap();
     test_resolve_direction_current_inherits_positive();

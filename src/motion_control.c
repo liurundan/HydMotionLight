@@ -519,9 +519,12 @@ static HYD_BOOL HYD_ApplyLiveUpdateOverrides(const HYD_LiveUpdateRequest* reques
             return false;
         }
         seg->maxVelocity = request->maxVelocity;
-        seg->maxFlow = (request->maxVelocity > 0.0f)
-            ? request->maxVelocity * seg->velocityToFlowGain
-            : seg->maxFlow;
+        if (request->maxVelocity > 0.0f) {
+            HYD_REAL derivedFlow = request->maxVelocity * seg->velocityToFlowGain;
+            if (derivedFlow > seg->maxFlow) {
+                seg->maxFlow = derivedFlow;
+            }
+        }
     }
 
     if ((request->flags & HYD_LIVE_UPDATE_ACCELERATION) != 0U) {

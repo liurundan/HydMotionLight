@@ -739,6 +739,123 @@ static void test_movevelocity_accepts_continuousupdate_and_updates_active_target
                "MoveVelocity continuous update should update active maxVelocity");
 }
 
+static void test_movevelocity_continuousupdate_lower_target_preserves_ramp(void) {
+    HYD_MOVEVELOCITY mv;
+    HYD_MotionControlFB* fb;
+    HYD_REAL previousVelocity;
+    HYD_REAL previousFlow;
+    int axisId;
+    int step;
+
+    __HydMotion_framework_Init();
+    axisId = create_sim_axis();
+    fb = __MK_GetPublic_MotionControlFB(axisId);
+    memset(&mv, 0, sizeof(mv));
+
+    IEC_VAL(mv.EN) = true;
+    IEC_VAL(mv.EXECUTE) = true;
+    mv.EXECUTE0.value = false;
+    IEC_VAL(mv.AXISID) = axisId;
+    IEC_VAL(mv.VELOCITY) = 60.0f;
+    IEC_VAL(mv.ACCELERATION) = 1000.0f;
+    IEC_VAL(mv.DECELERATION) = 10.0f;
+    IEC_VAL(mv.DIRECTION) = 1;
+    IEC_VAL(mv.CONTINUOUSUPDATE) = true;
+
+    __mcl_cmd_MoveVelocity(&mv);
+    __HydMotion_framework_Publish();
+    mv.EXECUTE0.value = true;
+    __mcl_cmd_MoveVelocity(&mv);
+
+    for (step = 0; step < 200; ++step) {
+        __HydMotion_framework_Publish();
+        __mcl_cmd_MoveVelocity(&mv);
+        if (fb->STATE.plannedVelocity >= 55.0f) {
+            break;
+        }
+    }
+
+    ASSERT_TRUE(step < 200,
+               "MoveVelocity should accelerate near the original target before live update");
+
+    previousVelocity = fb->STATE.plannedVelocity;
+    previousFlow = fb->STATE.plannedFlow;
+
+    IEC_VAL(mv.VELOCITY) = 30.0f;
+    __mcl_cmd_MoveVelocity(&mv);
+
+    __HydMotion_framework_Publish();
+    __mcl_cmd_MoveVelocity(&mv);
+
+    ASSERT_TRUE(fb->STATE.plannedVelocity < previousVelocity,
+               "MoveVelocity lower target should begin decelerating");
+    ASSERT_TRUE(fb->STATE.plannedVelocity > 50.0f,
+               "MoveVelocity lower target should stay above the new target on the first decel cycle");
+    ASSERT_TRUE(fb->STATE.plannedFlow > 10.0f,
+               "MoveVelocity lower target should not clamp flow to the new steady-state value immediately");
+    ASSERT_TRUE(fb->STATE.plannedFlow < previousFlow,
+               "MoveVelocity lower target should still reduce flow");
+}
+
+static void test_moveabsolute_continuousupdate_lower_velocity_preserves_ramp(void) {
+    HYD_MOVEABSOLUTE ma;
+    HYD_MotionControlFB* fb;
+    HYD_REAL previousVelocity;
+    HYD_REAL previousFlow;
+    int axisId;
+    int step;
+
+    __HydMotion_framework_Init();
+    axisId = create_sim_axis();
+    fb = __MK_GetPublic_MotionControlFB(axisId);
+    memset(&ma, 0, sizeof(ma));
+
+    IEC_VAL(ma.EN) = true;
+    IEC_VAL(ma.EXECUTE) = true;
+    ma.EXECUTE0.value = false;
+    IEC_VAL(ma.AXISID) = axisId;
+    IEC_VAL(ma.POSITION) = 10000.0f;
+    IEC_VAL(ma.VELOCITY) = 60.0f;
+    IEC_VAL(ma.ACCELERATION) = 1000.0f;
+    IEC_VAL(ma.DECELERATION) = 10.0f;
+    IEC_VAL(ma.DIRECTION) = 1;
+    IEC_VAL(ma.CONTINUOUSUPDATE) = true;
+
+    __mcl_cmd_MoveAbsolute(&ma);
+    __HydMotion_framework_Publish();
+    ma.EXECUTE0.value = true;
+    __mcl_cmd_MoveAbsolute(&ma);
+
+    for (step = 0; step < 200; ++step) {
+        __HydMotion_framework_Publish();
+        __mcl_cmd_MoveAbsolute(&ma);
+        if (fb->STATE.plannedVelocity >= 55.0f) {
+            break;
+        }
+    }
+
+    ASSERT_TRUE(step < 200,
+               "MoveAbsolute should accelerate near the original target before live update");
+
+    previousVelocity = fb->STATE.plannedVelocity;
+    previousFlow = fb->STATE.plannedFlow;
+
+    IEC_VAL(ma.VELOCITY) = 30.0f;
+    __mcl_cmd_MoveAbsolute(&ma);
+
+    __HydMotion_framework_Publish();
+    __mcl_cmd_MoveAbsolute(&ma);
+
+    ASSERT_TRUE(fb->STATE.plannedVelocity < previousVelocity,
+               "MoveAbsolute lower velocity should begin decelerating");
+    ASSERT_TRUE(fb->STATE.plannedVelocity > 50.0f,
+               "MoveAbsolute lower velocity should stay above the new target on the first decel cycle");
+    ASSERT_TRUE(fb->STATE.plannedFlow > 10.0f,
+               "MoveAbsolute lower velocity should not clamp flow to the new steady-state value immediately");
+    ASSERT_TRUE(fb->STATE.plannedFlow < previousFlow,
+               "MoveAbsolute lower velocity should still reduce flow");
+}
+
 static void test_moveabsolute_accepts_beckhoff_buffer_modes(void) {
     HYD_MOVEABSOLUTE ma;
     int mode;
@@ -2673,6 +2790,8 @@ int main(void) {
     test_loadprofile_keeps_recipe_preload_target_after_direct_override();
     test_moveabsolute_rejects_nonzero_jerk_until_supported();
     test_movevelocity_accepts_continuousupdate_and_updates_active_target();
+    test_movevelocity_continuousupdate_lower_target_preserves_ramp();
+    test_moveabsolute_continuousupdate_lower_velocity_preserves_ramp();
     test_moveabsolute_accepts_beckhoff_buffer_modes();
     test_movevelocity_execute_rising_starts_velocity_control();
     test_movevelocity_rejects_invalid_axis_index();

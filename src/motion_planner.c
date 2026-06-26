@@ -378,6 +378,7 @@ static HYD_REAL HYD_ComputePositionModeVelocityMagnitude(const HYD_MotionPlanner
     HYD_REAL remainingDistance;
     HYD_REAL brakeVelocityMagnitude;
     HYD_REAL rampVelocityMagnitude;
+    HYD_REAL previousMagnitude;
     HYD_REAL brakingAcceleration;
 
     if (input == NULL || input->segment == NULL || input->axisRef == NULL) {
@@ -389,9 +390,24 @@ static HYD_REAL HYD_ComputePositionModeVelocityMagnitude(const HYD_MotionPlanner
     brakeVelocityMagnitude = HYD_ComputePositionBasedVelocityMagnitude(remainingDistance,
                                                                        brakingAcceleration,
                                                                        input->segment->maxVelocity);
+    previousMagnitude = 0.0;
+    if (input->state != NULL && input->state->initialized) {
+        previousMagnitude = fabs(input->state->lastTargetVelocity);
+    }
 
     if (input->segment->planner == HYD_PLANNER_POSITION_BASED) {
-        return HYD_ComputeOnlineTrapezoidVelocityMagnitude(input, direction);
+        rampVelocityMagnitude = HYD_ComputeOnlineTrapezoidVelocityMagnitude(input, direction);
+        if (input->deltaTime > 0.0 &&
+            previousMagnitude > input->segment->maxVelocity &&
+            rampVelocityMagnitude >= input->segment->maxVelocity &&
+            previousMagnitude > rampVelocityMagnitude) {
+            rampVelocityMagnitude = HYD_ApplyVelocityRateLimit(previousMagnitude,
+                                                               rampVelocityMagnitude,
+                                                               input->segment->maxAcceleration,
+                                                               brakingAcceleration,
+                                                               input->deltaTime);
+        }
+        return rampVelocityMagnitude;
     }
 
     rampVelocityMagnitude = HYD_ComputeTimeBasedVelocityMagnitude(input->elapsedTime,
