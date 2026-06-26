@@ -161,8 +161,7 @@ static void rbf_pid_step_rbf_nn(RBF_PID_Handle *pid) {
     float x[RBF_INPUT_DIM] = {
         pid->du_prev / flow_scale,
         pid->y_prev1 / pressure_scale,
-        pid->y_prev2 / pressure_scale,
-        pid->e_prev1 / pressure_scale
+        pid->y_prev2 / pressure_scale
     };
     float y_n = pid->P_actual / pressure_scale;
     float y_hat_n = 0.0f;

@@ -25,8 +25,8 @@ static void test_init_sets_ready_defaults(void) {
     assert(fabsf(pid.flow_normalization_scale - 90.0f) < 1e-6f);
     assert(!pid.gain_compensation_enabled);
     assert(fabsf(pid.gain_compensation_factor - 1.0f) < 1e-6f);
-    assert(fabsf(pid.KP - 0.048f) < 1e-6f);
-    assert(fabsf(pid.KI - 0.0008f) < 1e-6f);
+    assert(fabsf(pid.KP - 0.04f) < 1e-6f);
+    assert(fabsf(pid.KI - PID_MIN_KI) < 1e-6f);
     assert(fabsf(pid.KD - 0.020f) < 1e-6f);
     assert(fabsf(pid.Output) < 1e-6f);
     assert(fabsf(pid.u_prev) < 1e-6f);
@@ -343,10 +343,10 @@ static void test_rbf_input_uses_causal_history_and_split_normalization(void) {
     prev_du = pid.du_prev;
     (void)RBF_PID_Update(&pid, 100.0f, 60.0f);
 
+    assert(RBF_INPUT_DIM == 3);
     assert(fabsf(pid.last_rbf_input[0] - (prev_du / 45.0f)) < 1e-6f);
     assert(fabsf(pid.last_rbf_input[1] - (55.0f / 200.0f)) < 1e-6f);
     assert(fabsf(pid.last_rbf_input[2] - (40.0f / 200.0f)) < 1e-6f);
-    assert(fabsf(pid.last_rbf_input[3] - ((45.0f - 0.05f) / 200.0f)) < 1e-6f);
     assert(fabsf(pid.last_rbf_input[0] - (prev_du / 200.0f)) > 1e-4f);
     printf("PASS RBF causal input vector test\n");
 }

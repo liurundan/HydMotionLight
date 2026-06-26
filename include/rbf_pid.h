@@ -12,7 +12,7 @@
 
 /* 常数定义 */
 #define RBF_HNUM            6       // 隐含层节点数
-#define RBF_INPUT_DIM       4       // 输入维度
+#define RBF_INPUT_DIM       3       // 输入维度
 #define RBF_MOMENTUM_STEPS  2       // 在线更新使用的历史快照数
 
 /* PID 参数限幅默认窗。
