@@ -20,5 +20,9 @@ typedef struct {
 
 void HYD_RampController_Init(HYD_RampController* controller, HYD_REAL initialPressure, HYD_TIME initialTime);
 void HYD_RampController_Execute(HYD_RampController* controller, const HYD_RampControllerInput* input, HYD_RampControllerOutput* output);
+void HYD_RampController_ExecuteWithDt(HYD_RampController* controller,
+                                      const HYD_RampControllerInput* input,
+                                      HYD_TIME deltaTime,
+                                      HYD_RampControllerOutput* output);
 
 #endif /* HYD_RAMP_CONTROLLER_H */

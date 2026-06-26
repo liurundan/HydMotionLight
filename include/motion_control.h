@@ -266,6 +266,10 @@ typedef struct {
     HYD_BOOL _segmentChangedFlag;
     HYD_REAL _lastCommandedFlow;
     HYD_TIME _lastFeedbackTimestamp;
+    HYD_TIME _simulationCycleTime;
+    uint64_t _simTick;
+    uint64_t _simLastFeedbackTick;
+    uint64_t _simSegmentStartTick;
     /* --- Direction memory for HYD_DIRECTION_CURRENT --- */
     HYD_MotionDirection _lastActiveDirection;  /* 上一次非HOLD的实际运动方向，静止轴初始化POSITIVE */
     HYD_BOOL _startSegmentSignalPrev;
@@ -296,14 +300,17 @@ typedef struct {
     /* --- Stop/deceleration state --- */
     HYD_BOOL _isStopping;
     HYD_TIME _stopStartTime;
+    uint64_t _simStopStartTick;
     HYD_REAL _stopStartVel;
     HYD_REAL _stopDeceleration;
     HYD_BOOL _isDecelerating;
     HYD_TIME _decelStartTime;
+    uint64_t _simDecelStartTick;
     HYD_REAL _decelStartVel;
 
     /* --- Hold state --- */
     HYD_TIME _holdStateTime;
+    uint64_t _simHoldStartTick;
 
     /* --- Controllers --- */
     HYD_RampController _rampController;
@@ -313,6 +320,7 @@ typedef struct {
     /* --- Completion detection --- */
     HYD_TIME _completionCandidateStartTime;
     HYD_BOOL _completionCandidateActive;
+    uint64_t _simCompletionCandidateStartTick;
 
     /* --- Diagnostic criteria --- */
     HYD_ErrorMonitor _errorMonitor;

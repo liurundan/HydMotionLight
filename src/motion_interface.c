@@ -542,14 +542,12 @@ void __HydMotion_framework_Retrieve()
 void __HydMotion_framework_Publish()
 {
     HYD_TIME currentTime = 0.0;
-    HYD_TIME deltaTime;
     HYD_BOOL hasFeedbackTimestamp = false;
-    HYD_BOOL hasSimulationAxis = false;
 
     for (int i = 0; i < (int)nextAllocatedFB; i++) {
         HYD_MotionControlFB* fb = &HYD_MotionControlFB_inst[i];
         if (fb->_useSimulation) {
-            hasSimulationAxis = true;
+            fb->_simulationCycleTime = (HYD_TIME)dfCycleTime;
             continue;
         }
 
@@ -559,42 +557,32 @@ void __HydMotion_framework_Publish()
         }
     }
 
-    if (!hasFeedbackTimestamp && hasSimulationAxis) {
-        currentTime = g_lastPublishTime + dfCycleTime;
-    }
-
-    if (currentTime <= g_lastPublishTime) {
-        if (hasSimulationAxis) {
-            currentTime = g_lastPublishTime + dfCycleTime;
-            deltaTime = dfCycleTime;
-        } else {
-            deltaTime = 0.0;
-        }
-    } else {
-        deltaTime = currentTime - g_lastPublishTime;
-    }
-
     for (int i = 0; i < (int)nextAllocatedFB; i++) {
         HYD_MotionControlFB* fb = &HYD_MotionControlFB_inst[i];
+        if (fb->_useSimulation) {
+            fb->_simTick++;
+        }
         HYD_MotionControlFB_Scan(fb);
 
         /* Simulation: close the feedback loop with planner outputs */
         if (fb->_useSimulation && fb->_simFeedback.valid) {
-            if (deltaTime > 0.0) {
-                fb->AXIS_REF.position += fb->_simFeedback.targetVelocity * deltaTime;
+            HYD_TIME simDeltaTime = (fb->_simulationCycleTime > 0.0f)
+                ? fb->_simulationCycleTime
+                : (HYD_TIME)dfCycleTime;
+
+            if (simDeltaTime > 0.0) {
+                fb->AXIS_REF.position += fb->_simFeedback.targetVelocity * simDeltaTime;
             }
             fb->AXIS_REF.velocity  = fb->_simFeedback.targetVelocity;
             fb->AXIS_REF.flow      = fb->_simFeedback.targetFlow;
             fb->AXIS_REF.pressure  = fb->_simFeedback.targetPressure;
-            fb->AXIS_REF.timestamp += deltaTime;
+            fb->AXIS_REF.timestamp += simDeltaTime;
         }
     }
 
-//    for (int i = 0; i < (int)nextAllocatedFB; i++) {
-//        HYD_MotionControlFB_inst[i].AXIS_REF.timestamp += dfCycleTime;
-//    }
-
-    g_lastPublishTime = currentTime;
+    if (hasFeedbackTimestamp && currentTime > g_lastPublishTime) {
+        g_lastPublishTime = currentTime;
+    }
 }
 
 void __mcl_cmd_CreateMotion(HYD_CREATEMOTION *data__)
