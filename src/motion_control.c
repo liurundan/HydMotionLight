@@ -61,6 +61,7 @@ static void HYD_ConfigureSegmentCriteria(HYD_DiagnosticCriteria* criteria,
                                           HYD_REAL baseThreshold,
                                           HYD_DiagnosticCode code,
                                           HYD_ProtectionAction action);
+void HYD_ClearDirectPendingSlot(HYD_MotionControlFB* fb);
 
 /* Diagnostic reporting moved to StateReporter: use
  * HYD_StateReporter_ReportDiagnostic / HYD_StateReporter_ReportFault
@@ -464,8 +465,39 @@ static void HYD_RecordDirectExecutionCompleted(HYD_MotionControlFB* fb) {
         return;
     }
 
-    fb->_lastCompletedExecutionId = fb->_directOwnerExecutionId;
-    fb->_lastCompletedKind = fb->_directOwnerKind;
+    fb->_directCompletedTicket.ticket = fb->_directOwnerTicket;
+    fb->_directCompletedTicket.kind = fb->_directOwnerKind;
+}
+
+static void HYD_RecordPreemptedDirectTicket(HYD_MotionControlFB* fb,
+                                            uint16_t ticket,
+                                            HYD_DirectCommandKind kind) {
+    if (fb == NULL || ticket == 0U || kind == HYD_DIRECT_CMD_NONE) {
+        return;
+    }
+
+    if (fb->_directPreemptedCount == HYD_DIRECT_PREEMPTED_HISTORY_CAPACITY) {
+        memmove(&fb->_directPreemptedTickets[0],
+                &fb->_directPreemptedTickets[1],
+                sizeof(fb->_directPreemptedTickets[0]) *
+                (HYD_DIRECT_PREEMPTED_HISTORY_CAPACITY - 1U));
+        fb->_directPreemptedCount--;
+    }
+
+    fb->_directPreemptedTickets[fb->_directPreemptedCount].ticket = ticket;
+    fb->_directPreemptedTickets[fb->_directPreemptedCount].kind = kind;
+    fb->_directPreemptedCount++;
+}
+
+static void HYD_DiscardPendingDirectSlot(HYD_MotionControlFB* fb) {
+    if (fb == NULL || !fb->_directPendingValid) {
+        return;
+    }
+
+    HYD_RecordPreemptedDirectTicket(fb,
+                                    fb->_directOwnerTicket,
+                                    fb->_directPendingKind);
+    HYD_ClearDirectPendingSlot(fb);
 }
 
 static HYD_BOOL HYD_ShouldCutoverDirectBlend(const HYD_MotionControlFB* fb,
@@ -964,7 +996,7 @@ static HYD_BOOL HYD_BeginSegment(HYD_MotionControlFB* fb,
     if (resolvedSource == HYD_SEGMENT_SOURCE_DIRECT) {
         fb->_directOwnerKind = HYD_InferDirectCommandKindFromSegment(sourceSegment);
         fb->_directSessionState = HYD_DIRECT_SESSION_RUNNING;
-        fb->_directOwnerExecutionId = fb->_executionId;
+        fb->_directOwnerTicket = fb->_executionId;
     }
     return true;
 }
@@ -1263,18 +1295,16 @@ static HYD_BOOL HYD_MotionControlFB_ConsumePendingCommand(HYD_MotionControlFB* f
             return true;
         case HYD_CMD_STOP:
             if (fb->_activeSegmentSource == HYD_SEGMENT_SOURCE_DIRECT) {
-                fb->_lastPreemptedExecutionId = fb->_directOwnerExecutionId;
-                fb->_lastPreemptedKind = fb->_directOwnerKind;
-            } else {
-                fb->_lastPreemptedExecutionId = 0U;
-                fb->_lastPreemptedKind = HYD_DIRECT_CMD_NONE;
+                HYD_RecordPreemptedDirectTicket(fb,
+                                                fb->_directOwnerTicket,
+                                                fb->_directOwnerKind);
             }
             fb->_executionId++;
             /* STOP preempts any active recipe segment — bump
              * _recipeBatchId so the outer MoveProfile observes ownership
              * loss even though _activeSegmentSource stays RECIPE. */
             fb->_recipeBatchId++;
-            fb->_directOwnerExecutionId = fb->_executionId;
+            fb->_directOwnerTicket = fb->_executionId;
             fb->_directOwnerKind = HYD_DIRECT_CMD_STOP;
             fb->_directSessionState = HYD_DIRECT_SESSION_STOPPING;
             fb->_isStopping = true;
@@ -2551,11 +2581,10 @@ void HYD_MotionControlFB_Init(HYD_MotionControlFB* fb) {
     fb->_configuredUseRecipe = false;
     fb->_directOwnerKind = HYD_DIRECT_CMD_NONE;
     fb->_directSessionState = HYD_DIRECT_SESSION_IDLE;
-    fb->_directOwnerExecutionId = 0U;
-    fb->_lastPreemptedExecutionId = 0U;
-    fb->_lastPreemptedKind = HYD_DIRECT_CMD_NONE;
-    fb->_lastCompletedExecutionId = 0U;
-    fb->_lastCompletedKind = HYD_DIRECT_CMD_NONE;
+    fb->_directOwnerTicket = 0U;
+    memset(&fb->_directCompletedTicket, 0, sizeof(fb->_directCompletedTicket));
+    memset(fb->_directPreemptedTickets, 0, sizeof(fb->_directPreemptedTickets));
+    fb->_directPreemptedCount = 0U;
     fb->_isStopping = false;
     fb->_stopStartTime = 0.0;
     fb->_simStopStartTick = 0U;
@@ -2640,11 +2669,10 @@ void HYD_MotionControlFB_SoftReset(HYD_MotionControlFB* fb) {
     fb->_positionCriteria = savedPositionCriteria;
     fb->_directOwnerKind = HYD_DIRECT_CMD_NONE;
     fb->_directSessionState = HYD_DIRECT_SESSION_IDLE;
-    fb->_directOwnerExecutionId = 0U;
-    fb->_lastPreemptedExecutionId = 0U;
-    fb->_lastPreemptedKind = HYD_DIRECT_CMD_NONE;
-    fb->_lastCompletedExecutionId = 0U;
-    fb->_lastCompletedKind = HYD_DIRECT_CMD_NONE;
+    fb->_directOwnerTicket = 0U;
+    memset(&fb->_directCompletedTicket, 0, sizeof(fb->_directCompletedTicket));
+    memset(fb->_directPreemptedTickets, 0, sizeof(fb->_directPreemptedTickets));
+    fb->_directPreemptedCount = 0U;
     fb->_isStopping = false;
     fb->_stopStartTime = 0.0;
     fb->_simStopStartTick = 0U;
@@ -2798,13 +2826,11 @@ HYD_BOOL HYD_MotionControlFB_StartDirectCommand(HYD_MotionControlFB* fb,
 
     if (shouldAbort) {
         if (activeDirect) {
-            fb->_lastPreemptedExecutionId = fb->_directOwnerExecutionId;
-            fb->_lastPreemptedKind = fb->_directOwnerKind;
-        } else {
-            fb->_lastPreemptedExecutionId = 0U;
-            fb->_lastPreemptedKind = HYD_DIRECT_CMD_NONE;
+            HYD_RecordPreemptedDirectTicket(fb,
+                                            fb->_directOwnerTicket,
+                                            fb->_directOwnerKind);
         }
-        HYD_ClearDirectPendingSlot(fb);
+        HYD_DiscardPendingDirectSlot(fb);
         fb->DIRECT_SEGMENT = *segment;
         fb->DIRECT_SEGMENT_VALID = true;
         savedUseRecipe = fb->USE_RECIPE;
@@ -3079,37 +3105,48 @@ HYD_DirectSessionState HYD_MotionControlFB_GetDirectSessionState(const HYD_Motio
     return (fb != NULL) ? fb->_directSessionState : HYD_DIRECT_SESSION_IDLE;
 }
 
-uint16_t HYD_MotionControlFB_GetDirectOwnerExecutionId(const HYD_MotionControlFB* fb) {
-    return (fb != NULL) ? fb->_directOwnerExecutionId : 0U;
+uint16_t HYD_MotionControlFB_GetDirectOwnerTicket(const HYD_MotionControlFB* fb) {
+    return (fb != NULL) ? fb->_directOwnerTicket : 0U;
 }
 
-HYD_BOOL HYD_MotionControlFB_WasExecutionPreempted(const HYD_MotionControlFB* fb,
-                                                   uint16_t executionId,
-                                                   HYD_DirectCommandKind kind) {
-    return (fb != NULL) &&
-           fb->_lastPreemptedExecutionId == executionId &&
-           fb->_lastPreemptedKind == kind;
-}
+HYD_BOOL HYD_MotionControlFB_WasDirectTicketPreempted(const HYD_MotionControlFB* fb,
+                                                      uint16_t ticket,
+                                                      HYD_DirectCommandKind kind) {
+    HYD_UINT8 i;
 
-HYD_BOOL HYD_MotionControlFB_WasExecutionCompleted(const HYD_MotionControlFB* fb,
-                                                   uint16_t executionId,
-                                                   HYD_DirectCommandKind kind) {
-    return (fb != NULL) &&
-           fb->_lastCompletedExecutionId == executionId &&
-           fb->_lastCompletedKind == kind;
-}
-
-HYD_BOOL HYD_MotionControlFB_ConsumeExecutionCompleted(HYD_MotionControlFB* fb,
-                                                       uint16_t executionId,
-                                                       HYD_DirectCommandKind kind) {
-    if (fb == NULL ||
-        fb->_lastCompletedExecutionId != executionId ||
-        fb->_lastCompletedKind != kind) {
+    if (fb == NULL || ticket == 0U || kind == HYD_DIRECT_CMD_NONE) {
         return false;
     }
 
-    fb->_lastCompletedExecutionId = 0U;
-    fb->_lastCompletedKind = HYD_DIRECT_CMD_NONE;
+    for (i = 0U; i < fb->_directPreemptedCount; i++) {
+        if (fb->_directPreemptedTickets[i].ticket == ticket &&
+            fb->_directPreemptedTickets[i].kind == kind) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+HYD_BOOL HYD_MotionControlFB_WasDirectTicketCompleted(const HYD_MotionControlFB* fb,
+                                                      uint16_t ticket,
+                                                      HYD_DirectCommandKind kind) {
+    return (fb != NULL) &&
+           fb->_directCompletedTicket.ticket == ticket &&
+           fb->_directCompletedTicket.kind == kind;
+}
+
+HYD_BOOL HYD_MotionControlFB_ConsumeDirectTicketCompleted(HYD_MotionControlFB* fb,
+                                                          uint16_t ticket,
+                                                          HYD_DirectCommandKind kind) {
+    if (fb == NULL ||
+        fb->_directCompletedTicket.ticket != ticket ||
+        fb->_directCompletedTicket.kind != kind) {
+        return false;
+    }
+
+    fb->_directCompletedTicket.ticket = 0U;
+    fb->_directCompletedTicket.kind = HYD_DIRECT_CMD_NONE;
     return true;
 }
 
@@ -3125,8 +3162,9 @@ HYD_BOOL HYD_MotionControlFB_ApplyLiveUpdate(HYD_MotionControlFB* fb,
         return false;
     }
 
-    sameOwner = (fb->_directOwnerKind == request->ownerKind &&
-                 fb->_directOwnerExecutionId == request->ownerExecutionId);
+    sameOwner = (fb->_activeSegmentSource == HYD_SEGMENT_SOURCE_DIRECT &&
+                 fb->_directOwnerKind == request->ownerKind &&
+                 fb->_directOwnerTicket == request->ownerTicket);
 
     isSegmentActive = fb->_activeSegmentValid &&
                       fb->STATE.active &&
@@ -3370,8 +3408,8 @@ HYD_BOOL HYD_MotionControlFB_ApplyLiveUpdate(HYD_MotionControlFB* fb,
 
         /* Clear stale completion record so a future completion is detected
          * as a fresh event, not mistaken for the old one. */
-        fb->_lastCompletedExecutionId = 0U;
-        fb->_lastCompletedKind = HYD_DIRECT_CMD_NONE;
+        fb->_directCompletedTicket.ticket = 0U;
+        fb->_directCompletedTicket.kind = HYD_DIRECT_CMD_NONE;
 
         return true;
     }

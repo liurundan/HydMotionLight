@@ -195,10 +195,17 @@ typedef enum {
     HYD_LIVE_UPDATE_DIRECTION          = 1U << 7
 } HYD_LiveUpdateFlags;
 
+#define HYD_DIRECT_PREEMPTED_HISTORY_CAPACITY 2U
+
+typedef struct {
+    uint16_t ticket;
+    HYD_DirectCommandKind kind;
+} HYD_DirectTicketRecord;
+
 typedef struct {
     HYD_UINT16 flags;
     HYD_DirectCommandKind ownerKind;
-    uint16_t ownerExecutionId;
+    uint16_t ownerTicket;
     HYD_REAL targetPosition;
     HYD_REAL maxVelocity;
     HYD_REAL maxAcceleration;
@@ -287,11 +294,10 @@ typedef struct {
     /* --- Direct command session --- */
     HYD_DirectCommandKind _directOwnerKind;
     HYD_DirectSessionState _directSessionState;
-    uint16_t _directOwnerExecutionId;
-    uint16_t _lastPreemptedExecutionId;
-    HYD_DirectCommandKind _lastPreemptedKind;
-    uint16_t _lastCompletedExecutionId;
-    HYD_DirectCommandKind _lastCompletedKind;
+    uint16_t _directOwnerTicket;
+    HYD_DirectTicketRecord _directCompletedTicket;
+    HYD_DirectTicketRecord _directPreemptedTickets[HYD_DIRECT_PREEMPTED_HISTORY_CAPACITY];
+    HYD_UINT8 _directPreemptedCount;
     HYD_BOOL _directPendingValid;
     HYD_MotionSegment _directPendingSegment;
     HYD_DirectCommandKind _directPendingKind;
@@ -455,16 +461,16 @@ HYD_BOOL HYD_MotionControlFB_AcknowledgeDiagnostics(HYD_MotionControlFB* fb);
 
 HYD_DirectCommandKind HYD_MotionControlFB_GetDirectOwnerKind(const HYD_MotionControlFB* fb);
 HYD_DirectSessionState HYD_MotionControlFB_GetDirectSessionState(const HYD_MotionControlFB* fb);
-uint16_t HYD_MotionControlFB_GetDirectOwnerExecutionId(const HYD_MotionControlFB* fb);
-HYD_BOOL HYD_MotionControlFB_WasExecutionPreempted(const HYD_MotionControlFB* fb,
-                                                   uint16_t executionId,
-                                                   HYD_DirectCommandKind kind);
-HYD_BOOL HYD_MotionControlFB_WasExecutionCompleted(const HYD_MotionControlFB* fb,
-                                                   uint16_t executionId,
-                                                   HYD_DirectCommandKind kind);
-HYD_BOOL HYD_MotionControlFB_ConsumeExecutionCompleted(HYD_MotionControlFB* fb,
-                                                       uint16_t executionId,
-                                                       HYD_DirectCommandKind kind);
+uint16_t HYD_MotionControlFB_GetDirectOwnerTicket(const HYD_MotionControlFB* fb);
+HYD_BOOL HYD_MotionControlFB_WasDirectTicketPreempted(const HYD_MotionControlFB* fb,
+                                                      uint16_t ticket,
+                                                      HYD_DirectCommandKind kind);
+HYD_BOOL HYD_MotionControlFB_WasDirectTicketCompleted(const HYD_MotionControlFB* fb,
+                                                      uint16_t ticket,
+                                                      HYD_DirectCommandKind kind);
+HYD_BOOL HYD_MotionControlFB_ConsumeDirectTicketCompleted(HYD_MotionControlFB* fb,
+                                                          uint16_t ticket,
+                                                          HYD_DirectCommandKind kind);
 HYD_BOOL HYD_MotionControlFB_ApplyLiveUpdate(HYD_MotionControlFB* fb,
                                              const HYD_LiveUpdateRequest* request);
 HYD_BOOL HYD_MotionControlFB_StartDirectCommand(HYD_MotionControlFB* fb,

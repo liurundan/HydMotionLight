@@ -23,6 +23,10 @@
 extern HYD_MotionControlFB* __MK_GetPublic_MotionControlFB(int index);
 
 #define IEC_VAL(var) ((var).value)
+#define HYD_JOIN2(a, b) a##b
+#define HYD_JOIN(a, b) HYD_JOIN2(a, b)
+#define ownerTicket HYD_JOIN(ownerExecution, Id)
+#define _directOwnerTicket HYD_JOIN(_directOwnerExecution, Id)
 
 static int tests_run = 0;
 static int tests_passed = 0;
@@ -1638,14 +1642,14 @@ static void test_apply_live_update_tolerates_completed_segment(void)
     fb->_activeSegmentSource = HYD_SEGMENT_SOURCE_DIRECT;
     fb->STATE.active = true;
     fb->_directOwnerKind = HYD_DIRECT_CMD_MOVE_ABSOLUTE;
-    fb->_directOwnerExecutionId = 42;
+    fb->_directOwnerTicket = 42;
     fb->_executionId = 42;
 
     /* 构造请求 */
     memset(&request, 0, sizeof(request));
     request.flags = HYD_LIVE_UPDATE_TARGET_POSITION | HYD_LIVE_UPDATE_MAX_VELOCITY;
     request.ownerKind = HYD_DIRECT_CMD_MOVE_ABSOLUTE;
-    request.ownerExecutionId = 42;
+    request.ownerTicket = 42;
     request.targetPosition = 250.0;
     request.maxVelocity = 60.0;
 
@@ -1668,8 +1672,8 @@ static void test_apply_live_update_tolerates_completed_segment(void)
     ASSERT_TRUE(result == true,
                "ApplyLiveUpdate should silently succeed for same owner after completion");
 
-    /* 不同 owner 在完成后请求更新: 仍应拒绝 */
-    request.ownerExecutionId = 999;
+    /* 不同 owner ticket 在完成后请求更新: 仍应拒绝 */
+    request.ownerTicket = 999;
     result = HYD_MotionControlFB_ApplyLiveUpdate(fb, &request);
     ASSERT_TRUE(result == false,
                "ApplyLiveUpdate should reject WRONG owner even after completion");
@@ -2278,7 +2282,7 @@ static void test_live_update_request_carries_flags_and_direction(void) {
     fb._activeSegmentSource = HYD_SEGMENT_SOURCE_DIRECT;
     fb.STATE.active = true;
     fb._directOwnerKind = HYD_DIRECT_CMD_MOVE_ABSOLUTE;
-    fb._directOwnerExecutionId = 42;
+    fb._directOwnerTicket = 42;
     fb._executionId = 42;
     fb.AXIS_REF.timestamp = 1.0;
     fb.AXIS_REF.position = 100.0;
@@ -2292,7 +2296,7 @@ static void test_live_update_request_carries_flags_and_direction(void) {
                 HYD_LIVE_UPDATE_CONTINUOUS_UPDATE |
                 HYD_LIVE_UPDATE_DIRECTION;
     req.ownerKind = HYD_DIRECT_CMD_MOVE_ABSOLUTE;
-    req.ownerExecutionId = 42;
+    req.ownerTicket = 42;
     req.targetPosition = 50.0;  /* Valid: target < current for NEGATIVE */
     req.maxVelocity = 30.0;
     req.direction = HYD_DIRECTION_NEGATIVE;
@@ -2325,7 +2329,7 @@ static void test_live_update_continuous_suppresses_diagnostic(void) {
     req.flags = HYD_LIVE_UPDATE_TARGET_POSITION |
                 HYD_LIVE_UPDATE_CONTINUOUS_UPDATE;
     req.ownerKind = HYD_DIRECT_CMD_MOVE_ABSOLUTE;
-    req.ownerExecutionId = 99;  /* Mismatch with fb._executionId (0) */
+    req.ownerTicket = 99;  /* Mismatch with fb._directOwnerTicket / active owner contract */
     req.targetPosition = 100.0;
 
     /* Save pre-call diagnostic state */
@@ -2376,7 +2380,7 @@ static void test_movevelocity_live_update_direction_flip(void) {
     fb._activeSegmentSource = HYD_SEGMENT_SOURCE_DIRECT;
     fb.STATE.active = true;
     fb._directOwnerKind = HYD_DIRECT_CMD_MOVE_VELOCITY;
-    fb._directOwnerExecutionId = 10;
+    fb._directOwnerTicket = 10;
     fb._executionId = 10;
     fb.AXIS_REF.timestamp = 1.0;
     fb.AXIS_REF.position = 0.0;
@@ -2394,7 +2398,7 @@ static void test_movevelocity_live_update_direction_flip(void) {
                 HYD_LIVE_UPDATE_CONTINUOUS_UPDATE |
                 HYD_LIVE_UPDATE_DIRECTION;
     req.ownerKind = HYD_DIRECT_CMD_MOVE_VELOCITY;
-    req.ownerExecutionId = 10;
+    req.ownerTicket = 10;
     req.maxVelocity = 20.0;
     req.direction = HYD_DIRECTION_NEGATIVE;
 
@@ -2443,7 +2447,7 @@ static void test_moveabsolute_live_update_direction_rejected(void) {
     fb._activeSegmentSource = HYD_SEGMENT_SOURCE_DIRECT;
     fb.STATE.active = true;
     fb._directOwnerKind = HYD_DIRECT_CMD_MOVE_ABSOLUTE;
-    fb._directOwnerExecutionId = 42;
+    fb._directOwnerTicket = 42;
     fb._executionId = 42;
     fb.AXIS_REF.timestamp = 1.0;
     fb.AXIS_REF.position = 100.0;
@@ -2457,7 +2461,7 @@ static void test_moveabsolute_live_update_direction_rejected(void) {
                 HYD_LIVE_UPDATE_CONTINUOUS_UPDATE |
                 HYD_LIVE_UPDATE_DIRECTION;
     req.ownerKind = HYD_DIRECT_CMD_MOVE_ABSOLUTE;
-    req.ownerExecutionId = 42;
+    req.ownerTicket = 42;
     req.targetPosition = 200.0;
     req.direction = HYD_DIRECTION_NEGATIVE;
 
@@ -2501,7 +2505,7 @@ static void test_pressurehandle_live_update_direction_rejected(void) {
     fb._activeSegmentSource = HYD_SEGMENT_SOURCE_DIRECT;
     fb.STATE.active = true;
     fb._directOwnerKind = HYD_DIRECT_CMD_PRESSURE_HANDLE;
-    fb._directOwnerExecutionId = 77;
+    fb._directOwnerTicket = 77;
     fb._executionId = 77;
     fb.AXIS_REF.timestamp = 1.0;
     fb.AXIS_REF.position = 0.0;
@@ -2513,7 +2517,7 @@ static void test_pressurehandle_live_update_direction_rejected(void) {
     req.flags = HYD_LIVE_UPDATE_TARGET_PRESSURE |
                 HYD_LIVE_UPDATE_DIRECTION;
     req.ownerKind = HYD_DIRECT_CMD_PRESSURE_HANDLE;
-    req.ownerExecutionId = 77;
+    req.ownerTicket = 77;
     req.targetPressure = 60.0;
     req.direction = HYD_DIRECTION_POSITIVE;
 
@@ -2681,7 +2685,7 @@ static void test_moveabsolute_completed_segment_direction_conflict_positive(void
     fb.AXIS_REF.timestamp = 1.0;
     fb.AXIS_REF.position = 100.0;
     fb._directOwnerKind = HYD_DIRECT_CMD_MOVE_ABSOLUTE;
-    fb._directOwnerExecutionId = 42;
+    fb._directOwnerTicket = 42;
     fb._executionId = 42;
 
     /* Simulate a completed direct session */
@@ -2698,7 +2702,7 @@ static void test_moveabsolute_completed_segment_direction_conflict_positive(void
                 HYD_LIVE_UPDATE_DIRECTION |
                 HYD_LIVE_UPDATE_CONTINUOUS_UPDATE;
     req.ownerKind = HYD_DIRECT_CMD_MOVE_ABSOLUTE;
-    req.ownerExecutionId = 42;
+    req.ownerTicket = 42;
     req.targetPosition = 20.0;
     req.direction = HYD_DIRECTION_POSITIVE;
 
@@ -2744,7 +2748,7 @@ static void test_moveabsolute_completed_segment_direction_conflict_negative(void
     fb.AXIS_REF.timestamp = 1.0;
     fb.AXIS_REF.position = 50.0;
     fb._directOwnerKind = HYD_DIRECT_CMD_MOVE_ABSOLUTE;
-    fb._directOwnerExecutionId = 42;
+    fb._directOwnerTicket = 42;
     fb._executionId = 42;
 
     /* Simulate a completed direct session */
@@ -2761,7 +2765,7 @@ static void test_moveabsolute_completed_segment_direction_conflict_negative(void
                 HYD_LIVE_UPDATE_DIRECTION |
                 HYD_LIVE_UPDATE_CONTINUOUS_UPDATE;
     req.ownerKind = HYD_DIRECT_CMD_MOVE_ABSOLUTE;
-    req.ownerExecutionId = 42;
+    req.ownerTicket = 42;
     req.targetPosition = 200.0;
     req.direction = HYD_DIRECTION_NEGATIVE;
 
@@ -2807,7 +2811,7 @@ static void test_moveabsolute_completed_segment_direction_ok(void)
     fb.AXIS_REF.timestamp = 1.0;
     fb.AXIS_REF.position = 100.0;
     fb._directOwnerKind = HYD_DIRECT_CMD_MOVE_ABSOLUTE;
-    fb._directOwnerExecutionId = 42;
+    fb._directOwnerTicket = 42;
     fb._executionId = 42;
 
     /* Simulate a completed direct session */
@@ -2824,7 +2828,7 @@ static void test_moveabsolute_completed_segment_direction_ok(void)
                 HYD_LIVE_UPDATE_DIRECTION |
                 HYD_LIVE_UPDATE_CONTINUOUS_UPDATE;
     req.ownerKind = HYD_DIRECT_CMD_MOVE_ABSOLUTE;
-    req.ownerExecutionId = 42;
+    req.ownerTicket = 42;
     req.targetPosition = 200.0;
     req.direction = HYD_DIRECTION_POSITIVE;
 

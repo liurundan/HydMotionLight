@@ -272,21 +272,21 @@ static HYD_BOOL directExecutionWasPreempted(const HYD_MotionControlFB* fb,
                                             IEC_WORD execId,
                                             HYD_DirectCommandKind kind)
 {
-    return HYD_MotionControlFB_WasExecutionPreempted(fb, (uint16_t)execId, kind);
+    return HYD_MotionControlFB_WasDirectTicketPreempted(fb, (uint16_t)execId, kind);
 }
 
 static HYD_BOOL directExecutionWasCompleted(HYD_MotionControlFB* fb,
                                             IEC_WORD execId,
                                             HYD_DirectCommandKind kind)
 {
-    return HYD_MotionControlFB_ConsumeExecutionCompleted(fb, (uint16_t)execId, kind);
+    return HYD_MotionControlFB_ConsumeDirectTicketCompleted(fb, (uint16_t)execId, kind);
 }
 
 static HYD_BOOL directExecutionIsCurrentOwner(const HYD_MotionControlFB* fb,
                                               IEC_WORD execId,
                                               HYD_DirectCommandKind kind)
 {
-    return execId == (IEC_WORD)HYD_MotionControlFB_GetDirectOwnerExecutionId(fb) &&
+    return execId == (IEC_WORD)HYD_MotionControlFB_GetDirectOwnerTicket(fb) &&
            HYD_MotionControlFB_GetDirectOwnerKind(fb) == kind;
 }
 
@@ -294,7 +294,7 @@ static HYD_BOOL directExecutionLostOwnership(const HYD_MotionControlFB* fb,
                                              IEC_WORD execId,
                                              HYD_DirectCommandKind kind)
 {
-    return execId != (IEC_WORD)HYD_MotionControlFB_GetDirectOwnerExecutionId(fb) ||
+    return execId != (IEC_WORD)HYD_MotionControlFB_GetDirectOwnerTicket(fb) ||
            HYD_MotionControlFB_GetDirectOwnerKind(fb) != kind;
 }
 
@@ -332,8 +332,7 @@ static HYD_BOOL recipeExecutionCanAcquireOwnership(const HYD_MotionControlFB* fb
 {
     return fb != NULL &&
            fb->_recipeBatchId != 0U &&
-           (HYD_MotionControlFB_GetDirectOwnerKind(fb) == HYD_DIRECT_CMD_NONE ||
-            HYD_MotionControlFB_GetDirectOwnerExecutionId(fb) != fb->_executionId);
+           HYD_MotionControlFB_GetDirectOwnerKind(fb) == HYD_DIRECT_CMD_NONE;
 }
 
 static HYD_BOOL recipeExecutionWasTakenOverBeforeLatch(const HYD_MotionControlFB* fb)
@@ -341,7 +340,7 @@ static HYD_BOOL recipeExecutionWasTakenOverBeforeLatch(const HYD_MotionControlFB
     return fb != NULL &&
            fb->_recipeBatchId != 0U &&
            HYD_MotionControlFB_GetDirectOwnerKind(fb) != HYD_DIRECT_CMD_NONE &&
-           HYD_MotionControlFB_GetDirectOwnerExecutionId(fb) == fb->_executionId;
+           fb->_activeSegmentSource == HYD_SEGMENT_SOURCE_DIRECT;
 }
 
 static HYD_BOOL directStopCanCompleteImmediately(const HYD_MotionControlFB* fb)
@@ -409,7 +408,7 @@ static HYD_BOOL applyMoveAbsoluteLiveUpdate(HYD_MotionControlFB* fb,
                     HYD_LIVE_UPDATE_CONTINUOUS_UPDATE |
                     HYD_LIVE_UPDATE_DIRECTION;
     request.ownerKind = HYD_DIRECT_CMD_MOVE_ABSOLUTE;
-    request.ownerExecutionId = (uint16_t)execId;
+    request.ownerTicket = (uint16_t)execId;
     request.targetPosition = __GET_VAR(data__->POSITION);
     request.maxVelocity = __GET_VAR(data__->VELOCITY);
     request.maxAcceleration = __GET_VAR(data__->ACCELERATION);
@@ -450,7 +449,7 @@ static HYD_BOOL applyMoveVelocityLiveUpdate(HYD_MotionControlFB* fb,
                     HYD_LIVE_UPDATE_CONTINUOUS_UPDATE |
                     HYD_LIVE_UPDATE_DIRECTION;
     request.ownerKind = HYD_DIRECT_CMD_MOVE_VELOCITY;
-    request.ownerExecutionId = (uint16_t)execId;
+    request.ownerTicket = (uint16_t)execId;
     request.maxVelocity = (IEC_REAL)fabs((double)rawVelocity);
     request.maxAcceleration = __GET_VAR(data__->ACCELERATION);
     request.maxDeceleration = __GET_VAR(data__->DECELERATION);
@@ -473,7 +472,7 @@ static HYD_BOOL applyPressureHandleLiveUpdate(HYD_MotionControlFB* fb,
                     HYD_LIVE_UPDATE_PRESSURE_RAMP_RATE |
                     HYD_LIVE_UPDATE_CONTINUOUS_UPDATE;
     request.ownerKind = HYD_DIRECT_CMD_PRESSURE_HANDLE;
-    request.ownerExecutionId = (uint16_t)execId;
+    request.ownerTicket = (uint16_t)execId;
     request.targetPressure = __GET_VAR(data__->PRESSURE);
     request.pressureRampRate = __GET_VAR(data__->PRESSURERAMPRATE);
     return HYD_MotionControlFB_ApplyLiveUpdate(fb, &request);

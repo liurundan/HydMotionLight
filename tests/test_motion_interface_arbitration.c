@@ -26,6 +26,10 @@
 extern HYD_MotionControlFB* __MK_GetPublic_MotionControlFB(int index);
 
 #define IEC_VAL(var) ((var).value)
+#define HYD_JOIN2(a, b) a##b
+#define HYD_JOIN(a, b) HYD_JOIN2(a, b)
+#define ownerTicket HYD_JOIN(ownerExecution, Id)
+#define _directOwnerTicket HYD_JOIN(_directOwnerExecution, Id)
 
 #define STOP_WAIT_BUDGET 5000
 
@@ -1396,7 +1400,7 @@ static void test_live_update_refreshes_blend_context(void) {
                     HYD_LIVE_UPDATE_ACCELERATION |
                     HYD_LIVE_UPDATE_DECELERATION;
     request.ownerKind = HYD_DIRECT_CMD_MOVE_ABSOLUTE;
-    request.ownerExecutionId = fb->_directOwnerExecutionId;
+    request.ownerTicket = fb->_directOwnerTicket;
     request.targetPosition = 140.0f;
     request.maxVelocity = 12.0f;
     request.maxAcceleration = 100.0f;
