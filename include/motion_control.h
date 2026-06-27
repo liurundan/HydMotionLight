@@ -267,6 +267,7 @@ typedef struct {
     HYD_REAL _lastCommandedFlow;
     HYD_TIME _lastFeedbackTimestamp;
     HYD_TIME _simulationCycleTime;
+    HYD_BOOL _useFixedCycleTime;
     uint64_t _simTick;
     uint64_t _simLastFeedbackTick;
     uint64_t _simSegmentStartTick;

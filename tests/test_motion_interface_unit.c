@@ -192,6 +192,59 @@ static void test_simulation_velocity_ramp_uses_fixed_step_after_large_timestamp(
                 "Simulation velocity ramp should advance by acceleration * 1 ms even after large absolute timestamps");
 }
 
+static void test_real_axis_velocity_ramp_uses_fixed_step_after_large_timestamp(void) {
+    HYD_MOVEVELOCITY mv;
+    HYD_MotionControlFB* fb;
+    int axisId;
+
+    __HydMotion_framework_Init();
+    ensure_axes_allocated(1);
+    axisId = 0;
+    fb = __MK_GetPublic_MotionControlFB(axisId);
+
+    ASSERT_TRUE(fb != NULL, "Real axis should expose a public FB instance");
+
+    fb->AXIS_REF.position = 0.0f;
+    fb->AXIS_REF.velocity = 0.0f;
+    fb->AXIS_REF.flow = 0.0f;
+    fb->AXIS_REF.pressure = 0.0f;
+    fb->AXIS_REF.timestamp = 0.0f;
+
+    memset(&mv, 0, sizeof(mv));
+    IEC_VAL(mv.EN) = true;
+    IEC_VAL(mv.EXECUTE) = true;
+    mv.EXECUTE0.value = false;
+    IEC_VAL(mv.AXISID) = axisId;
+    IEC_VAL(mv.VELOCITY) = 100.0f;
+    IEC_VAL(mv.ACCELERATION) = 200.0f;
+    IEC_VAL(mv.DECELERATION) = 200.0f;
+    IEC_VAL(mv.DIRECTION) = 1;
+
+    __mcl_cmd_MoveVelocity(&mv);
+    __HydMotion_framework_Publish();
+
+    IEC_VAL(mv.EXECUTE) = true;
+    mv.EXECUTE0.value = true;
+    __mcl_cmd_MoveVelocity(&mv);
+    ASSERT_TRUE(fb->_activeSegmentValid, "MoveVelocity should have an active segment");
+
+    /* Force the visible timestamp into the float precision-loss region and
+     * keep feeding the same large absolute sensor timestamp. The control loop
+     * should still advance by the fixed 1 ms period. */
+    fb->AXIS_REF.timestamp = 28800.0f;
+    fb->_lastFeedbackTimestamp = fb->AXIS_REF.timestamp;
+    fb->_plannerState.initialized = true;
+    fb->_plannerState.lastTargetVelocity = 0.0f;
+    fb->_plannerState.lastTargetFlow = 0.0f;
+    fb->AXIS_REF.velocity = 0.0f;
+    fb->AXIS_REF.flow = 0.0f;
+
+    __HydMotion_framework_Publish();
+    __mcl_cmd_MoveVelocity(&mv);
+    ASSERT_TRUE(fabsf(fb->STATE.references.velocityReference - 0.2f) < 0.05f,
+                "Real-axis control reference should advance by acceleration * 1 ms even after large absolute timestamps");
+}
+
 /* ==================================================================
  * Test 2: MoveProfile INIT 分配FB并设置Recipe模式
  * ================================================================== */
@@ -2822,6 +2875,7 @@ int main(void) {
     test_framework_init_resets_pool();
     test_publish_advances_simulation_feedback_time();
     test_simulation_velocity_ramp_uses_fixed_step_after_large_timestamp();
+    test_real_axis_velocity_ramp_uses_fixed_step_after_large_timestamp();
     test_moveprofile_init_allocates_fb_with_recipe_mode();
     test_moveprofile_no_execute_does_not_start();
     test_moveprofile_execute_rising_triggers_motion();

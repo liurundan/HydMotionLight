@@ -7,7 +7,6 @@
  * FB实例池管理
  * ====================================================================== */
 static HYD_REAL dfCycleTime = 0.001f;  /* 默认周期时间，单位秒；可通过外部接口调整以适配不同PLC扫描周期 */
-static HYD_TIME g_lastPublishTime = 0.0;
 
 static HYD_MotionControlFB HYD_MotionControlFB_inst[HYD_MAX_AXIS_MOTION];
 
@@ -519,7 +518,6 @@ int __HydMotion_framework_Init()
         memset(&HYD_MotionControlFB_inst[i], 0, sizeof(HYD_MotionControlFB));
     }
     nextAllocatedFB = 0;
-    g_lastPublishTime = 0.0;
 
     return 0;
 }
@@ -541,26 +539,20 @@ void __HydMotion_framework_Retrieve()
 
 void __HydMotion_framework_Publish()
 {
-    HYD_TIME currentTime = 0.0;
-    HYD_BOOL hasFeedbackTimestamp = false;
-
     for (int i = 0; i < (int)nextAllocatedFB; i++) {
         HYD_MotionControlFB* fb = &HYD_MotionControlFB_inst[i];
-        if (fb->_useSimulation) {
-            fb->_simulationCycleTime = (HYD_TIME)dfCycleTime;
-            continue;
-        }
-
-        if (!hasFeedbackTimestamp || fb->AXIS_REF.timestamp > currentTime) {
-            currentTime = fb->AXIS_REF.timestamp;
-            hasFeedbackTimestamp = true;
-        }
+        fb->_simulationCycleTime = (HYD_TIME)dfCycleTime;
+        fb->_useFixedCycleTime = true;
     }
 
     for (int i = 0; i < (int)nextAllocatedFB; i++) {
         HYD_MotionControlFB* fb = &HYD_MotionControlFB_inst[i];
-        if (fb->_useSimulation) {
+        if (fb->_useFixedCycleTime) {
             fb->_simTick++;
+        }
+        if (!fb->_useSimulation && fb->_useFixedCycleTime) {
+            fb->AXIS_REF.timestamp = (HYD_TIME)((double)fb->_simTick *
+                                                (double)fb->_simulationCycleTime);
         }
         HYD_MotionControlFB_Scan(fb);
 
@@ -580,9 +572,6 @@ void __HydMotion_framework_Publish()
         }
     }
 
-    if (hasFeedbackTimestamp && currentTime > g_lastPublishTime) {
-        g_lastPublishTime = currentTime;
-    }
 }
 
 void __mcl_cmd_CreateMotion(HYD_CREATEMOTION *data__)
@@ -600,8 +589,9 @@ void __mcl_cmd_CreateMotion(HYD_CREATEMOTION *data__)
 			fb->USE_RECIPE = __GET_VAR(data__->USE_RECIPE);
 			fb->_configuredUseRecipe = fb->USE_RECIPE;
 			fb->FLOW_TO_PUMP_SPEED_GAIN = __GET_VAR(data__->FLOW_TO_PUMPSPEED);
-			fb->PUMP_SPEED_LIMIT = __GET_VAR(data__->PUMPSPEED_LIMIT);
+            fb->PUMP_SPEED_LIMIT = __GET_VAR(data__->PUMPSPEED_LIMIT);
             fb->_useSimulation = __GET_VAR(data__->USE_SIMULATION);
+            fb->_useFixedCycleTime = true;
 			
 			__SET_VAR(data__->, DONE, , true);
             __SET_VAR(data__->, AXISID,, index);
@@ -685,7 +675,6 @@ void __mcl_cmd_MoveProfile(HYD_MOVEPROFILE *data__)
         fb->AXIS_REF.velocity = motionData.ACTVELOCITY;
         fb->AXIS_REF.flow = motionData.ACTFLOW;
         fb->AXIS_REF.pressure = motionData.ACTPRESSURE;
-        fb->AXIS_REF.timestamp = motionData.TIMESTAMP;
     } else {
         motionData.ACTPOSITION = (IEC_REAL)fb->AXIS_REF.position;
         motionData.ACTVELOCITY = (IEC_REAL)fb->AXIS_REF.velocity;
@@ -723,7 +712,6 @@ void __mcl_cmd_MoveProfile(HYD_MOVEPROFILE *data__)
         }
 
         fb->USE_RECIPE = true;
-        HYD_TIME currentTime = motionData.TIMESTAMP;
 
         if (bufferMode == HYD_BUFFER_MODE_ABORT) {
             HYD_MotionControlFB_Abort(fb);
@@ -742,7 +730,7 @@ void __mcl_cmd_MoveProfile(HYD_MOVEPROFILE *data__)
         }
 
         /* Start segment (recipe or direct) */
-        if (!HYD_MotionControlFB_StartSegment(fb, 0, currentTime)) {
+        if (!HYD_MotionControlFB_StartSegment(fb, 0, fb->AXIS_REF.timestamp)) {
             __SET_VAR(data__->, ERROR,, true);
             __SET_VAR(data__->, ERRORID,, (IEC_WORD)HYD_DIAG_CODE_START_CONTEXT_INVALID);
             __SET_VAR(data__->, EXECUTE0,, execute);
@@ -1637,7 +1625,6 @@ void __mcl_cmd_SetAxisFeedback(HYD_SETAXISFEEDBACK *data__)
         fb->AXIS_REF.flow     = __GET_VAR(data__->ACT_FLOW);
         fb->AXIS_REF.pressure = __GET_VAR(data__->ACT_PRESSURE);
         fb->AXIS_REF.velocity = __GET_VAR(data__->ACT_VELOCITY);
-        fb->AXIS_REF.timestamp = __GET_VAR(data__->TIMESTAMP);
     }
 
     __SET_VAR(data__->, DONE, , true);

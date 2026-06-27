@@ -73,7 +73,7 @@ typedef HYD_UINT16 HYD_FbStateMask;
 #define HYD_DEFAULT_SIM_CYCLE_TIME 0.001f
 
 static HYD_BOOL HYD_UseSimulationFixedStep(const HYD_MotionControlFB* fb) {
-    return (fb != NULL) && fb->_useSimulation;
+    return (fb != NULL) && (fb->_useSimulation || fb->_useFixedCycleTime);
 }
 
 static HYD_TIME HYD_GetSimulationCycleTime(const HYD_MotionControlFB* fb) {
@@ -2467,6 +2467,7 @@ void HYD_MotionControlFB_Init(HYD_MotionControlFB* fb) {
     memset(fb, 0, sizeof(*fb));
     fb->_lastFeedbackTimestamp = -1.0;  /* sentinel: not yet valid */
     fb->_simulationCycleTime = (HYD_TIME)HYD_DEFAULT_SIM_CYCLE_TIME;
+    fb->_useFixedCycleTime = false;
     fb->_lastActiveDirection = HYD_DIRECTION_POSITIVE;  /* 静止轴默认正向 */
     fb->USE_RECIPE = false;
     fb->FB_STATE = HYD_FB_STATE_IDLE;
@@ -2580,6 +2581,7 @@ void HYD_MotionControlFB_SoftReset(HYD_MotionControlFB* fb) {
     HYD_BOOL savedConfiguredUseRecipe;
     HYD_BOOL savedUseSimulation;
     HYD_TIME savedSimulationCycleTime;
+    HYD_BOOL savedUseFixedCycleTime;
     HYD_MotionFBParams savedParams;
     HYD_DiagnosticCriteria savedPressureCriteria;
     HYD_DiagnosticCriteria savedPressureCeilingCriteria;
@@ -2602,6 +2604,7 @@ void HYD_MotionControlFB_SoftReset(HYD_MotionControlFB* fb) {
     savedConfiguredUseRecipe = fb->_configuredUseRecipe;
     savedUseSimulation = fb->_useSimulation;
     savedSimulationCycleTime = fb->_simulationCycleTime;
+    savedUseFixedCycleTime = fb->_useFixedCycleTime;
     savedParams = fb->_params;
     savedPressureCriteria = fb->_pressureCriteria;
     savedPressureCeilingCriteria = fb->_pressureCeilingCriteria;
@@ -2614,6 +2617,7 @@ void HYD_MotionControlFB_SoftReset(HYD_MotionControlFB* fb) {
     (void)memset(fb, 0, sizeof(*fb));
     fb->_lastFeedbackTimestamp = -1.0;  /* sentinel: not yet valid */
     fb->_simulationCycleTime = savedSimulationCycleTime;
+    fb->_useFixedCycleTime = savedUseFixedCycleTime;
     fb->_lastActiveDirection = savedLastActiveDirection;  /* 保留方向记忆 */
 
     /* 3. Restore persistent configuration */
