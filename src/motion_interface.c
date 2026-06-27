@@ -255,6 +255,12 @@ static HYD_DirectPendingStatus resolveDirectPendingOwnership(HYD_MotionControlFB
     }
 
     if (fb->STATE.active && fb->_activeSegmentSource == HYD_SEGMENT_SOURCE_DIRECT) {
+        /* Still queued in the pending slot — not yet the active segment.
+         * Return WAITING so the IEC FB does not latch the predecessor's
+         * executionId and mistakenly claim ownership of the wrong segment. */
+        if (fb->_directPendingValid) {
+            return HYD_DIRECT_PENDING_WAITING;
+        }
         if (execId != NULL) {
             *execId = (IEC_WORD)fb->_executionId;
         }
@@ -1178,6 +1184,10 @@ void __mcl_cmd_MoveAbsolute(HYD_MOVEABSOLUTE *data__)
             __SET_VAR(data__->, BUSY, , false);
             __SET_VAR(data__->, ACTIVE, , false);
             __SET_VAR(data__->, COMMANDABORTED, , false);
+            /* Clear _EXEC_ID so subsequent scans (EXECUTE still high) do not
+             * re-enter the ownership check with a stale ticket and overwrite
+             * DONE with COMMANDABORTED via directExecutionLostOwnership. */
+            __SET_VAR(data__->, _EXEC_ID, , (IEC_WORD)0);
         } else if (directExecutionWasPreempted(fb, myExecId, HYD_DIRECT_CMD_MOVE_ABSOLUTE)) {
             __SET_VAR(data__->, COMMANDABORTED, , true);
             __SET_VAR(data__->, BUSY, , false);

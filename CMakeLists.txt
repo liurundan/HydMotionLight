@@ -121,6 +121,9 @@ target_link_libraries(test_motion_interface_done_signals PRIVATE HydroMotionLib)
 add_executable(test_moveabsolute_stop_integration tests/test_moveabsolute_stop_integration.c)
 target_link_libraries(test_moveabsolute_stop_integration PRIVATE HydroMotionLib)
 
+add_executable(test_moveabsolute_blending_done tests/test_moveabsolute_blending_done.c)
+target_link_libraries(test_moveabsolute_blending_done PRIVATE HydroMotionLib)
+
 add_executable(test_stop_immediate_done tests/test_stop_immediate_done.c)
 target_link_libraries(test_stop_immediate_done PRIVATE HydroMotionLib)
 
@@ -202,6 +205,7 @@ add_test(NAME test_motion_interface_unit COMMAND test_motion_interface_unit)
 add_test(NAME test_motion_interface_arbitration COMMAND test_motion_interface_arbitration)
 add_test(NAME test_motion_interface_done_signals COMMAND test_motion_interface_done_signals)
 add_test(NAME test_moveabsolute_stop_integration COMMAND test_moveabsolute_stop_integration)
+add_test(NAME test_moveabsolute_blending_done COMMAND test_moveabsolute_blending_done)
 add_test(NAME test_stop_immediate_done COMMAND test_stop_immediate_done)
 add_test(NAME test_ramp_controller_detailed COMMAND test_ramp_controller)
 add_test(NAME test_fault_recovery
