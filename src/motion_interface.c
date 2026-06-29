@@ -1151,8 +1151,13 @@ void __mcl_cmd_MoveAbsolute(HYD_MOVEABSOLUTE *data__)
             return;
         }
 
-        __SET_VAR(data__->, _PENDING, , true);
-        __SET_VAR(data__->, _EXEC_ID, , (IEC_WORD)0);
+        if (startResult == HYD_DIRECT_START_STARTED) {
+            __SET_VAR(data__->, _PENDING, , false);
+            __SET_VAR(data__->, _EXEC_ID, , (IEC_WORD)HYD_MotionControlFB_GetDirectOwnerTicket(fb));
+        } else {
+            __SET_VAR(data__->, _PENDING, , true);
+            __SET_VAR(data__->, _EXEC_ID, , (IEC_WORD)0);
+        }
         __SET_VAR(data__->, BUSY, , true);
         __SET_VAR(data__->, ACTIVE, , startResult == HYD_DIRECT_START_STARTED);
         __SET_VAR(data__->, DONE, , false);
@@ -1331,8 +1336,13 @@ void __mcl_cmd_MoveVelocity(HYD_MOVEVELOCITY *data__)
             return;
         }
 
-        __SET_VAR(data__->, _PENDING, , true);
-        __SET_VAR(data__->, _EXEC_ID, , (IEC_WORD)0);
+        if (startResult == HYD_DIRECT_START_STARTED) {
+            __SET_VAR(data__->, _PENDING, , false);
+            __SET_VAR(data__->, _EXEC_ID, , (IEC_WORD)HYD_MotionControlFB_GetDirectOwnerTicket(fb));
+        } else {
+            __SET_VAR(data__->, _PENDING, , true);
+            __SET_VAR(data__->, _EXEC_ID, , (IEC_WORD)0);
+        }
         __SET_VAR(data__->, BUSY, , true);
         __SET_VAR(data__->, ACTIVE, , startResult == HYD_DIRECT_START_STARTED);
         __SET_VAR(data__->, INVELOCITY, , false);
@@ -1527,8 +1537,13 @@ void __mcl_cmd_PressureHandle(HYD_PRESSUREHANDLE *data__)
             return;
         }
 
-        __SET_VAR(data__->, _PENDING, , true);
-        __SET_VAR(data__->, _EXEC_ID, , (IEC_WORD)0);
+        if (startResult == HYD_DIRECT_START_STARTED) {
+            __SET_VAR(data__->, _PENDING, , false);
+            __SET_VAR(data__->, _EXEC_ID, , (IEC_WORD)HYD_MotionControlFB_GetDirectOwnerTicket(fb));
+        } else {
+            __SET_VAR(data__->, _PENDING, , true);
+            __SET_VAR(data__->, _EXEC_ID, , (IEC_WORD)0);
+        }
         __SET_VAR(data__->, BUSY, , true);
         __SET_VAR(data__->, ACTIVE, , startResult == HYD_DIRECT_START_STARTED);
         __SET_VAR(data__->, INPRESSURE, , false);

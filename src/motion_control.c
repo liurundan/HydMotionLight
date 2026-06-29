@@ -2866,7 +2866,7 @@ HYD_DirectStartResult HYD_MotionControlFB_StartDirectCommand(HYD_MotionControlFB
     fb->DIRECT_SEGMENT_VALID = true;
     savedUseRecipe = fb->USE_RECIPE;
     fb->USE_RECIPE = false;
-    if (!HYD_MotionControlFB_StartSegment(fb, 0U, timestamp)) {
+    if (!HYD_BeginSegment(fb, 0U, timestamp)) {
         fb->USE_RECIPE = savedUseRecipe;
         return HYD_DIRECT_START_REJECTED;
     }
