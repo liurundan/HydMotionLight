@@ -330,12 +330,145 @@ static void test_blending_next_pending_does_not_take_active_or_overwrite_velocit
                                                   "Before cutover, planner velocity must not collapse to FB2 max velocity during BlendingNext");
 }
 
+static void test_three_segment_buffered_chain_reuses_pending_slot_without_early_takeover(void) {
+    HYD_MOVEABSOLUTE fb1, fb2, fb3, fb4;
+    HYD_MotionControlFB* core;
+    int axisId;
+    int secondTriggerScan;
+    int thirdTriggerScan;
+    float velAtSecondSwitch;
+    int finishSteps;
+
+    __HydMotion_framework_Init();
+    axisId = alloc_sim_axis();
+    ASSERT_TRUE(axisId >= 0, "alloc_sim_axis should succeed");
+    if (axisId < 0) {
+        return;
+    }
+
+    init_ma(&fb1, axisId, 100.0f, 5.0f, 50.0f, HYD_BUFFER_MODE_ABORT);
+    rising_edge(&fb1);
+
+    init_ma(&fb2, axisId, 200.0f, 20.0f, 50.0f, HYD_BUFFER_MODE_BLENDING_HIGH);
+    secondTriggerScan = trigger_fb2_when_fb1_active(&fb1, &fb2, 20);
+    ASSERT_TRUE(secondTriggerScan > 0, "FB2 should be triggered after FB1 becomes ACTIVE");
+    if (secondTriggerScan <= 0) {
+        return;
+    }
+
+    core = __MK_GetPublic_MotionControlFB(axisId);
+    ASSERT_TRUE(core != NULL, "Public motion control FB should be available");
+    if (core == NULL) {
+        return;
+    }
+
+    init_ma(&fb3, axisId, 300.0f, 8.0f, 50.0f, HYD_BUFFER_MODE_BLENDING_NEXT);
+    thirdTriggerScan = -1;
+    for (int step = 0; step < MAX_SIM_STEPS; step++) {
+        __HydMotion_framework_Publish();
+        hold_true_scan(&fb1);
+        hold_true_scan(&fb2);
+
+        if (IEC_VAL(fb1.COMMANDABORTED) || IEC_VAL(fb2.COMMANDABORTED)) {
+            break;
+        }
+
+        if (IEC_VAL(fb1.DONE) && IEC_VAL(fb2.ACTIVE)) {
+            ASSERT_TRUE(core->_directPendingValid == false,
+                       "Pending slot should be empty immediately after FB2 acquires ownership");
+            ASSERT_TRUE(core->_directBlendContext.active == false,
+                       "First blend context should be cleared immediately after the first cutover");
+            rising_edge(&fb3);
+            thirdTriggerScan = step + 1;
+            break;
+        }
+    }
+
+    ASSERT_TRUE(thirdTriggerScan > 0,
+               "FB3 should be triggered after FB2 becomes ACTIVE at the first blended cutover");
+    if (thirdTriggerScan <= 0) {
+        return;
+    }
+    ASSERT_TRUE(IEC_VAL(fb1.DONE) == true,
+               "FB1 should report DONE before FB3 occupies the reused pending slot");
+    ASSERT_TRUE(IEC_VAL(fb1.COMMANDABORTED) == false,
+               "FB1 should not be aborted during the first blended cutover");
+    ASSERT_TRUE(IEC_VAL(fb2.ACTIVE) == true,
+               "FB2 should own the axis before FB3 is accepted into the pending slot");
+    ASSERT_TRUE(IEC_VAL(fb3.BUSY) == true,
+               "FB3 should report BUSY immediately after it reuses the pending slot");
+    ASSERT_TRUE(IEC_VAL(fb3.ACTIVE) == false,
+               "FB3 must stay inactive until the second cutover");
+    ASSERT_TRUE(core->_directPendingValid == true,
+               "Pending slot should be reused by FB3 after the first cutover");
+    ASSERT_TRUE(core->_directBlendContext.active == true,
+               "A second blend context should be recorded for FB2 -> FB3");
+    ASSERT_TRUE(fabs(core->_directBlendContext.switchPosition - 200.0f) <= 0.001f,
+               "Second blend context should switch at FB2 target position");
+    ASSERT_TRUE(fabs(core->_directBlendContext.blendVelocity - 8.0f) <= 0.001f,
+               "BlendingNext should use FB3 velocity at the second cutover");
+
+    init_ma(&fb4, axisId, 400.0f, 12.0f, 50.0f, HYD_BUFFER_MODE_BLENDING_HIGH);
+    rising_edge(&fb4);
+    ASSERT_TRUE(IEC_VAL(fb4.ERROR) == true,
+               "A fourth same-axis MoveAbsolute should be rejected while FB2 is active and FB3 is pending");
+    ASSERT_TRUE(IEC_VAL(fb4.BUSY) == false,
+               "Rejected FB4 should not enter BUSY after pending-slot reuse");
+    ASSERT_TRUE(IEC_VAL(fb4.ACTIVE) == false,
+               "Rejected FB4 should not enter ACTIVE after pending-slot reuse");
+    ASSERT_TRUE(core->_directPendingValid == true,
+               "Rejected FB4 should not displace FB3 from the reused pending slot");
+
+    for (int step = 0; step < 40; step++) {
+        __HydMotion_framework_Publish();
+        hold_true_scan(&fb2);
+        hold_true_scan(&fb3);
+
+        if (IEC_VAL(fb3.ACTIVE) != false) {
+            ASSERT_TRUE(false,
+                       "FB3 should stay inactive while FB2 is still far from the second cutover");
+            break;
+        }
+        if (IEC_VAL(fb2.COMMANDABORTED) != false) {
+            ASSERT_TRUE(false,
+                       "FB2 should not be aborted by buffered FB3 submission after slot reuse");
+            break;
+        }
+        if (velocity_overwritten_before_cutover(core, 200.0f, 8.0f, 0.25f)) {
+            ASSERT_TRUE(false,
+                       "Before the second cutover, planner velocity must not collapse to FB3 max velocity");
+            break;
+        }
+
+        if (core->AXIS_REF.position >= 195.0f) {
+            break;
+        }
+    }
+
+    velAtSecondSwitch = -1.0f;
+    finishSteps = run_until_fb2_done(&fb2, &fb3, &velAtSecondSwitch, 200.0f);
+
+    ASSERT_TRUE(finishSteps > 0,
+               "FB2 and FB3 should complete without timeout or error after pending-slot reuse");
+    ASSERT_TRUE(IEC_VAL(fb2.DONE) == true,
+               "FB2 should output DONE after the second blended cutover");
+    ASSERT_TRUE(IEC_VAL(fb2.COMMANDABORTED) == false,
+               "FB2 should not output COMMANDABORTED during pending-slot reuse");
+    ASSERT_TRUE(IEC_VAL(fb3.DONE) == true,
+               "FB3 should output DONE after reaching its final target");
+    ASSERT_TRUE(IEC_VAL(fb3.COMMANDABORTED) == false,
+               "FB3 should not output COMMANDABORTED after slot reuse");
+    ASSERT_TRUE(velAtSecondSwitch > 0.1f,
+               "Velocity at the second blend switch must remain non-zero");
+}
+
 int main(void) {
     printf("=== test_moveabsolute_blending_done ===\n\n");
     test_blending_high_pending_does_not_take_active_or_overwrite_velocity_early();
     test_blending_low_pending_does_not_take_active_or_overwrite_velocity_early();
     test_blending_previous_pending_does_not_take_active_or_overwrite_velocity_early();
     test_blending_next_pending_does_not_take_active_or_overwrite_velocity_early();
+    test_three_segment_buffered_chain_reuses_pending_slot_without_early_takeover();
     test_blending_high_two_moveabsolute_cycles();
     printf("\n%d/%d tests passed\n", tests_passed, tests_run);
     return (tests_failed > 0) ? 1 : 0;
