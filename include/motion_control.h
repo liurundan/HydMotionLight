@@ -197,6 +197,12 @@ typedef enum {
 
 #define HYD_DIRECT_PREEMPTED_HISTORY_CAPACITY 2U
 
+typedef enum {
+    HYD_DIRECT_START_REJECTED = 0,
+    HYD_DIRECT_START_STARTED,
+    HYD_DIRECT_START_QUEUED
+} HYD_DirectStartResult;
+
 typedef struct {
     uint16_t ticket;
     HYD_DirectCommandKind kind;
@@ -473,10 +479,10 @@ HYD_BOOL HYD_MotionControlFB_ConsumeDirectTicketCompleted(HYD_MotionControlFB* f
                                                           HYD_DirectCommandKind kind);
 HYD_BOOL HYD_MotionControlFB_ApplyLiveUpdate(HYD_MotionControlFB* fb,
                                              const HYD_LiveUpdateRequest* request);
-HYD_BOOL HYD_MotionControlFB_StartDirectCommand(HYD_MotionControlFB* fb,
-                                                const HYD_MotionSegment* segment,
-                                                HYD_BufferMode bufferMode,
-                                                HYD_TIME timestamp);
+HYD_DirectStartResult HYD_MotionControlFB_StartDirectCommand(HYD_MotionControlFB* fb,
+                                                             const HYD_MotionSegment* segment,
+                                                             HYD_BufferMode bufferMode,
+                                                             HYD_TIME timestamp);
 
 /* Executes the already-sampled pending command and the explicit state machine. */
 void HYD_MotionControlFB_Cycle(HYD_MotionControlFB* fb);

@@ -26,10 +26,6 @@
 extern HYD_MotionControlFB* __MK_GetPublic_MotionControlFB(int index);
 
 #define IEC_VAL(var) ((var).value)
-#define HYD_JOIN2(a, b) a##b
-#define HYD_JOIN(a, b) HYD_JOIN2(a, b)
-#define ownerTicket HYD_JOIN(ownerExecution, Id)
-#define _directOwnerTicket HYD_JOIN(_directOwnerExecution, Id)
 
 #define STOP_WAIT_BUDGET 5000
 
@@ -245,6 +241,87 @@ static void test_moveabsolute_preempted_by_stop(void) {
                "Stop should complete after the already-verified pending cycle");
     ASSERT_TRUE(IEC_VAL(stop.BUSY) == false,
                "Stop BUSY should be false once DONE");
+}
+
+static void test_buffered_moveabsolute_reports_busy_but_not_active_while_waiting(void) {
+    HYD_MOVEABSOLUTE first;
+    HYD_MOVEABSOLUTE second;
+
+    __HydMotion_framework_Init();
+    ensure_axes_allocated(1);
+
+    start_moveabsolute_on_axis(0, &first);
+    ASSERT_TRUE(IEC_VAL(first.ACTIVE) || IEC_VAL(first.BUSY),
+               "First MoveAbsolute should be running before the buffered follower starts");
+
+    memset(&second, 0, sizeof(second));
+    IEC_VAL(second.EN) = true;
+    IEC_VAL(second.EXECUTE) = true;
+    second.EXECUTE0.value = false;
+    IEC_VAL(second.AXISID) = 0;
+    IEC_VAL(second.POSITION) = 200.0f;
+    IEC_VAL(second.VELOCITY) = 40.0f;
+    IEC_VAL(second.ACCELERATION) = 100.0f;
+    IEC_VAL(second.DECELERATION) = 100.0f;
+    IEC_VAL(second.DIRECTION) = 1;
+    IEC_VAL(second.BUFFERMODE) = HYD_BUFFER_MODE_BLENDING_HIGH;
+    __mcl_cmd_MoveAbsolute(&second);
+
+    ASSERT_TRUE(IEC_VAL(second.BUSY) == true,
+               "Buffered MoveAbsolute should be BUSY while waiting");
+    ASSERT_TRUE(IEC_VAL(second.ACTIVE) == false,
+               "Buffered MoveAbsolute must not be ACTIVE while another MoveAbsolute owns the axis");
+    ASSERT_TRUE(IEC_VAL(second.DONE) == false,
+               "Buffered MoveAbsolute should not report DONE while waiting");
+    ASSERT_TRUE(IEC_VAL(second.COMMANDABORTED) == false,
+               "Buffered MoveAbsolute should not report COMMANDABORTED while waiting");
+}
+
+static void test_third_same_axis_moveabsolute_is_rejected_when_one_active_and_one_pending_exist(void) {
+    HYD_MOVEABSOLUTE first;
+    HYD_MOVEABSOLUTE second;
+    HYD_MOVEABSOLUTE third;
+
+    __HydMotion_framework_Init();
+    ensure_axes_allocated(1);
+
+    start_moveabsolute_on_axis(0, &first);
+
+    memset(&second, 0, sizeof(second));
+    IEC_VAL(second.EN) = true;
+    IEC_VAL(second.EXECUTE) = true;
+    second.EXECUTE0.value = false;
+    IEC_VAL(second.AXISID) = 0;
+    IEC_VAL(second.POSITION) = 200.0f;
+    IEC_VAL(second.VELOCITY) = 40.0f;
+    IEC_VAL(second.ACCELERATION) = 100.0f;
+    IEC_VAL(second.DECELERATION) = 100.0f;
+    IEC_VAL(second.DIRECTION) = 1;
+    IEC_VAL(second.BUFFERMODE) = HYD_BUFFER_MODE_BLENDING_HIGH;
+    __mcl_cmd_MoveAbsolute(&second);
+
+    ASSERT_TRUE(IEC_VAL(second.ERROR) == false,
+               "Second MoveAbsolute should occupy the single pending slot");
+
+    memset(&third, 0, sizeof(third));
+    IEC_VAL(third.EN) = true;
+    IEC_VAL(third.EXECUTE) = true;
+    third.EXECUTE0.value = false;
+    IEC_VAL(third.AXISID) = 0;
+    IEC_VAL(third.POSITION) = 300.0f;
+    IEC_VAL(third.VELOCITY) = 60.0f;
+    IEC_VAL(third.ACCELERATION) = 100.0f;
+    IEC_VAL(third.DECELERATION) = 100.0f;
+    IEC_VAL(third.DIRECTION) = 1;
+    IEC_VAL(third.BUFFERMODE) = HYD_BUFFER_MODE_BLENDING_LOW;
+    __mcl_cmd_MoveAbsolute(&third);
+
+    ASSERT_TRUE(IEC_VAL(third.ERROR) == true,
+               "Third same-axis MoveAbsolute should be rejected when one active and one pending command already exist");
+    ASSERT_TRUE(IEC_VAL(third.BUSY) == false,
+               "Rejected third MoveAbsolute should not enter BUSY");
+    ASSERT_TRUE(IEC_VAL(third.ACTIVE) == false,
+               "Rejected third MoveAbsolute should not enter ACTIVE");
 }
 
 /* ==================================================================
@@ -815,9 +892,9 @@ static void test_blended_cutover_preserves_planner_state(void) {
                "Front MoveAbsolute should clear BUSY after blended cutover");
     ASSERT_TRUE(IEC_VAL(first.ACTIVE) == false,
                "Front MoveAbsolute should clear ACTIVE after blended cutover");
-    ASSERT_TRUE(!HYD_MotionControlFB_WasExecutionCompleted(fb,
-                                                           (uint16_t)firstExecId,
-                                                           HYD_DIRECT_CMD_MOVE_ABSOLUTE),
+    ASSERT_TRUE(!HYD_MotionControlFB_ConsumeDirectTicketCompleted(fb,
+                                                                   (uint16_t)firstExecId,
+                                                                   HYD_DIRECT_CMD_MOVE_ABSOLUTE),
                "Front MoveAbsolute completion marker should be consumed after reporting DONE");
 
     IEC_VAL(second.EXECUTE) = true;
@@ -1521,6 +1598,8 @@ int main(void) {
     printf("=== Motion Interface Arbitration Tests ===\n\n");
 
     test_moveabsolute_preempted_by_stop();
+    test_buffered_moveabsolute_reports_busy_but_not_active_while_waiting();
+    test_third_same_axis_moveabsolute_is_rejected_when_one_active_and_one_pending_exist();
     test_moveabsolute_preempted_by_movevelocity();
     test_movevelocity_preempted_by_moveabsolute();
     test_pressurehandle_preempted_by_stop();

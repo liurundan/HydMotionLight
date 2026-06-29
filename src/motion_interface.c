@@ -484,11 +484,13 @@ static HYD_BOOL applyPressureHandleLiveUpdate(HYD_MotionControlFB* fb,
     return HYD_MotionControlFB_ApplyLiveUpdate(fb, &request);
 }
 
-static HYD_BOOL startDirectSegmentExecution(HYD_MotionControlFB* fb,
-                                            IEC_INT bufferMode,
-                                            const HYD_MotionSegment* segment,
-                                            IEC_WORD* errorId)
+static HYD_DirectStartResult startDirectSegmentExecution(HYD_MotionControlFB* fb,
+                                                         IEC_INT bufferMode,
+                                                         const HYD_MotionSegment* segment,
+                                                         IEC_WORD* errorId)
 {
+    HYD_DirectStartResult result;
+
     if (errorId != NULL) {
         *errorId = (IEC_WORD)0;
     }
@@ -497,20 +499,20 @@ static HYD_BOOL startDirectSegmentExecution(HYD_MotionControlFB* fb,
         if (errorId != NULL) {
             *errorId = (IEC_WORD)HYD_DIAG_CODE_INTERNAL_ERROR;
         }
-        return false;
+        return HYD_DIRECT_START_REJECTED;
     }
 
-    if (!HYD_MotionControlFB_StartDirectCommand(fb,
-                                                segment,
-                                                (HYD_BufferMode)bufferMode,
-                                                fb->AXIS_REF.timestamp)) {
+    result = HYD_MotionControlFB_StartDirectCommand(fb,
+                                                    segment,
+                                                    (HYD_BufferMode)bufferMode,
+                                                    fb->AXIS_REF.timestamp);
+    if (result == HYD_DIRECT_START_REJECTED) {
         if (errorId != NULL) {
             *errorId = commandFailureErrorId(fb);
         }
-        return false;
     }
 
-    return true;
+    return result;
 }
 
 /* ======================================================================
@@ -1139,7 +1141,9 @@ void __mcl_cmd_MoveAbsolute(HYD_MOVEABSOLUTE *data__)
             dir,
             fb);
 
-        if (!startDirectSegmentExecution(fb, bufferMode, &segment, &errorId))
+        HYD_DirectStartResult startResult =
+            startDirectSegmentExecution(fb, bufferMode, &segment, &errorId);
+        if (startResult == HYD_DIRECT_START_REJECTED)
         {
             __SET_VAR(data__->, ERROR, , true);
             __SET_VAR(data__->, ERRORID, , errorId);
@@ -1147,13 +1151,13 @@ void __mcl_cmd_MoveAbsolute(HYD_MOVEABSOLUTE *data__)
             return;
         }
 
-        __SET_VAR(data__->, _PENDING, , true);
+        __SET_VAR(data__->, _PENDING, , startResult == HYD_DIRECT_START_QUEUED);
         __SET_VAR(data__->, _EXEC_ID, , (IEC_WORD)0);
         __SET_VAR(data__->, BUSY, , true);
-        __SET_VAR(data__->, ACTIVE, , true);
+        __SET_VAR(data__->, ACTIVE, , startResult == HYD_DIRECT_START_STARTED);
         __SET_VAR(data__->, DONE, , false);
         __SET_VAR(data__->, COMMANDABORTED, , false);
-        __SET_VAR(data__->, ACTIVE0, , true);
+        __SET_VAR(data__->, ACTIVE0, , __GET_VAR(data__->ACTIVE));
         __SET_VAR(data__->, EXECUTE0, , execute);
         return;
     }
@@ -1317,7 +1321,9 @@ void __mcl_cmd_MoveVelocity(HYD_MOVEVELOCITY *data__)
             dir,
             fb);
 
-        if (!startDirectSegmentExecution(fb, bufferMode, &segment, &errorId))
+        HYD_DirectStartResult startResult =
+            startDirectSegmentExecution(fb, bufferMode, &segment, &errorId);
+        if (startResult == HYD_DIRECT_START_REJECTED)
         {
             __SET_VAR(data__->, ERROR, , true);
             __SET_VAR(data__->, ERRORID, , errorId);
@@ -1325,13 +1331,13 @@ void __mcl_cmd_MoveVelocity(HYD_MOVEVELOCITY *data__)
             return;
         }
 
-        __SET_VAR(data__->, _PENDING, , true);
+        __SET_VAR(data__->, _PENDING, , startResult == HYD_DIRECT_START_QUEUED);
         __SET_VAR(data__->, _EXEC_ID, , (IEC_WORD)0);
         __SET_VAR(data__->, BUSY, , true);
-        __SET_VAR(data__->, ACTIVE, , true);
+        __SET_VAR(data__->, ACTIVE, , startResult == HYD_DIRECT_START_STARTED);
         __SET_VAR(data__->, INVELOCITY, , false);
         __SET_VAR(data__->, COMMANDABORTED, , false);
-        __SET_VAR(data__->, ACTIVE0, , true);
+        __SET_VAR(data__->, ACTIVE0, , __GET_VAR(data__->ACTIVE));
         __SET_VAR(data__->, EXECUTE0, , execute);
         return;
     }
@@ -1511,7 +1517,9 @@ void __mcl_cmd_PressureHandle(HYD_PRESSUREHANDLE *data__)
             __GET_VAR(data__->DURATION),
             fb);
 
-        if (!startDirectSegmentExecution(fb, bufferMode, &segment, &errorId))
+        HYD_DirectStartResult startResult =
+            startDirectSegmentExecution(fb, bufferMode, &segment, &errorId);
+        if (startResult == HYD_DIRECT_START_REJECTED)
         {
             __SET_VAR(data__->, ERROR, , true);
             __SET_VAR(data__->, ERRORID, , errorId);
@@ -1519,14 +1527,14 @@ void __mcl_cmd_PressureHandle(HYD_PRESSUREHANDLE *data__)
             return;
         }
 
-        __SET_VAR(data__->, _PENDING, , true);
+        __SET_VAR(data__->, _PENDING, , startResult == HYD_DIRECT_START_QUEUED);
         __SET_VAR(data__->, _EXEC_ID, , (IEC_WORD)0);
         __SET_VAR(data__->, BUSY, , true);
-        __SET_VAR(data__->, ACTIVE, , true);
+        __SET_VAR(data__->, ACTIVE, , startResult == HYD_DIRECT_START_STARTED);
         __SET_VAR(data__->, INPRESSURE, , false);
         __SET_VAR(data__->, DONE, , false);
         __SET_VAR(data__->, COMMANDABORTED, , false);
-        __SET_VAR(data__->, ACTIVE0, , true);
+        __SET_VAR(data__->, ACTIVE0, , __GET_VAR(data__->ACTIVE));
         __SET_VAR(data__->, EXECUTE0, , execute);
         return;
     }

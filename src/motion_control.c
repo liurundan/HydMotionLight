@@ -2784,17 +2784,17 @@ HYD_BOOL HYD_MotionControlFB_LoadDirectSegment(HYD_MotionControlFB* fb,
     return true;
 }
 
-HYD_BOOL HYD_MotionControlFB_StartDirectCommand(HYD_MotionControlFB* fb,
-                                                const HYD_MotionSegment* segment,
-                                                HYD_BufferMode bufferMode,
-                                                HYD_TIME timestamp) {
+HYD_DirectStartResult HYD_MotionControlFB_StartDirectCommand(HYD_MotionControlFB* fb,
+                                                             const HYD_MotionSegment* segment,
+                                                             HYD_BufferMode bufferMode,
+                                                             HYD_TIME timestamp) {
     HYD_DiagnosticCode code = HYD_DIAG_CODE_NONE;
     HYD_BOOL savedUseRecipe;
     HYD_BOOL activeDirect;
     HYD_BOOL shouldAbort;
 
     if (fb == NULL || segment == NULL) {
-        return false;
+        return HYD_DIRECT_START_REJECTED;
     }
 
     if (!HYD_RecipeValidator_ValidateSegment(segment, HYD_MAX_SEGMENTS, &code, &fb->cylinderConfig)) {
@@ -2804,7 +2804,7 @@ HYD_BOOL HYD_MotionControlFB_StartDirectCommand(HYD_MotionControlFB* fb,
                                            timestamp,
                                            NULL,
                                            NULL);
-        return false;
+        return HYD_DIRECT_START_REJECTED;
     }
 
     if (fb->_isStopping && bufferMode != HYD_BUFFER_MODE_ABORT) {
@@ -2814,7 +2814,7 @@ HYD_BOOL HYD_MotionControlFB_StartDirectCommand(HYD_MotionControlFB* fb,
                                            timestamp,
                                            fb->_activeSegmentValid ? &fb->_activeSegment : NULL,
                                            &fb->STATE.references);
-        return false;
+        return HYD_DIRECT_START_REJECTED;
     }
 
     activeDirect = fb->STATE.active &&
@@ -2840,7 +2840,7 @@ HYD_BOOL HYD_MotionControlFB_StartDirectCommand(HYD_MotionControlFB* fb,
         }
         (void)HYD_BeginSegment(fb, 0U, timestamp);
         fb->USE_RECIPE = savedUseRecipe;
-        return true;
+        return HYD_DIRECT_START_STARTED;
     }
 
     if (bufferMode != HYD_BUFFER_MODE_ABORT &&
@@ -2852,14 +2852,14 @@ HYD_BOOL HYD_MotionControlFB_StartDirectCommand(HYD_MotionControlFB* fb,
                                                timestamp,
                                                &fb->_activeSegment,
                                                &fb->STATE.references);
-            return false;
+            return HYD_DIRECT_START_REJECTED;
         }
         fb->_directPendingSegment = *segment;
         fb->_directPendingKind = HYD_InferDirectCommandKindFromSegment(segment);
         fb->_directPendingBufferMode = bufferMode;
         fb->_directPendingValid = true;
         (void)HYD_TryCreateDirectBlendContext(fb, bufferMode, segment);
-        return true;
+        return HYD_DIRECT_START_QUEUED;
     }
 
     fb->DIRECT_SEGMENT = *segment;
@@ -2868,10 +2868,10 @@ HYD_BOOL HYD_MotionControlFB_StartDirectCommand(HYD_MotionControlFB* fb,
     fb->USE_RECIPE = false;
     if (!HYD_MotionControlFB_StartSegment(fb, 0U, timestamp)) {
         fb->USE_RECIPE = savedUseRecipe;
-        return false;
+        return HYD_DIRECT_START_REJECTED;
     }
     fb->USE_RECIPE = savedUseRecipe;
-    return true;
+    return HYD_DIRECT_START_STARTED;
 }
 
 void HYD_MotionControlFB_ClearDirectSegment(HYD_MotionControlFB* fb) {
