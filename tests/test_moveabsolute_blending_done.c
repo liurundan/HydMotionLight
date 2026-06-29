@@ -594,10 +594,21 @@ static void test_reverse_direction_pending_falls_back_to_buffered_promotion_afte
                "Reverse FB3 target should become the active segment after promotion");
     ASSERT_TRUE(core->_directBlendContext.active == false,
                "Direct blend context should remain inactive after reverse FB3 promotion");
-    ASSERT_TRUE(IEC_VAL(fb3.ACTIVE) == true,
-               "Reverse FB3 should become ACTIVE after buffered promotion");
+    ASSERT_TRUE(IEC_VAL(fb3._PENDING) == false,
+               "Reverse FB3 should clear _PENDING once buffered promotion acquires ownership");
+    ASSERT_TRUE(IEC_VAL(fb3._EXEC_ID) != 0,
+               "Reverse FB3 should latch direct ownership after buffered promotion");
+    ASSERT_TRUE(IEC_VAL(fb3.BUSY) || IEC_VAL(fb3.ACTIVE),
+               "Reverse FB3 should be busy or active immediately after buffered promotion");
     ASSERT_TRUE(IEC_VAL(fb3.COMMANDABORTED) == false,
                "Reverse FB3 should not be COMMANDABORTED at promotion");
+
+    __HydMotion_framework_Publish();
+    hold_true_scan(&fb3);
+    ASSERT_TRUE(IEC_VAL(fb3.ACTIVE) == true,
+               "Reverse FB3 should become ACTIVE on the first post-promotion owner scan");
+    ASSERT_TRUE(IEC_VAL(fb3.COMMANDABORTED) == false,
+               "Reverse FB3 should remain non-aborted after becoming ACTIVE");
 
     finishSteps = -1;
     for (int step = 0; step < MAX_SIM_STEPS; step++) {

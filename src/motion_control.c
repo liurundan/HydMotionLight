@@ -2307,6 +2307,7 @@ static HYD_BOOL HYD_RunRunningStateCompletion(HYD_MotionControlFB* fb,
         completedSegmentSource = fb->_activeSegmentSource;
         if (completedSegmentSource == HYD_SEGMENT_SOURCE_DIRECT &&
             fb->_directPendingValid) {
+            HYD_RecordDirectExecutionCompleted(fb);
             (void)HYD_StartPendingDirectSlot(fb, fb->AXIS_REF.timestamp, false);
             return true;
         }
@@ -2345,6 +2346,7 @@ static HYD_BOOL HYD_RunRunningStateCompletion(HYD_MotionControlFB* fb,
     completedSegmentSource = fb->_activeSegmentSource;
     if (completedSegmentSource == HYD_SEGMENT_SOURCE_DIRECT &&
         fb->_directPendingValid) {
+        HYD_RecordDirectExecutionCompleted(fb);
         (void)HYD_StartPendingDirectSlot(fb, fb->AXIS_REF.timestamp, false);
         return true;
     }
