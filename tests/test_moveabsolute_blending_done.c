@@ -224,6 +224,9 @@ static void test_blending_high_pending_does_not_take_active_or_overwrite_velocit
     __HydMotion_framework_Init();
     axisId = alloc_sim_axis();
     ASSERT_TRUE(axisId >= 0, "alloc_sim_axis should succeed");
+    if (axisId < 0) {
+        return;
+    }
 
     init_ma(&fb1, axisId, 100.0f, 5.0f, 50.0f, HYD_BUFFER_MODE_ABORT);
     rising_edge(&fb1);
@@ -231,25 +234,43 @@ static void test_blending_high_pending_does_not_take_active_or_overwrite_velocit
     init_ma(&fb2, axisId, 200.0f, 20.0f, 50.0f, HYD_BUFFER_MODE_BLENDING_HIGH);
     triggerScan = trigger_fb2_when_fb1_active(&fb1, &fb2, 20);
     ASSERT_TRUE(triggerScan > 0, "FB2 should be triggered after FB1 becomes ACTIVE");
+    if (triggerScan <= 0) {
+        return;
+    }
 
     core = __MK_GetPublic_MotionControlFB(axisId);
     ASSERT_TRUE(core != NULL, "Public motion control FB should be available");
+    if (core == NULL) {
+        return;
+    }
     ASSERT_TRUE(IEC_VAL(fb2.BUSY) == true,
                "Buffered FB2 should report BUSY immediately after acceptance");
     ASSERT_TRUE(IEC_VAL(fb2.ACTIVE) == false,
                "Buffered FB2 must not report ACTIVE before cutover");
+    if (IEC_VAL(fb2.ACTIVE) != false) {
+        return;
+    }
 
     for (int step = 0; step < 40; step++) {
         __HydMotion_framework_Publish();
         hold_true_scan(&fb1);
         hold_true_scan(&fb2);
 
-        ASSERT_TRUE(IEC_VAL(fb2.ACTIVE) == false,
-                   "FB2 should stay inactive while FB1 is still far from the cutover");
-        ASSERT_TRUE(IEC_VAL(fb1.COMMANDABORTED) == false,
-                   "FB1 should not be aborted by buffered BlendingHigh submission");
-        ASSERT_TRUE(!velocity_overwritten_before_cutover(core, 100.0f, 20.0f, 0.25f),
-                   "Before cutover, planner velocity must not jump to FB2 max velocity");
+        if (IEC_VAL(fb2.ACTIVE) != false) {
+            ASSERT_TRUE(false,
+                       "FB2 should stay inactive while FB1 is still far from the cutover");
+            break;
+        }
+        if (IEC_VAL(fb1.COMMANDABORTED) != false) {
+            ASSERT_TRUE(false,
+                       "FB1 should not be aborted by buffered BlendingHigh submission");
+            break;
+        }
+        if (velocity_overwritten_before_cutover(core, 100.0f, 20.0f, 0.25f)) {
+            ASSERT_TRUE(false,
+                       "Before cutover, planner velocity must not jump to FB2 max velocity");
+            break;
+        }
 
         if (core->AXIS_REF.position >= 95.0f) {
             break;
@@ -266,6 +287,9 @@ static void test_blending_low_pending_does_not_take_active_or_overwrite_velocity
     __HydMotion_framework_Init();
     axisId = alloc_sim_axis();
     ASSERT_TRUE(axisId >= 0, "alloc_sim_axis should succeed");
+    if (axisId < 0) {
+        return;
+    }
 
     init_ma(&fb1, axisId, 100.0f, 20.0f, 50.0f, HYD_BUFFER_MODE_ABORT);
     rising_edge(&fb1);
@@ -273,25 +297,43 @@ static void test_blending_low_pending_does_not_take_active_or_overwrite_velocity
     init_ma(&fb2, axisId, 200.0f, 8.0f, 50.0f, HYD_BUFFER_MODE_BLENDING_LOW);
     triggerScan = trigger_fb2_when_fb1_active(&fb1, &fb2, 20);
     ASSERT_TRUE(triggerScan > 0, "FB2 should be triggered after FB1 becomes ACTIVE");
+    if (triggerScan <= 0) {
+        return;
+    }
 
     core = __MK_GetPublic_MotionControlFB(axisId);
     ASSERT_TRUE(core != NULL, "Public motion control FB should be available");
+    if (core == NULL) {
+        return;
+    }
     ASSERT_TRUE(IEC_VAL(fb2.BUSY) == true,
                "Buffered FB2 should report BUSY immediately after acceptance");
     ASSERT_TRUE(IEC_VAL(fb2.ACTIVE) == false,
                "Buffered FB2 must not report ACTIVE before cutover");
+    if (IEC_VAL(fb2.ACTIVE) != false) {
+        return;
+    }
 
     for (int step = 0; step < 40; step++) {
         __HydMotion_framework_Publish();
         hold_true_scan(&fb1);
         hold_true_scan(&fb2);
 
-        ASSERT_TRUE(IEC_VAL(fb2.ACTIVE) == false,
-                   "FB2 should stay inactive while FB1 is still far from the cutover");
-        ASSERT_TRUE(IEC_VAL(fb1.COMMANDABORTED) == false,
-                   "FB1 should not be aborted by buffered BlendingLow submission");
-        ASSERT_TRUE(!velocity_overwritten_before_cutover(core, 100.0f, 8.0f, 0.25f),
-                   "Before cutover, planner velocity must not collapse to FB2 max velocity");
+        if (IEC_VAL(fb2.ACTIVE) != false) {
+            ASSERT_TRUE(false,
+                       "FB2 should stay inactive while FB1 is still far from the cutover");
+            break;
+        }
+        if (IEC_VAL(fb1.COMMANDABORTED) != false) {
+            ASSERT_TRUE(false,
+                       "FB1 should not be aborted by buffered BlendingLow submission");
+            break;
+        }
+        if (velocity_overwritten_before_cutover(core, 100.0f, 8.0f, 0.25f)) {
+            ASSERT_TRUE(false,
+                       "Before cutover, planner velocity must not collapse to FB2 max velocity");
+            break;
+        }
 
         if (core->AXIS_REF.position >= 95.0f) {
             break;
