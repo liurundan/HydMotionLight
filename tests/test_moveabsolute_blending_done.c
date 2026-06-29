@@ -632,6 +632,173 @@ static void test_reverse_direction_pending_falls_back_to_buffered_promotion_afte
                "Reverse FB3 should complete without COMMANDABORTED");
 }
 
+static void test_reverse_then_forward_reuses_pending_slot_without_stale_blend_context(void) {
+    HYD_MOVEABSOLUTE fb1, fb2, fb3, fb4, fb5;
+    HYD_MotionControlFB* core;
+    int axisId;
+    int secondTriggerScan;
+    int thirdTriggerScan;
+    int promotionScan;
+    HYD_BOOL observedPreFifthWindow;
+
+    __HydMotion_framework_Init();
+    axisId = alloc_sim_axis();
+    ASSERT_TRUE(axisId >= 0, "alloc_sim_axis should succeed");
+    if (axisId < 0) {
+        return;
+    }
+
+    init_ma(&fb1, axisId, 100.0f, 5.0f, 50.0f, HYD_BUFFER_MODE_ABORT);
+    rising_edge(&fb1);
+
+    init_ma(&fb2, axisId, 200.0f, 20.0f, 50.0f, HYD_BUFFER_MODE_BLENDING_HIGH);
+    secondTriggerScan = trigger_fb2_when_fb1_active(&fb1, &fb2, 20);
+    ASSERT_TRUE(secondTriggerScan > 0, "FB2 should be triggered after FB1 becomes ACTIVE");
+    if (secondTriggerScan <= 0) {
+        return;
+    }
+
+    core = __MK_GetPublic_MotionControlFB(axisId);
+    ASSERT_TRUE(core != NULL, "Public motion control FB should be available");
+    if (core == NULL) {
+        return;
+    }
+
+    init_ma(&fb3, axisId, 0.0f, 8.0f, 50.0f, HYD_BUFFER_MODE_BLENDING_HIGH);
+    IEC_VAL(fb3.DIRECTION) = 2;  /* NEGATIVE */
+    thirdTriggerScan = -1;
+    for (int step = 0; step < MAX_SIM_STEPS; step++) {
+        __HydMotion_framework_Publish();
+        hold_true_scan(&fb1);
+        hold_true_scan(&fb2);
+
+        if (IEC_VAL(fb1.COMMANDABORTED) || IEC_VAL(fb2.COMMANDABORTED)) {
+            break;
+        }
+
+        if (IEC_VAL(fb1.DONE) && IEC_VAL(fb2.ACTIVE)) {
+            ASSERT_TRUE(core->_directPendingValid == false,
+                       "Pending slot should be empty immediately after FB2 acquires ownership");
+            ASSERT_TRUE(core->_directBlendContext.active == false,
+                       "First blend context should be cleared immediately after the first cutover");
+            rising_edge(&fb3);
+            thirdTriggerScan = step + 1;
+            break;
+        }
+    }
+
+    ASSERT_TRUE(thirdTriggerScan > 0,
+               "Reverse FB3 should be triggered after FB2 becomes ACTIVE");
+    if (thirdTriggerScan <= 0) {
+        return;
+    }
+    ASSERT_TRUE(IEC_VAL(fb3.BUSY) == true,
+               "Reverse FB3 should report BUSY immediately after pending-slot reuse");
+    ASSERT_TRUE(IEC_VAL(fb3.ACTIVE) == false,
+               "Reverse FB3 must stay inactive until buffered promotion");
+    ASSERT_TRUE(core->_directPendingValid == true,
+               "Pending slot should be occupied by reverse FB3 before promotion");
+    ASSERT_TRUE(core->_directBlendContext.active == false,
+               "Forward FB2 -> reverse FB3 should not keep a direct blend context");
+
+    promotionScan = -1;
+    for (int step = 0; step < MAX_SIM_STEPS; step++) {
+        __HydMotion_framework_Publish();
+        hold_true_scan(&fb2);
+        hold_true_scan(&fb3);
+
+        if (!IEC_VAL(fb2.DONE)) {
+            ASSERT_TRUE(IEC_VAL(fb3.ACTIVE) == false,
+                       "Reverse FB3 should remain pending until FB2 completes");
+            ASSERT_TRUE(IEC_VAL(fb2.COMMANDABORTED) == false,
+                       "FB2 should not be COMMANDABORTED by reverse FB3 submission");
+            ASSERT_TRUE(core->_directBlendContext.active == false,
+                       "Direct blend context must stay inactive during reverse buffered fallback");
+            continue;
+        }
+
+        promotionScan = step + 1;
+        break;
+    }
+
+    ASSERT_TRUE(promotionScan > 0,
+               "FB2 should complete and promote reverse FB3 via the buffered-completion path");
+    if (promotionScan <= 0) {
+        return;
+    }
+
+    __HydMotion_framework_Publish();
+    hold_true_scan(&fb3);
+    ASSERT_TRUE(IEC_VAL(fb3.ACTIVE) == true,
+               "Reverse FB3 should become ACTIVE after buffered promotion");
+    ASSERT_TRUE(IEC_VAL(fb3.COMMANDABORTED) == false,
+               "Reverse FB3 should not be COMMANDABORTED when it becomes ACTIVE");
+    ASSERT_TRUE(core->_directPendingValid == false,
+               "Pending slot should be empty again after reverse FB3 becomes ACTIVE");
+    ASSERT_TRUE(core->_directBlendContext.active == false,
+               "No stale blend context should remain after reverse FB3 becomes ACTIVE");
+
+    init_ma(&fb4, axisId, 300.0f, 12.0f, 50.0f, HYD_BUFFER_MODE_BLENDING_HIGH);
+    ASSERT_TRUE(core->_directBlendContext.active == false,
+               "No stale direct blend context should remain before FB4 is accepted");
+    rising_edge(&fb4);
+
+    ASSERT_TRUE(IEC_VAL(fb4.ERROR) == false,
+               "FB4 should be accepted into the empty pending slot behind reverse FB3");
+    ASSERT_TRUE(IEC_VAL(fb4.BUSY) == true,
+               "Accepted FB4 should report BUSY while pending behind reverse FB3");
+    ASSERT_TRUE(IEC_VAL(fb4.ACTIVE) == false,
+               "Accepted FB4 must stay pending behind reverse FB3");
+    ASSERT_TRUE(IEC_VAL(fb4._PENDING) == true,
+               "Accepted FB4 should latch the pending state behind reverse FB3");
+    ASSERT_TRUE(core->_directPendingValid == true,
+               "Pending slot should be reused by FB4 after reverse FB3 becomes ACTIVE");
+    ASSERT_TRUE(core->_directBlendContext.active == false,
+               "Reverse FB3 -> forward FB4 should not create a direct blend context");
+    ASSERT_TRUE(IEC_VAL(fb3.COMMANDABORTED) == false,
+               "Active reverse FB3 should not be COMMANDABORTED by pending FB4");
+
+    observedPreFifthWindow = false;
+    for (int step = 0; step < 40; step++) {
+        __HydMotion_framework_Publish();
+        hold_true_scan(&fb3);
+        hold_true_scan(&fb4);
+
+        observedPreFifthWindow = true;
+        ASSERT_TRUE(IEC_VAL(fb3.ACTIVE) == true,
+                   "Reverse FB3 should remain ACTIVE while FB4 is pending");
+        ASSERT_TRUE(IEC_VAL(fb4.ACTIVE) == false,
+                   "FB4 should remain pending while reverse FB3 is still active");
+        ASSERT_TRUE(IEC_VAL(fb3.COMMANDABORTED) == false,
+                   "Pending FB4 must not cause reverse FB3 to COMMANDABORT early");
+        ASSERT_TRUE(core->_directBlendContext.active == false,
+                   "No direct blend context should appear for the reverse->forward pair while FB4 is pending");
+        if (core->AXIS_REF.position <= 20.0f) {
+            break;
+        }
+    }
+    ASSERT_TRUE(observedPreFifthWindow == true,
+               "Pre-FB5 observation window should execute at least once");
+
+    init_ma(&fb5, axisId, 350.0f, 10.0f, 50.0f, HYD_BUFFER_MODE_BLENDING_HIGH);
+    rising_edge(&fb5);
+
+    ASSERT_TRUE(IEC_VAL(fb5.ERROR) == true,
+               "A fifth same-axis MoveAbsolute should be rejected while reverse FB3 is active and FB4 is pending");
+    ASSERT_TRUE(IEC_VAL(fb5.BUSY) == false,
+               "Rejected FB5 should not report BUSY while FB4 occupies the pending slot");
+    ASSERT_TRUE(IEC_VAL(fb5.ACTIVE) == false,
+               "Rejected FB5 should not report ACTIVE while FB4 occupies the pending slot");
+    ASSERT_TRUE(core->_directPendingValid == true,
+               "Rejected FB5 should not displace FB4 from the reused pending slot");
+    ASSERT_TRUE(IEC_VAL(fb4._PENDING) == true,
+               "Rejected FB5 should leave FB4 latched as the pending command");
+    ASSERT_TRUE(IEC_VAL(fb4.BUSY) == true,
+               "Rejected FB5 should leave FB4 BUSY in the pending slot");
+    ASSERT_TRUE(IEC_VAL(fb4.ACTIVE) == false,
+               "Rejected FB5 should not let FB4 skip directly to ACTIVE");
+}
+
 int main(void) {
     printf("=== test_moveabsolute_blending_done ===\n\n");
     test_blending_high_pending_does_not_take_active_or_overwrite_velocity_early();
@@ -640,6 +807,7 @@ int main(void) {
     test_blending_next_pending_does_not_take_active_or_overwrite_velocity_early();
     test_three_segment_buffered_chain_reuses_pending_slot_without_early_takeover();
     test_reverse_direction_pending_falls_back_to_buffered_promotion_after_slot_reuse();
+    test_reverse_then_forward_reuses_pending_slot_without_stale_blend_context();
     test_blending_high_two_moveabsolute_cycles();
     printf("\n%d/%d tests passed\n", tests_passed, tests_run);
     return (tests_failed > 0) ? 1 : 0;
