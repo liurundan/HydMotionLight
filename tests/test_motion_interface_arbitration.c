@@ -919,6 +919,73 @@ static void test_blended_cutover_preserves_planner_state(void) {
                "Planner velocity should remain nonzero across blended cutover");
 }
 
+static void test_blended_cutover_keeps_nonzero_output_velocity_same_scan(void) {
+    HYD_MotionControlFB* fb;
+    HYD_MOVEABSOLUTE first;
+    HYD_MOVEABSOLUTE second;
+
+    __HydMotion_framework_Init();
+    ensure_axes_allocated(1);
+    fb = __MK_GetPublic_MotionControlFB(0);
+    ASSERT_TRUE(fb != NULL, "Axis 0 control FB should exist for same-scan cutover output test");
+    if (fb == NULL) {
+        return;
+    }
+
+    memset(&first, 0, sizeof(first));
+    IEC_VAL(first.EN) = true;
+    IEC_VAL(first.EXECUTE) = true;
+    first.EXECUTE0.value = false;
+    IEC_VAL(first.AXISID) = 0;
+    IEC_VAL(first.POSITION) = 100.0f;
+    IEC_VAL(first.VELOCITY) = 5.0f;
+    IEC_VAL(first.ACCELERATION) = 100.0f;
+    IEC_VAL(first.DECELERATION) = 100.0f;
+    IEC_VAL(first.DIRECTION) = 1;
+    IEC_VAL(first.BUFFERMODE) = HYD_BUFFER_MODE_ABORT;
+    __mcl_cmd_MoveAbsolute(&first);
+    __HydMotion_framework_Publish();
+
+    IEC_VAL(first.EXECUTE) = true;
+    first.EXECUTE0.value = true;
+    __mcl_cmd_MoveAbsolute(&first);
+
+    memset(&second, 0, sizeof(second));
+    IEC_VAL(second.EN) = true;
+    IEC_VAL(second.EXECUTE) = true;
+    second.EXECUTE0.value = false;
+    IEC_VAL(second.AXISID) = 0;
+    IEC_VAL(second.POSITION) = 200.0f;
+    IEC_VAL(second.VELOCITY) = 20.0f;
+    IEC_VAL(second.ACCELERATION) = 100.0f;
+    IEC_VAL(second.DECELERATION) = 100.0f;
+    IEC_VAL(second.DIRECTION) = 1;
+    IEC_VAL(second.BUFFERMODE) = HYD_BUFFER_MODE_BLENDING_HIGH;
+    __mcl_cmd_MoveAbsolute(&second);
+
+    fb->AXIS_REF.position = 100.0f;
+    fb->AXIS_REF.velocity = 5.0f;
+    fb->_plannerState.initialized = true;
+    fb->_plannerState.lastTargetVelocity = 5.0f;
+    fb->_plannerState.lastTargetFlow = 1.0f;
+    advance_non_sim_feedback(0, 0.1f);
+
+    __HydMotion_framework_Publish();
+
+    ASSERT_TRUE(fabs(fb->_plannerState.lastTargetVelocity) > 0.1f,
+               "Planner velocity should remain nonzero on the cutover scan");
+    ASSERT_TRUE(fabs(fb->STATE.plannedVelocity) > 0.1f,
+               "State plannedVelocity should remain nonzero on the cutover scan");
+    ASSERT_TRUE(fabs(fb->_simFeedback.targetVelocity) > 0.1f,
+               "Simulation feedback velocity should remain nonzero on the cutover scan");
+    ASSERT_TRUE(fabs(fb->AXIS_REF.velocity) > 0.05f,
+               "Axis velocity should not drop to zero on the cutover scan");
+    ASSERT_TRUE(fb->_activeSegmentValid,
+               "Active segment should stay valid on the cutover scan");
+    ASSERT_TRUE(fabs(fb->_activeSegment.targetPosition - 200.0f) < 0.001f,
+               "Second MoveAbsolute should own the active segment on the cutover scan");
+}
+
 static void test_moveabsolute_direct_start_latches_ownership_on_rising_edge(void) {
     HYD_MOVEABSOLUTE ma;
 
@@ -1646,6 +1713,7 @@ int main(void) {
     test_blending_modes_select_distinct_through_velocities();
     test_blended_front_segment_keeps_nonzero_velocity_near_switch();
     test_blended_cutover_preserves_planner_state();
+    test_blended_cutover_keeps_nonzero_output_velocity_same_scan();
     test_moveabsolute_direct_start_latches_ownership_on_rising_edge();
     test_blend_context_requires_compatible_moveabsolute_direction();
     test_previous_command_loses_ownership_after_reset();

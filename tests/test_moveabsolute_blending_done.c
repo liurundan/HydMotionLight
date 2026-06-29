@@ -294,6 +294,83 @@ static void test_blending_high_two_moveabsolute_cycles(void) {
     }
 }
 
+static void test_blending_high_cutover_scan_keeps_nonzero_output_velocity(void) {
+    HYD_MOVEABSOLUTE fb1, fb2;
+    HYD_MotionControlFB* core;
+    int axisId;
+    int triggerScan;
+    int cutoverScan = -1;
+    float velocityAtCutover = 0.0f;
+    float simVelocityAtCutover = 0.0f;
+    float plannedVelocityAtCutover = 0.0f;
+    float velocityAfterCutover = 0.0f;
+
+    __HydMotion_framework_Init();
+    axisId = alloc_sim_axis();
+    ASSERT_TRUE(axisId >= 0, "alloc_sim_axis should succeed for same-scan cutover test");
+    if (axisId < 0) {
+        return;
+    }
+
+    init_ma(&fb1, axisId, 100.0f, 5.0f, 50.0f, HYD_BUFFER_MODE_ABORT);
+    rising_edge(&fb1);
+
+    init_ma(&fb2, axisId, 200.0f, 20.0f, 50.0f, HYD_BUFFER_MODE_BLENDING_HIGH);
+    triggerScan = trigger_fb2_when_fb1_active(&fb1, &fb2, 20);
+    ASSERT_TRUE(triggerScan > 0, "FB2 should be accepted after FB1 becomes ACTIVE");
+    if (triggerScan <= 0) {
+        return;
+    }
+
+    core = __MK_GetPublic_MotionControlFB(axisId);
+    ASSERT_TRUE(core != NULL, "Public motion control FB should be available for cutover test");
+    if (core == NULL) {
+        return;
+    }
+
+    for (int step = 0; step < MAX_SIM_STEPS; step++) {
+        __HydMotion_framework_Publish();
+        hold_true_scan(&fb1);
+        hold_true_scan(&fb2);
+
+        if (IEC_VAL(fb1.DONE)) {
+            cutoverScan = step + 1;
+            velocityAtCutover = (float)fabs(core->AXIS_REF.velocity);
+            simVelocityAtCutover = (float)fabs(core->_simFeedback.targetVelocity);
+            plannedVelocityAtCutover = (float)fabs(core->STATE.plannedVelocity);
+            break;
+        }
+
+        if (IEC_VAL(fb1.ERROR) || IEC_VAL(fb2.ERROR) ||
+            IEC_VAL(fb1.COMMANDABORTED) || IEC_VAL(fb2.COMMANDABORTED)) {
+            break;
+        }
+    }
+
+    ASSERT_TRUE(cutoverScan > 0, "FB1 should reach blended cutover before timeout");
+    if (cutoverScan <= 0) {
+        return;
+    }
+
+    ASSERT_TRUE(fabs(core->_activeSegment.targetPosition - 200.0f) < 0.001f,
+               "FB2 should own the active segment on the cutover scan");
+    ASSERT_TRUE(fabs(core->_plannerState.lastTargetVelocity) > 0.1f,
+               "Planner carry-over velocity should stay nonzero on the cutover scan");
+
+    __HydMotion_framework_Publish();
+    hold_true_scan(&fb2);
+    velocityAfterCutover = (float)fabs(core->AXIS_REF.velocity);
+
+    ASSERT_TRUE(plannedVelocityAtCutover > 0.1f,
+               "plannedVelocity should stay nonzero on the blend cutover scan");
+    ASSERT_TRUE(simVelocityAtCutover > 0.1f,
+               "simFeedback targetVelocity should stay nonzero on the blend cutover scan");
+    ASSERT_TRUE(velocityAtCutover > 0.1f,
+               "AXIS_REF velocity should stay nonzero on the blend cutover scan");
+    ASSERT_TRUE(velocityAfterCutover > 0.1f,
+               "AXIS_REF velocity should remain nonzero on the scan after cutover");
+}
+
 static void test_blending_high_pending_does_not_take_active_or_overwrite_velocity_early(void) {
     assert_pending_blend_does_not_take_over_early(5,
                                                   20,
@@ -808,6 +885,7 @@ int main(void) {
     test_three_segment_buffered_chain_reuses_pending_slot_without_early_takeover();
     test_reverse_direction_pending_falls_back_to_buffered_promotion_after_slot_reuse();
     test_reverse_then_forward_reuses_pending_slot_without_stale_blend_context();
+    test_blending_high_cutover_scan_keeps_nonzero_output_velocity();
     test_blending_high_two_moveabsolute_cycles();
     printf("\n%d/%d tests passed\n", tests_passed, tests_run);
     return (tests_failed > 0) ? 1 : 0;

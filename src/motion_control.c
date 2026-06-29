@@ -1041,6 +1041,14 @@ static HYD_BOOL HYD_StartPendingDirectSlot(HYD_MotionControlFB* fb,
     HYD_MotionSegment segment;
     HYD_BOOL savedUseRecipe;
     HYD_MotionPlannerState preservedPlannerState;
+    HYD_REAL preservedPumpSpeed = 0.0;
+    HYD_REAL preservedPlannedVelocity = 0.0;
+    HYD_REAL preservedPlannedFlow = 0.0;
+    HYD_REAL preservedCommandedPumpSpeed = 0.0;
+    HYD_MotionDirection preservedPlannedDirection = HYD_DIRECTION_HOLD;
+    HYD_REAL preservedSimTargetVelocity = 0.0;
+    HYD_REAL preservedSimTargetFlow = 0.0;
+    HYD_REAL preservedSimTargetPressure = 0.0;
 
     if (fb == NULL || !fb->_directPendingValid) {
         return false;
@@ -1048,6 +1056,41 @@ static HYD_BOOL HYD_StartPendingDirectSlot(HYD_MotionControlFB* fb,
 
     segment = fb->_directPendingSegment;
     preservedPlannerState = fb->_plannerState;
+    if (preservePlannerState) {
+        HYD_REAL preservedVelocityMagnitude = HYD_MotionUtils_AbsReal(preservedPlannerState.lastTargetVelocity);
+        HYD_REAL preservedFlowMagnitude = HYD_MotionUtils_AbsReal(preservedPlannerState.lastTargetFlow);
+        preservedPumpSpeed = fb->PUMP_SPEED;
+        preservedPlannedVelocity = preservedPlannerState.lastTargetVelocity;
+        preservedPlannedFlow = preservedFlowMagnitude;
+        preservedCommandedPumpSpeed = fb->STATE.commandedPumpSpeed;
+        preservedPlannedDirection = fb->STATE.plannedDirection;
+        preservedSimTargetVelocity = preservedPlannerState.lastTargetVelocity;
+        preservedSimTargetFlow = preservedFlowMagnitude;
+        preservedSimTargetPressure = fb->_simFeedback.targetPressure;
+        if (preservedPumpSpeed <= 0.0 &&
+            preservedFlowMagnitude > 0.0) {
+            HYD_REAL effectiveGain, effectiveLimit;
+            if (HYD_PumpConfig_IsValid(&fb->pumpConfig)) {
+                effectiveGain = HYD_PumpConfig_GetFlowToSpeedGain(&fb->pumpConfig);
+                effectiveLimit = HYD_PumpConfig_GetSpeedLimit(&fb->pumpConfig);
+            } else {
+                effectiveGain = fb->FLOW_TO_PUMP_SPEED_GAIN;
+                effectiveLimit = fb->PUMP_SPEED_LIMIT;
+            }
+            preservedPumpSpeed = HYD_ClampReal(preservedFlowMagnitude * effectiveGain,
+                                               0.0,
+                                               effectiveLimit);
+        }
+        if (preservedCommandedPumpSpeed <= 0.0) {
+            preservedCommandedPumpSpeed = preservedPumpSpeed;
+        }
+        if (preservedPlannedDirection == HYD_DIRECTION_HOLD &&
+            preservedVelocityMagnitude > 0.0) {
+            preservedPlannedDirection = (preservedPlannerState.lastTargetVelocity >= 0.0)
+                ? HYD_DIRECTION_EXTEND
+                : HYD_DIRECTION_RETRACT;
+        }
+    }
     HYD_ClearDirectPendingSlot(fb);
 
     savedUseRecipe = fb->USE_RECIPE;
@@ -1065,6 +1108,20 @@ static HYD_BOOL HYD_StartPendingDirectSlot(HYD_MotionControlFB* fb,
     }
     if (preservePlannerState) {
         fb->_plannerState = preservedPlannerState;
+        /* Blended cutover stays inside one continuous motion command stream.
+         * HYD_BeginSegment reuses the active slot but also routes through the
+         * generic safe-output reset, which would otherwise publish one scan of
+         * zero velocity/flow before the new segment executes. Keep the last
+         * nonzero references visible until the next running cycle computes the
+         * successor segment's own outputs. */
+        fb->PUMP_SPEED = preservedPumpSpeed;
+        fb->STATE.plannedVelocity = preservedPlannedVelocity;
+        fb->STATE.plannedFlow = preservedPlannedFlow;
+        fb->STATE.commandedPumpSpeed = preservedCommandedPumpSpeed;
+        fb->STATE.plannedDirection = preservedPlannedDirection;
+        fb->_simFeedback.targetVelocity = preservedSimTargetVelocity;
+        fb->_simFeedback.targetFlow = preservedSimTargetFlow;
+        fb->_simFeedback.targetPressure = preservedSimTargetPressure;
     }
     fb->USE_RECIPE = savedUseRecipe;
     return true;
