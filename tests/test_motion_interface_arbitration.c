@@ -919,6 +919,40 @@ static void test_blended_cutover_preserves_planner_state(void) {
                "Planner velocity should remain nonzero across blended cutover");
 }
 
+static void test_moveabsolute_direct_start_latches_ownership_on_rising_edge(void) {
+    HYD_MOVEABSOLUTE ma;
+
+    __HydMotion_framework_Init();
+    ensure_axes_allocated(1);
+
+    memset(&ma, 0, sizeof(ma));
+    IEC_VAL(ma.EN) = true;
+    IEC_VAL(ma.EXECUTE) = true;
+    ma.EXECUTE0.value = false;
+    IEC_VAL(ma.AXISID) = 0;
+    IEC_VAL(ma.POSITION) = 100.0f;
+    IEC_VAL(ma.VELOCITY) = 50.0f;
+    IEC_VAL(ma.ACCELERATION) = 200.0f;
+    IEC_VAL(ma.DECELERATION) = 200.0f;
+    IEC_VAL(ma.DIRECTION) = 1;
+    IEC_VAL(ma.BUFFERMODE) = HYD_BUFFER_MODE_ABORT;
+
+    __mcl_cmd_MoveAbsolute(&ma);
+
+    ASSERT_TRUE(IEC_VAL(ma._PENDING) == false,
+               "MoveAbsolute should not remain pending on same-scan direct start");
+    ASSERT_TRUE(IEC_VAL(ma._EXEC_ID) != 0,
+               "MoveAbsolute should latch execution ownership on the rising-edge call");
+    ASSERT_TRUE(IEC_VAL(ma.BUSY) == true,
+               "MoveAbsolute should be BUSY on the rising-edge call");
+    ASSERT_TRUE(IEC_VAL(ma.ACTIVE) == true,
+               "MoveAbsolute should be ACTIVE on the rising-edge call");
+    ASSERT_TRUE(IEC_VAL(ma.DONE) == false,
+               "MoveAbsolute should not be DONE on the rising-edge call");
+    ASSERT_TRUE(IEC_VAL(ma.COMMANDABORTED) == false,
+               "MoveAbsolute should not be COMMANDABORTED on the rising-edge call");
+}
+
 static HYD_MotionControlFB* start_active_moveabsolute_for_blend_fallback_test(void) {
     HYD_MOVEABSOLUTE first;
     HYD_MotionControlFB* fb;
@@ -1612,6 +1646,7 @@ int main(void) {
     test_blending_modes_select_distinct_through_velocities();
     test_blended_front_segment_keeps_nonzero_velocity_near_switch();
     test_blended_cutover_preserves_planner_state();
+    test_moveabsolute_direct_start_latches_ownership_on_rising_edge();
     test_blend_context_requires_compatible_moveabsolute_direction();
     test_previous_command_loses_ownership_after_reset();
     test_preemption_chain_three_commands();
