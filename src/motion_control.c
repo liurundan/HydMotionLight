@@ -839,7 +839,13 @@ static void HYD_PrimeSegmentControllers(HYD_MotionControlFB* fb,
     fb->_simCompletionCandidateStartTick = 0U;
     fb->STATE.vpTransferReady = false;
     fb->STATE.vpTransferReason = (HYD_UINT8)HYD_VP_TRANSFER_REASON_NONE;
-    controllerTime = HYD_GetControlTimestamp(fb);
+    /* Seed controller timebases from the segment start timestamp so the first
+     * running cycle sees the elapsed wall-clock time since start, even when
+     * the START command is consumed in a later scan. */
+    controllerTime = timestamp;
+    if (HYD_UseSimulationFixedStep(fb)) {
+        controllerTime = 0.0;
+    }
     fb->_lastFeedbackTimestamp = controllerTime;
     fb->_simLastFeedbackTick = fb->_simTick;
     HYD_RampController_Init(&fb->_rampController, fb->AXIS_REF.pressure, controllerTime);
