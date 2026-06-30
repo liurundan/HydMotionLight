@@ -79,20 +79,21 @@ static void hold_true_scan(HYD_MOVEABSOLUTE* ma) {
     __mcl_cmd_MoveAbsolute(ma);
 }
 
-/* Wait until FB1 is ACTIVE, then submit FB2 and return after the first
- * field-visible acceptance scan: FB1() -> FB2() -> Publish() -> read outputs. */
+/* Trigger FB2 at the start of a field scan when FB1.ACTIVE was already visible
+ * from the previous scan, then return after FB1() -> FB2() -> Publish(). */
 static int trigger_fb2_when_fb1_active(HYD_MOVEABSOLUTE* fb1,
                                        HYD_MOVEABSOLUTE* fb2,
                                        int maxWaitScans) {
     for (int step = 0; step < maxWaitScans; step++) {
-        hold_true_scan(fb1);
-        __HydMotion_framework_Publish();
-
         if (IEC_VAL(fb1->ACTIVE)) {
+            hold_true_scan(fb1);
             rising_edge(fb2);
             __HydMotion_framework_Publish();
             return step + 1;
         }
+
+        hold_true_scan(fb1);
+        __HydMotion_framework_Publish();
     }
     return -1;
 }
@@ -156,9 +157,9 @@ static void assert_pending_blend_does_not_take_over_early(HYD_REAL activeVelocit
     }
 
     for (int step = 0; step < 40; step++) {
-        __HydMotion_framework_Publish();
         hold_true_scan(&fb1);
         hold_true_scan(&fb2);
+        __HydMotion_framework_Publish();
 
         if (IEC_VAL(fb2.ACTIVE) != false) {
             char message[160];
