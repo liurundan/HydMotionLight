@@ -79,6 +79,8 @@ static void hold_true_scan(HYD_MOVEABSOLUTE* ma) {
     __mcl_cmd_MoveAbsolute(ma);
 }
 
+/* Wait until FB1 is ACTIVE, then submit FB2 and return after the first
+ * field-visible acceptance scan: FB1() -> FB2() -> Publish() -> read outputs. */
 static int trigger_fb2_when_fb1_active(HYD_MOVEABSOLUTE* fb1,
                                        HYD_MOVEABSOLUTE* fb2,
                                        int maxWaitScans) {
@@ -88,6 +90,7 @@ static int trigger_fb2_when_fb1_active(HYD_MOVEABSOLUTE* fb1,
 
         if (IEC_VAL(fb1->ACTIVE)) {
             rising_edge(fb2);
+            __HydMotion_framework_Publish();
             return step + 1;
         }
     }
@@ -141,11 +144,11 @@ static void assert_pending_blend_does_not_take_over_early(HYD_REAL activeVelocit
         return;
     }
     ASSERT_TRUE(IEC_VAL(fb2.BUSY) == true,
-               "Buffered FB2 should report BUSY immediately after acceptance");
+               "Buffered FB2 should report BUSY on the first field-visible scan after buffered acceptance");
     ASSERT_TRUE(IEC_VAL(fb2.ACTIVE) == false,
-               "Buffered FB2 must not report ACTIVE before cutover");
+               "Buffered FB2 must remain inactive on the first field-visible scan after buffered acceptance");
     ASSERT_TRUE(core->_directBlendContext.active == true,
-               "Buffered blend context should be recorded immediately after acceptance");
+               "Buffered blend context should be recorded on the first field-visible scan after buffered acceptance");
     ASSERT_TRUE(fabs(core->_directBlendContext.blendVelocity - expectedBlendVelocity) <= 0.001f,
                "Buffered blend context should retain the mode-specific through velocity");
     if (IEC_VAL(fb2.ACTIVE) != false) {
@@ -271,9 +274,8 @@ static void test_blending_high_two_moveabsolute_cycles(void) {
         if (triggerScan <= 0) {
             continue;
         }
-        __HydMotion_framework_Publish();
         ASSERT_TRUE(IEC_VAL(fb2.ACTIVE) == false,
-            "FB2 should still be inactive immediately after buffered acceptance under field scan order");
+            "FB2 should still be inactive on the first field-visible scan after buffered acceptance under field scan order");
 
         int steps = run_until_fb2_done(&fb1, &fb2, &runResult, 100.0f);
 
