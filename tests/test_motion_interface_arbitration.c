@@ -281,6 +281,7 @@ static void test_third_same_axis_moveabsolute_is_rejected_when_one_active_and_on
     HYD_MOVEABSOLUTE first;
     HYD_MOVEABSOLUTE second;
     HYD_MOVEABSOLUTE third;
+    HYD_MotionControlFB* fb;
 
     __HydMotion_framework_Init();
     ensure_axes_allocated(1);
@@ -322,6 +323,94 @@ static void test_third_same_axis_moveabsolute_is_rejected_when_one_active_and_on
                "Rejected third MoveAbsolute should not enter BUSY");
     ASSERT_TRUE(IEC_VAL(third.ACTIVE) == false,
                "Rejected third MoveAbsolute should not enter ACTIVE");
+
+    fb = __MK_GetPublic_MotionControlFB(0);
+    ASSERT_TRUE(fb != NULL, "Axis 0 control FB should exist for pending-slot invariant checks");
+    if (fb != NULL) {
+        ASSERT_TRUE(fb->_directPendingValid == true,
+                   "Rejected third MoveAbsolute should leave the single pending slot occupied");
+        ASSERT_TRUE(fabs(fb->_directPendingSegment.targetPosition - 200.0f) < 0.001f,
+                   "Rejected third MoveAbsolute should not overwrite the existing pending target");
+        ASSERT_TRUE(fb->_directBlendContext.active == true,
+                   "Rejected third MoveAbsolute should not clear the active blend context");
+    }
+
+    ASSERT_TRUE(IEC_VAL(third.ERRORID) == (IEC_WORD)HYD_DIAG_CODE_COMMAND_NOT_ALLOWED,
+               "Rejected third MoveAbsolute should report COMMAND_NOT_ALLOWED");
+    ASSERT_TRUE(IEC_VAL(third.COMMANDABORTED) == false,
+               "Rejected third MoveAbsolute should not report COMMANDABORTED");
+    ASSERT_TRUE(IEC_VAL(second.COMMANDABORTED) == false,
+               "Buffered second MoveAbsolute should remain non-aborted after rejecting the third");
+}
+
+static void test_rejected_third_moveabsolute_stays_local_under_persistent_execute_high(void) {
+    HYD_MOVEABSOLUTE first;
+    HYD_MOVEABSOLUTE second;
+    HYD_MOVEABSOLUTE third;
+    HYD_MotionControlFB* fb;
+
+    __HydMotion_framework_Init();
+    ensure_axes_allocated(1);
+
+    start_moveabsolute_on_axis(0, &first);
+
+    memset(&second, 0, sizeof(second));
+    IEC_VAL(second.EN) = true;
+    IEC_VAL(second.EXECUTE) = true;
+    second.EXECUTE0.value = false;
+    IEC_VAL(second.AXISID) = 0;
+    IEC_VAL(second.POSITION) = 200.0f;
+    IEC_VAL(second.VELOCITY) = 40.0f;
+    IEC_VAL(second.ACCELERATION) = 100.0f;
+    IEC_VAL(second.DECELERATION) = 100.0f;
+    IEC_VAL(second.DIRECTION) = 1;
+    IEC_VAL(second.BUFFERMODE) = HYD_BUFFER_MODE_BLENDING_HIGH;
+    __mcl_cmd_MoveAbsolute(&second);
+
+    memset(&third, 0, sizeof(third));
+    IEC_VAL(third.EN) = true;
+    IEC_VAL(third.EXECUTE) = true;
+    third.EXECUTE0.value = false;
+    IEC_VAL(third.AXISID) = 0;
+    IEC_VAL(third.POSITION) = 300.0f;
+    IEC_VAL(third.VELOCITY) = 60.0f;
+    IEC_VAL(third.ACCELERATION) = 100.0f;
+    IEC_VAL(third.DECELERATION) = 100.0f;
+    IEC_VAL(third.DIRECTION) = 1;
+    IEC_VAL(third.BUFFERMODE) = HYD_BUFFER_MODE_BLENDING_HIGH;
+    __mcl_cmd_MoveAbsolute(&third);
+
+    fb = __MK_GetPublic_MotionControlFB(0);
+    ASSERT_TRUE(fb != NULL, "Axis 0 control FB should exist for persistent-high rejection checks");
+    if (fb == NULL) {
+        return;
+    }
+
+    for (int step = 0; step < 3; step++) {
+        IEC_VAL(first.EXECUTE) = true;
+        first.EXECUTE0.value = true;
+        __mcl_cmd_MoveAbsolute(&first);
+
+        IEC_VAL(second.EXECUTE) = true;
+        second.EXECUTE0.value = true;
+        __mcl_cmd_MoveAbsolute(&second);
+
+        IEC_VAL(third.EXECUTE) = true;
+        third.EXECUTE0.value = true;
+        __mcl_cmd_MoveAbsolute(&third);
+
+        ASSERT_TRUE(IEC_VAL(third.BUSY) == false,
+                   "Rejected third MoveAbsolute should remain non-busy while EXECUTE stays high");
+        ASSERT_TRUE(IEC_VAL(third.ACTIVE) == false,
+                   "Rejected third MoveAbsolute should remain inactive while EXECUTE stays high");
+        ASSERT_TRUE(IEC_VAL(third.COMMANDABORTED) == false,
+                   "Rejected third MoveAbsolute should not mutate into COMMANDABORTED on later scans");
+        ASSERT_TRUE(fb->_directPendingValid == true,
+                   "Rejected third MoveAbsolute should not dislodge the accepted pending command on later scans");
+
+        advance_non_sim_feedback(0, 0.01f);
+        __HydMotion_framework_Publish();
+    }
 }
 
 /* ==================================================================
@@ -1701,6 +1790,7 @@ int main(void) {
     test_moveabsolute_preempted_by_stop();
     test_buffered_moveabsolute_reports_busy_but_not_active_while_waiting();
     test_third_same_axis_moveabsolute_is_rejected_when_one_active_and_one_pending_exist();
+    test_rejected_third_moveabsolute_stays_local_under_persistent_execute_high();
     test_moveabsolute_preempted_by_movevelocity();
     test_movevelocity_preempted_by_moveabsolute();
     test_pressurehandle_preempted_by_stop();
