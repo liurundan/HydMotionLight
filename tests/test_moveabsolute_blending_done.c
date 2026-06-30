@@ -1,7 +1,7 @@
 /**
  * @file test_moveabsolute_blending_done.c
  * @brief 验证两个 MoveAbsolute FB 的速度平滑切换和最后一个 FB 的 Done 信号
- *        测试按现场扫描顺序执行: FB1() -> FB2() -> Publish() -> read outputs
+ *        主 reproducer 按现场扫描顺序执行: FB1() -> FB2() -> Publish() -> read outputs
  *
  * 测试场景:
  *   FB1: velocity=5, position=100, bufferMode=ABORT
@@ -191,7 +191,6 @@ static void assert_pending_blend_does_not_take_over_early(HYD_REAL activeVelocit
 }
 
 typedef struct {
-    int steps;
     float vel_at_switch;
     HYD_BOOL checked_cutover_visibility;
     HYD_BOOL observed_fb2_active_after_cutover;
@@ -199,8 +198,7 @@ typedef struct {
 
 /* ── drive both FBs each scan; return scan count or -1 on timeout ── */
 static int run_until_fb2_done(HYD_MOVEABSOLUTE* fb1, HYD_MOVEABSOLUTE* fb2,
-                              BlendRunResult* result, float switch_pos) {
-    result->steps = -1;
+                              BlendRunResult* result) {
     result->vel_at_switch = -1.0f;
     result->checked_cutover_visibility = false;
     result->observed_fb2_active_after_cutover = false;
@@ -230,7 +228,6 @@ static int run_until_fb2_done(HYD_MOVEABSOLUTE* fb1, HYD_MOVEABSOLUTE* fb2,
         }
 
         if (IEC_VAL(fb2->DONE)) {
-            result->steps = step + 1;
             return step + 1;
         }
         /* Bail out early on any error/abort */
@@ -276,9 +273,9 @@ static void test_blending_high_two_moveabsolute_cycles(void) {
             continue;
         }
         ASSERT_TRUE(IEC_VAL(fb2.ACTIVE) == false,
-            "FB2 should still be inactive on the first field-visible scan after buffered acceptance under field scan order");
+            "FB2 should still be inactive on the first field-visible acceptance scan under field order");
 
-        int steps = run_until_fb2_done(&fb1, &fb2, &runResult, 100.0f);
+        int steps = run_until_fb2_done(&fb1, &fb2, &runResult);
 
         ASSERT_TRUE(steps > 0,
             "Both FBs should complete without timeout or error/abort");
@@ -309,15 +306,16 @@ static void test_blending_high_two_moveabsolute_cycles(void) {
         IEC_VAL(fb2.EXECUTE) = false;
         __mcl_cmd_MoveAbsolute(&fb1);
         __mcl_cmd_MoveAbsolute(&fb2);
+        __HydMotion_framework_Publish();
         /* Return axis to origin — DIRECTION=0 (SHORTEST_WAY) to handle retract */
         init_ma(&fb1, axisId, 0.0f, 20.0f, 50.0f, HYD_BUFFER_MODE_ABORT);
         IEC_VAL(fb1.DIRECTION) = 0;
         rising_edge(&fb1);
         for (int s = 0; s < MAX_SIM_STEPS; s++) {
-            __HydMotion_framework_Publish();
             IEC_VAL(fb1.EXECUTE) = true;
             fb1.EXECUTE0.value   = true;
             __mcl_cmd_MoveAbsolute(&fb1);
+            __HydMotion_framework_Publish();
             if (IEC_VAL(fb1.DONE)) break;
         }
         IEC_VAL(fb1.EXECUTE) = false;
@@ -352,8 +350,6 @@ static void test_blending_high_cutover_scan_keeps_nonzero_output_velocity(void) 
     if (triggerScan <= 0) {
         return;
     }
-    __HydMotion_framework_Publish();
-
     core = __MK_GetPublic_MotionControlFB(axisId);
     ASSERT_TRUE(core != NULL, "Public motion control FB should be available for cutover test");
     if (core == NULL) {
@@ -361,9 +357,9 @@ static void test_blending_high_cutover_scan_keeps_nonzero_output_velocity(void) 
     }
 
     for (int step = 0; step < MAX_SIM_STEPS; step++) {
-        __HydMotion_framework_Publish();
         hold_true_scan(&fb1);
         hold_true_scan(&fb2);
+        __HydMotion_framework_Publish();
 
         if (IEC_VAL(fb1.DONE)) {
             cutoverScan = step + 1;
@@ -389,8 +385,9 @@ static void test_blending_high_cutover_scan_keeps_nonzero_output_velocity(void) 
     ASSERT_TRUE(fabs(core->_plannerState.lastTargetVelocity) > 0.1f,
                "Planner carry-over velocity should stay nonzero on the cutover scan");
 
-    __HydMotion_framework_Publish();
+    hold_true_scan(&fb1);
     hold_true_scan(&fb2);
+    __HydMotion_framework_Publish();
     velocityAfterCutover = (float)fabs(core->AXIS_REF.velocity);
 
     ASSERT_TRUE(plannedVelocityAtCutover > 0.1f,
@@ -464,8 +461,6 @@ static void test_three_segment_buffered_chain_reuses_pending_slot_without_early_
     if (secondTriggerScan <= 0) {
         return;
     }
-    __HydMotion_framework_Publish();
-
     core = __MK_GetPublic_MotionControlFB(axisId);
     ASSERT_TRUE(core != NULL, "Public motion control FB should be available");
     if (core == NULL) {
@@ -475,9 +470,9 @@ static void test_three_segment_buffered_chain_reuses_pending_slot_without_early_
     init_ma(&fb3, axisId, 300.0f, 8.0f, 50.0f, HYD_BUFFER_MODE_BLENDING_NEXT);
     thirdTriggerScan = -1;
     for (int step = 0; step < MAX_SIM_STEPS; step++) {
-        __HydMotion_framework_Publish();
         hold_true_scan(&fb1);
         hold_true_scan(&fb2);
+        __HydMotion_framework_Publish();
 
         if (IEC_VAL(fb1.COMMANDABORTED) || IEC_VAL(fb2.COMMANDABORTED)) {
             break;
@@ -530,9 +525,9 @@ static void test_three_segment_buffered_chain_reuses_pending_slot_without_early_
                "Rejected FB4 should not displace FB3 from the reused pending slot");
 
     for (int step = 0; step < 40; step++) {
-        __HydMotion_framework_Publish();
         hold_true_scan(&fb2);
         hold_true_scan(&fb3);
+        __HydMotion_framework_Publish();
 
         if (IEC_VAL(fb3.ACTIVE) != false) {
             ASSERT_TRUE(false,
@@ -555,7 +550,7 @@ static void test_three_segment_buffered_chain_reuses_pending_slot_without_early_
         }
     }
 
-    finishSteps = run_until_fb2_done(&fb2, &fb3, &secondRunResult, 200.0f);
+    finishSteps = run_until_fb2_done(&fb2, &fb3, &secondRunResult);
 
     ASSERT_TRUE(finishSteps > 0,
                "FB2 and FB3 should complete without timeout or error after pending-slot reuse");
@@ -596,8 +591,6 @@ static void test_reverse_direction_pending_falls_back_to_buffered_promotion_afte
     if (secondTriggerScan <= 0) {
         return;
     }
-    __HydMotion_framework_Publish();
-
     core = __MK_GetPublic_MotionControlFB(axisId);
     ASSERT_TRUE(core != NULL, "Public motion control FB should be available");
     if (core == NULL) {
@@ -608,9 +601,9 @@ static void test_reverse_direction_pending_falls_back_to_buffered_promotion_afte
     IEC_VAL(fb3.DIRECTION) = 2;  /* NEGATIVE */
     thirdTriggerScan = -1;
     for (int step = 0; step < MAX_SIM_STEPS; step++) {
-        __HydMotion_framework_Publish();
         hold_true_scan(&fb1);
         hold_true_scan(&fb2);
+        __HydMotion_framework_Publish();
 
         if (IEC_VAL(fb1.COMMANDABORTED) || IEC_VAL(fb2.COMMANDABORTED)) {
             break;
@@ -662,9 +655,9 @@ static void test_reverse_direction_pending_falls_back_to_buffered_promotion_afte
 
     promotionScan = -1;
     for (int step = 0; step < MAX_SIM_STEPS; step++) {
-        __HydMotion_framework_Publish();
         hold_true_scan(&fb2);
         hold_true_scan(&fb3);
+        __HydMotion_framework_Publish();
 
         if (!IEC_VAL(fb2.DONE)) {
             if (IEC_VAL(fb3.ACTIVE) != false) {
@@ -713,8 +706,8 @@ static void test_reverse_direction_pending_falls_back_to_buffered_promotion_afte
     ASSERT_TRUE(IEC_VAL(fb3.COMMANDABORTED) == false,
                "Reverse FB3 should not be COMMANDABORTED at promotion");
 
-    __HydMotion_framework_Publish();
     hold_true_scan(&fb3);
+    __HydMotion_framework_Publish();
     ASSERT_TRUE(IEC_VAL(fb3.ACTIVE) == true,
                "Reverse FB3 should become ACTIVE on the first post-promotion owner scan");
     ASSERT_TRUE(IEC_VAL(fb3.COMMANDABORTED) == false,
@@ -722,8 +715,8 @@ static void test_reverse_direction_pending_falls_back_to_buffered_promotion_afte
 
     finishSteps = -1;
     for (int step = 0; step < MAX_SIM_STEPS; step++) {
-        __HydMotion_framework_Publish();
         hold_true_scan(&fb3);
+        __HydMotion_framework_Publish();
 
         if (IEC_VAL(fb3.DONE)) {
             finishSteps = step + 1;
@@ -767,8 +760,6 @@ static void test_reverse_then_forward_reuses_pending_slot_without_stale_blend_co
     if (secondTriggerScan <= 0) {
         return;
     }
-    __HydMotion_framework_Publish();
-
     core = __MK_GetPublic_MotionControlFB(axisId);
     ASSERT_TRUE(core != NULL, "Public motion control FB should be available");
     if (core == NULL) {
@@ -779,9 +770,9 @@ static void test_reverse_then_forward_reuses_pending_slot_without_stale_blend_co
     IEC_VAL(fb3.DIRECTION) = 2;  /* NEGATIVE */
     thirdTriggerScan = -1;
     for (int step = 0; step < MAX_SIM_STEPS; step++) {
-        __HydMotion_framework_Publish();
         hold_true_scan(&fb1);
         hold_true_scan(&fb2);
+        __HydMotion_framework_Publish();
 
         if (IEC_VAL(fb1.COMMANDABORTED) || IEC_VAL(fb2.COMMANDABORTED)) {
             break;
@@ -814,9 +805,9 @@ static void test_reverse_then_forward_reuses_pending_slot_without_stale_blend_co
 
     promotionScan = -1;
     for (int step = 0; step < MAX_SIM_STEPS; step++) {
-        __HydMotion_framework_Publish();
         hold_true_scan(&fb2);
         hold_true_scan(&fb3);
+        __HydMotion_framework_Publish();
 
         if (!IEC_VAL(fb2.DONE)) {
             ASSERT_TRUE(IEC_VAL(fb3.ACTIVE) == false,
@@ -838,8 +829,8 @@ static void test_reverse_then_forward_reuses_pending_slot_without_stale_blend_co
         return;
     }
 
-    __HydMotion_framework_Publish();
     hold_true_scan(&fb3);
+    __HydMotion_framework_Publish();
     ASSERT_TRUE(IEC_VAL(fb3.ACTIVE) == true,
                "Reverse FB3 should become ACTIVE after buffered promotion");
     ASSERT_TRUE(IEC_VAL(fb3.COMMANDABORTED) == false,
@@ -871,9 +862,9 @@ static void test_reverse_then_forward_reuses_pending_slot_without_stale_blend_co
 
     observedPreFifthWindow = false;
     for (int step = 0; step < 40; step++) {
-        __HydMotion_framework_Publish();
         hold_true_scan(&fb3);
         hold_true_scan(&fb4);
+        __HydMotion_framework_Publish();
 
         observedPreFifthWindow = true;
         ASSERT_TRUE(IEC_VAL(fb3.ACTIVE) == true,

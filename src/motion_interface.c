@@ -1174,6 +1174,10 @@ void __mcl_cmd_MoveAbsolute(HYD_MOVEABSOLUTE *data__)
         if (pendingStatus == HYD_DIRECT_PENDING_ACQUIRED) {
             __SET_VAR(data__->, _EXEC_ID, , myExecId);
             __SET_VAR(data__->, _PENDING, , false);
+            /* Owner transfer already happened inside the runtime during the
+             * preceding Publish/cycle. Fall through so this same PLC scan maps
+             * ACTIVE/DONE from the newly acquired direct owner instead of
+             * delaying visibility by one scan. */
         } else if (pendingStatus == HYD_DIRECT_PENDING_ABORTED) {
             __SET_VAR(data__->, COMMANDABORTED, , true);
             __SET_VAR(data__->, BUSY, , false);
@@ -1181,9 +1185,10 @@ void __mcl_cmd_MoveAbsolute(HYD_MOVEABSOLUTE *data__)
             __SET_VAR(data__->, _PENDING, , false);
             __SET_VAR(data__->, EXECUTE0, , execute);
             return;
+        } else {
+            __SET_VAR(data__->, EXECUTE0, , execute);
+            return;
         }
-        __SET_VAR(data__->, EXECUTE0, , execute);
-        return;
     }
 
     if (myExecId != 0)
