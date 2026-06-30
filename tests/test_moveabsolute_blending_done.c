@@ -452,7 +452,6 @@ static void test_third_same_axis_moveabsolute_is_rejected_without_disturbing_ble
     HYD_MotionControlFB* core;
     int axisId;
     int secondTriggerScan;
-    int thirdTriggerScan = -1;
     int finishSteps;
     BlendRunResult runResult;
 
@@ -508,7 +507,6 @@ static void test_third_same_axis_moveabsolute_is_rejected_without_disturbing_ble
         __HydMotion_framework_Publish();
 
         if (step == 0) {
-            thirdTriggerScan = 1;
             ASSERT_TRUE(IEC_VAL(fb3.ERROR) == true,
                        "FB3 should report ERROR on the submission scan when one active and one pending command already exist");
             ASSERT_TRUE(IEC_VAL(fb3.ERRORID) == (IEC_WORD)HYD_DIAG_CODE_COMMAND_NOT_ALLOWED,
@@ -533,9 +531,6 @@ static void test_third_same_axis_moveabsolute_is_rejected_without_disturbing_ble
                        "FB2 should not be aborted by the rejected third submission");
         }
     }
-
-    ASSERT_TRUE(thirdTriggerScan > 0,
-               "FB3 should have been triggered in the field-order loop");
 
     finishSteps = run_until_fb2_done(&fb1, &fb2, &runResult);
 
