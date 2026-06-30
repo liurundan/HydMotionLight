@@ -1,6 +1,7 @@
 /**
  * @file test_moveabsolute_blending_done.c
  * @brief 验证两个 MoveAbsolute FB 的速度平滑切换和最后一个 FB 的 Done 信号
+ *        测试按现场扫描顺序执行: FB1() -> FB2() -> Publish() -> read outputs
  *
  * 测试场景:
  *   FB1: velocity=5, position=100, bufferMode=ABORT
@@ -82,10 +83,12 @@ static int trigger_fb2_when_fb1_active(HYD_MOVEABSOLUTE* fb1,
                                        HYD_MOVEABSOLUTE* fb2,
                                        int maxWaitScans) {
     for (int step = 0; step < maxWaitScans; step++) {
-        __HydMotion_framework_Publish();
         hold_true_scan(fb1);
+        __HydMotion_framework_Publish();
+
         if (IEC_VAL(fb1->ACTIVE)) {
             rising_edge(fb2);
+            __HydMotion_framework_Publish();
             return step + 1;
         }
     }
@@ -190,20 +193,16 @@ static int run_until_fb2_done(HYD_MOVEABSOLUTE* fb1, HYD_MOVEABSOLUTE* fb2,
     *vel_at_switch = -1.0f;
 
     for (int step = 0; step < MAX_SIM_STEPS; step++) {
-        __HydMotion_framework_Publish();
-
         IEC_VAL(fb1->EXECUTE) = true;
-        fb1->EXECUTE0.value   = true;
+        fb1->EXECUTE0.value = true;
         __mcl_cmd_MoveAbsolute(fb1);
 
         IEC_VAL(fb2->EXECUTE) = true;
-        fb2->EXECUTE0.value   = true;
+        fb2->EXECUTE0.value = true;
         __mcl_cmd_MoveAbsolute(fb2);
 
-        /* Capture velocity just as FB1 hands over (first time DONE fires).
-         * Use _plannerState.lastTargetVelocity: ApplySafeOutputs (called during
-         * BeginSegment in the blend cutover) zeroes AXIS_REF.velocity in the
-         * same Publish() call, so the planner state is the right source here. */
+        __HydMotion_framework_Publish();
+
         if (*vel_at_switch < 0.0f && IEC_VAL(fb1->DONE)) {
             HYD_MotionControlFB* core = __MK_GetPublic_MotionControlFB(
                 (int)IEC_VAL(fb1->AXISID));
@@ -227,6 +226,7 @@ static int run_until_fb2_done(HYD_MOVEABSOLUTE* fb1, HYD_MOVEABSOLUTE* fb2,
 /* ================================================================== */
 static void test_blending_high_two_moveabsolute_cycles(void) {
     const int CYCLES = 3;
+    int triggerScan;
     printf("--- Test: BLENDING_HIGH two MoveAbsolute FBs, %d cycles ---\n", CYCLES);
 
     __HydMotion_framework_Init();
@@ -236,6 +236,9 @@ static void test_blending_high_two_moveabsolute_cycles(void) {
     HYD_MOVEABSOLUTE fb1, fb2;
 
     for (int cycle = 0; cycle < CYCLES; cycle++) {
+        HYD_BOOL observed_fb2_active_after_cutover = false;
+        HYD_BOOL checked_cutover_visibility = false;
+
         printf("  Cycle %d:\n", cycle + 1);
 
         /* FB1: v=5, pos=100, ABORT */
@@ -248,10 +251,51 @@ static void test_blending_high_two_moveabsolute_cycles(void) {
 
         /* FB2: v=20, pos=200, BLENDING_HIGH — issue while FB1 is running */
         init_ma(&fb2, axisId, 200.0f, 20.0f, 50.0f, HYD_BUFFER_MODE_BLENDING_HIGH);
-        rising_edge(&fb2);
+        triggerScan = trigger_fb2_when_fb1_active(&fb1, &fb2, 20);
+        ASSERT_TRUE(triggerScan > 0,
+            "FB2 should be triggered after FB1 becomes ACTIVE");
+        if (triggerScan <= 0) {
+            continue;
+        }
+        ASSERT_TRUE(IEC_VAL(fb2.ACTIVE) == false,
+            "FB2 should still be inactive immediately after buffered acceptance under field scan order");
 
         float vel_at_switch = -1.0f;
-        int steps = run_until_fb2_done(&fb1, &fb2, &vel_at_switch, 100.0f);
+        int steps = -1;
+        for (int step = 0; step < MAX_SIM_STEPS; step++) {
+            IEC_VAL(fb1.EXECUTE) = true;
+            fb1.EXECUTE0.value = true;
+            __mcl_cmd_MoveAbsolute(&fb1);
+
+            IEC_VAL(fb2.EXECUTE) = true;
+            fb2.EXECUTE0.value = true;
+            __mcl_cmd_MoveAbsolute(&fb2);
+
+            __HydMotion_framework_Publish();
+
+            if (checked_cutover_visibility == false && IEC_VAL(fb1.DONE) == true) {
+                observed_fb2_active_after_cutover = IEC_VAL(fb2.ACTIVE) == true;
+                checked_cutover_visibility = true;
+            }
+
+            if (vel_at_switch < 0.0f && IEC_VAL(fb1.DONE)) {
+                HYD_MotionControlFB* core = __MK_GetPublic_MotionControlFB(
+                    (int)IEC_VAL(fb1.AXISID));
+                if (core != NULL) {
+                    vel_at_switch = (float)fabs(core->_plannerState.lastTargetVelocity);
+                }
+            }
+
+            if (IEC_VAL(fb2.DONE)) {
+                steps = step + 1;
+                break;
+            }
+            if (IEC_VAL(fb1.ERROR) || IEC_VAL(fb2.ERROR) ||
+                IEC_VAL(fb1.COMMANDABORTED) || IEC_VAL(fb2.COMMANDABORTED)) {
+                steps = -1;
+                break;
+            }
+        }
 
         ASSERT_TRUE(steps > 0,
             "Both FBs should complete without timeout or error/abort");
@@ -263,6 +307,10 @@ static void test_blending_high_two_moveabsolute_cycles(void) {
             "FB2 (v=20, pos=200) should output DONE after reaching pos=200");
         ASSERT_TRUE(IEC_VAL(fb2.COMMANDABORTED) == false,
             "FB2 should NOT output COMMANDABORTED");
+        ASSERT_TRUE(checked_cutover_visibility == true,
+            "The test should observe the first post-cutover owner scan before FB2 completes");
+        ASSERT_TRUE(observed_fb2_active_after_cutover == true,
+            "FB2 should become ACTIVE on the first post-cutover owner scan under field timing");
 
         /* Core: velocity at blend switch must be non-zero (smooth transition) */
         ASSERT_TRUE(vel_at_switch > 0.1f,
