@@ -515,6 +515,18 @@ static HYD_BOOL HYD_ShouldCutoverDirectBlend(const HYD_MotionControlFB* fb,
 
     direction = HYD_Segment_ResolveDirection(segment, &fb->AXIS_REF,
                                               fb->_lastActiveDirection);
+    if (segment->direction == HYD_DIRECTION_SHORTEST_WAY &&
+        direction != HYD_DIRECTION_EXTEND &&
+        direction != HYD_DIRECTION_RETRACT) {
+        if (fb->STATE.plannedDirection == HYD_DIRECTION_EXTEND ||
+            fb->STATE.plannedDirection == HYD_DIRECTION_RETRACT) {
+            direction = fb->STATE.plannedDirection;
+        } else if (fb->_plannerState.lastTargetVelocity > 0.0f) {
+            direction = HYD_DIRECTION_EXTEND;
+        } else if (fb->_plannerState.lastTargetVelocity < 0.0f) {
+            direction = HYD_DIRECTION_RETRACT;
+        }
+    }
     tolerance = fb->_directBlendContext.switchTolerance;
     if (tolerance <= 0.0) {
         tolerance = HYD_Segment_GetPositionTolerance(segment);

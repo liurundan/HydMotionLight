@@ -371,6 +371,175 @@ static void test_blending_high_two_moveabsolute_cycles(void) {
     }
 }
 
+static void test_blending_high_shortest_way_two_moveabsolute_completes_without_oscillation(void) {
+    HYD_MOVEABSOLUTE fb1, fb2;
+    HYD_MotionControlFB* core;
+    int axisId;
+    int triggerScan;
+    int observedFb1DoneScan = -1;
+    int observedFb2DoneScan = -1;
+
+    __HydMotion_framework_Init();
+    axisId = alloc_sim_axis();
+    ASSERT_TRUE(axisId >= 0, "alloc_sim_axis should succeed for SHORTEST_WAY blend test");
+    if (axisId < 0) {
+        return;
+    }
+
+    init_ma(&fb1, axisId, 100.0f, 5.0f, 50.0f, HYD_BUFFER_MODE_ABORT);
+    IEC_VAL(fb1.DIRECTION) = 0;  /* SHORTEST_WAY */
+    rising_edge(&fb1);
+
+    init_ma(&fb2, axisId, 200.0f, 20.0f, 50.0f, HYD_BUFFER_MODE_BLENDING_HIGH);
+    IEC_VAL(fb2.DIRECTION) = 0;  /* SHORTEST_WAY */
+    triggerScan = trigger_fb2_when_fb1_active(&fb1, &fb2, 20);
+    ASSERT_TRUE(triggerScan > 0,
+               "SHORTEST_WAY FB2 should be triggered after FB1 becomes ACTIVE");
+    if (triggerScan <= 0) {
+        return;
+    }
+
+    core = __MK_GetPublic_MotionControlFB(axisId);
+    ASSERT_TRUE(core != NULL, "Public motion control FB should be available for SHORTEST_WAY blend test");
+    if (core == NULL) {
+        return;
+    }
+
+    for (int step = 0; step < MAX_SIM_STEPS; step++) {
+        hold_true_scan(&fb1);
+        hold_true_scan(&fb2);
+        __HydMotion_framework_Publish();
+
+        if (observedFb1DoneScan < 0 && IEC_VAL(fb1.DONE)) {
+            observedFb1DoneScan = step + 1;
+        }
+        if (IEC_VAL(fb2.DONE)) {
+            observedFb2DoneScan = step + 1;
+            break;
+        }
+        if (IEC_VAL(fb1.ERROR) || IEC_VAL(fb2.ERROR) ||
+            IEC_VAL(fb1.COMMANDABORTED) || IEC_VAL(fb2.COMMANDABORTED)) {
+            break;
+        }
+    }
+
+    ASSERT_TRUE(observedFb1DoneScan > 0,
+               "SHORTEST_WAY FB1 should still report DONE at the blended cutover");
+    ASSERT_TRUE(observedFb2DoneScan > 0,
+               "SHORTEST_WAY FB2 should complete after the blended cutover");
+    ASSERT_TRUE(IEC_VAL(fb1.COMMANDABORTED) == false,
+               "SHORTEST_WAY FB1 should not report COMMANDABORTED");
+    ASSERT_TRUE(IEC_VAL(fb2.COMMANDABORTED) == false,
+               "SHORTEST_WAY FB2 should not report COMMANDABORTED");
+    ASSERT_TRUE(fabs(core->AXIS_REF.position - 200.0f) <= 2.0f,
+               "SHORTEST_WAY blended chain should finish near FB2 target");
+}
+
+static void test_three_moveabsolute_same_scan_activation_chain_shortest_way(void) {
+    HYD_MOVEABSOLUTE fb1, fb2, fb3;
+    HYD_MotionControlFB* core;
+    int axisId;
+    HYD_BOOL exec2Latched = false;
+    HYD_BOOL exec3Latched = false;
+    HYD_BOOL exec2WasHigh = false;
+    HYD_BOOL exec3WasHigh = false;
+    int fb1DoneScan = -1;
+    int fb2DoneScan = -1;
+    int fb3DoneScan = -1;
+
+    __HydMotion_framework_Init();
+    axisId = alloc_sim_axis();
+    ASSERT_TRUE(axisId >= 0,
+               "alloc_sim_axis should succeed for same-scan three-MoveAbsolute chain");
+    if (axisId < 0) {
+        return;
+    }
+
+    init_ma(&fb1, axisId, 100.0f, 5.0f, 50.0f, HYD_BUFFER_MODE_ABORT);
+    init_ma(&fb2, axisId, 200.0f, 20.0f, 50.0f, HYD_BUFFER_MODE_BLENDING_HIGH);
+    init_ma(&fb3, axisId, 10.0f, 10.0f, 50.0f, HYD_BUFFER_MODE_BLENDING_HIGH);
+    IEC_VAL(fb1.DIRECTION) = 0;
+    IEC_VAL(fb2.DIRECTION) = 0;
+    IEC_VAL(fb3.DIRECTION) = 0;
+
+    core = __MK_GetPublic_MotionControlFB(axisId);
+    ASSERT_TRUE(core != NULL,
+               "Public motion control FB should be available for same-scan three-MoveAbsolute chain");
+    if (core == NULL) {
+        return;
+    }
+
+    for (int step = 0; step < MAX_SIM_STEPS; step++) {
+        IEC_VAL(fb1.EXECUTE) = true;
+        fb1.EXECUTE0.value = (step > 0) ? true : false;
+        __mcl_cmd_MoveAbsolute(&fb1);
+
+        if (!exec2Latched && IEC_VAL(fb1.ACTIVE)) {
+            exec2Latched = true;
+        }
+        IEC_VAL(fb2.EXECUTE) = exec2Latched ? true : false;
+        fb2.EXECUTE0.value = exec2WasHigh ? true : false;
+        __mcl_cmd_MoveAbsolute(&fb2);
+        if (exec2Latched) {
+            exec2WasHigh = true;
+        }
+
+        if (!exec3Latched && IEC_VAL(fb2.ACTIVE)) {
+            exec3Latched = true;
+        }
+        IEC_VAL(fb3.EXECUTE) = exec3Latched ? true : false;
+        fb3.EXECUTE0.value = exec3WasHigh ? true : false;
+        __mcl_cmd_MoveAbsolute(&fb3);
+        if (exec3Latched) {
+            exec3WasHigh = true;
+        }
+
+        if (fb1DoneScan < 0 && IEC_VAL(fb1.DONE)) {
+            fb1DoneScan = step + 1;
+        }
+        if (fb2DoneScan < 0 && IEC_VAL(fb2.DONE)) {
+            fb2DoneScan = step + 1;
+        }
+        if (IEC_VAL(fb3.DONE)) {
+            fb3DoneScan = step + 1;
+            break;
+        }
+
+        if (IEC_VAL(fb1.ERROR) || IEC_VAL(fb2.ERROR) || IEC_VAL(fb3.ERROR) ||
+            IEC_VAL(fb1.COMMANDABORTED) || IEC_VAL(fb2.COMMANDABORTED) ||
+            IEC_VAL(fb3.COMMANDABORTED)) {
+            break;
+        }
+
+        __HydMotion_framework_Publish();
+    }
+
+    ASSERT_TRUE(exec2Latched == true,
+               "FB2 EXECUTE should latch after FB1 becomes ACTIVE in the same-scan chain");
+    ASSERT_TRUE(exec3Latched == true,
+               "FB3 EXECUTE should latch after FB2 becomes ACTIVE in the same-scan chain");
+    ASSERT_TRUE(fb1DoneScan > 0,
+               "FB1 should report DONE in the same-scan three-MoveAbsolute chain");
+    ASSERT_TRUE(fb2DoneScan > 0,
+               "FB2 should report DONE before the final reverse command completes");
+    ASSERT_TRUE(fb3DoneScan > 0,
+               "FB3 should report DONE after the reverse fallback completes");
+    ASSERT_TRUE(IEC_VAL(fb1.COMMANDABORTED) == false,
+               "FB1 should not report COMMANDABORTED in the same-scan three-MoveAbsolute chain");
+    ASSERT_TRUE(IEC_VAL(fb2.COMMANDABORTED) == false,
+               "FB2 should not report COMMANDABORTED in the same-scan three-MoveAbsolute chain");
+    ASSERT_TRUE(IEC_VAL(fb3.COMMANDABORTED) == false,
+               "FB3 should not report COMMANDABORTED in the same-scan three-MoveAbsolute chain");
+    ASSERT_TRUE(IEC_VAL(fb1.ERROR) == false,
+               "FB1 should not report ERROR in the same-scan three-MoveAbsolute chain");
+    ASSERT_TRUE(IEC_VAL(fb2.ERROR) == false,
+               "FB2 should not report ERROR in the same-scan three-MoveAbsolute chain");
+    ASSERT_TRUE(IEC_VAL(fb3.ERROR) == false,
+               "FB3 should not report ERROR in the same-scan three-MoveAbsolute chain");
+    ASSERT_TRUE(fabs(core->AXIS_REF.position - 10.0f) <= 2.0f,
+               "Same-scan three-MoveAbsolute chain should finish near the FB3 target");
+}
+
 static void test_blending_high_cutover_scan_keeps_nonzero_output_velocity(void) {
     HYD_MOVEABSOLUTE fb1, fb2;
     HYD_MotionControlFB* core;
@@ -1092,6 +1261,8 @@ int main(void) {
     test_blending_low_pending_does_not_take_active_or_overwrite_velocity_early();
     test_blending_previous_pending_does_not_take_active_or_overwrite_velocity_early();
     test_blending_next_pending_does_not_take_active_or_overwrite_velocity_early();
+    test_blending_high_shortest_way_two_moveabsolute_completes_without_oscillation();
+    test_three_moveabsolute_same_scan_activation_chain_shortest_way();
     test_third_same_axis_moveabsolute_is_rejected_without_disturbing_blended_pair();
     test_three_segment_buffered_chain_reuses_pending_slot_without_early_takeover();
     test_reverse_direction_pending_falls_back_to_buffered_promotion_after_slot_reuse();

@@ -54,3 +54,4 @@ out/
 .worktrees/
 build/
 .omx/
+.omx/metrics.json
