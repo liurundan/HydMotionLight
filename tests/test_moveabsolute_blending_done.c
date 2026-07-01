@@ -90,6 +90,21 @@ static void hold_three_true_scan(HYD_MOVEABSOLUTE* fb1,
     hold_true_scan(fb3);
 }
 
+static void assert_rejected_fb3_sticky_state(HYD_MOVEABSOLUTE* fb3) {
+    ASSERT_TRUE(IEC_VAL(fb3->ERROR) == true,
+               "Rejected FB3 should keep ERROR latched while EXECUTE stays high");
+    ASSERT_TRUE(IEC_VAL(fb3->ERRORID) == (IEC_WORD)HYD_DIAG_CODE_COMMAND_NOT_ALLOWED,
+               "Rejected FB3 should keep COMMAND_NOT_ALLOWED latched while EXECUTE stays high");
+    ASSERT_TRUE(IEC_VAL(fb3->BUSY) == false,
+               "Rejected FB3 should remain non-busy while EXECUTE stays high");
+    ASSERT_TRUE(IEC_VAL(fb3->ACTIVE) == false,
+               "Rejected FB3 should remain inactive while EXECUTE stays high");
+    ASSERT_TRUE(IEC_VAL(fb3->DONE) == false,
+               "Rejected FB3 must not mutate into DONE while EXECUTE stays high");
+    ASSERT_TRUE(IEC_VAL(fb3->COMMANDABORTED) == false,
+               "Rejected FB3 must not mutate into COMMANDABORTED while EXECUTE stays high");
+}
+
 /* Trigger FB2 at the start of a field scan when FB1.ACTIVE was already visible
  * from the previous scan, then return after FB1() -> FB2() -> Publish(). */
 static int trigger_fb2_when_fb1_active(HYD_MOVEABSOLUTE* fb1,
@@ -207,9 +222,11 @@ typedef struct {
     HYD_BOOL observed_fb2_active_after_cutover;
 } BlendRunResult;
 
-/* ── drive both FBs each scan; return scan count or -1 on timeout ── */
-static int run_until_fb2_done(HYD_MOVEABSOLUTE* fb1, HYD_MOVEABSOLUTE* fb2,
-                              BlendRunResult* result) {
+/* ── drive both FBs each scan; optionally keep a rejected FB3 asserted ── */
+static int run_until_fb2_done_with_optional_rejected_fb3(HYD_MOVEABSOLUTE* fb1,
+                                                          HYD_MOVEABSOLUTE* fb2,
+                                                          HYD_MOVEABSOLUTE* fb3,
+                                                          BlendRunResult* result) {
     result->vel_at_switch = -1.0f;
     result->checked_cutover_visibility = false;
     result->observed_fb2_active_after_cutover = false;
@@ -222,6 +239,11 @@ static int run_until_fb2_done(HYD_MOVEABSOLUTE* fb1, HYD_MOVEABSOLUTE* fb2,
         IEC_VAL(fb2->EXECUTE) = true;
         fb2->EXECUTE0.value = true;
         __mcl_cmd_MoveAbsolute(fb2);
+
+        if (fb3 != NULL) {
+            hold_true_scan(fb3);
+            assert_rejected_fb3_sticky_state(fb3);
+        }
 
         __HydMotion_framework_Publish();
 
@@ -243,11 +265,26 @@ static int run_until_fb2_done(HYD_MOVEABSOLUTE* fb1, HYD_MOVEABSOLUTE* fb2,
         }
         /* Bail out early on any error/abort */
         if (IEC_VAL(fb1->ERROR) || IEC_VAL(fb2->ERROR) ||
-            IEC_VAL(fb1->COMMANDABORTED) || IEC_VAL(fb2->COMMANDABORTED)) {
+            IEC_VAL(fb1->COMMANDABORTED) || IEC_VAL(fb2->COMMANDABORTED) ||
+            (fb3 != NULL && (IEC_VAL(fb3->ERROR) == false ||
+                             IEC_VAL(fb3->COMMANDABORTED)))) {
             return -1;
         }
     }
     return -1;
+}
+
+/* ── drive both FBs each scan; return scan count or -1 on timeout ── */
+static int run_until_fb2_done(HYD_MOVEABSOLUTE* fb1, HYD_MOVEABSOLUTE* fb2,
+                              BlendRunResult* result) {
+    return run_until_fb2_done_with_optional_rejected_fb3(fb1, fb2, NULL, result);
+}
+
+static int run_until_fb2_done_with_rejected_fb3(HYD_MOVEABSOLUTE* fb1,
+                                                HYD_MOVEABSOLUTE* fb2,
+                                                HYD_MOVEABSOLUTE* fb3,
+                                                BlendRunResult* result) {
+    return run_until_fb2_done_with_optional_rejected_fb3(fb1, fb2, fb3, result);
 }
 
 /* ================================================================== */
@@ -453,6 +490,7 @@ static void test_third_same_axis_moveabsolute_is_rejected_without_disturbing_ble
     int axisId;
     int secondTriggerScan;
     int finishSteps;
+    HYD_BOOL observed_fb1_done_while_fb2_active = false;
     BlendRunResult runResult;
 
     __HydMotion_framework_Init();
@@ -529,10 +567,45 @@ static void test_third_same_axis_moveabsolute_is_rejected_without_disturbing_ble
                        "FB1 should not be aborted by the rejected third submission");
             ASSERT_TRUE(IEC_VAL(fb2.COMMANDABORTED) == false,
                        "FB2 should not be aborted by the rejected third submission");
+        } else {
+            assert_rejected_fb3_sticky_state(&fb3);
         }
     }
 
-    finishSteps = run_until_fb2_done(&fb1, &fb2, &runResult);
+    for (int step = 0; step < MAX_SIM_STEPS; step++) {
+        hold_true_scan(&fb1);
+        hold_true_scan(&fb2);
+        hold_true_scan(&fb3);
+        assert_rejected_fb3_sticky_state(&fb3);
+        __HydMotion_framework_Publish();
+
+        if (IEC_VAL(fb2.DONE) == true) {
+            ASSERT_TRUE(false,
+                       "The field-order reproducer should observe FB1.DONE while FB2 is already ACTIVE before FB2.DONE");
+            break;
+        }
+
+        if (IEC_VAL(fb1.DONE) == true && IEC_VAL(fb2.ACTIVE) == true) {
+            observed_fb1_done_while_fb2_active = true;
+            ASSERT_TRUE(IEC_VAL(fb1.BUSY) == false,
+                       "FB1 should be non-busy after blended completion");
+            ASSERT_TRUE(IEC_VAL(fb1.ACTIVE) == false,
+                       "FB1 should be inactive after blended completion");
+            ASSERT_TRUE(IEC_VAL(fb1.COMMANDABORTED) == false,
+                       "FB1 should not report COMMANDABORTED after legal blended completion");
+            break;
+        }
+
+        if (IEC_VAL(fb1.ERROR) || IEC_VAL(fb2.ERROR) ||
+            IEC_VAL(fb1.COMMANDABORTED) || IEC_VAL(fb2.COMMANDABORTED)) {
+            break;
+        }
+    }
+
+    ASSERT_TRUE(observed_fb1_done_while_fb2_active == true,
+               "The field-order reproducer should observe FB1.DONE while FB2 is already ACTIVE");
+
+    finishSteps = run_until_fb2_done_with_rejected_fb3(&fb1, &fb2, &fb3, &runResult);
 
     ASSERT_TRUE(finishSteps > 0,
                "FB1 and FB2 should still complete after the rejected third submission");
