@@ -1566,6 +1566,116 @@ static void test_moveabsolute_continuousupdate_direction_flip_cycle(void) {
     printf("  Phase 2 DONE (position 50) after %d steps\n", step);
 }
 
+static void test_moveabsolute_error_and_done_clear_only_on_execute_falling_edge(void) {
+    HYD_MOVEABSOLUTE ma;
+    int axisId;
+    int steps;
+
+    __HydMotion_framework_Init();
+    axisId = create_sim_axis(false);
+    ASSERT_TRUE(axisId >= 0, "CreateMotion should succeed for latch-reset test");
+    if (axisId < 0) {
+        return;
+    }
+
+    memset(&ma, 0, sizeof(ma));
+    IEC_VAL(ma.EN) = true;
+    IEC_VAL(ma.AXISID) = axisId;
+    IEC_VAL(ma.POSITION) = 40.0f;
+    IEC_VAL(ma.VELOCITY) = 20.0f;
+    IEC_VAL(ma.ACCELERATION) = 100.0f;
+    IEC_VAL(ma.DIRECTION) = 1;
+
+    steps = run_moveabsolute_to_done(&ma, MAX_SIM_STEPS);
+    ASSERT_TRUE(steps > 0, "MoveAbsolute should reach DONE for latch-reset test");
+    ASSERT_TRUE(IEC_VAL(ma.DONE) == true, "DONE should be true after completion");
+
+    IEC_VAL(ma.EXECUTE) = true;
+    ma.EXECUTE0.value = true;
+    __mcl_cmd_MoveAbsolute(&ma);
+    ASSERT_TRUE(IEC_VAL(ma.DONE) == true,
+               "DONE should remain latched while EXECUTE stays high after completion");
+
+    IEC_VAL(ma.EXECUTE) = false;
+    ma.EXECUTE0.value = true;
+    __mcl_cmd_MoveAbsolute(&ma);
+    ASSERT_TRUE(IEC_VAL(ma.DONE) == false,
+               "DONE should clear on the EXECUTE falling edge");
+}
+
+static void test_moveabsolute_rejected_error_stays_high_until_execute_falls(void) {
+    HYD_MOVEABSOLUTE fb1, fb2, fb3;
+    int axisId;
+
+    __HydMotion_framework_Init();
+    axisId = create_sim_axis(false);
+    ASSERT_TRUE(axisId >= 0, "CreateMotion should succeed for sticky-error test");
+    if (axisId < 0) {
+        return;
+    }
+
+    memset(&fb1, 0, sizeof(fb1));
+    memset(&fb2, 0, sizeof(fb2));
+    memset(&fb3, 0, sizeof(fb3));
+
+    IEC_VAL(fb1.EN) = IEC_VAL(fb2.EN) = IEC_VAL(fb3.EN) = true;
+    IEC_VAL(fb1.AXISID) = IEC_VAL(fb2.AXISID) = IEC_VAL(fb3.AXISID) = axisId;
+
+    IEC_VAL(fb1.POSITION) = 100.0f;
+    IEC_VAL(fb1.VELOCITY) = 20.0f;
+    IEC_VAL(fb1.ACCELERATION) = 100.0f;
+    IEC_VAL(fb1.DIRECTION) = 1;
+    IEC_VAL(fb1.BUFFERMODE) = HYD_BUFFER_MODE_ABORT;
+    IEC_VAL(fb1.EXECUTE) = true;
+    fb1.EXECUTE0.value = false;
+    __mcl_cmd_MoveAbsolute(&fb1);
+    __HydMotion_framework_Publish();
+    IEC_VAL(fb1.EXECUTE) = true;
+    fb1.EXECUTE0.value = true;
+    __mcl_cmd_MoveAbsolute(&fb1);
+
+    IEC_VAL(fb2.POSITION) = 200.0f;
+    IEC_VAL(fb2.VELOCITY) = 20.0f;
+    IEC_VAL(fb2.ACCELERATION) = 100.0f;
+    IEC_VAL(fb2.DIRECTION) = 1;
+    IEC_VAL(fb2.BUFFERMODE) = HYD_BUFFER_MODE_BLENDING_HIGH;
+    IEC_VAL(fb2.EXECUTE) = true;
+    fb2.EXECUTE0.value = false;
+    __mcl_cmd_MoveAbsolute(&fb2);
+
+    IEC_VAL(fb3.POSITION) = 10.0f;
+    IEC_VAL(fb3.VELOCITY) = 10.0f;
+    IEC_VAL(fb3.ACCELERATION) = 100.0f;
+    IEC_VAL(fb3.DIRECTION) = 1;
+    IEC_VAL(fb3.BUFFERMODE) = HYD_BUFFER_MODE_BLENDING_HIGH;
+    IEC_VAL(fb3.EXECUTE) = true;
+    fb3.EXECUTE0.value = false;
+    __mcl_cmd_MoveAbsolute(&fb3);
+
+    ASSERT_TRUE(IEC_VAL(fb3.ERROR) == true, "Rejected third MoveAbsolute should set ERROR");
+
+    for (int step = 0; step < 3; step++) {
+        IEC_VAL(fb1.EXECUTE) = true;
+        fb1.EXECUTE0.value = true;
+        __mcl_cmd_MoveAbsolute(&fb1);
+        IEC_VAL(fb2.EXECUTE) = true;
+        fb2.EXECUTE0.value = true;
+        __mcl_cmd_MoveAbsolute(&fb2);
+        IEC_VAL(fb3.EXECUTE) = true;
+        fb3.EXECUTE0.value = true;
+        __mcl_cmd_MoveAbsolute(&fb3);
+        ASSERT_TRUE(IEC_VAL(fb3.ERROR) == true,
+                   "Rejected third MoveAbsolute should keep ERROR latched while EXECUTE stays high");
+        __HydMotion_framework_Publish();
+    }
+
+    IEC_VAL(fb3.EXECUTE) = false;
+    fb3.EXECUTE0.value = true;
+    __mcl_cmd_MoveAbsolute(&fb3);
+    ASSERT_TRUE(IEC_VAL(fb3.ERROR) == false,
+               "Rejected third MoveAbsolute should clear ERROR on the EXECUTE falling edge");
+}
+
 int main(void) {
     printf("=== Motion Interface Done Signal Simulation Tests ===\n\n");
 
@@ -1587,6 +1697,8 @@ int main(void) {
     test_moveabsolute_stop_velocity_zero();
     test_moveabsolute_continuousupdate_position_change();
     test_moveabsolute_continuousupdate_direction_flip_cycle();
+    test_moveabsolute_error_and_done_clear_only_on_execute_falling_edge();
+    test_moveabsolute_rejected_error_stays_high_until_execute_falls();
 
     printf("\n=== Results: %d/%d passed ===\n", tests_passed, tests_run);
     return (tests_passed == tests_run) ? 0 : 1;
