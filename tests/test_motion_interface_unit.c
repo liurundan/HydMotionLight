@@ -1867,8 +1867,8 @@ static void test_moveabsolute_positive_direction_rejects_backward_target(void) {
 
     ASSERT_TRUE(IEC_VAL(ma.ERROR) == true,
                "MoveAbsolute POSITIVE with backward target should set ERROR");
-    ASSERT_TRUE(IEC_VAL(ma.ERRORID) == HYD_DIAG_CODE_PUMP_DIRECTION_CONFLICT,
-               "ERRORID should be PUMP_DIRECTION_CONFLICT for POSITIVE + backward target");
+    ASSERT_TRUE(IEC_VAL(ma.ERRORID) == HYD_DIAG_CODE_COMMAND_NOT_ALLOWED,
+               "ERRORID should be COMMAND_NOT_ALLOWED for POSITIVE + backward target");
     ASSERT_TRUE(IEC_VAL(ma.BUSY) == false,
                "MoveAbsolute should NOT set BUSY on direction conflict");
     ASSERT_TRUE(IEC_VAL(ma.ACTIVE) == false,
@@ -1941,8 +1941,8 @@ static void test_moveabsolute_negative_direction_rejects_forward_target(void) {
 
     ASSERT_TRUE(IEC_VAL(ma.ERROR) == true,
                "MoveAbsolute NEGATIVE with forward target should set ERROR");
-    ASSERT_TRUE(IEC_VAL(ma.ERRORID) == HYD_DIAG_CODE_PUMP_DIRECTION_CONFLICT,
-               "ERRORID should be PUMP_DIRECTION_CONFLICT for NEGATIVE + forward target");
+    ASSERT_TRUE(IEC_VAL(ma.ERRORID) == HYD_DIAG_CODE_COMMAND_NOT_ALLOWED,
+               "ERRORID should be COMMAND_NOT_ALLOWED for NEGATIVE + forward target");
     ASSERT_TRUE(IEC_VAL(ma.BUSY) == false,
                "MoveAbsolute should NOT set BUSY on direction conflict");
     ASSERT_TRUE(IEC_VAL(ma.ACTIVE) == false,

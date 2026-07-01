@@ -335,8 +335,8 @@ static void test_third_same_axis_moveabsolute_is_rejected_when_one_active_and_on
                    "Rejected third MoveAbsolute should not clear the active blend context");
     }
 
-    ASSERT_TRUE(IEC_VAL(third.ERRORID) == (IEC_WORD)HYD_DIAG_CODE_COMMAND_NOT_ALLOWED,
-               "Rejected third MoveAbsolute should report COMMAND_NOT_ALLOWED");
+    ASSERT_TRUE(IEC_VAL(third.ERRORID) == (IEC_WORD)HYD_DIAG_CODE_BUFFER_FULL,
+               "Rejected third MoveAbsolute should report BUFFER_FULL");
     ASSERT_TRUE(IEC_VAL(third.COMMANDABORTED) == false,
                "Rejected third MoveAbsolute should not report COMMANDABORTED");
     ASSERT_TRUE(IEC_VAL(second.COMMANDABORTED) == false,
@@ -403,6 +403,10 @@ static void test_rejected_third_moveabsolute_stays_local_under_persistent_execut
                    "Rejected third MoveAbsolute should remain non-busy while EXECUTE stays high");
         ASSERT_TRUE(IEC_VAL(third.ACTIVE) == false,
                    "Rejected third MoveAbsolute should remain inactive while EXECUTE stays high");
+        ASSERT_TRUE(IEC_VAL(third.ERROR) == true,
+                   "Rejected third MoveAbsolute should keep ERROR latched while EXECUTE stays high");
+        ASSERT_TRUE(IEC_VAL(third.ERRORID) == (IEC_WORD)HYD_DIAG_CODE_BUFFER_FULL,
+                   "Rejected third MoveAbsolute should keep BUFFER_FULL latched while EXECUTE stays high");
         ASSERT_TRUE(IEC_VAL(third.COMMANDABORTED) == false,
                    "Rejected third MoveAbsolute should not mutate into COMMANDABORTED on later scans");
         ASSERT_TRUE(fb->_directPendingValid == true,

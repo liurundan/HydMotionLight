@@ -93,8 +93,8 @@ static void hold_three_true_scan(HYD_MOVEABSOLUTE* fb1,
 static void assert_rejected_fb3_sticky_state(HYD_MOVEABSOLUTE* fb3) {
     ASSERT_TRUE(IEC_VAL(fb3->ERROR) == true,
                "Rejected FB3 should keep ERROR latched while EXECUTE stays high");
-    ASSERT_TRUE(IEC_VAL(fb3->ERRORID) == (IEC_WORD)HYD_DIAG_CODE_COMMAND_NOT_ALLOWED,
-               "Rejected FB3 should keep COMMAND_NOT_ALLOWED latched while EXECUTE stays high");
+    ASSERT_TRUE(IEC_VAL(fb3->ERRORID) == (IEC_WORD)HYD_DIAG_CODE_BUFFER_FULL,
+               "Rejected FB3 should keep BUFFER_FULL latched while EXECUTE stays high");
     ASSERT_TRUE(IEC_VAL(fb3->BUSY) == false,
                "Rejected FB3 should remain non-busy while EXECUTE stays high");
     ASSERT_TRUE(IEC_VAL(fb3->ACTIVE) == false,
@@ -716,8 +716,8 @@ static void test_third_same_axis_moveabsolute_is_rejected_without_disturbing_ble
         if (step == 0) {
             ASSERT_TRUE(IEC_VAL(fb3.ERROR) == true,
                        "FB3 should report ERROR on the submission scan when one active and one pending command already exist");
-            ASSERT_TRUE(IEC_VAL(fb3.ERRORID) == (IEC_WORD)HYD_DIAG_CODE_COMMAND_NOT_ALLOWED,
-                       "FB3 should report COMMAND_NOT_ALLOWED for the full-slot rejection");
+            ASSERT_TRUE(IEC_VAL(fb3.ERRORID) == (IEC_WORD)HYD_DIAG_CODE_BUFFER_FULL,
+                       "FB3 should report BUFFER_FULL for the full-slot rejection");
             ASSERT_TRUE(IEC_VAL(fb3.BUSY) == false,
                        "Rejected FB3 should not enter BUSY");
             ASSERT_TRUE(IEC_VAL(fb3.ACTIVE) == false,
@@ -1000,6 +1000,8 @@ static void test_reverse_direction_pending_falls_back_to_buffered_promotion_afte
     rising_edge(&fb4);
     ASSERT_TRUE(IEC_VAL(fb4.ERROR) == true,
                "A fourth same-axis MoveAbsolute should be rejected while FB2 is active and reverse FB3 is pending");
+    ASSERT_TRUE(IEC_VAL(fb4.ERRORID) == (IEC_WORD)HYD_DIAG_CODE_BUFFER_FULL,
+               "Rejected FB4 should report BUFFER_FULL while reverse FB3 occupies the pending slot");
     ASSERT_TRUE(IEC_VAL(fb4.BUSY) == false,
                "Rejected FB4 should not enter BUSY while reverse FB3 holds the pending slot");
     ASSERT_TRUE(IEC_VAL(fb4.ACTIVE) == false,
@@ -1241,6 +1243,8 @@ static void test_reverse_then_forward_reuses_pending_slot_without_stale_blend_co
 
     ASSERT_TRUE(IEC_VAL(fb5.ERROR) == true,
                "A fifth same-axis MoveAbsolute should be rejected while reverse FB3 is active and FB4 is pending");
+    ASSERT_TRUE(IEC_VAL(fb5.ERRORID) == (IEC_WORD)HYD_DIAG_CODE_BUFFER_FULL,
+               "Rejected FB5 should report BUFFER_FULL while FB4 occupies the pending slot");
     ASSERT_TRUE(IEC_VAL(fb5.BUSY) == false,
                "Rejected FB5 should not report BUSY while FB4 occupies the pending slot");
     ASSERT_TRUE(IEC_VAL(fb5.ACTIVE) == false,

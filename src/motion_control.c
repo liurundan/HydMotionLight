@@ -393,6 +393,70 @@ static HYD_BOOL HYD_AreBlendDirectionsCompatible(const HYD_MotionControlFB* fb,
            activeDirection == pendingDirection;
 }
 
+static HYD_REAL HYD_ResolveDirectCommandLogicalStartPosition(const HYD_MotionControlFB* fb) {
+    if (fb == NULL) {
+        return 0.0;
+    }
+
+    if (fb->_directBlendContext.active) {
+        return fb->_directBlendContext.switchPosition;
+    }
+
+    if (fb->_activeSegmentValid &&
+        fb->_activeSegment.mode == HYD_MODE_POSITION &&
+        fb->_activeSegment.endCondition == HYD_END_POSITION) {
+        return fb->_activeSegment.targetPosition;
+    }
+
+    if (fb->DIRECT_SEGMENT_VALID &&
+        fb->DIRECT_SEGMENT.mode == HYD_MODE_POSITION &&
+        fb->DIRECT_SEGMENT.endCondition == HYD_END_POSITION) {
+        return fb->DIRECT_SEGMENT.targetPosition;
+    }
+
+    return fb->AXIS_REF.position;
+}
+
+static HYD_BOOL HYD_IsForcedDirectionTargetCompatible(HYD_MotionDirection direction,
+                                                      HYD_REAL targetPosition,
+                                                      HYD_REAL referencePosition,
+                                                      HYD_REAL positionTolerance) {
+    if (direction == HYD_DIRECTION_POSITIVE) {
+        return targetPosition >= referencePosition - positionTolerance;
+    }
+
+    if (direction == HYD_DIRECTION_NEGATIVE) {
+        return targetPosition <= referencePosition + positionTolerance;
+    }
+
+    return true;
+}
+
+static HYD_BOOL HYD_DirectCommandNeedsPositionDirectionCheck(const HYD_MotionSegment* segment) {
+    return segment != NULL &&
+           segment->mode == HYD_MODE_POSITION &&
+           segment->endCondition == HYD_END_POSITION &&
+           (segment->direction == HYD_DIRECTION_POSITIVE ||
+            segment->direction == HYD_DIRECTION_NEGATIVE);
+}
+
+static HYD_BOOL HYD_ReportDirectCommandDiagnostic(HYD_MotionControlFB* fb,
+                                                  const HYD_MotionSegment* segment,
+                                                  HYD_DiagnosticCode code,
+                                                  HYD_TIME timestamp) {
+    if (fb == NULL) {
+        return false;
+    }
+
+    HYD_StateReporter_ReportDiagnostic(fb,
+                                       code,
+                                       HYD_DIAG_SEVERITY_WARNING,
+                                       timestamp,
+                                       segment,
+                                       &fb->STATE.references);
+    return false;
+}
+
 static HYD_REAL HYD_SelectDirectBlendVelocity(HYD_BufferMode bufferMode,
                                               const HYD_MotionSegment* activeSegment,
                                               const HYD_MotionSegment* pendingSegment) {
@@ -2869,6 +2933,8 @@ HYD_DirectStartResult HYD_MotionControlFB_StartDirectCommand(HYD_MotionControlFB
     HYD_BOOL savedUseRecipe;
     HYD_BOOL activeDirect;
     HYD_BOOL shouldAbort;
+    HYD_REAL positionTolerance;
+    HYD_REAL referencePosition;
 
     if (fb == NULL || segment == NULL) {
         return HYD_DIRECT_START_REJECTED;
@@ -2900,8 +2966,29 @@ HYD_DirectStartResult HYD_MotionControlFB_StartDirectCommand(HYD_MotionControlFB
     shouldAbort = (bufferMode == HYD_BUFFER_MODE_ABORT &&
                    (fb->STATE.active || HYD_MotionControlFB_IsBusy(fb))) ||
                   (activeDirect && HYD_IsSegmentEndlessForBuffering(&fb->_activeSegment));
+    positionTolerance = HYD_Segment_GetPositionTolerance(segment);
+
+    if (bufferMode != HYD_BUFFER_MODE_ABORT && fb->_directPendingValid) {
+        HYD_ReportDirectCommandDiagnostic(fb,
+                                          fb->_activeSegmentValid ? &fb->_activeSegment : segment,
+                                          HYD_DIAG_CODE_BUFFER_FULL,
+                                          timestamp);
+        return HYD_DIRECT_START_REJECTED;
+    }
 
     if (shouldAbort) {
+        if (HYD_DirectCommandNeedsPositionDirectionCheck(segment) &&
+            !HYD_IsForcedDirectionTargetCompatible(segment->direction,
+                                                   segment->targetPosition,
+                                                   fb->AXIS_REF.position,
+                                                   positionTolerance)) {
+            HYD_ReportDirectCommandDiagnostic(fb,
+                                              segment,
+                                              HYD_DIAG_CODE_COMMAND_NOT_ALLOWED,
+                                              timestamp);
+            return HYD_DIRECT_START_REJECTED;
+        }
+
         if (activeDirect) {
             HYD_RecordPreemptedDirectTicket(fb,
                                             fb->_directOwnerTicket,
@@ -2922,13 +3009,16 @@ HYD_DirectStartResult HYD_MotionControlFB_StartDirectCommand(HYD_MotionControlFB
 
     if (bufferMode != HYD_BUFFER_MODE_ABORT &&
         (activeDirect || fb->STATE.active || HYD_MotionControlFB_IsBusy(fb))) {
-        if (fb->_directPendingValid) {
-            HYD_StateReporter_ReportDiagnostic(fb,
-                                               HYD_DIAG_CODE_COMMAND_NOT_ALLOWED,
-                                               HYD_DIAG_SEVERITY_WARNING,
-                                               timestamp,
-                                               &fb->_activeSegment,
-                                               &fb->STATE.references);
+        referencePosition = HYD_ResolveDirectCommandLogicalStartPosition(fb);
+        if (HYD_DirectCommandNeedsPositionDirectionCheck(segment) &&
+            !HYD_IsForcedDirectionTargetCompatible(segment->direction,
+                                                   segment->targetPosition,
+                                                   referencePosition,
+                                                   positionTolerance)) {
+            HYD_ReportDirectCommandDiagnostic(fb,
+                                              segment,
+                                              HYD_DIAG_CODE_COMMAND_NOT_ALLOWED,
+                                              timestamp);
             return HYD_DIRECT_START_REJECTED;
         }
         fb->_directPendingSegment = *segment;
@@ -2937,6 +3027,18 @@ HYD_DirectStartResult HYD_MotionControlFB_StartDirectCommand(HYD_MotionControlFB
         fb->_directPendingValid = true;
         (void)HYD_TryCreateDirectBlendContext(fb, bufferMode, segment);
         return HYD_DIRECT_START_QUEUED;
+    }
+
+    if (HYD_DirectCommandNeedsPositionDirectionCheck(segment) &&
+        !HYD_IsForcedDirectionTargetCompatible(segment->direction,
+                                               segment->targetPosition,
+                                               fb->AXIS_REF.position,
+                                               positionTolerance)) {
+        HYD_ReportDirectCommandDiagnostic(fb,
+                                          segment,
+                                          HYD_DIAG_CODE_COMMAND_NOT_ALLOWED,
+                                          timestamp);
+        return HYD_DIRECT_START_REJECTED;
     }
 
     fb->DIRECT_SEGMENT = *segment;

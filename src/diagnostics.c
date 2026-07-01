@@ -195,6 +195,12 @@ static const HYD_DiagnosticSpec HYD_DIAGNOSTIC_SPECS[] = {
      HYD_DIAG_RECOVERY_RESET_CONTROLLER,
      HYD_PROTECTION_ACTION_STOP,
      "Internal controller error"},
+    {HYD_DIAG_CODE_BUFFER_FULL,
+     HYD_DIAG_SEVERITY_WARNING,
+     HYD_DIAG_SOURCE_COMMAND,
+     HYD_DIAG_RECOVERY_CHECK_COMMAND,
+     HYD_PROTECTION_ACTION_WARNING,
+     "Command buffer full: queued/buffered slot already occupied"},
 };
 
 static HYD_DiagnosticFlags HYD_Diagnostics_BuildFlagMask(const HYD_DiagnosticInfo* diagnostic) {
@@ -481,6 +487,8 @@ const char* HYD_Diagnostics_CodeToString(HYD_DiagnosticCode code) {
             return "SOFT_LIMIT_VIOLATED";
         case HYD_DIAG_CODE_INTERNAL_ERROR:
             return "INTERNAL_ERROR";
+        case HYD_DIAG_CODE_BUFFER_FULL:
+            return "BUFFER_FULL";
         default:
             return "UNKNOWN";
     }

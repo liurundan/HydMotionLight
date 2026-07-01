@@ -364,8 +364,13 @@ static HYD_BOOL axisIndexIsAllocated(IEC_SINT axisIndex)
 
 static IEC_WORD commandFailureErrorId(const HYD_MotionControlFB* fb)
 {
-    if (fb != NULL && fb->ERROR_ID != HYD_DIAG_CODE_NONE) {
-        return (IEC_WORD)fb->ERROR_ID;
+    if (fb != NULL) {
+        if (fb->ERROR_ID != HYD_DIAG_CODE_NONE) {
+            return (IEC_WORD)fb->ERROR_ID;
+        }
+        if (fb->DIAGNOSTIC.code != HYD_DIAG_CODE_NONE) {
+            return (IEC_WORD)fb->DIAGNOSTIC.code;
+        }
     }
     return (IEC_WORD)HYD_DIAG_CODE_COMMAND_NOT_ALLOWED;
 }
@@ -1104,34 +1109,7 @@ void __mcl_cmd_MoveAbsolute(HYD_MOVEABSOLUTE *data__)
         HYD_MotionDirection dir = mapPlcOpenDirection(__GET_VAR(data__->DIRECTION));
         HYD_REAL velocity = __GET_VAR(data__->VELOCITY);
         HYD_REAL targetPos = __GET_VAR(data__->POSITION);
-        HYD_REAL currentPos = fb->AXIS_REF.position;
-
-        /* Positive_Direction: 强制正向，校验目标位置匹配 */
-        if (dir == HYD_DIRECTION_POSITIVE) {
-            if (targetPos < currentPos - fb->_params.positionTolerance) {
-                __SET_VAR(data__->, ERROR,, true);
-                __SET_VAR(data__->, ERRORID,,
-                    (IEC_WORD)HYD_DIAG_CODE_PUMP_DIRECTION_CONFLICT);
-                __SET_VAR(data__->, EXECUTE0,, execute);
-                return;
-            }
-            velocity = (IEC_REAL)fabs((double)velocity);
-        }
-        /* Negative_Direction: 强制负向，校验目标位置匹配 */
-        else if (dir == HYD_DIRECTION_NEGATIVE) {
-            if (targetPos > currentPos + fb->_params.positionTolerance) {
-                __SET_VAR(data__->, ERROR,, true);
-                __SET_VAR(data__->, ERRORID,,
-                    (IEC_WORD)HYD_DIAG_CODE_PUMP_DIRECTION_CONFLICT);
-                __SET_VAR(data__->, EXECUTE0,, execute);
-                return;
-            }
-            velocity = (IEC_REAL)fabs((double)velocity);
-        }
-        /* SHORTEST_WAY 和 CURRENT: 方向由运行时解析，Velocity 恒取正值 */
-        else {
-            velocity = (IEC_REAL)fabs((double)velocity);
-        }
+        velocity = (IEC_REAL)fabs((double)velocity);
 
         HYD_MotionSegment segment = buildPositionSegment(
             targetPos,
