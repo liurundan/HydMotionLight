@@ -3227,8 +3227,7 @@ HYD_BOOL HYD_MotionControlFB_ApplyLiveUpdate(HYD_MotionControlFB* fb,
         return false;
     }
 
-    sameOwner = (fb->_activeSegmentSource == HYD_SEGMENT_SOURCE_DIRECT &&
-                 fb->_directOwnerKind == request->ownerKind &&
+    sameOwner = (fb->_directOwnerKind == request->ownerKind &&
                  fb->_directOwnerTicket == request->ownerTicket);
 
     isSegmentActive = fb->_activeSegmentValid &&

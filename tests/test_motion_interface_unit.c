@@ -23,10 +23,6 @@
 extern HYD_MotionControlFB* __MK_GetPublic_MotionControlFB(int index);
 
 #define IEC_VAL(var) ((var).value)
-#define HYD_JOIN2(a, b) a##b
-#define HYD_JOIN(a, b) HYD_JOIN2(a, b)
-#define ownerTicket HYD_JOIN(ownerExecution, Id)
-#define _directOwnerTicket HYD_JOIN(_directOwnerExecution, Id)
 
 static int tests_run = 0;
 static int tests_passed = 0;

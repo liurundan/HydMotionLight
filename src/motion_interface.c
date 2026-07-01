@@ -1194,14 +1194,61 @@ void __mcl_cmd_MoveAbsolute(HYD_MOVEABSOLUTE *data__)
     if (myExecId != 0)
     {
         if (directExecutionWasCompleted(fb, myExecId, HYD_DIRECT_CMD_MOVE_ABSOLUTE)) {
-            __SET_VAR(data__->, DONE, , true);
-            __SET_VAR(data__->, BUSY, , false);
-            __SET_VAR(data__->, ACTIVE, , false);
-            __SET_VAR(data__->, COMMANDABORTED, , false);
-            /* Clear _EXEC_ID so subsequent scans (EXECUTE still high) do not
-             * re-enter the ownership check with a stale ticket and overwrite
-             * DONE with COMMANDABORTED via directExecutionLostOwnership. */
-            __SET_VAR(data__->, _EXEC_ID, , (IEC_WORD)0);
+            HYD_BOOL ownerStillSame = directExecutionIsCurrentOwner(fb,
+                                                                    myExecId,
+                                                                    HYD_DIRECT_CMD_MOVE_ABSOLUTE);
+
+            if (__GET_VAR(data__->CONTINUOUSUPDATE) && ownerStillSame) {
+                if (!applyMoveAbsoluteLiveUpdate(fb, myExecId, data__)) {
+                    if (HYD_MotionControlFB_IsError(fb) ||
+                        fb->ERROR_ID != HYD_DIAG_CODE_NONE) {
+                        __SET_VAR(data__->, ERROR, , true);
+                        __SET_VAR(data__->, ERRORID, , commandFailureErrorId(fb));
+                        __SET_VAR(data__->, BUSY, , false);
+                        __SET_VAR(data__->, ACTIVE, , false);
+                        __SET_VAR(data__->, DONE, , false);
+                        __SET_VAR(data__->, COMMANDABORTED, , false);
+                    } else {
+                        __SET_VAR(data__->, DONE, , true);
+                        __SET_VAR(data__->, BUSY, , false);
+                        __SET_VAR(data__->, ACTIVE, , false);
+                        __SET_VAR(data__->, COMMANDABORTED, , false);
+                    }
+                } else if (HYD_MotionControlFB_IsError(fb)) {
+                    __SET_VAR(data__->, ERROR, , true);
+                    __SET_VAR(data__->, ERRORID, , (IEC_WORD)fb->ERROR_ID);
+                    __SET_VAR(data__->, BUSY, , false);
+                    __SET_VAR(data__->, ACTIVE, , false);
+                    __SET_VAR(data__->, DONE, , false);
+                    __SET_VAR(data__->, COMMANDABORTED, , false);
+                } else if (fb->FB_STATE == HYD_FB_STATE_HOLD) {
+                    __SET_VAR(data__->, DONE, , false);
+                    __SET_VAR(data__->, BUSY, , true);
+                    __SET_VAR(data__->, ACTIVE, , false);
+                    __SET_VAR(data__->, COMMANDABORTED, , false);
+                } else if (fb->SEGMENT_COMPLETED || (HYD_MotionControlFB_IsDone(fb) && fb->STATE.finished)) {
+                    __SET_VAR(data__->, DONE, , true);
+                    __SET_VAR(data__->, BUSY, , false);
+                    __SET_VAR(data__->, ACTIVE, , false);
+                    __SET_VAR(data__->, COMMANDABORTED, , false);
+                } else {
+                    __SET_VAR(data__->, BUSY, , true);
+                    __SET_VAR(data__->, ACTIVE, , true);
+                    __SET_VAR(data__->, DONE, , false);
+                    __SET_VAR(data__->, COMMANDABORTED, , false);
+                }
+            } else {
+                __SET_VAR(data__->, DONE, , true);
+                __SET_VAR(data__->, BUSY, , false);
+                __SET_VAR(data__->, ACTIVE, , false);
+                __SET_VAR(data__->, COMMANDABORTED, , false);
+                /* Blended cutover switches ownership to the follower segment
+                 * in the same Publish pass. Clear the stale ticket after
+                 * reporting DONE so later scans do not reinterpret the old
+                 * command as COMMANDABORTED. Keep the ticket only for the
+                 * same-owner CONTINUOUSUPDATE path above. */
+                __SET_VAR(data__->, _EXEC_ID, , (IEC_WORD)0);
+            }
         } else if (directExecutionWasPreempted(fb, myExecId, HYD_DIRECT_CMD_MOVE_ABSOLUTE)) {
             __SET_VAR(data__->, COMMANDABORTED, , true);
             __SET_VAR(data__->, BUSY, , false);

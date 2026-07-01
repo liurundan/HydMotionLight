@@ -46,9 +46,9 @@ static int create_sim_axis(void) {
 /* ==================================================================
  * Scenario A: Stop in same scan as MoveAbsolute (before Publish)
  *
- * This is the most likely scenario in a real PLC:
- *   MoveAbsolute(EXECUTE:=TRUE) → queues START (FB_STATE stays IDLE/READY)
- *   Stop(EXECUTE:=TRUE)         → sees IDLE → DONE=true immediately!
+ * Current direct-mode semantics on an idle axis:
+ *   MoveAbsolute(EXECUTE:=TRUE) starts immediately on the same scan
+ *   Stop(EXECUTE:=TRUE)         must still take over and stay BUSY first
  * ================================================================== */
 static void test_stop_same_scan_as_moveabsolute(void) {
     HYD_MOVEABSOLUTE ma;
@@ -73,16 +73,15 @@ static void test_stop_same_scan_as_moveabsolute(void) {
     ma.EXECUTE0.value = false;
     __mcl_cmd_MoveAbsolute(&ma);
 
-    /* Verify MoveAbsolute queued the START */
+    /* Verify MoveAbsolute already started on the idle axis */
     {
         HYD_MotionControlFB* fb = __MK_GetPublic_MotionControlFB(axisId);
         printf("  After Move: FB_STATE=%d, _pendingCommand=%d\n",
                fb->FB_STATE, fb->_pendingCommand);
-        CHECK(fb->_pendingCommand == HYD_CMD_START,
-              "START command should be queued after MoveAbsolute");
-        CHECK(fb->FB_STATE == HYD_FB_STATE_READY ||
-              fb->FB_STATE == HYD_FB_STATE_IDLE,
-              "FB_STATE not yet STARTING (no Publish)");
+        CHECK(fb->_pendingCommand == HYD_CMD_NONE,
+              "Idle-axis MoveAbsolute should not leave a pending START behind");
+        CHECK(fb->FB_STATE == HYD_FB_STATE_STARTING,
+              "MoveAbsolute should already enter STARTING before same-scan Stop");
     }
 
     /* Stop execRising (same scan, before any Publish) */
@@ -98,11 +97,11 @@ static void test_stop_same_scan_as_moveabsolute(void) {
            (int)IEC_VAL(stop.BUSY),
            (int)IEC_VAL(stop.ERROR));
 
-    /* BUG: Stop should NOT be DONE immediately - there's a pending START */
+    /* Stop should still take over the just-started motion before reporting DONE */
     CHECK(IEC_VAL(stop.DONE) == false,
-          "Stop.DONE should NOT be true immediately when START is pending");
+          "Stop.DONE should NOT be true immediately when motion started in the same scan");
     CHECK(IEC_VAL(stop.BUSY) == true,
-          "Stop.BUSY should be true (should process pending START then stop)");
+          "Stop.BUSY should be true while same-scan Stop takes over the motion");
 }
 
 /* ==================================================================

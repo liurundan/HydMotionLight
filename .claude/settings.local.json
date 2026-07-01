@@ -9,5 +9,8 @@
       "Bash(wsl -d Ubuntu-22.04 -- bash -lc \"cd /home/dan/project/hdy-motion-light && rm -rf out/build/unixgcc && cmake --preset unixgcc\")",
       "Bash(wsl *)"
     ]
+  },
+  "skillOverrides": {
+    "algorithmic-art": "name-only"
   }
 }
