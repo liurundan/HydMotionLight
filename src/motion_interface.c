@@ -1,4 +1,5 @@
 #include "motion_interface.h"
+#include "segment_limits.h"
 #include <string.h>
 #include <stdio.h>
 #include <math.h>
@@ -75,6 +76,59 @@ static HYD_MotionDirection mapPlcOpenDirection(IEC_SINT direction) {
     }
 }
 
+static HYD_MotionDirection mapContinuousEndVelocityDirectionRequest(IEC_SINT direction,
+                                                                    HYD_BOOL* ok)
+{
+    switch ((int)direction) {
+        case 1:
+            if (ok != NULL) {
+                *ok = true;
+            }
+            return HYD_DIRECTION_POSITIVE;
+        case 2:
+            if (ok != NULL) {
+                *ok = true;
+            }
+            return HYD_DIRECTION_NEGATIVE;
+        case 3:
+            if (ok != NULL) {
+                *ok = true;
+            }
+            return HYD_DIRECTION_CURRENT;
+        default:
+            if (ok != NULL) {
+                *ok = false;
+            }
+            return HYD_DIRECTION_SHORTEST_WAY;
+    }
+}
+
+static HYD_MotionDirection resolveContinuousEndVelocityDirection(const HYD_MotionControlFB* fb,
+                                                                 HYD_MotionDirection requestedDirection,
+                                                                 HYD_MotionDirection approachDirection)
+{
+    if (requestedDirection == HYD_DIRECTION_CURRENT) {
+        if (fb != NULL) {
+            if (fb->AXIS_REF.velocity > 0.0f) {
+                return HYD_DIRECTION_POSITIVE;
+            }
+            if (fb->AXIS_REF.velocity < 0.0f) {
+                return HYD_DIRECTION_NEGATIVE;
+            }
+            if (fb->_lastActiveDirection == HYD_DIRECTION_NEGATIVE) {
+                return HYD_DIRECTION_NEGATIVE;
+            }
+        }
+        return HYD_DIRECTION_POSITIVE;
+    }
+
+    if (requestedDirection == HYD_DIRECTION_SHORTEST_WAY) {
+        return approachDirection;
+    }
+
+    return requestedDirection;
+}
+
 /* 构建位置控制运动段 (MoveAbsolute用) */
 static HYD_MotionSegment buildPositionSegment(
     HYD_REAL targetPosition,
@@ -134,6 +188,53 @@ static HYD_MotionSegment buildVelocitySegment(
     seg.timeoutLimit = 0.0f;
 
     return seg;
+}
+
+static HYD_MotionSegment buildContinuousAbsoluteApproachSegment(
+    HYD_REAL targetPosition,
+    HYD_REAL velocity,
+    HYD_REAL acceleration,
+    HYD_REAL deceleration,
+    HYD_MotionDirection direction,
+    HYD_REAL pressureLimit,
+    const HYD_MotionControlFB* fb)
+{
+    HYD_MotionSegment seg = buildPositionSegment(targetPosition,
+                                                 velocity,
+                                                 acceleration,
+                                                 deceleration,
+                                                 direction,
+                                                 fb);
+
+    seg.maxPressure = pressureLimit;
+    seg.velocityTolerance = fb->_params.velocityTolerance;
+
+    return seg;
+}
+
+static HYD_ContinuousAbsoluteContext buildContinuousAbsoluteContext(
+    HYD_REAL targetPosition,
+    HYD_REAL endVelocity,
+    HYD_REAL pressureLimit,
+    HYD_BOOL adaptEndVelEnabled,
+    HYD_MotionDirection approachDirection,
+    HYD_MotionDirection sustainDirection)
+{
+    HYD_ContinuousAbsoluteContext ctx;
+
+    memset(&ctx, 0, sizeof(ctx));
+    ctx.valid = true;
+    ctx.phase = HYD_CONTABS_PHASE_APPROACH;
+    ctx.targetPosition = targetPosition;
+    ctx.sustainVelocity = (sustainDirection == HYD_DIRECTION_NEGATIVE)
+        ? -endVelocity
+        : endVelocity;
+    ctx.effectivePressureLimit = pressureLimit;
+    ctx.adaptEndVelEnabled = adaptEndVelEnabled;
+    ctx.approachDirection = approachDirection;
+    ctx.sustainDirection = sustainDirection;
+
+    return ctx;
 }
 
 /* 构建压力控制运动段 (PressureHandle用) */
@@ -538,6 +639,39 @@ static HYD_DirectStartResult startDirectSegmentExecution(HYD_MotionControlFB* fb
         if (errorId != NULL) {
             *errorId = commandFailureErrorId(fb);
         }
+    }
+
+    return result;
+}
+
+static HYD_DirectStartResult startDirectSegmentExecutionWithKind(HYD_MotionControlFB* fb,
+                                                                 HYD_DirectCommandKind kind,
+                                                                 HYD_BufferMode bufferMode,
+                                                                 const HYD_MotionSegment* segment,
+                                                                 const HYD_ContinuousAbsoluteContext* continuousAbsolute,
+                                                                 IEC_WORD* errorId)
+{
+    HYD_DirectStartResult result;
+
+    if (errorId != NULL) {
+        *errorId = (IEC_WORD)0;
+    }
+
+    if (fb == NULL || segment == NULL) {
+        if (errorId != NULL) {
+            *errorId = (IEC_WORD)HYD_DIAG_CODE_INTERNAL_ERROR;
+        }
+        return HYD_DIRECT_START_REJECTED;
+    }
+
+    result = HYD_MotionControlFB_StartDirectCommand(fb,
+                                                    kind,
+                                                    segment,
+                                                    continuousAbsolute,
+                                                    bufferMode,
+                                                    fb->AXIS_REF.timestamp);
+    if (result == HYD_DIRECT_START_REJECTED && errorId != NULL) {
+        *errorId = commandFailureErrorId(fb);
     }
 
     return result;
@@ -1297,6 +1431,146 @@ void __mcl_cmd_MoveAbsolute(HYD_MOVEABSOLUTE *data__)
     }
 
     __SET_VAR(data__->, ACTIVE0, , __GET_VAR(data__->ACTIVE));
+    __SET_VAR(data__->, EXECUTE0, , execute);
+}
+
+/* ======================================================================
+ * MoveContinuousAbsolute (Direct模式) 命令实现
+ * ====================================================================== */
+
+void __mcl_cmd_MoveContinuousAbsolute(HYD_MOVECONTINUOUSABSOLUTE *data__)
+{
+    IEC_BOOL execute = __GET_VAR(data__->EXECUTE);
+    IEC_BOOL execRising = execute && !__GET_VAR(data__->EXECUTE0);
+    IEC_SINT axisIndex = __GET_VAR(data__->AXISID);
+
+    if (axisIndex < 0 || axisIndex >= (IEC_SINT)nextAllocatedFB)
+    {
+        __SET_VAR(data__->, ERROR, , true);
+        __SET_VAR(data__->, ERRORID, , (IEC_WORD)HYD_DIAG_CODE_START_CONTEXT_INVALID);
+        __SET_VAR(data__->, EXECUTE0, , execute);
+        return;
+    }
+
+    HYD_MotionControlFB* fb = &HYD_MotionControlFB_inst[axisIndex];
+
+    if (!execute)
+    {
+        __SET_VAR(data__->, INENDVELOCITY, , false);
+        __SET_VAR(data__->, POSITIONREACHED, , false);
+        __SET_VAR(data__->, COMMANDABORTED, , false);
+        __SET_VAR(data__->, ERROR, , false);
+        __SET_VAR(data__->, ERRORID, , (IEC_WORD)0);
+        __SET_VAR(data__->, BUSY, , false);
+        __SET_VAR(data__->, _PENDING, , false);
+        __SET_VAR(data__->, _EXEC_ID, , (IEC_WORD)0);
+        __SET_VAR(data__->, INENDVELOCITY0, , false);
+        __SET_VAR(data__->, POSITIONREACHED0, , false);
+        __SET_VAR(data__->, EXECUTE0, , execute);
+        return;
+    }
+
+    if (execRising)
+    {
+        IEC_WORD errorId = 0;
+        HYD_BOOL endDirectionOk = false;
+        HYD_MotionDirection requestedDirection;
+        HYD_MotionDirection requestedEndDirection;
+        HYD_MotionDirection approachDirection;
+        HYD_MotionDirection sustainDirection;
+        HYD_REAL requestedVelocity;
+        HYD_REAL rawEndVelocity;
+        HYD_REAL requestedEndVelocity;
+        HYD_REAL pressureLimit;
+        HYD_MotionSegment approachSegment;
+        HYD_ContinuousAbsoluteContext context;
+        HYD_DirectStartResult startResult;
+
+        if (!validateUnsupportedMotionOptions(__GET_VAR(data__->JERK), &errorId)) {
+            __SET_VAR(data__->, ERROR, , true);
+            __SET_VAR(data__->, ERRORID, , errorId);
+            __SET_VAR(data__->, EXECUTE0, , execute);
+            return;
+        }
+
+        fb->USE_RECIPE = false;
+
+        requestedDirection = mapPlcOpenDirection(__GET_VAR(data__->DIRECTION));
+        requestedEndDirection =
+            mapContinuousEndVelocityDirectionRequest(__GET_VAR(data__->ENDVELOCITYDIRECTION),
+                                                     &endDirectionOk);
+        requestedVelocity = (HYD_REAL)fabs((double)__GET_VAR(data__->VELOCITY));
+        rawEndVelocity = __GET_VAR(data__->ENDVELOCITY);
+        requestedEndVelocity = (HYD_REAL)fabs((double)rawEndVelocity);
+        pressureLimit = __GET_VAR(data__->PRESSURELIMIT);
+        if (pressureLimit <= 0.0f) {
+            pressureLimit = fb->PRESSURE_LIMIT;
+        }
+
+        if (!endDirectionOk ||
+            !(requestedVelocity > 0.0f) ||
+            rawEndVelocity < 0.0f ||
+            !isfinite(requestedVelocity) ||
+            !isfinite(rawEndVelocity) ||
+            !isfinite(requestedEndVelocity) ||
+            !isfinite(__GET_VAR(data__->POSITION)) ||
+            !isfinite(__GET_VAR(data__->ACCELERATION)) ||
+            !(__GET_VAR(data__->ACCELERATION) > 0.0f) ||
+            !isfinite(__GET_VAR(data__->DECELERATION)) ||
+            !isfinite(pressureLimit)) {
+            __SET_VAR(data__->, ERROR, , true);
+            __SET_VAR(data__->, ERRORID, , (IEC_WORD)HYD_DIAG_CODE_COMMAND_NOT_ALLOWED);
+            __SET_VAR(data__->, EXECUTE0, , execute);
+            return;
+        }
+
+        approachSegment = buildContinuousAbsoluteApproachSegment(
+            __GET_VAR(data__->POSITION),
+            requestedVelocity,
+            __GET_VAR(data__->ACCELERATION),
+            __GET_VAR(data__->DECELERATION),
+            requestedDirection,
+            pressureLimit,
+            fb);
+        approachDirection = HYD_Segment_ResolveDirection(&approachSegment,
+                                                         &fb->AXIS_REF,
+                                                         fb->_lastActiveDirection);
+        sustainDirection = resolveContinuousEndVelocityDirection(fb,
+                                                                 requestedEndDirection,
+                                                                 approachDirection);
+        context = buildContinuousAbsoluteContext(
+            __GET_VAR(data__->POSITION),
+            requestedEndVelocity,
+            pressureLimit,
+            __GET_VAR(data__->ADAPTENDVELTOAVOIDOVERSHOOT),
+            approachDirection,
+            sustainDirection);
+
+        startResult = startDirectSegmentExecutionWithKind(
+            fb,
+            HYD_DIRECT_CMD_MOVE_CONTINUOUS_ABSOLUTE,
+            HYD_BUFFER_MODE_ABORT,
+            &approachSegment,
+            &context,
+            &errorId);
+        if (startResult == HYD_DIRECT_START_REJECTED)
+        {
+            __SET_VAR(data__->, ERROR, , true);
+            __SET_VAR(data__->, ERRORID, , errorId);
+            __SET_VAR(data__->, EXECUTE0, , execute);
+            return;
+        }
+
+        __SET_VAR(data__->, _PENDING, , startResult != HYD_DIRECT_START_STARTED);
+        __SET_VAR(data__->, _EXEC_ID, , (IEC_WORD)HYD_MotionControlFB_GetDirectOwnerTicket(fb));
+        __SET_VAR(data__->, BUSY, , true);
+        __SET_VAR(data__->, INENDVELOCITY, , false);
+        __SET_VAR(data__->, POSITIONREACHED, , false);
+        __SET_VAR(data__->, COMMANDABORTED, , false);
+        __SET_VAR(data__->, EXECUTE0, , execute);
+        return;
+    }
+
     __SET_VAR(data__->, EXECUTE0, , execute);
 }
 
