@@ -1484,6 +1484,7 @@ static HYD_BOOL HYD_MotionControlFB_ConsumePendingCommand(HYD_MotionControlFB* f
             fb->_recipeBatchId++;
             fb->_directOwnerTicket = fb->_executionId;
             fb->_directOwnerKind = HYD_DIRECT_CMD_STOP;
+            HYD_ClearContinuousAbsoluteContext(&fb->_directContinuousAbsolute);
             fb->_directSessionState = HYD_DIRECT_SESSION_STOPPING;
             fb->_isStopping = true;
             fb->_stopStartTime = timestamp;
@@ -3634,7 +3635,13 @@ HYD_BOOL HYD_MotionControlFB_ApplyLiveUpdate(HYD_MotionControlFB* fb,
 
         /* NOTE: _executionId is NOT incremented — keep same ownership epoch
          * so the IEC MoveAbsolute FB does not lose its _EXEC_ID match. */
-        fb->_directOwnerKind = HYD_InferDirectCommandKindFromSegment(&updated);
+        if (request->ownerKind == HYD_DIRECT_CMD_MOVE_CONTINUOUS_ABSOLUTE) {
+            fb->_directOwnerKind = HYD_DIRECT_CMD_MOVE_CONTINUOUS_ABSOLUTE;
+            fb->_directContinuousAbsolute.ownerTicket = fb->_directOwnerTicket;
+        } else {
+            fb->_directOwnerKind = HYD_InferDirectCommandKindFromSegment(&updated);
+            HYD_ClearContinuousAbsoluteContext(&fb->_directContinuousAbsolute);
+        }
         fb->_directSessionState = HYD_DIRECT_SESSION_RUNNING;
 
         /* Clear stale completion record so a future completion is detected
