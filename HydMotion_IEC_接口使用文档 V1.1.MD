@@ -1,4 +1,4 @@
-# HydMotionLight IEC 接口使用文档 V1.0
+# HydMotionLight IEC 接口使用文档 V1.1
 
 ## 1. 概述
 
