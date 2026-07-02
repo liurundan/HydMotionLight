@@ -13,6 +13,8 @@ static HYD_MotionControlFB HYD_MotionControlFB_inst[HYD_MAX_AXIS_MOTION];
 
 static unsigned int nextAllocatedFB = 0;
 
+static const HYD_REAL HYD_CONTABS_DIRECTION_VELOCITY_THRESHOLD = 0.01f;
+
 static int allocMotionControlFB(void)
 {
     if (nextAllocatedFB < HYD_MAX_AXIS_MOTION) {
@@ -102,17 +104,15 @@ static HYD_MotionDirection resolveContinuousEndVelocityDirection(const HYD_Motio
                                                                  HYD_MotionDirection requestedDirection,
                                                                  HYD_MotionDirection approachDirection)
 {
-    const HYD_REAL directionVelocityThreshold = 0.01f;
-
     if (requestedDirection != HYD_DIRECTION_CURRENT) {
         return requestedDirection;
     }
 
     if (fb != NULL) {
-        if (fb->AXIS_REF.velocity > directionVelocityThreshold) {
+        if (fb->AXIS_REF.velocity > HYD_CONTABS_DIRECTION_VELOCITY_THRESHOLD) {
             return HYD_DIRECTION_POSITIVE;
         }
-        if (fb->AXIS_REF.velocity < -directionVelocityThreshold) {
+        if (fb->AXIS_REF.velocity < -HYD_CONTABS_DIRECTION_VELOCITY_THRESHOLD) {
             return HYD_DIRECTION_NEGATIVE;
         }
         if (fb->_lastActiveDirection == HYD_DIRECTION_POSITIVE ||
@@ -207,6 +207,18 @@ static HYD_MotionSegment buildContinuousAbsoluteApproachSegment(
     return seg;
 }
 
+static HYD_MotionDirection normalizeContinuousMotionDirection(HYD_MotionDirection direction,
+                                                              HYD_MotionDirection fallbackDirection)
+{
+    if (direction == HYD_DIRECTION_POSITIVE || direction == HYD_DIRECTION_NEGATIVE) {
+        return direction;
+    }
+
+    return (fallbackDirection == HYD_DIRECTION_NEGATIVE)
+        ? HYD_DIRECTION_NEGATIVE
+        : HYD_DIRECTION_POSITIVE;
+}
+
 static HYD_ContinuousAbsoluteContext buildContinuousAbsoluteContext(
     HYD_REAL targetPosition,
     HYD_REAL endVelocity,
@@ -216,18 +228,22 @@ static HYD_ContinuousAbsoluteContext buildContinuousAbsoluteContext(
     HYD_MotionDirection sustainDirection)
 {
     HYD_ContinuousAbsoluteContext ctx;
+    HYD_MotionDirection normalizedSustainDirection =
+        normalizeContinuousMotionDirection(sustainDirection, approachDirection);
+    HYD_MotionDirection normalizedApproachDirection =
+        normalizeContinuousMotionDirection(approachDirection, normalizedSustainDirection);
 
     memset(&ctx, 0, sizeof(ctx));
     ctx.valid = true;
     ctx.phase = HYD_CONTABS_PHASE_APPROACH;
     ctx.targetPosition = targetPosition;
-    ctx.sustainVelocity = (sustainDirection == HYD_DIRECTION_NEGATIVE)
+    ctx.sustainVelocity = (normalizedSustainDirection == HYD_DIRECTION_NEGATIVE)
         ? -endVelocity
         : endVelocity;
     ctx.effectivePressureLimit = pressureLimit;
     ctx.adaptEndVelEnabled = adaptEndVelEnabled;
-    ctx.approachDirection = approachDirection;
-    ctx.sustainDirection = sustainDirection;
+    ctx.approachDirection = normalizedApproachDirection;
+    ctx.sustainDirection = normalizedSustainDirection;
 
     return ctx;
 }
