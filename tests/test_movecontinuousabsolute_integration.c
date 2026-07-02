@@ -8,6 +8,13 @@
 
 #define IEC_VAL(var) ((var).value)
 #define MAX_SIM_STEPS 20000
+#define VELOCITY_EPSILON 0.01f
+
+enum {
+    RUN_TIMEOUT = -1,
+    RUN_ERROR = -2,
+    RUN_ABORTED = -3
+};
 
 static int tests_run = 0;
 static int tests_passed = 0;
@@ -145,8 +152,14 @@ static int run_until_position_reached(HYD_MOVECONTINUOUSABSOLUTE* fb) {
         if (IEC_VAL(fb->POSITIONREACHED)) {
             return step + 1;
         }
+        if (IEC_VAL(fb->ERROR)) {
+            return RUN_ERROR;
+        }
+        if (IEC_VAL(fb->COMMANDABORTED)) {
+            return RUN_ABORTED;
+        }
     }
-    return -1;
+    return RUN_TIMEOUT;
 }
 
 static int run_until_inendvelocity(HYD_MOVECONTINUOUSABSOLUTE* fb) {
@@ -156,8 +169,14 @@ static int run_until_inendvelocity(HYD_MOVECONTINUOUSABSOLUTE* fb) {
         if (IEC_VAL(fb->INENDVELOCITY)) {
             return step + 1;
         }
+        if (IEC_VAL(fb->ERROR)) {
+            return RUN_ERROR;
+        }
+        if (IEC_VAL(fb->COMMANDABORTED)) {
+            return RUN_ABORTED;
+        }
     }
-    return -1;
+    return RUN_TIMEOUT;
 }
 
 static bool seed_negative_velocity_history(int axisId, bool stopToZero) {
@@ -204,6 +223,26 @@ static bool seed_negative_velocity_history(int axisId, bool stopToZero) {
     return false;
 }
 
+static void assert_run_result(int result, const char* successMsg) {
+    if (result == RUN_ERROR) {
+        ASSERT_TRUE(false,
+                    "Motion helper stopped early because ERROR became true");
+        return;
+    }
+    if (result == RUN_ABORTED) {
+        ASSERT_TRUE(false,
+                    "Motion helper stopped early because COMMANDABORTED became true");
+        return;
+    }
+    if (result == RUN_TIMEOUT) {
+        ASSERT_TRUE(false,
+                    "Motion helper timed out before reaching the requested state");
+        return;
+    }
+
+    ASSERT_TRUE(result > 0, successMsg);
+}
+
 static void test_rejects_invalid_end_velocity_direction(void) {
     HYD_MOVECONTINUOUSABSOLUTE cmd;
     int axisId;
@@ -229,6 +268,8 @@ static void test_current_end_velocity_direction_uses_velocity_then_last_active_d
     int axisId;
     int inEndVelocityStep;
     bool seededNegativeHistory;
+    HYD_REAL seededVelocity = 0.0f;
+    HYD_REAL stoppedVelocity = 0.0f;
     HYD_REAL finalVelocity = 0.0f;
 
     __HydMotion_framework_Init();
@@ -244,17 +285,31 @@ static void test_current_end_velocity_direction_uses_velocity_then_last_active_d
     if (!seededNegativeHistory) {
         return;
     }
+    {
+        bool readOk = read_sim_feedback(axisId, NULL, &seededVelocity, NULL, NULL);
+        ASSERT_TRUE(readOk,
+                    "ReadSimFeedback should expose the seeded negative actual velocity before the current-direction case");
+        if (!readOk) {
+            return;
+        }
+    }
+    ASSERT_TRUE(seededVelocity < -VELOCITY_EPSILON,
+                "The current-direction negative-velocity case should start from a proven negative actual velocity");
 
     init_movecontinuousabsolute(&cmd, axisId, 120.0f, 20.0f, 8.0f,
                                 HYD_DIRECTION_POSITIVE,
                                 HYD_DIRECTION_CURRENT);
     rising_edge_scan(&cmd);
     inEndVelocityStep = run_until_inendvelocity(&cmd);
-    ASSERT_TRUE(inEndVelocityStep > 0,
-                "ENDVELOCITYDIRECTION=CURRENT should eventually reach INENDVELOCITY when starting from a negative actual velocity");
+    assert_run_result(inEndVelocityStep,
+                      "ENDVELOCITYDIRECTION=CURRENT should eventually reach INENDVELOCITY when starting from a negative actual velocity");
     if (inEndVelocityStep > 0) {
-        ASSERT_TRUE(read_sim_feedback(axisId, NULL, &finalVelocity, NULL, NULL),
+        bool readOk = read_sim_feedback(axisId, NULL, &finalVelocity, NULL, NULL);
+        ASSERT_TRUE(readOk,
                     "ReadSimFeedback should expose the sustained velocity in the negative-velocity case");
+        if (!readOk) {
+            return;
+        }
         ASSERT_TRUE(IEC_VAL(cmd.ERROR) == false,
                     "Current-direction command should not error in the negative-velocity case");
         ASSERT_TRUE(IEC_VAL(cmd.COMMANDABORTED) == false,
@@ -276,17 +331,31 @@ static void test_current_end_velocity_direction_uses_velocity_then_last_active_d
     if (!seededNegativeHistory) {
         return;
     }
+    {
+        bool readOk = read_sim_feedback(axisId, NULL, &stoppedVelocity, NULL, NULL);
+        ASSERT_TRUE(readOk,
+                    "ReadSimFeedback should expose the stopped velocity after seeding the negative last-active-direction fallback");
+        if (!readOk) {
+            return;
+        }
+    }
+    ASSERT_TRUE(fabs(stoppedVelocity) <= VELOCITY_EPSILON,
+                "The current-direction fallback case should start from a proven near-zero actual velocity");
 
     init_movecontinuousabsolute(&cmd, axisId, 120.0f, 20.0f, 8.0f,
                                 HYD_DIRECTION_POSITIVE,
                                 HYD_DIRECTION_CURRENT);
     rising_edge_scan(&cmd);
     inEndVelocityStep = run_until_inendvelocity(&cmd);
-    ASSERT_TRUE(inEndVelocityStep > 0,
-                "ENDVELOCITYDIRECTION=CURRENT should eventually reach INENDVELOCITY in the zero-velocity fallback case");
+    assert_run_result(inEndVelocityStep,
+                      "ENDVELOCITYDIRECTION=CURRENT should eventually reach INENDVELOCITY in the zero-velocity fallback case");
     if (inEndVelocityStep > 0) {
-        ASSERT_TRUE(read_sim_feedback(axisId, NULL, &finalVelocity, NULL, NULL),
+        bool readOk = read_sim_feedback(axisId, NULL, &finalVelocity, NULL, NULL);
+        ASSERT_TRUE(readOk,
                     "ReadSimFeedback should expose the sustained velocity in the zero-velocity fallback case");
+        if (!readOk) {
+            return;
+        }
         ASSERT_TRUE(IEC_VAL(cmd.ERROR) == false,
                     "Current-direction fallback command should not error after seeding a negative last-active direction");
         ASSERT_TRUE(IEC_VAL(cmd.COMMANDABORTED) == false,
@@ -316,15 +385,15 @@ static void test_same_direction_reaches_position_and_end_velocity(void) {
     rising_edge_scan(&cmd);
 
     positionReachedStep = run_until_position_reached(&cmd);
-    ASSERT_TRUE(positionReachedStep > 0,
-                "Same-direction MoveContinuousAbsolute should reach POSITIONREACHED");
+    assert_run_result(positionReachedStep,
+                      "Same-direction MoveContinuousAbsolute should reach POSITIONREACHED");
     if (positionReachedStep <= 0) {
         return;
     }
 
     inEndVelocityStep = run_until_inendvelocity(&cmd);
-    ASSERT_TRUE(inEndVelocityStep > 0,
-                "Same-direction MoveContinuousAbsolute should eventually reach INENDVELOCITY");
+    assert_run_result(inEndVelocityStep,
+                      "Same-direction MoveContinuousAbsolute should eventually reach INENDVELOCITY");
     if (inEndVelocityStep <= 0) {
         return;
     }
@@ -335,8 +404,14 @@ static void test_same_direction_reaches_position_and_end_velocity(void) {
                 "INENDVELOCITY should become true after the sustain velocity settles");
     ASSERT_TRUE(IEC_VAL(cmd.BUSY) == true,
                 "MoveContinuousAbsolute should remain BUSY while sustaining the end velocity");
-    ASSERT_TRUE(read_sim_feedback(axisId, NULL, &finalVelocity, NULL, NULL),
+    {
+        bool readOk = read_sim_feedback(axisId, NULL, &finalVelocity, NULL, NULL);
+        ASSERT_TRUE(readOk,
                 "ReadSimFeedback should expose the sustained velocity in the same-direction case");
+        if (!readOk) {
+            return;
+        }
+    }
     ASSERT_TRUE(fabs(finalVelocity) > 0.01f,
                 "Axis velocity should remain non-zero after reaching the same-direction end velocity");
 }
@@ -347,6 +422,7 @@ static void test_adapt_lowers_crossing_velocity_when_distance_is_too_short_to_ac
     int positionReachedStep;
     bool reversedBeforeTarget = false;
     HYD_REAL observedVelocity = 0.0f;
+    bool sawValidFeedback = false;
 
     __HydMotion_framework_Init();
     axisId = create_sim_axis();
@@ -366,53 +442,102 @@ static void test_adapt_lowers_crossing_velocity_when_distance_is_too_short_to_ac
         __HydMotion_framework_Publish();
         hold_true_scan(&cmd);
 
-        if (read_sim_feedback(axisId, NULL, &observedVelocity, NULL, NULL) &&
-            observedVelocity < -0.01f) {
+        if (!read_sim_feedback(axisId, NULL, &observedVelocity, NULL, NULL)) {
+            ASSERT_TRUE(false,
+                        "ReadSimFeedback should expose observed velocity during the short accelerate-up adapt case");
+            return;
+        }
+        sawValidFeedback = true;
+        if (observedVelocity < -VELOCITY_EPSILON) {
             reversedBeforeTarget = true;
         }
         if (IEC_VAL(cmd.POSITIONREACHED)) {
             positionReachedStep = step + 1;
             break;
         }
-        if (IEC_VAL(cmd.ERROR) || IEC_VAL(cmd.COMMANDABORTED)) {
+        if (IEC_VAL(cmd.ERROR)) {
+            positionReachedStep = RUN_ERROR;
+            break;
+        }
+        if (IEC_VAL(cmd.COMMANDABORTED)) {
+            positionReachedStep = RUN_ABORTED;
             break;
         }
     }
 
-    ASSERT_TRUE(positionReachedStep > 0,
-                "Adapt mode should still reach POSITIONREACHED on a short accelerate-up move");
+    assert_run_result(positionReachedStep,
+                      "Adapt mode should still reach POSITIONREACHED on a short accelerate-up move");
+    if (positionReachedStep <= 0) {
+        return;
+    }
     ASSERT_TRUE(IEC_VAL(cmd.ERROR) == false,
                 "Adapt mode should not error on a short accelerate-up move");
     ASSERT_TRUE(IEC_VAL(cmd.COMMANDABORTED) == false,
                 "Adapt mode should not be aborted on a short accelerate-up move");
+    ASSERT_TRUE(sawValidFeedback == true,
+                "Adapt mode should observe at least one valid public velocity sample on the short accelerate-up move");
     ASSERT_TRUE(reversedBeforeTarget == false,
                 "Adapt mode should not reverse direction before the first target reach on a short accelerate-up move");
 }
 
 static void test_adapt_raises_crossing_velocity_when_distance_is_too_short_to_decelerate(void) {
     HYD_MOVECONTINUOUSABSOLUTE cmd;
+    HYD_MOVEVELOCITY mv;
     int axisId;
     int positionReachedStep;
     bool reversedBeforeTarget = false;
+    HYD_REAL seededPosition = 0.0f;
     HYD_REAL observedVelocity = 0.0f;
-    HYD_REAL manualPosition = 0.0f;
-    HYD_REAL manualVelocity = 35.0f;
-    HYD_REAL timestamp = 0.0f;
-    const HYD_REAL dt = 0.01f;
+    bool seededHighVelocity = false;
+    bool sawValidFeedback = false;
+    const HYD_REAL targetPosition = 6.0f;
+    const HYD_REAL endVelocity = 5.0f;
+    const HYD_REAL deceleration = 100.0f;
 
     __HydMotion_framework_Init();
-    axisId = create_manual_axis();
-    ASSERT_TRUE(axisId >= 0, "CreateMotion should allocate a manual-feedback axis");
+    axisId = create_sim_axis();
+    ASSERT_TRUE(axisId >= 0, "CreateMotion should allocate a simulation axis");
     if (axisId < 0) {
         return;
     }
 
-    if (!set_axis_feedback(axisId, manualPosition, manualVelocity, manualVelocity, 5.0f, timestamp)) {
-        ASSERT_TRUE(false,
-                    "SetAxisFeedback should seed a positive high initial velocity for the short decelerate-down case");
+    memset(&mv, 0, sizeof(mv));
+    IEC_VAL(mv.EN) = true;
+    IEC_VAL(mv.AXISID) = axisId;
+    IEC_VAL(mv.VELOCITY) = 35.0f;
+    IEC_VAL(mv.ACCELERATION) = 100.0f;
+    IEC_VAL(mv.DECELERATION) = 100.0f;
+    IEC_VAL(mv.DIRECTION) = HYD_DIRECTION_POSITIVE;
+    IEC_VAL(mv.EXECUTE) = true;
+    mv.EXECUTE0.value = false;
+    __mcl_cmd_MoveVelocity(&mv);
+
+    for (int step = 0; step < MAX_SIM_STEPS; step++) {
+        __HydMotion_framework_Publish();
+        hold_movevelocity_scan(&mv);
+        if (!read_sim_feedback(axisId, &seededPosition, &observedVelocity, NULL, NULL)) {
+            ASSERT_TRUE(false,
+                        "ReadSimFeedback should expose seeded position and velocity while preparing the short decelerate-down adapt case");
+            return;
+        }
+        if (observedVelocity >= 30.0f) {
+            seededHighVelocity = true;
+            break;
+        }
+    }
+
+    ASSERT_TRUE(seededHighVelocity,
+                "Public MoveVelocity should seed a proven high positive actual velocity for the short decelerate-down case");
+    if (!seededHighVelocity) {
         return;
     }
-    init_movecontinuousabsolute(&cmd, axisId, 6.0f, 35.0f, 5.0f,
+    ASSERT_TRUE(seededPosition < targetPosition,
+                "The short decelerate-down case should still be before the target when the high seed velocity is observed");
+    ASSERT_TRUE((targetPosition - seededPosition) <
+                ((observedVelocity * observedVelocity) - (endVelocity * endVelocity)) / (2.0f * deceleration),
+                "The short decelerate-down case should prove the remaining distance is too short to decelerate from the seeded velocity to the requested end velocity");
+
+    init_movecontinuousabsolute(&cmd, axisId, targetPosition, 35.0f, endVelocity,
                                 HYD_DIRECTION_POSITIVE,
                                 HYD_DIRECTION_POSITIVE);
     IEC_VAL(cmd.ADAPTENDVELTOAVOIDOVERSHOOT) = true;
@@ -420,40 +545,43 @@ static void test_adapt_raises_crossing_velocity_when_distance_is_too_short_to_de
 
     positionReachedStep = -1;
     for (int step = 0; step < MAX_SIM_STEPS; step++) {
-        timestamp += dt;
-        if (!IEC_VAL(cmd.POSITIONREACHED)) {
-            manualPosition += manualVelocity * dt;
-            if (manualPosition > IEC_VAL(cmd.POSITION)) {
-                manualPosition = IEC_VAL(cmd.POSITION);
-            }
-        }
-        if (!set_axis_feedback(axisId, manualPosition, manualVelocity, manualVelocity, 5.0f, timestamp)) {
-            ASSERT_TRUE(false,
-                        "SetAxisFeedback should sustain the public high-velocity precondition for the short decelerate-down case");
-            return;
-        }
         __HydMotion_framework_Publish();
         hold_true_scan(&cmd);
 
-        if (read_sim_feedback(axisId, NULL, &observedVelocity, NULL, NULL) &&
-            observedVelocity < -0.01f) {
+        if (!read_sim_feedback(axisId, NULL, &observedVelocity, NULL, NULL)) {
+            ASSERT_TRUE(false,
+                        "ReadSimFeedback should expose observed velocity during the short decelerate-down adapt case");
+            return;
+        }
+        sawValidFeedback = true;
+        if (observedVelocity < -VELOCITY_EPSILON) {
             reversedBeforeTarget = true;
         }
         if (IEC_VAL(cmd.POSITIONREACHED)) {
             positionReachedStep = step + 1;
             break;
         }
-        if (IEC_VAL(cmd.ERROR) || IEC_VAL(cmd.COMMANDABORTED)) {
+        if (IEC_VAL(cmd.ERROR)) {
+            positionReachedStep = RUN_ERROR;
+            break;
+        }
+        if (IEC_VAL(cmd.COMMANDABORTED)) {
+            positionReachedStep = RUN_ABORTED;
             break;
         }
     }
 
-    ASSERT_TRUE(positionReachedStep > 0,
-                "Adapt mode should still reach POSITIONREACHED on a short decelerate-down move");
+    assert_run_result(positionReachedStep,
+                      "Adapt mode should still reach POSITIONREACHED on a short decelerate-down move");
+    if (positionReachedStep <= 0) {
+        return;
+    }
     ASSERT_TRUE(IEC_VAL(cmd.ERROR) == false,
                 "Adapt mode should not error on a short decelerate-down move");
     ASSERT_TRUE(IEC_VAL(cmd.COMMANDABORTED) == false,
                 "Adapt mode should not be aborted on a short decelerate-down move");
+    ASSERT_TRUE(sawValidFeedback == true,
+                "Adapt mode should observe at least one valid public velocity sample on the short decelerate-down move");
     ASSERT_TRUE(reversedBeforeTarget == false,
                 "Adapt mode should not reverse direction before the first target reach on a short decelerate-down move");
 }
@@ -464,6 +592,7 @@ static void test_reverse_sustain_delays_inendvelocity(void) {
     int positionReachedStep = -1;
     int inEndVelocityStep = -1;
     HYD_REAL finalVelocity = 0.0f;
+    bool readOk = false;
 
     __HydMotion_framework_Init();
     axisId = create_sim_axis();
@@ -488,16 +617,33 @@ static void test_reverse_sustain_delays_inendvelocity(void) {
             inEndVelocityStep = step + 1;
             break;
         }
+        if (IEC_VAL(cmd.ERROR)) {
+            positionReachedStep = RUN_ERROR;
+            inEndVelocityStep = RUN_ERROR;
+            break;
+        }
+        if (IEC_VAL(cmd.COMMANDABORTED)) {
+            positionReachedStep = RUN_ABORTED;
+            inEndVelocityStep = RUN_ABORTED;
+            break;
+        }
     }
 
-    ASSERT_TRUE(positionReachedStep > 0,
-                "Reverse sustain should still reach POSITIONREACHED");
-    ASSERT_TRUE(inEndVelocityStep > 0,
-                "Reverse sustain should eventually reach INENDVELOCITY");
+    assert_run_result(positionReachedStep,
+                      "Reverse sustain should still reach POSITIONREACHED");
+    assert_run_result(inEndVelocityStep,
+                      "Reverse sustain should eventually reach INENDVELOCITY");
+    if (positionReachedStep <= 0 || inEndVelocityStep <= 0) {
+        return;
+    }
     ASSERT_TRUE(positionReachedStep > 0 && inEndVelocityStep > positionReachedStep,
                 "Reverse sustain should latch POSITIONREACHED before INENDVELOCITY");
-    ASSERT_TRUE(read_sim_feedback(axisId, NULL, &finalVelocity, NULL, NULL),
+    readOk = read_sim_feedback(axisId, NULL, &finalVelocity, NULL, NULL);
+    ASSERT_TRUE(readOk,
                 "ReadSimFeedback should expose the sustained velocity in the reverse case");
+    if (!readOk) {
+        return;
+    }
     ASSERT_TRUE(finalVelocity < 0.0f,
                 "Final sustained velocity should be negative for reverse sustain");
 }
@@ -507,6 +653,7 @@ static void test_pressure_limit_can_hold_positionreached_true_while_inendvelocit
     int axisId;
     bool sawSplitState = false;
     bool sawPositionReached = false;
+    int splitStateStep = RUN_TIMEOUT;
     HYD_REAL manualPosition = 0.0f;
     HYD_REAL manualVelocity = 18.0f;
     HYD_REAL timestamp = 0.0f;
@@ -548,10 +695,24 @@ static void test_pressure_limit_can_hold_positionreached_true_while_inendvelocit
         }
         if (IEC_VAL(cmd.POSITIONREACHED) && !IEC_VAL(cmd.INENDVELOCITY)) {
             sawSplitState = true;
+            splitStateStep = step + 1;
+            break;
+        }
+        if (IEC_VAL(cmd.ERROR)) {
+            splitStateStep = RUN_ERROR;
+            break;
+        }
+        if (IEC_VAL(cmd.COMMANDABORTED)) {
+            splitStateStep = RUN_ABORTED;
             break;
         }
     }
 
+    assert_run_result(splitStateStep,
+                      "Pressure limiting should allow a scan where POSITIONREACHED stays true while INENDVELOCITY remains false");
+    if (splitStateStep <= 0) {
+        return;
+    }
     ASSERT_TRUE(sawPositionReached,
                 "Pressure-limited run should still reach POSITIONREACHED");
     ASSERT_TRUE(sawSplitState,
@@ -562,7 +723,7 @@ static void test_stop_takes_over_and_sets_commandaborted(void) {
     HYD_MOVECONTINUOUSABSOLUTE cmd;
     HYD_STOP stop;
     int axisId;
-    int commandAbortedStep = -1;
+    int commandAbortedStep = RUN_TIMEOUT;
 
     __HydMotion_framework_Init();
     axisId = create_sim_axis();
@@ -601,10 +762,26 @@ static void test_stop_takes_over_and_sets_commandaborted(void) {
             commandAbortedStep = step + 1;
             break;
         }
+        if (IEC_VAL(cmd.ERROR)) {
+            commandAbortedStep = RUN_ERROR;
+            break;
+        }
+        if (IEC_VAL(stop.ERROR)) {
+            commandAbortedStep = RUN_ERROR;
+            break;
+        }
+        if (IEC_VAL(stop.DONE)) {
+            ASSERT_TRUE(false,
+                        "Stop should not reach DONE before MoveContinuousAbsolute reports COMMANDABORTED");
+            return;
+        }
     }
 
-    ASSERT_TRUE(commandAbortedStep > 0,
-                "Stop takeover should eventually set COMMANDABORTED on MoveContinuousAbsolute");
+    assert_run_result(commandAbortedStep,
+                      "Stop takeover should eventually set COMMANDABORTED on MoveContinuousAbsolute");
+    if (commandAbortedStep <= 0) {
+        return;
+    }
     ASSERT_TRUE(IEC_VAL(cmd.COMMANDABORTED) == true,
                 "MoveContinuousAbsolute should report COMMANDABORTED after Stop takeover");
     ASSERT_TRUE(IEC_VAL(cmd.BUSY) == false,
