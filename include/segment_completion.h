@@ -12,6 +12,9 @@ typedef struct {
     HYD_BOOL* candidateActive;
 } HYD_SegmentCompletionContext;
 
+HYD_BOOL HYD_SegmentCompletion_IsPositionReachedRaw(const HYD_MotionSegment* segment,
+                                                    const HYD_AxisRef* axisRef,
+                                                    HYD_REAL positionTolerance);
 HYD_BOOL HYD_SegmentCompletion_CheckWithContext(const HYD_SegmentCompletionContext* context);
 HYD_BOOL HYD_SegmentCompletion_Check(const HYD_MotionSegment* segment,
                                      const HYD_AxisRef* axisRef,

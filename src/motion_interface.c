@@ -1464,6 +1464,8 @@ void __mcl_cmd_MoveContinuousAbsolute(HYD_MOVECONTINUOUSABSOLUTE *data__)
     }
 
     HYD_MotionControlFB* fb = &HYD_MotionControlFB_inst[axisIndex];
+    IEC_BOOL isPending = __GET_VAR(data__->_PENDING);
+    IEC_WORD myExecId = __GET_VAR(data__->_EXEC_ID);
 
     if (!execute)
     {
@@ -1582,6 +1584,51 @@ void __mcl_cmd_MoveContinuousAbsolute(HYD_MOVECONTINUOUSABSOLUTE *data__)
         return;
     }
 
+    if (isPending)
+    {
+        HYD_DirectPendingStatus pendingStatus = resolveDirectPendingOwnership(fb, &myExecId);
+
+        if (pendingStatus == HYD_DIRECT_PENDING_ACQUIRED) {
+            __SET_VAR(data__->, _EXEC_ID, , myExecId);
+            __SET_VAR(data__->, _PENDING, , false);
+        } else if (pendingStatus == HYD_DIRECT_PENDING_ABORTED) {
+            __SET_VAR(data__->, COMMANDABORTED, , true);
+            __SET_VAR(data__->, BUSY, , false);
+            __SET_VAR(data__->, POSITIONREACHED, , false);
+            __SET_VAR(data__->, INENDVELOCITY, , false);
+            __SET_VAR(data__->, _PENDING, , false);
+            __SET_VAR(data__->, EXECUTE0, , execute);
+            return;
+        } else {
+            __SET_VAR(data__->, BUSY, , true);
+            __SET_VAR(data__->, EXECUTE0, , execute);
+            return;
+        }
+    }
+
+    if (myExecId != 0)
+    {
+        if (directExecutionWasPreempted(fb, myExecId, HYD_DIRECT_CMD_MOVE_CONTINUOUS_ABSOLUTE) ||
+            directExecutionLostOwnership(fb, myExecId, HYD_DIRECT_CMD_MOVE_CONTINUOUS_ABSOLUTE)) {
+            __SET_VAR(data__->, COMMANDABORTED, , true);
+            __SET_VAR(data__->, BUSY, , false);
+            __SET_VAR(data__->, POSITIONREACHED, , false);
+            __SET_VAR(data__->, INENDVELOCITY, , false);
+        } else if (directExecutionIsCurrentOwner(fb, myExecId, HYD_DIRECT_CMD_MOVE_CONTINUOUS_ABSOLUTE)) {
+            __SET_VAR(data__->, BUSY, , true);
+            __SET_VAR(data__->, POSITIONREACHED, , fb->_directContinuousAbsolute.positionReachedLatched ? true : false);
+            __SET_VAR(data__->, INENDVELOCITY, , fb->_directContinuousAbsolute.inEndVelocityLatched ? true : false);
+            __SET_VAR(data__->, COMMANDABORTED, , false);
+            if (HYD_MotionControlFB_IsError(fb)) {
+                __SET_VAR(data__->, ERROR, , true);
+                __SET_VAR(data__->, ERRORID, , (IEC_WORD)fb->ERROR_ID);
+                __SET_VAR(data__->, BUSY, , false);
+            }
+        }
+    }
+
+    __SET_VAR(data__->, POSITIONREACHED0, , __GET_VAR(data__->POSITIONREACHED));
+    __SET_VAR(data__->, INENDVELOCITY0, , __GET_VAR(data__->INENDVELOCITY));
     __SET_VAR(data__->, EXECUTE0, , execute);
 }
 

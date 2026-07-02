@@ -6,6 +6,8 @@
 #include "motion_interface.h"
 #include "motion_control.h"
 
+extern HYD_MotionControlFB* __MK_GetPublic_MotionControlFB(int index);
+
 #define IEC_VAL(var) ((var).value)
 #define MAX_SIM_STEPS 20000
 #define VELOCITY_EPSILON 0.01f
@@ -409,6 +411,49 @@ static void test_same_direction_reaches_position_and_end_velocity(void) {
                 "Axis velocity should remain non-zero after reaching the same-direction end velocity");
 }
 
+static void test_negative_same_direction_latches_inendvelocity_on_target_crossing(void) {
+    HYD_MOVECONTINUOUSABSOLUTE cmd;
+    int axisId;
+    int positionReachedStep;
+    HYD_REAL finalVelocity = 0.0f;
+    bool readOk = false;
+
+    __HydMotion_framework_Init();
+    axisId = create_sim_axis();
+    ASSERT_TRUE(axisId >= 0, "CreateMotion should allocate a simulation axis");
+    if (axisId < 0) {
+        return;
+    }
+
+    init_movecontinuousabsolute(&cmd, axisId, -120.0f, 25.0f, 8.0f,
+                                HYD_DIRECTION_NEGATIVE,
+                                HYD_DIRECTION_NEGATIVE);
+    rising_edge_scan(&cmd);
+
+    positionReachedStep = run_until_position_reached(&cmd);
+    assert_run_result(positionReachedStep,
+                      "Negative same-direction MoveContinuousAbsolute should reach POSITIONREACHED");
+    if (positionReachedStep <= 0) {
+        return;
+    }
+
+    ASSERT_TRUE(IEC_VAL(cmd.INENDVELOCITY) == true,
+                "Negative same-direction MoveContinuousAbsolute should latch INENDVELOCITY on the same scan as POSITIONREACHED when adaptation is disabled");
+    ASSERT_TRUE(IEC_VAL(cmd.ERROR) == false,
+                "Negative same-direction MoveContinuousAbsolute should not error before the target crossing");
+    ASSERT_TRUE(IEC_VAL(cmd.COMMANDABORTED) == false,
+                "Negative same-direction MoveContinuousAbsolute should not be aborted before the target crossing");
+
+    readOk = read_sim_feedback(axisId, NULL, &finalVelocity, NULL, NULL);
+    ASSERT_TRUE(readOk,
+                "ReadSimFeedback should expose the sustained velocity in the negative same-direction case");
+    if (!readOk) {
+        return;
+    }
+    ASSERT_TRUE(finalVelocity < -VELOCITY_EPSILON,
+                "Negative same-direction MoveContinuousAbsolute should sustain a negative end velocity after crossing the target");
+}
+
 static void test_adapt_lowers_crossing_velocity_when_distance_is_too_short_to_accelerate(void) {
     HYD_MOVECONTINUOUSABSOLUTE cmd;
     int axisId;
@@ -642,11 +687,12 @@ static void test_reverse_sustain_delays_inendvelocity(void) {
 
 static void test_pressure_limit_can_hold_positionreached_true_while_inendvelocity_stays_false(void) {
     HYD_MOVECONTINUOUSABSOLUTE cmd;
+    HYD_MotionControlFB* fb;
     int axisId;
     bool sawSplitState = false;
     bool sawPositionReached = false;
     int splitStateStep = RUN_TIMEOUT;
-    HYD_REAL manualPosition = 0.0f;
+    HYD_REAL manualPosition = 70.0f;
     HYD_REAL manualVelocity = 18.0f;
     HYD_REAL timestamp = 0.0f;
     const HYD_REAL dt = 0.01f;
@@ -657,13 +703,19 @@ static void test_pressure_limit_can_hold_positionreached_true_while_inendvelocit
     if (axisId < 0) {
         return;
     }
+    fb = __MK_GetPublic_MotionControlFB(axisId);
+    ASSERT_TRUE(fb != NULL, "Pressure-limit split-state test should expose the public FB");
+    if (fb == NULL) {
+        return;
+    }
+    fb->PRESSURE_LIMIT = 2.0f;
 
     ASSERT_TRUE(set_axis_feedback(axisId, manualPosition, manualVelocity, manualVelocity, 20.0f, timestamp),
                 "SetAxisFeedback should seed the manual axis before the pressure-limit case");
     init_movecontinuousabsolute(&cmd, axisId, 80.0f, 20.0f, 12.0f,
                                 HYD_DIRECTION_POSITIVE,
                                 HYD_DIRECTION_POSITIVE);
-    IEC_VAL(cmd.PRESSURELIMIT) = 2.0f;
+    IEC_VAL(cmd.PRESSURELIMIT) = 0.0f;
     rising_edge_scan(&cmd);
 
     for (int step = 0; step < MAX_SIM_STEPS; step++) {
@@ -709,6 +761,45 @@ static void test_pressure_limit_can_hold_positionreached_true_while_inendvelocit
                 "Pressure-limited run should still reach POSITIONREACHED");
     ASSERT_TRUE(sawSplitState,
                 "Pressure limiting should allow a scan where POSITIONREACHED stays true while INENDVELOCITY remains false");
+}
+
+static void test_pressure_limit_fault_surfaces_as_error(void) {
+    HYD_MOVECONTINUOUSABSOLUTE cmd;
+    HYD_MotionControlFB* fb;
+    int axisId;
+
+    __HydMotion_framework_Init();
+    axisId = create_sim_axis();
+    ASSERT_TRUE(axisId >= 0, "CreateMotion should allocate a simulation axis");
+    if (axisId < 0) {
+        return;
+    }
+    fb = __MK_GetPublic_MotionControlFB(axisId);
+    ASSERT_TRUE(fb != NULL, "Fault-escalation test should expose the public FB");
+    if (fb == NULL) {
+        return;
+    }
+
+    fb->PRESSURE_LIMIT = 1.0f;
+    init_movecontinuousabsolute(&cmd, axisId, 30.0f, 20.0f, 10.0f,
+                                HYD_DIRECTION_POSITIVE,
+                                HYD_DIRECTION_POSITIVE);
+    IEC_VAL(cmd.ACCELERATION) = 120.0f;
+    rising_edge_scan(&cmd);
+
+    for (int step = 0; step < 3000; step++) {
+        fb->AXIS_REF.pressure = 40.0f;
+        __HydMotion_framework_Publish();
+        hold_true_scan(&cmd);
+        if (IEC_VAL(cmd.ERROR)) {
+            break;
+        }
+    }
+
+    ASSERT_TRUE(IEC_VAL(cmd.ERROR) == true,
+                "Fault-level pressure limiting should surface ERROR on the command");
+    ASSERT_TRUE(IEC_VAL(cmd.BUSY) == false,
+                "Fault-level pressure limiting should clear Busy on the command");
 }
 
 static void test_stop_takes_over_and_sets_commandaborted(void) {
@@ -784,10 +875,12 @@ int main(void) {
     test_rejects_invalid_end_velocity_direction();
     test_current_end_velocity_direction_uses_velocity_then_last_active_direction();
     test_same_direction_reaches_position_and_end_velocity();
+    test_negative_same_direction_latches_inendvelocity_on_target_crossing();
     test_adapt_lowers_crossing_velocity_when_distance_is_too_short_to_accelerate();
     test_adapt_raises_crossing_velocity_when_distance_is_too_short_to_decelerate();
     test_reverse_sustain_delays_inendvelocity();
     test_pressure_limit_can_hold_positionreached_true_while_inendvelocity_stays_false();
+    test_pressure_limit_fault_surfaces_as_error();
     test_stop_takes_over_and_sets_commandaborted();
 
     printf("\n=== Results: %d/%d passed ===\n", tests_passed, tests_run);

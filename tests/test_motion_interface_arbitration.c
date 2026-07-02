@@ -866,6 +866,55 @@ static void test_buffered_endless_movevelocity_degrades_to_abort_takeover(void) 
                "Buffered command should become active after endless MoveVelocity takeover");
 }
 
+static void test_movecontinuousabsolute_active_owner_degrades_buffered_follower_to_abort_takeover(void) {
+    HYD_MOVECONTINUOUSABSOLUTE first;
+    HYD_MOVEABSOLUTE second;
+
+    __HydMotion_framework_Init();
+    ensure_axes_allocated(1);
+
+    memset(&first, 0, sizeof(first));
+    IEC_VAL(first.EN) = true;
+    IEC_VAL(first.AXISID) = 0;
+    IEC_VAL(first.EXECUTE) = true;
+    first.EXECUTE0.value = false;
+    IEC_VAL(first.POSITION) = 100.0f;
+    IEC_VAL(first.VELOCITY) = 20.0f;
+    IEC_VAL(first.ENDVELOCITY) = 8.0f;
+    IEC_VAL(first.ENDVELOCITYDIRECTION) = 1;
+    IEC_VAL(first.ACCELERATION) = 100.0f;
+    IEC_VAL(first.DECELERATION) = 100.0f;
+    IEC_VAL(first.DIRECTION) = 1;
+    __mcl_cmd_MoveContinuousAbsolute(&first);
+    __HydMotion_framework_Publish();
+
+    memset(&second, 0, sizeof(second));
+    IEC_VAL(second.EN) = true;
+    IEC_VAL(second.AXISID) = 0;
+    IEC_VAL(second.EXECUTE) = true;
+    second.EXECUTE0.value = false;
+    IEC_VAL(second.POSITION) = 20.0f;
+    IEC_VAL(second.VELOCITY) = 15.0f;
+    IEC_VAL(second.ACCELERATION) = 80.0f;
+    IEC_VAL(second.DECELERATION) = 80.0f;
+    IEC_VAL(second.DIRECTION) = 1;
+    IEC_VAL(second.BUFFERMODE) = HYD_BUFFER_MODE_BUFFER;
+    __mcl_cmd_MoveAbsolute(&second);
+
+    ASSERT_TRUE(IEC_VAL(second.BUSY) == true,
+               "Follower behind an active MoveContinuousAbsolute should be accepted by immediate takeover, not pending");
+    ASSERT_TRUE(IEC_VAL(first.COMMANDABORTED) == false,
+               "The front command reports COMMANDABORTED on the next scan, not the submission call");
+
+    __HydMotion_framework_Publish();
+    IEC_VAL(first.EXECUTE) = true;
+    first.EXECUTE0.value = true;
+    __mcl_cmd_MoveContinuousAbsolute(&first);
+
+    ASSERT_TRUE(IEC_VAL(first.COMMANDABORTED) == true,
+               "The active MoveContinuousAbsolute should report COMMANDABORTED after the buffered follower degrades to takeover");
+}
+
 static void test_blending_modes_select_distinct_through_velocities(void) {
     HYD_MotionControlFB* fb;
 
@@ -1804,6 +1853,7 @@ int main(void) {
     test_self_preemption_same_fb_twice();
     test_buffered_moveabsolute_waits_without_preempting_active_owner();
     test_buffered_endless_movevelocity_degrades_to_abort_takeover();
+    test_movecontinuousabsolute_active_owner_degrades_buffered_follower_to_abort_takeover();
     test_blending_modes_select_distinct_through_velocities();
     test_blended_front_segment_keeps_nonzero_velocity_near_switch();
     test_blended_cutover_preserves_planner_state();

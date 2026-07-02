@@ -510,6 +510,95 @@ static HYD_REAL HYD_SelectDirectBlendVelocity(HYD_BufferMode bufferMode,
     }
 }
 
+static HYD_REAL HYD_ResolveContinuousAbsoluteCrossingVelocity(
+    const HYD_MotionControlFB* fb,
+    const HYD_ContinuousAbsoluteContext* ctx,
+    const HYD_MotionSegment* segment) {
+    HYD_REAL remainingDistance;
+    HYD_REAL projectedVelocity;
+    HYD_REAL requested;
+    HYD_REAL decel;
+
+    if (fb == NULL || ctx == NULL || segment == NULL) {
+        return 0.0f;
+    }
+
+    requested = fabs(ctx->sustainVelocity);
+    decel = (segment->maxDeceleration > 0.0f) ? segment->maxDeceleration : segment->maxAcceleration;
+    remainingDistance = fabs(segment->targetPosition - fb->AXIS_REF.position);
+    projectedVelocity = fabs(fb->AXIS_REF.velocity);
+
+    if (ctx->sustainDirection != ctx->approachDirection) {
+        return 0.0f;
+    }
+
+    if (!ctx->adaptEndVelEnabled) {
+        return requested;
+    }
+
+    if (projectedVelocity < requested) {
+        HYD_REAL reachable = sqrt(projectedVelocity * projectedVelocity +
+                                  2.0f * segment->maxAcceleration * remainingDistance);
+        return HYD_ClampReal(reachable, 0.0f, requested);
+    }
+
+    if (projectedVelocity > requested) {
+        HYD_REAL floorValue = projectedVelocity * projectedVelocity -
+                              2.0f * decel * remainingDistance;
+        HYD_REAL reachable = (floorValue > 0.0f) ? sqrt(floorValue) : 0.0f;
+        if (reachable < requested) {
+            return requested;
+        }
+        return reachable;
+    }
+
+    return requested;
+}
+
+static HYD_BOOL HYD_IsContinuousAbsoluteVelocityReached(const HYD_MotionSegment* segment,
+                                                        HYD_REAL actualVelocity,
+                                                        HYD_REAL targetVelocity) {
+    HYD_REAL configuredTolerance = 0.0f;
+    HYD_REAL tolerance;
+
+    if (segment != NULL && segment->velocityTolerance > 0.0f) {
+        configuredTolerance = segment->velocityTolerance;
+    }
+
+    tolerance = (configuredTolerance > 0.0f)
+        ? configuredTolerance
+        : ((fabs(targetVelocity) * 0.05f) > 0.01f
+            ? (fabs(targetVelocity) * 0.05f)
+            : 0.01f);
+
+    return fabs(actualVelocity - targetVelocity) <= tolerance;
+}
+
+static HYD_MotionSegment HYD_BuildContinuousAbsoluteSustainSegment(
+    const HYD_MotionControlFB* fb,
+    const HYD_ContinuousAbsoluteContext* ctx,
+    const HYD_MotionSegment* approachSegment) {
+    HYD_MotionSegment seg;
+
+    memset(&seg, 0, sizeof(seg));
+    if (fb == NULL || ctx == NULL || approachSegment == NULL) {
+        return seg;
+    }
+
+    seg = *approachSegment;
+    seg.mode = HYD_MODE_SPEED_RAMP;
+    seg.endCondition = HYD_END_MANUAL;
+    seg.direction = ctx->sustainDirection;
+    seg.planner = HYD_PLANNER_TIME_BASED;
+    seg.maxVelocity = fabs(ctx->sustainVelocity);
+    seg.maxFlow = (seg.maxVelocity > 0.0f)
+        ? seg.maxVelocity * fb->_params.velocityToFlowGain
+        : fb->_params.maxFlow;
+    seg.velocityToFlowGain = fb->_params.velocityToFlowGain;
+    seg.maxPressure = ctx->effectivePressureLimit;
+    return seg;
+}
+
 static HYD_BOOL HYD_TryCreateDirectBlendContext(HYD_MotionControlFB* fb,
                                                 HYD_BufferMode bufferMode,
                                                 const HYD_MotionSegment* pendingSegment) {
@@ -1218,6 +1307,13 @@ static HYD_BOOL HYD_StartPendingDirectSlot(HYD_MotionControlFB* fb,
     HYD_CopyContinuousAbsoluteContext(&fb->_directContinuousAbsolute,
                                       &pendingContinuousAbsolute);
     fb->_directContinuousAbsolute.ownerTicket = fb->_directOwnerTicket;
+    if (pendingKind == HYD_DIRECT_CMD_MOVE_CONTINUOUS_ABSOLUTE &&
+        fb->_directContinuousAbsolute.valid) {
+        fb->_directContinuousAbsolute.crossingVelocity =
+            HYD_ResolveContinuousAbsoluteCrossingVelocity(fb,
+                                                          &fb->_directContinuousAbsolute,
+                                                          &fb->_activeSegment);
+    }
     if (preservePlannerState) {
         fb->_plannerState = preservedPlannerState;
         /* Blended cutover stays inside one continuous motion command stream.
@@ -1645,6 +1741,10 @@ static void HYD_ExecuteActiveSegmentControl(HYD_MotionControlFB* fb,
     HYD_PumpConverterInput pumpInput;
     HYD_VelocityControllerInput velocityInput;
     HYD_VelocityControllerOutput velocityOutput;
+    HYD_MotionBlendContext localContinuousBlend;
+    const HYD_MotionBlendContext* selectedBlend = fb->_directBlendContext.active
+        ? &fb->_directBlendContext
+        : NULL;
 
     if (fb == NULL || segment == NULL || rampOutput == NULL || plannerOutput == NULL ||
         pressureOutput == NULL || pumpOutput == NULL || executionReference == NULL) {
@@ -1692,6 +1792,17 @@ static void HYD_ExecuteActiveSegmentControl(HYD_MotionControlFB* fb,
         plannerOutput->direction = segment->direction;
     } else {
         memset(&plannerInput, 0, sizeof(plannerInput));
+        memset(&localContinuousBlend, 0, sizeof(localContinuousBlend));
+        if (fb->_directOwnerKind == HYD_DIRECT_CMD_MOVE_CONTINUOUS_ABSOLUTE &&
+            fb->_directContinuousAbsolute.valid &&
+            fb->_directContinuousAbsolute.phase == HYD_CONTABS_PHASE_APPROACH) {
+            localContinuousBlend.active = true;
+            localContinuousBlend.bufferMode = HYD_BUFFER_MODE_BLENDING_NEXT;
+            localContinuousBlend.blendVelocity = fb->_directContinuousAbsolute.crossingVelocity;
+            localContinuousBlend.switchPosition = fb->_directContinuousAbsolute.targetPosition;
+            localContinuousBlend.switchTolerance = HYD_Segment_GetPositionTolerance(segment);
+            selectedBlend = &localContinuousBlend;
+        }
         plannerInput.axisRef = &fb->AXIS_REF;
         plannerInput.segment = segment;
         plannerInput.elapsedTime = elapsed;
@@ -1705,9 +1816,7 @@ static void HYD_ExecuteActiveSegmentControl(HYD_MotionControlFB* fb,
             plannerInput.decelStartVel = 0.0;
         }
         plannerInput.state = &fb->_plannerState;
-        plannerInput.blend = fb->_directBlendContext.active
-            ? &fb->_directBlendContext
-            : NULL;
+        plannerInput.blend = selectedBlend;
         plannerInput.lastActiveDirection = fb->_lastActiveDirection;
         HYD_MotionPlanner_Execute(&plannerInput, plannerOutput);
 
@@ -2345,8 +2454,54 @@ static void HYD_MotionControlFB_RunRunningState(HYD_MotionControlFB* fb) {
         return;
     }
 
+    if (fb->_directOwnerKind == HYD_DIRECT_CMD_MOVE_CONTINUOUS_ABSOLUTE &&
+        fb->_directContinuousAbsolute.valid &&
+        fb->_directContinuousAbsolute.phase == HYD_CONTABS_PHASE_APPROACH &&
+        HYD_SegmentCompletion_IsPositionReachedRaw(segment,
+                                                   &fb->AXIS_REF,
+                                                   HYD_Segment_GetPositionTolerance(segment))) {
+        HYD_MotionSegment sustainSegment =
+            HYD_BuildContinuousAbsoluteSustainSegment(fb,
+                                                      &fb->_directContinuousAbsolute,
+                                                      segment);
+        HYD_REAL signedCrossingVelocity =
+            (fb->_directContinuousAbsolute.sustainDirection == HYD_DIRECTION_NEGATIVE)
+            ? -fb->_directContinuousAbsolute.crossingVelocity
+            : fb->_directContinuousAbsolute.crossingVelocity;
+
+        fb->_directContinuousAbsolute.positionReachedLatched = true;
+        fb->_directContinuousAbsolute.phase = HYD_CONTABS_PHASE_SUSTAIN;
+        if (!limiterOutput.pressureLimitActive &&
+            HYD_IsContinuousAbsoluteVelocityReached(segment,
+                                                    signedCrossingVelocity,
+                                                    fb->_directContinuousAbsolute.sustainVelocity)) {
+            fb->_directContinuousAbsolute.inEndVelocityLatched = true;
+        }
+
+        fb->_previousSegmentMode = fb->_activeSegment.mode;
+        HYD_StateReporter_ResetTransitionFlags(fb);
+        fb->_activeSegment = sustainSegment;
+        fb->_activeSegmentValid = true;
+        fb->_activeSegmentSource = HYD_SEGMENT_SOURCE_DIRECT;
+        fb->_segmentStartTime = fb->AXIS_REF.timestamp;
+        HYD_PrimeSegmentControllers(fb, &fb->_activeSegment, fb->AXIS_REF.timestamp, false);
+        HYD_StateReporter_SetPlannedDirection(fb, fb->_activeSegment.direction);
+        HYD_StateReporter_SetFbState(fb, HYD_FB_STATE_STARTING);
+        return;
+    }
+
     if (HYD_RunRunningStateCompletion(fb, segment, &plannerOutput, &executionReference)) {
         return;
+    }
+
+    if (fb->_directOwnerKind == HYD_DIRECT_CMD_MOVE_CONTINUOUS_ABSOLUTE &&
+        fb->_directContinuousAbsolute.valid &&
+        fb->_directContinuousAbsolute.phase == HYD_CONTABS_PHASE_SUSTAIN &&
+        !fb->_directContinuousAbsolute.inEndVelocityLatched &&
+        HYD_IsContinuousAbsoluteVelocityReached(segment,
+                                                fb->AXIS_REF.velocity,
+                                                fb->_directContinuousAbsolute.sustainVelocity)) {
+        fb->_directContinuousAbsolute.inEndVelocityLatched = true;
     }
 
     HYD_StateReporter_ReportExecution(fb,
@@ -3009,7 +3164,9 @@ HYD_DirectStartResult HYD_MotionControlFB_StartDirectCommand(HYD_MotionControlFB
                    fb->_activeSegmentSource == HYD_SEGMENT_SOURCE_DIRECT;
     shouldAbort = (bufferMode == HYD_BUFFER_MODE_ABORT &&
                    (fb->STATE.active || HYD_MotionControlFB_IsBusy(fb))) ||
-                  (activeDirect && HYD_IsSegmentEndlessForBuffering(&fb->_activeSegment));
+                  (activeDirect &&
+                   (HYD_IsSegmentEndlessForBuffering(&fb->_activeSegment) ||
+                    fb->_directOwnerKind == HYD_DIRECT_CMD_MOVE_CONTINUOUS_ABSOLUTE));
     positionTolerance = HYD_Segment_GetPositionTolerance(segment);
 
     if (bufferMode != HYD_BUFFER_MODE_ABORT && fb->_directPendingValid) {
@@ -3051,6 +3208,13 @@ HYD_DirectStartResult HYD_MotionControlFB_StartDirectCommand(HYD_MotionControlFB
         HYD_CopyContinuousAbsoluteContext(&fb->_directContinuousAbsolute,
                                           continuousAbsolute);
         fb->_directContinuousAbsolute.ownerTicket = fb->_directOwnerTicket;
+        if (kind == HYD_DIRECT_CMD_MOVE_CONTINUOUS_ABSOLUTE &&
+            fb->_directContinuousAbsolute.valid) {
+            fb->_directContinuousAbsolute.crossingVelocity =
+                HYD_ResolveContinuousAbsoluteCrossingVelocity(fb,
+                                                              &fb->_directContinuousAbsolute,
+                                                              &fb->_activeSegment);
+        }
         fb->USE_RECIPE = savedUseRecipe;
         return HYD_DIRECT_START_STARTED;
     }
@@ -3103,6 +3267,13 @@ HYD_DirectStartResult HYD_MotionControlFB_StartDirectCommand(HYD_MotionControlFB
     HYD_CopyContinuousAbsoluteContext(&fb->_directContinuousAbsolute,
                                       continuousAbsolute);
     fb->_directContinuousAbsolute.ownerTicket = fb->_directOwnerTicket;
+    if (kind == HYD_DIRECT_CMD_MOVE_CONTINUOUS_ABSOLUTE &&
+        fb->_directContinuousAbsolute.valid) {
+        fb->_directContinuousAbsolute.crossingVelocity =
+            HYD_ResolveContinuousAbsoluteCrossingVelocity(fb,
+                                                          &fb->_directContinuousAbsolute,
+                                                          &fb->_activeSegment);
+    }
     fb->USE_RECIPE = savedUseRecipe;
     return HYD_DIRECT_START_STARTED;
 }

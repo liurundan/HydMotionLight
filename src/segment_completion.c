@@ -18,7 +18,7 @@ static HYD_REAL HYD_SegmentCompletion_ResolvePositionSettledVelocityTolerance(
     return HYD_DEFAULT_POSITION_SETTLED_VELOCITY_TOLERANCE;
 }
 
-static HYD_BOOL HYD_SegmentCompletion_IsPositionReached(
+HYD_BOOL HYD_SegmentCompletion_IsPositionReachedRaw(
     const HYD_MotionSegment* segment,
     const HYD_AxisRef* axisRef,
     HYD_REAL positionTolerance) {
@@ -124,7 +124,7 @@ HYD_BOOL HYD_SegmentCompletion_CheckWithContext(const HYD_SegmentCompletionConte
     switch (segment->endCondition) {
         case HYD_END_POSITION:
             rawComplete =
-                HYD_SegmentCompletion_IsPositionReached(segment, axisRef, positionTolerance) &&
+                HYD_SegmentCompletion_IsPositionReachedRaw(segment, axisRef, positionTolerance) &&
                 HYD_SegmentCompletion_IsPositionVelocitySettled(segment, axisRef, references);
             break;
         case HYD_END_TIME:
