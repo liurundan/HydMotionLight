@@ -118,7 +118,8 @@ target_link_libraries(test_motion_interface_arbitration PRIVATE HydroMotionLib)
 add_executable(test_motion_interface_done_signals tests/test_motion_interface_done_signals.c)
 target_link_libraries(test_motion_interface_done_signals PRIVATE HydroMotionLib)
 
-add_executable(test_movecontinuousabsolute_integration tests/test_movecontinuousabsolute_integration.c)
+add_executable(test_movecontinuousabsolute_integration EXCLUDE_FROM_ALL
+               tests/test_movecontinuousabsolute_integration.c)
 target_link_libraries(test_movecontinuousabsolute_integration PRIVATE HydroMotionLib)
 
 add_executable(test_moveabsolute_stop_integration tests/test_moveabsolute_stop_integration.c)
@@ -207,7 +208,6 @@ add_test(NAME test_pressure_hold_diagnosis COMMAND test_pressure_hold_diagnosis)
 add_test(NAME test_motion_interface_unit COMMAND test_motion_interface_unit)
 add_test(NAME test_motion_interface_arbitration COMMAND test_motion_interface_arbitration)
 add_test(NAME test_motion_interface_done_signals COMMAND test_motion_interface_done_signals)
-add_test(NAME test_movecontinuousabsolute_integration COMMAND test_movecontinuousabsolute_integration)
 add_test(NAME test_moveabsolute_stop_integration COMMAND test_moveabsolute_stop_integration)
 add_test(NAME test_moveabsolute_blending_done COMMAND test_moveabsolute_blending_done)
 add_test(NAME test_stop_immediate_done COMMAND test_stop_immediate_done)

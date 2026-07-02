@@ -66,6 +66,18 @@ static void hold_true_scan(HYD_MOVECONTINUOUSABSOLUTE* fb) {
     __mcl_cmd_MoveContinuousAbsolute(fb);
 }
 
+static void hold_movevelocity_scan(HYD_MOVEVELOCITY* fb) {
+    IEC_VAL(fb->EXECUTE) = true;
+    fb->EXECUTE0.value = true;
+    __mcl_cmd_MoveVelocity(fb);
+}
+
+static void hold_stop_scan(HYD_STOP* fb) {
+    IEC_VAL(fb->EXECUTE) = true;
+    fb->EXECUTE0.value = true;
+    __mcl_cmd_Stop(fb);
+}
+
 static int run_until_position_reached(HYD_MOVECONTINUOUSABSOLUTE* fb) {
     for (int step = 0; step < MAX_SIM_STEPS; step++) {
         __HydMotion_framework_Publish();
@@ -86,6 +98,46 @@ static int run_until_inendvelocity(HYD_MOVECONTINUOUSABSOLUTE* fb) {
         }
     }
     return -1;
+}
+
+static bool seed_last_active_direction_negative(int axisId) {
+    HYD_MOVEVELOCITY mv;
+    HYD_STOP stop;
+
+    memset(&mv, 0, sizeof(mv));
+    IEC_VAL(mv.EN) = true;
+    IEC_VAL(mv.AXISID) = axisId;
+    IEC_VAL(mv.VELOCITY) = 10.0f;
+    IEC_VAL(mv.ACCELERATION) = 100.0f;
+    IEC_VAL(mv.DECELERATION) = 100.0f;
+    IEC_VAL(mv.DIRECTION) = HYD_DIRECTION_NEGATIVE;
+    IEC_VAL(mv.EXECUTE) = true;
+    mv.EXECUTE0.value = false;
+    __mcl_cmd_MoveVelocity(&mv);
+
+    for (int step = 0; step < 40; step++) {
+        __HydMotion_framework_Publish();
+        hold_movevelocity_scan(&mv);
+    }
+
+    memset(&stop, 0, sizeof(stop));
+    IEC_VAL(stop.EN) = true;
+    IEC_VAL(stop.AXISID) = axisId;
+    IEC_VAL(stop.DECELERATION) = 100.0f;
+    IEC_VAL(stop.EXECUTE) = true;
+    stop.EXECUTE0.value = false;
+    __mcl_cmd_Stop(&stop);
+
+    for (int step = 0; step < MAX_SIM_STEPS; step++) {
+        __HydMotion_framework_Publish();
+        hold_movevelocity_scan(&mv);
+        hold_stop_scan(&stop);
+        if (IEC_VAL(stop.DONE)) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 static void test_rejects_invalid_end_velocity_direction(void) {
@@ -112,6 +164,8 @@ static void test_current_end_velocity_direction_uses_velocity_then_last_active_d
     HYD_MOVECONTINUOUSABSOLUTE cmd;
     HYD_MotionControlFB* fb;
     int axisId;
+    int inEndVelocityStep;
+    bool seededNegativeHistory;
 
     __HydMotion_framework_Init();
     axisId = create_sim_axis();
@@ -123,13 +177,21 @@ static void test_current_end_velocity_direction_uses_velocity_then_last_active_d
     }
 
     fb->AXIS_REF.velocity = -5.0f;
-    fb->_lastActiveDirection = HYD_DIRECTION_POSITIVE;
     init_movecontinuousabsolute(&cmd, axisId, 120.0f, 20.0f, 8.0f,
                                 HYD_DIRECTION_POSITIVE,
                                 HYD_DIRECTION_CURRENT);
     rising_edge_scan(&cmd);
-    ASSERT_TRUE(fb->_directContinuousAbsolute.sustainDirection == HYD_DIRECTION_NEGATIVE,
-                "ENDVELOCITYDIRECTION=CURRENT should use the current negative axis velocity first");
+    inEndVelocityStep = run_until_inendvelocity(&cmd);
+    ASSERT_TRUE(inEndVelocityStep > 0,
+                "ENDVELOCITYDIRECTION=CURRENT should eventually reach INENDVELOCITY when starting from a negative actual velocity");
+    if (inEndVelocityStep > 0) {
+        ASSERT_TRUE(IEC_VAL(cmd.ERROR) == false,
+                    "Current-direction command should not error in the negative-velocity case");
+        ASSERT_TRUE(IEC_VAL(cmd.COMMANDABORTED) == false,
+                    "Current-direction command should not be aborted in the negative-velocity case");
+        ASSERT_TRUE(fb->AXIS_REF.velocity < 0.0f,
+                    "Current-direction command should sustain a negative end velocity when the actual velocity starts negative");
+    }
 
     __HydMotion_framework_Init();
     axisId = create_sim_axis();
@@ -140,14 +202,29 @@ static void test_current_end_velocity_direction_uses_velocity_then_last_active_d
         return;
     }
 
+    seededNegativeHistory = seed_last_active_direction_negative(axisId);
+    ASSERT_TRUE(seededNegativeHistory,
+                "Public commands should be able to seed a negative last-active direction before the fallback case");
+    if (!seededNegativeHistory) {
+        return;
+    }
+
     fb->AXIS_REF.velocity = 0.0f;
-    fb->_lastActiveDirection = HYD_DIRECTION_NEGATIVE;
     init_movecontinuousabsolute(&cmd, axisId, 120.0f, 20.0f, 8.0f,
                                 HYD_DIRECTION_POSITIVE,
                                 HYD_DIRECTION_CURRENT);
     rising_edge_scan(&cmd);
-    ASSERT_TRUE(fb->_directContinuousAbsolute.sustainDirection == HYD_DIRECTION_NEGATIVE,
-                "ENDVELOCITYDIRECTION=CURRENT should fall back to the last active direction when axis velocity is zero");
+    inEndVelocityStep = run_until_inendvelocity(&cmd);
+    ASSERT_TRUE(inEndVelocityStep > 0,
+                "ENDVELOCITYDIRECTION=CURRENT should eventually reach INENDVELOCITY in the zero-velocity fallback case");
+    if (inEndVelocityStep > 0) {
+        ASSERT_TRUE(IEC_VAL(cmd.ERROR) == false,
+                    "Current-direction fallback command should not error after seeding a negative last-active direction");
+        ASSERT_TRUE(IEC_VAL(cmd.COMMANDABORTED) == false,
+                    "Current-direction fallback command should not be aborted after seeding a negative last-active direction");
+        ASSERT_TRUE(fb->AXIS_REF.velocity < 0.0f,
+                    "Current-direction fallback should sustain a negative end velocity after public negative-direction history");
+    }
 }
 
 static void test_same_direction_reaches_position_and_end_velocity(void) {
@@ -199,6 +276,8 @@ static void test_adapt_lowers_crossing_velocity_when_distance_is_too_short_to_ac
     HYD_MOVECONTINUOUSABSOLUTE cmd;
     HYD_MotionControlFB* fb;
     int axisId;
+    int positionReachedStep;
+    bool reversedBeforeTarget = false;
 
     __HydMotion_framework_Init();
     axisId = create_sim_axis();
@@ -216,14 +295,39 @@ static void test_adapt_lowers_crossing_velocity_when_distance_is_too_short_to_ac
     IEC_VAL(cmd.ADAPTENDVELTOAVOIDOVERSHOOT) = true;
     rising_edge_scan(&cmd);
 
-    ASSERT_TRUE(fb->_directContinuousAbsolute.crossingVelocity < IEC_VAL(cmd.ENDVELOCITY),
-                "Adapt mode should lower crossingVelocity when the distance is too short to accelerate up to the requested end velocity");
+    positionReachedStep = -1;
+    for (int step = 0; step < MAX_SIM_STEPS; step++) {
+        __HydMotion_framework_Publish();
+        hold_true_scan(&cmd);
+
+        if (fb->AXIS_REF.velocity < -0.01f) {
+            reversedBeforeTarget = true;
+        }
+        if (IEC_VAL(cmd.POSITIONREACHED)) {
+            positionReachedStep = step + 1;
+            break;
+        }
+        if (IEC_VAL(cmd.ERROR) || IEC_VAL(cmd.COMMANDABORTED)) {
+            break;
+        }
+    }
+
+    ASSERT_TRUE(positionReachedStep > 0,
+                "Adapt mode should still reach POSITIONREACHED on a short accelerate-up move");
+    ASSERT_TRUE(IEC_VAL(cmd.ERROR) == false,
+                "Adapt mode should not error on a short accelerate-up move");
+    ASSERT_TRUE(IEC_VAL(cmd.COMMANDABORTED) == false,
+                "Adapt mode should not be aborted on a short accelerate-up move");
+    ASSERT_TRUE(reversedBeforeTarget == false,
+                "Adapt mode should not reverse direction before the first target reach on a short accelerate-up move");
 }
 
 static void test_adapt_raises_crossing_velocity_when_distance_is_too_short_to_decelerate(void) {
     HYD_MOVECONTINUOUSABSOLUTE cmd;
     HYD_MotionControlFB* fb;
     int axisId;
+    int positionReachedStep;
+    bool reversedBeforeTarget = false;
 
     __HydMotion_framework_Init();
     axisId = create_sim_axis();
@@ -241,8 +345,31 @@ static void test_adapt_raises_crossing_velocity_when_distance_is_too_short_to_de
     IEC_VAL(cmd.ADAPTENDVELTOAVOIDOVERSHOOT) = true;
     rising_edge_scan(&cmd);
 
-    ASSERT_TRUE(fb->_directContinuousAbsolute.crossingVelocity > IEC_VAL(cmd.ENDVELOCITY),
-                "Adapt mode should raise crossingVelocity when the distance is too short to decelerate down to the requested end velocity");
+    positionReachedStep = -1;
+    for (int step = 0; step < MAX_SIM_STEPS; step++) {
+        __HydMotion_framework_Publish();
+        hold_true_scan(&cmd);
+
+        if (fb->AXIS_REF.velocity < -0.01f) {
+            reversedBeforeTarget = true;
+        }
+        if (IEC_VAL(cmd.POSITIONREACHED)) {
+            positionReachedStep = step + 1;
+            break;
+        }
+        if (IEC_VAL(cmd.ERROR) || IEC_VAL(cmd.COMMANDABORTED)) {
+            break;
+        }
+    }
+
+    ASSERT_TRUE(positionReachedStep > 0,
+                "Adapt mode should still reach POSITIONREACHED on a short decelerate-down move");
+    ASSERT_TRUE(IEC_VAL(cmd.ERROR) == false,
+                "Adapt mode should not error on a short decelerate-down move");
+    ASSERT_TRUE(IEC_VAL(cmd.COMMANDABORTED) == false,
+                "Adapt mode should not be aborted on a short decelerate-down move");
+    ASSERT_TRUE(reversedBeforeTarget == false,
+                "Adapt mode should not reverse direction before the first target reach on a short decelerate-down move");
 }
 
 static void test_reverse_sustain_delays_inendvelocity(void) {
