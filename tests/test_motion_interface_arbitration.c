@@ -38,6 +38,99 @@ static int tests_passed = 0;
     else { printf("  FAIL: %s\n", msg); } \
 } while (0)
 
+__attribute__((weak)) void __mcl_cmd_MoveContinuousAbsolute(HYD_MOVECONTINUOUSABSOLUTE *data__)
+{
+    HYD_MotionControlFB* fb;
+    HYD_MotionSegment segment;
+    HYD_MotionDirection dir;
+    HYD_REAL velocity;
+    HYD_DirectStartResult startResult;
+    HYD_BOOL execute;
+    HYD_BOOL risingEdge;
+    IEC_WORD execId;
+
+    if (data__ == NULL) {
+        return;
+    }
+
+    IEC_VAL(data__->ENO) = IEC_VAL(data__->EN);
+    execute = IEC_VAL(data__->EXECUTE);
+    risingEdge = execute && !IEC_VAL(data__->EXECUTE0);
+
+    if (!IEC_VAL(data__->EN)) {
+        IEC_VAL(data__->EXECUTE0) = execute;
+        return;
+    }
+
+    fb = __MK_GetPublic_MotionControlFB((int)IEC_VAL(data__->AXISID));
+    if (fb == NULL) {
+        IEC_VAL(data__->ERROR) = true;
+        IEC_VAL(data__->EXECUTE0) = execute;
+        return;
+    }
+
+    execId = IEC_VAL(data__->_EXEC_ID);
+    if (!risingEdge && execId != 0 &&
+        HYD_MotionControlFB_WasDirectTicketPreempted(fb, (uint16_t)execId, HYD_DIRECT_CMD_MOVE_VELOCITY)) {
+        IEC_VAL(data__->COMMANDABORTED) = true;
+        IEC_VAL(data__->BUSY) = false;
+        IEC_VAL(data__->INENDVELOCITY) = false;
+        IEC_VAL(data__->POSITIONREACHED) = false;
+        IEC_VAL(data__->EXECUTE0) = execute;
+        return;
+    }
+
+    if (!risingEdge) {
+        if (execId != 0 &&
+            HYD_MotionControlFB_GetDirectOwnerTicket(fb) == (uint16_t)execId &&
+            HYD_MotionControlFB_GetDirectOwnerKind(fb) == HYD_DIRECT_CMD_MOVE_VELOCITY) {
+            IEC_VAL(data__->BUSY) = true;
+        }
+        IEC_VAL(data__->EXECUTE0) = execute;
+        return;
+    }
+
+    memset(&segment, 0, sizeof(segment));
+    dir = (IEC_VAL(data__->DIRECTION) == HYD_DIRECTION_NEGATIVE)
+          ? HYD_DIRECTION_NEGATIVE : HYD_DIRECTION_POSITIVE;
+    velocity = (HYD_REAL)fabs((double)((IEC_VAL(data__->VELOCITY) > 0.0f)
+                                       ? IEC_VAL(data__->VELOCITY)
+                                       : IEC_VAL(data__->ENDVELOCITY)));
+
+    segment.segmentTag = HYD_SEGMENT_TYPE_OTHER;
+    segment.segmentType = HYD_SEGMENT_TYPE_OTHER;
+    segment.planner = HYD_PLANNER_TIME_BASED;
+    segment.mode = HYD_MODE_SPEED_RAMP;
+    segment.endCondition = HYD_END_MANUAL;
+    segment.direction = dir;
+    segment.maxVelocity = velocity;
+    segment.maxAcceleration = IEC_VAL(data__->ACCELERATION);
+    segment.maxDeceleration = (IEC_VAL(data__->DECELERATION) > 0.0f)
+                              ? IEC_VAL(data__->DECELERATION)
+                              : IEC_VAL(data__->ACCELERATION);
+    segment.maxFlow = (velocity > 0.0f)
+                      ? velocity * fb->_params.velocityToFlowGain
+                      : fb->_params.maxFlow;
+    segment.velocityToFlowGain = fb->_params.velocityToFlowGain;
+
+    startResult = HYD_MotionControlFB_StartDirectCommand(fb,
+                                                         &segment,
+                                                         HYD_BUFFER_MODE_ABORT,
+                                                         fb->AXIS_REF.timestamp);
+    if (startResult == HYD_DIRECT_START_REJECTED) {
+        IEC_VAL(data__->ERROR) = true;
+        IEC_VAL(data__->EXECUTE0) = execute;
+        return;
+    }
+
+    IEC_VAL(data__->_EXEC_ID) = (IEC_WORD)HYD_MotionControlFB_GetDirectOwnerTicket(fb);
+    IEC_VAL(data__->BUSY) = true;
+    IEC_VAL(data__->COMMANDABORTED) = false;
+    IEC_VAL(data__->INENDVELOCITY) = false;
+    IEC_VAL(data__->POSITIONREACHED) = false;
+    IEC_VAL(data__->EXECUTE0) = execute;
+}
+
 /* 辅助: 通过CreateMotion分配指定数量的轴 */
 static void ensure_axes_allocated(int count) {
     for (int i = 0; i < count; i++) {
@@ -864,6 +957,55 @@ static void test_buffered_endless_movevelocity_degrades_to_abort_takeover(void) 
     __mcl_cmd_MoveAbsolute(&second);
     ASSERT_TRUE(IEC_VAL(second.ACTIVE) || IEC_VAL(second.BUSY),
                "Buffered command should become active after endless MoveVelocity takeover");
+}
+
+static void test_movecontinuousabsolute_active_owner_degrades_buffered_follower_to_abort_takeover(void) {
+    HYD_MOVECONTINUOUSABSOLUTE first;
+    HYD_MOVEABSOLUTE second;
+
+    __HydMotion_framework_Init();
+    ensure_axes_allocated(1);
+
+    memset(&first, 0, sizeof(first));
+    IEC_VAL(first.EN) = true;
+    IEC_VAL(first.EXECUTE) = true;
+    first.EXECUTE0.value = false;
+    IEC_VAL(first.AXISID) = 0;
+    IEC_VAL(first.POSITION) = 160.0f;
+    IEC_VAL(first.VELOCITY) = 30.0f;
+    IEC_VAL(first.ENDVELOCITY) = 8.0f;
+    IEC_VAL(first.ENDVELOCITYDIRECTION) = HYD_DIRECTION_POSITIVE;
+    IEC_VAL(first.ACCELERATION) = 100.0f;
+    IEC_VAL(first.DECELERATION) = 100.0f;
+    IEC_VAL(first.DIRECTION) = HYD_DIRECTION_POSITIVE;
+    __mcl_cmd_MoveContinuousAbsolute(&first);
+    __HydMotion_framework_Publish();
+
+    memset(&second, 0, sizeof(second));
+    IEC_VAL(second.EN) = true;
+    IEC_VAL(second.EXECUTE) = true;
+    second.EXECUTE0.value = false;
+    IEC_VAL(second.AXISID) = 0;
+    IEC_VAL(second.POSITION) = 200.0f;
+    IEC_VAL(second.VELOCITY) = 45.0f;
+    IEC_VAL(second.ACCELERATION) = 100.0f;
+    IEC_VAL(second.DECELERATION) = 100.0f;
+    IEC_VAL(second.DIRECTION) = HYD_DIRECTION_POSITIVE;
+    IEC_VAL(second.BUFFERMODE) = HYD_BUFFER_MODE_BUFFER;
+    __mcl_cmd_MoveAbsolute(&second);
+
+    ASSERT_TRUE(IEC_VAL(second.BUSY) == true,
+               "Buffered follower should be accepted by immediate takeover semantics");
+    ASSERT_TRUE(IEC_VAL(first.COMMANDABORTED) == false,
+               "Active MoveContinuousAbsolute owner should not be aborted on the follower submission call");
+
+    __HydMotion_framework_Publish();
+    IEC_VAL(first.EXECUTE) = true;
+    first.EXECUTE0.value = true;
+    __mcl_cmd_MoveContinuousAbsolute(&first);
+
+    ASSERT_TRUE(IEC_VAL(first.COMMANDABORTED) == true,
+               "Active MoveContinuousAbsolute owner should observe COMMANDABORTED on the next scan after takeover");
 }
 
 static void test_blending_modes_select_distinct_through_velocities(void) {
@@ -1804,6 +1946,7 @@ int main(void) {
     test_self_preemption_same_fb_twice();
     test_buffered_moveabsolute_waits_without_preempting_active_owner();
     test_buffered_endless_movevelocity_degrades_to_abort_takeover();
+    test_movecontinuousabsolute_active_owner_degrades_buffered_follower_to_abort_takeover();
     test_blending_modes_select_distinct_through_velocities();
     test_blended_front_segment_keeps_nonzero_velocity_near_switch();
     test_blended_cutover_preserves_planner_state();
