@@ -79,27 +79,22 @@ static HYD_MotionDirection mapPlcOpenDirection(IEC_SINT direction) {
 static HYD_MotionDirection mapContinuousEndVelocityDirectionRequest(IEC_SINT direction,
                                                                     HYD_BOOL* ok)
 {
+    if (ok != NULL) {
+        *ok = true;
+    }
+
     switch ((int)direction) {
         case 1:
-            if (ok != NULL) {
-                *ok = true;
-            }
             return HYD_DIRECTION_POSITIVE;
         case 2:
-            if (ok != NULL) {
-                *ok = true;
-            }
             return HYD_DIRECTION_NEGATIVE;
         case 3:
-            if (ok != NULL) {
-                *ok = true;
-            }
             return HYD_DIRECTION_CURRENT;
         default:
             if (ok != NULL) {
                 *ok = false;
             }
-            return HYD_DIRECTION_SHORTEST_WAY;
+            return HYD_DIRECTION_HOLD;
     }
 }
 
@@ -107,26 +102,26 @@ static HYD_MotionDirection resolveContinuousEndVelocityDirection(const HYD_Motio
                                                                  HYD_MotionDirection requestedDirection,
                                                                  HYD_MotionDirection approachDirection)
 {
-    if (requestedDirection == HYD_DIRECTION_CURRENT) {
-        if (fb != NULL) {
-            if (fb->AXIS_REF.velocity > 0.0f) {
-                return HYD_DIRECTION_POSITIVE;
-            }
-            if (fb->AXIS_REF.velocity < 0.0f) {
-                return HYD_DIRECTION_NEGATIVE;
-            }
-            if (fb->_lastActiveDirection == HYD_DIRECTION_NEGATIVE) {
-                return HYD_DIRECTION_NEGATIVE;
-            }
+    const HYD_REAL directionVelocityThreshold = 0.01f;
+
+    if (requestedDirection != HYD_DIRECTION_CURRENT) {
+        return requestedDirection;
+    }
+
+    if (fb != NULL) {
+        if (fb->AXIS_REF.velocity > directionVelocityThreshold) {
+            return HYD_DIRECTION_POSITIVE;
         }
-        return HYD_DIRECTION_POSITIVE;
+        if (fb->AXIS_REF.velocity < -directionVelocityThreshold) {
+            return HYD_DIRECTION_NEGATIVE;
+        }
+        if (fb->_lastActiveDirection == HYD_DIRECTION_POSITIVE ||
+            fb->_lastActiveDirection == HYD_DIRECTION_NEGATIVE) {
+            return fb->_lastActiveDirection;
+        }
     }
 
-    if (requestedDirection == HYD_DIRECTION_SHORTEST_WAY) {
-        return approachDirection;
-    }
-
-    return requestedDirection;
+    return approachDirection;
 }
 
 /* 构建位置控制运动段 (MoveAbsolute用) */
