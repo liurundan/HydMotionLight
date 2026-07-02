@@ -591,6 +591,42 @@
 				</body>
 				<documentation><![CDATA[This Function Block commands a controlled motion to a specified absolute position. ]]></documentation>
 			</pou>
+			<pou name="HYD_MoveContinuousAbsolute" pouType="functionBlock">
+				<interface>
+					<inputVars>
+						<variable name="AXISID"><type><SINT /></type></variable>
+						<variable name="EXECUTE"><type><BOOL /></type></variable>
+						<variable name="POSITION"><type><REAL /></type></variable>
+						<variable name="VELOCITY"><type><REAL /></type></variable>
+						<variable name="ENDVELOCITY"><type><REAL /></type></variable>
+						<variable name="ENDVELOCITYDIRECTION"><type><SINT /></type></variable>
+						<variable name="ACCELERATION"><type><REAL /></type></variable>
+						<variable name="DECELERATION"><type><REAL /></type></variable>
+						<variable name="JERK"><type><REAL /></type></variable>
+						<variable name="DIRECTION"><type><SINT /></type></variable>
+						<variable name="ADAPTENDVELTOAVOIDOVERSHOOT"><type><BOOL /></type></variable>
+						<variable name="PRESSURELIMIT"><type><REAL /></type></variable>
+					</inputVars>
+					<outputVars>
+						<variable name="INENDVELOCITY"><type><BOOL /></type></variable>
+						<variable name="POSITIONREACHED"><type><BOOL /></type></variable>
+						<variable name="BUSY"><type><BOOL /></type></variable>
+						<variable name="COMMANDABORTED"><type><BOOL /></type></variable>
+						<variable name="ERROR"><type><BOOL /></type></variable>
+						<variable name="ERRORID"><type><WORD /></type></variable>
+					</outputVars>
+					<localVars>
+						<variable name="EXECUTE0"><type><BOOL /></type></variable>
+						<variable name="INENDVELOCITY0"><type><BOOL /></type></variable>
+						<variable name="POSITIONREACHED0"><type><BOOL /></type></variable>
+						<variable name="_PENDING"><type><BOOL /></type></variable>
+						<variable name="_EXEC_ID"><type><WORD /></type></variable>
+					</localVars>
+				</interface>
+				<body>
+					<ST><![CDATA[{{ extern void __mcl_cmd_MoveContinuousAbsolute(HYD_MOVECONTINUOUSABSOLUTE*); __mcl_cmd_MoveContinuousAbsolute(data__); }} ]]></ST>
+				</body>
+			</pou>
 			<pou name="HYD_MoveVelocity" pouType="functionBlock">
 				<interface>
 					<inputVars>
