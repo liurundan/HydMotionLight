@@ -6,8 +6,6 @@
 #include "motion_interface.h"
 #include "motion_control.h"
 
-extern HYD_MotionControlFB* __MK_GetPublic_MotionControlFB(int index);
-
 #define IEC_VAL(var) ((var).value)
 #define MAX_SIM_STEPS 20000
 
@@ -21,7 +19,7 @@ static int tests_failed = 0;
     else { tests_failed++; printf("  FAIL [line %d]: %s\n", __LINE__, msg); } \
 } while (0)
 
-static int create_sim_axis(void) {
+static int create_axis(bool useSimulation) {
     HYD_CREATEMOTION cm;
 
     memset(&cm, 0, sizeof(cm));
@@ -29,9 +27,17 @@ static int create_sim_axis(void) {
     IEC_VAL(cm.USE_RECIPE) = false;
     IEC_VAL(cm.FLOW_TO_PUMPSPEED) = 1.0f;
     IEC_VAL(cm.PUMPSPEED_LIMIT) = 3000.0f;
-    IEC_VAL(cm.USE_SIMULATION) = true;
+    IEC_VAL(cm.USE_SIMULATION) = useSimulation;
     __mcl_cmd_CreateMotion(&cm);
     return (int)IEC_VAL(cm.AXISID);
+}
+
+static int create_sim_axis(void) {
+    return create_axis(true);
+}
+
+static int create_manual_axis(void) {
+    return create_axis(false);
 }
 
 static void init_movecontinuousabsolute(HYD_MOVECONTINUOUSABSOLUTE* fb,
@@ -78,6 +84,60 @@ static void hold_stop_scan(HYD_STOP* fb) {
     __mcl_cmd_Stop(fb);
 }
 
+static bool read_sim_feedback(int axisId,
+                              HYD_REAL* position,
+                              HYD_REAL* velocity,
+                              HYD_REAL* flow,
+                              HYD_REAL* pressure) {
+    HYD_READSIMFEEDBACK readback;
+
+    memset(&readback, 0, sizeof(readback));
+    IEC_VAL(readback.EN) = true;
+    IEC_VAL(readback.AXISID) = axisId;
+    IEC_VAL(readback.ENABLE) = true;
+    __mcl_cmd_ReadSimFeedback(&readback);
+
+    if (!IEC_VAL(readback.VALID) || IEC_VAL(readback.ERROR)) {
+        return false;
+    }
+
+    if (position != NULL) {
+        *position = IEC_VAL(readback.POSITION);
+    }
+    if (velocity != NULL) {
+        *velocity = IEC_VAL(readback.VELOCITY);
+    }
+    if (flow != NULL) {
+        *flow = IEC_VAL(readback.FLOW);
+    }
+    if (pressure != NULL) {
+        *pressure = IEC_VAL(readback.PRESSURE);
+    }
+    return true;
+}
+
+static bool set_axis_feedback(int axisId,
+                              HYD_REAL position,
+                              HYD_REAL velocity,
+                              HYD_REAL flow,
+                              HYD_REAL pressure,
+                              HYD_REAL timestamp) {
+    HYD_SETAXISFEEDBACK writeback;
+
+    memset(&writeback, 0, sizeof(writeback));
+    IEC_VAL(writeback.EN) = true;
+    IEC_VAL(writeback.AXISID) = axisId;
+    IEC_VAL(writeback.ENABLE) = true;
+    IEC_VAL(writeback.ACT_POSITION) = position;
+    IEC_VAL(writeback.ACT_VELOCITY) = velocity;
+    IEC_VAL(writeback.ACT_FLOW) = flow;
+    IEC_VAL(writeback.ACT_PRESSURE) = pressure;
+    IEC_VAL(writeback.TIMESTAMP) = timestamp;
+    __mcl_cmd_SetAxisFeedback(&writeback);
+
+    return IEC_VAL(writeback.DONE) == true && IEC_VAL(writeback.ERROR) == false;
+}
+
 static int run_until_position_reached(HYD_MOVECONTINUOUSABSOLUTE* fb) {
     for (int step = 0; step < MAX_SIM_STEPS; step++) {
         __HydMotion_framework_Publish();
@@ -100,7 +160,7 @@ static int run_until_inendvelocity(HYD_MOVECONTINUOUSABSOLUTE* fb) {
     return -1;
 }
 
-static bool seed_last_active_direction_negative(int axisId) {
+static bool seed_negative_velocity_history(int axisId, bool stopToZero) {
     HYD_MOVEVELOCITY mv;
     HYD_STOP stop;
 
@@ -118,6 +178,10 @@ static bool seed_last_active_direction_negative(int axisId) {
     for (int step = 0; step < 40; step++) {
         __HydMotion_framework_Publish();
         hold_movevelocity_scan(&mv);
+    }
+
+    if (!stopToZero) {
+        return true;
     }
 
     memset(&stop, 0, sizeof(stop));
@@ -162,21 +226,25 @@ static void test_rejects_invalid_end_velocity_direction(void) {
 
 static void test_current_end_velocity_direction_uses_velocity_then_last_active_direction(void) {
     HYD_MOVECONTINUOUSABSOLUTE cmd;
-    HYD_MotionControlFB* fb;
     int axisId;
     int inEndVelocityStep;
     bool seededNegativeHistory;
+    HYD_REAL finalVelocity = 0.0f;
 
     __HydMotion_framework_Init();
     axisId = create_sim_axis();
     ASSERT_TRUE(axisId >= 0, "CreateMotion should allocate a simulation axis");
-    fb = __MK_GetPublic_MotionControlFB(axisId);
-    ASSERT_TRUE(fb != NULL, "Allocated simulation axis should expose a motion FB");
-    if (axisId < 0 || fb == NULL) {
+    if (axisId < 0) {
         return;
     }
 
-    fb->AXIS_REF.velocity = -5.0f;
+    seededNegativeHistory = seed_negative_velocity_history(axisId, false);
+    ASSERT_TRUE(seededNegativeHistory,
+                "Public commands should be able to create a negative actual velocity before the current-direction case");
+    if (!seededNegativeHistory) {
+        return;
+    }
+
     init_movecontinuousabsolute(&cmd, axisId, 120.0f, 20.0f, 8.0f,
                                 HYD_DIRECTION_POSITIVE,
                                 HYD_DIRECTION_CURRENT);
@@ -185,31 +253,30 @@ static void test_current_end_velocity_direction_uses_velocity_then_last_active_d
     ASSERT_TRUE(inEndVelocityStep > 0,
                 "ENDVELOCITYDIRECTION=CURRENT should eventually reach INENDVELOCITY when starting from a negative actual velocity");
     if (inEndVelocityStep > 0) {
+        ASSERT_TRUE(read_sim_feedback(axisId, NULL, &finalVelocity, NULL, NULL),
+                    "ReadSimFeedback should expose the sustained velocity in the negative-velocity case");
         ASSERT_TRUE(IEC_VAL(cmd.ERROR) == false,
                     "Current-direction command should not error in the negative-velocity case");
         ASSERT_TRUE(IEC_VAL(cmd.COMMANDABORTED) == false,
                     "Current-direction command should not be aborted in the negative-velocity case");
-        ASSERT_TRUE(fb->AXIS_REF.velocity < 0.0f,
+        ASSERT_TRUE(finalVelocity < 0.0f,
                     "Current-direction command should sustain a negative end velocity when the actual velocity starts negative");
     }
 
     __HydMotion_framework_Init();
     axisId = create_sim_axis();
     ASSERT_TRUE(axisId >= 0, "CreateMotion should allocate a second simulation axis");
-    fb = __MK_GetPublic_MotionControlFB(axisId);
-    ASSERT_TRUE(fb != NULL, "Second simulation axis should expose a motion FB");
-    if (axisId < 0 || fb == NULL) {
+    if (axisId < 0) {
         return;
     }
 
-    seededNegativeHistory = seed_last_active_direction_negative(axisId);
+    seededNegativeHistory = seed_negative_velocity_history(axisId, true);
     ASSERT_TRUE(seededNegativeHistory,
                 "Public commands should be able to seed a negative last-active direction before the fallback case");
     if (!seededNegativeHistory) {
         return;
     }
 
-    fb->AXIS_REF.velocity = 0.0f;
     init_movecontinuousabsolute(&cmd, axisId, 120.0f, 20.0f, 8.0f,
                                 HYD_DIRECTION_POSITIVE,
                                 HYD_DIRECTION_CURRENT);
@@ -218,28 +285,28 @@ static void test_current_end_velocity_direction_uses_velocity_then_last_active_d
     ASSERT_TRUE(inEndVelocityStep > 0,
                 "ENDVELOCITYDIRECTION=CURRENT should eventually reach INENDVELOCITY in the zero-velocity fallback case");
     if (inEndVelocityStep > 0) {
+        ASSERT_TRUE(read_sim_feedback(axisId, NULL, &finalVelocity, NULL, NULL),
+                    "ReadSimFeedback should expose the sustained velocity in the zero-velocity fallback case");
         ASSERT_TRUE(IEC_VAL(cmd.ERROR) == false,
                     "Current-direction fallback command should not error after seeding a negative last-active direction");
         ASSERT_TRUE(IEC_VAL(cmd.COMMANDABORTED) == false,
                     "Current-direction fallback command should not be aborted after seeding a negative last-active direction");
-        ASSERT_TRUE(fb->AXIS_REF.velocity < 0.0f,
+        ASSERT_TRUE(finalVelocity < 0.0f,
                     "Current-direction fallback should sustain a negative end velocity after public negative-direction history");
     }
 }
 
 static void test_same_direction_reaches_position_and_end_velocity(void) {
     HYD_MOVECONTINUOUSABSOLUTE cmd;
-    HYD_MotionControlFB* fb;
     int axisId;
     int positionReachedStep;
     int inEndVelocityStep;
+    HYD_REAL finalVelocity = 0.0f;
 
     __HydMotion_framework_Init();
     axisId = create_sim_axis();
     ASSERT_TRUE(axisId >= 0, "CreateMotion should allocate a simulation axis");
-    fb = __MK_GetPublic_MotionControlFB(axisId);
-    ASSERT_TRUE(fb != NULL, "Allocated simulation axis should expose a motion FB");
-    if (axisId < 0 || fb == NULL) {
+    if (axisId < 0) {
         return;
     }
 
@@ -268,27 +335,26 @@ static void test_same_direction_reaches_position_and_end_velocity(void) {
                 "INENDVELOCITY should become true after the sustain velocity settles");
     ASSERT_TRUE(IEC_VAL(cmd.BUSY) == true,
                 "MoveContinuousAbsolute should remain BUSY while sustaining the end velocity");
-    ASSERT_TRUE(fabs(fb->AXIS_REF.velocity) > 0.01f,
+    ASSERT_TRUE(read_sim_feedback(axisId, NULL, &finalVelocity, NULL, NULL),
+                "ReadSimFeedback should expose the sustained velocity in the same-direction case");
+    ASSERT_TRUE(fabs(finalVelocity) > 0.01f,
                 "Axis velocity should remain non-zero after reaching the same-direction end velocity");
 }
 
 static void test_adapt_lowers_crossing_velocity_when_distance_is_too_short_to_accelerate(void) {
     HYD_MOVECONTINUOUSABSOLUTE cmd;
-    HYD_MotionControlFB* fb;
     int axisId;
     int positionReachedStep;
     bool reversedBeforeTarget = false;
+    HYD_REAL observedVelocity = 0.0f;
 
     __HydMotion_framework_Init();
     axisId = create_sim_axis();
     ASSERT_TRUE(axisId >= 0, "CreateMotion should allocate a simulation axis");
-    fb = __MK_GetPublic_MotionControlFB(axisId);
-    ASSERT_TRUE(fb != NULL, "Allocated simulation axis should expose a motion FB");
-    if (axisId < 0 || fb == NULL) {
+    if (axisId < 0) {
         return;
     }
 
-    fb->AXIS_REF.velocity = 0.0f;
     init_movecontinuousabsolute(&cmd, axisId, 5.0f, 10.0f, 40.0f,
                                 HYD_DIRECTION_POSITIVE,
                                 HYD_DIRECTION_POSITIVE);
@@ -300,7 +366,8 @@ static void test_adapt_lowers_crossing_velocity_when_distance_is_too_short_to_ac
         __HydMotion_framework_Publish();
         hold_true_scan(&cmd);
 
-        if (fb->AXIS_REF.velocity < -0.01f) {
+        if (read_sim_feedback(axisId, NULL, &observedVelocity, NULL, NULL) &&
+            observedVelocity < -0.01f) {
             reversedBeforeTarget = true;
         }
         if (IEC_VAL(cmd.POSITIONREACHED)) {
@@ -324,21 +391,27 @@ static void test_adapt_lowers_crossing_velocity_when_distance_is_too_short_to_ac
 
 static void test_adapt_raises_crossing_velocity_when_distance_is_too_short_to_decelerate(void) {
     HYD_MOVECONTINUOUSABSOLUTE cmd;
-    HYD_MotionControlFB* fb;
     int axisId;
     int positionReachedStep;
     bool reversedBeforeTarget = false;
+    HYD_REAL observedVelocity = 0.0f;
+    HYD_REAL manualPosition = 0.0f;
+    HYD_REAL manualVelocity = 35.0f;
+    HYD_REAL timestamp = 0.0f;
+    const HYD_REAL dt = 0.01f;
 
     __HydMotion_framework_Init();
-    axisId = create_sim_axis();
-    ASSERT_TRUE(axisId >= 0, "CreateMotion should allocate a simulation axis");
-    fb = __MK_GetPublic_MotionControlFB(axisId);
-    ASSERT_TRUE(fb != NULL, "Allocated simulation axis should expose a motion FB");
-    if (axisId < 0 || fb == NULL) {
+    axisId = create_manual_axis();
+    ASSERT_TRUE(axisId >= 0, "CreateMotion should allocate a manual-feedback axis");
+    if (axisId < 0) {
         return;
     }
 
-    fb->AXIS_REF.velocity = 35.0f;
+    if (!set_axis_feedback(axisId, manualPosition, manualVelocity, manualVelocity, 5.0f, timestamp)) {
+        ASSERT_TRUE(false,
+                    "SetAxisFeedback should seed a positive high initial velocity for the short decelerate-down case");
+        return;
+    }
     init_movecontinuousabsolute(&cmd, axisId, 6.0f, 35.0f, 5.0f,
                                 HYD_DIRECTION_POSITIVE,
                                 HYD_DIRECTION_POSITIVE);
@@ -347,10 +420,23 @@ static void test_adapt_raises_crossing_velocity_when_distance_is_too_short_to_de
 
     positionReachedStep = -1;
     for (int step = 0; step < MAX_SIM_STEPS; step++) {
+        timestamp += dt;
+        if (!IEC_VAL(cmd.POSITIONREACHED)) {
+            manualPosition += manualVelocity * dt;
+            if (manualPosition > IEC_VAL(cmd.POSITION)) {
+                manualPosition = IEC_VAL(cmd.POSITION);
+            }
+        }
+        if (!set_axis_feedback(axisId, manualPosition, manualVelocity, manualVelocity, 5.0f, timestamp)) {
+            ASSERT_TRUE(false,
+                        "SetAxisFeedback should sustain the public high-velocity precondition for the short decelerate-down case");
+            return;
+        }
         __HydMotion_framework_Publish();
         hold_true_scan(&cmd);
 
-        if (fb->AXIS_REF.velocity < -0.01f) {
+        if (read_sim_feedback(axisId, NULL, &observedVelocity, NULL, NULL) &&
+            observedVelocity < -0.01f) {
             reversedBeforeTarget = true;
         }
         if (IEC_VAL(cmd.POSITIONREACHED)) {
@@ -374,17 +460,15 @@ static void test_adapt_raises_crossing_velocity_when_distance_is_too_short_to_de
 
 static void test_reverse_sustain_delays_inendvelocity(void) {
     HYD_MOVECONTINUOUSABSOLUTE cmd;
-    HYD_MotionControlFB* fb;
     int axisId;
     int positionReachedStep = -1;
     int inEndVelocityStep = -1;
+    HYD_REAL finalVelocity = 0.0f;
 
     __HydMotion_framework_Init();
     axisId = create_sim_axis();
     ASSERT_TRUE(axisId >= 0, "CreateMotion should allocate a simulation axis");
-    fb = __MK_GetPublic_MotionControlFB(axisId);
-    ASSERT_TRUE(fb != NULL, "Allocated simulation axis should expose a motion FB");
-    if (axisId < 0 || fb == NULL) {
+    if (axisId < 0) {
         return;
     }
 
@@ -412,36 +496,50 @@ static void test_reverse_sustain_delays_inendvelocity(void) {
                 "Reverse sustain should eventually reach INENDVELOCITY");
     ASSERT_TRUE(positionReachedStep > 0 && inEndVelocityStep > positionReachedStep,
                 "Reverse sustain should latch POSITIONREACHED before INENDVELOCITY");
-    ASSERT_TRUE(fb->AXIS_REF.velocity < 0.0f,
+    ASSERT_TRUE(read_sim_feedback(axisId, NULL, &finalVelocity, NULL, NULL),
+                "ReadSimFeedback should expose the sustained velocity in the reverse case");
+    ASSERT_TRUE(finalVelocity < 0.0f,
                 "Final sustained velocity should be negative for reverse sustain");
 }
 
 static void test_pressure_limit_can_hold_positionreached_true_while_inendvelocity_stays_false(void) {
     HYD_MOVECONTINUOUSABSOLUTE cmd;
-    HYD_MotionControlFB* fb;
     int axisId;
     bool sawSplitState = false;
     bool sawPositionReached = false;
+    HYD_REAL manualPosition = 0.0f;
+    HYD_REAL manualVelocity = 18.0f;
+    HYD_REAL timestamp = 0.0f;
+    const HYD_REAL dt = 0.01f;
 
     __HydMotion_framework_Init();
-    axisId = create_sim_axis();
-    ASSERT_TRUE(axisId >= 0, "CreateMotion should allocate a simulation axis");
-    fb = __MK_GetPublic_MotionControlFB(axisId);
-    ASSERT_TRUE(fb != NULL, "Allocated simulation axis should expose a motion FB");
-    if (axisId < 0 || fb == NULL) {
+    axisId = create_manual_axis();
+    ASSERT_TRUE(axisId >= 0, "CreateMotion should allocate a manual-feedback axis");
+    if (axisId < 0) {
         return;
     }
 
-    fb->PRESSURE_LIMIT = 2.0f;
-    fb->AXIS_REF.pressure = 20.0f;
+    ASSERT_TRUE(set_axis_feedback(axisId, manualPosition, manualVelocity, manualVelocity, 20.0f, timestamp),
+                "SetAxisFeedback should seed the manual axis before the pressure-limit case");
     init_movecontinuousabsolute(&cmd, axisId, 80.0f, 20.0f, 12.0f,
                                 HYD_DIRECTION_POSITIVE,
                                 HYD_DIRECTION_POSITIVE);
-    IEC_VAL(cmd.PRESSURELIMIT) = 0.0f;
+    IEC_VAL(cmd.PRESSURELIMIT) = 2.0f;
     rising_edge_scan(&cmd);
 
     for (int step = 0; step < MAX_SIM_STEPS; step++) {
-        fb->AXIS_REF.pressure = 20.0f;
+        timestamp += dt;
+        if (!IEC_VAL(cmd.POSITIONREACHED)) {
+            manualPosition += manualVelocity * dt;
+            if (manualPosition > IEC_VAL(cmd.POSITION)) {
+                manualPosition = IEC_VAL(cmd.POSITION);
+            }
+        }
+        if (!set_axis_feedback(axisId, manualPosition, manualVelocity, manualVelocity, 20.0f, timestamp)) {
+            ASSERT_TRUE(false,
+                        "SetAxisFeedback should keep pressure limiting active on the manual axis");
+            return;
+        }
         __HydMotion_framework_Publish();
         hold_true_scan(&cmd);
 
