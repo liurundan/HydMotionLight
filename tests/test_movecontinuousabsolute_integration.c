@@ -68,26 +68,21 @@ static void init_movecontinuousabsolute(HYD_MOVECONTINUOUSABSOLUTE* fb,
 
 static void rising_edge_scan(HYD_MOVECONTINUOUSABSOLUTE* fb) {
     IEC_VAL(fb->EXECUTE) = true;
-    fb->EXECUTE0.value = false;
     __mcl_cmd_MoveContinuousAbsolute(fb);
-    fb->EXECUTE0.value = true;
 }
 
 static void hold_true_scan(HYD_MOVECONTINUOUSABSOLUTE* fb) {
     IEC_VAL(fb->EXECUTE) = true;
-    fb->EXECUTE0.value = true;
     __mcl_cmd_MoveContinuousAbsolute(fb);
 }
 
 static void hold_movevelocity_scan(HYD_MOVEVELOCITY* fb) {
     IEC_VAL(fb->EXECUTE) = true;
-    fb->EXECUTE0.value = true;
     __mcl_cmd_MoveVelocity(fb);
 }
 
 static void hold_stop_scan(HYD_STOP* fb) {
     IEC_VAL(fb->EXECUTE) = true;
-    fb->EXECUTE0.value = true;
     __mcl_cmd_Stop(fb);
 }
 
@@ -191,7 +186,6 @@ static bool seed_negative_velocity_history(int axisId, bool stopToZero) {
     IEC_VAL(mv.DECELERATION) = 100.0f;
     IEC_VAL(mv.DIRECTION) = HYD_DIRECTION_NEGATIVE;
     IEC_VAL(mv.EXECUTE) = true;
-    mv.EXECUTE0.value = false;
     __mcl_cmd_MoveVelocity(&mv);
 
     for (int step = 0; step < 40; step++) {
@@ -208,7 +202,6 @@ static bool seed_negative_velocity_history(int axisId, bool stopToZero) {
     IEC_VAL(stop.AXISID) = axisId;
     IEC_VAL(stop.DECELERATION) = 100.0f;
     IEC_VAL(stop.EXECUTE) = true;
-    stop.EXECUTE0.value = false;
     __mcl_cmd_Stop(&stop);
 
     for (int step = 0; step < MAX_SIM_STEPS; step++) {
@@ -509,7 +502,6 @@ static void test_adapt_raises_crossing_velocity_when_distance_is_too_short_to_de
     IEC_VAL(mv.DECELERATION) = 100.0f;
     IEC_VAL(mv.DIRECTION) = HYD_DIRECTION_POSITIVE;
     IEC_VAL(mv.EXECUTE) = true;
-    mv.EXECUTE0.value = false;
     __mcl_cmd_MoveVelocity(&mv);
 
     for (int step = 0; step < MAX_SIM_STEPS; step++) {
@@ -747,7 +739,6 @@ static void test_stop_takes_over_and_sets_commandaborted(void) {
     IEC_VAL(stop.AXISID) = axisId;
     IEC_VAL(stop.DECELERATION) = 80.0f;
     IEC_VAL(stop.EXECUTE) = true;
-    stop.EXECUTE0.value = false;
     __mcl_cmd_Stop(&stop);
 
     for (int step = 0; step < MAX_SIM_STEPS; step++) {
@@ -755,7 +746,6 @@ static void test_stop_takes_over_and_sets_commandaborted(void) {
         hold_true_scan(&cmd);
 
         IEC_VAL(stop.EXECUTE) = true;
-        stop.EXECUTE0.value = true;
         __mcl_cmd_Stop(&stop);
 
         if (IEC_VAL(cmd.COMMANDABORTED)) {
