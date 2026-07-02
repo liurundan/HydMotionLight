@@ -489,6 +489,27 @@ static HYD_BOOL applyPressureHandleLiveUpdate(HYD_MotionControlFB* fb,
     return HYD_MotionControlFB_ApplyLiveUpdate(fb, &request);
 }
 
+static HYD_DirectCommandKind inferAdapterDirectKind(const HYD_MotionSegment* segment) {
+    if (segment == NULL) {
+        return HYD_DIRECT_CMD_NONE;
+    }
+
+    if (segment->mode == HYD_MODE_POSITION &&
+        segment->endCondition == HYD_END_POSITION) {
+        return HYD_DIRECT_CMD_MOVE_ABSOLUTE;
+    }
+
+    if (segment->mode == HYD_MODE_SPEED_RAMP) {
+        return HYD_DIRECT_CMD_MOVE_VELOCITY;
+    }
+
+    if (segment->mode == HYD_MODE_PRESSURE_CLOSED_LOOP) {
+        return HYD_DIRECT_CMD_PRESSURE_HANDLE;
+    }
+
+    return HYD_DIRECT_CMD_NONE;
+}
+
 static HYD_DirectStartResult startDirectSegmentExecution(HYD_MotionControlFB* fb,
                                                          IEC_INT bufferMode,
                                                          const HYD_MotionSegment* segment,
@@ -508,7 +529,9 @@ static HYD_DirectStartResult startDirectSegmentExecution(HYD_MotionControlFB* fb
     }
 
     result = HYD_MotionControlFB_StartDirectCommand(fb,
+                                                    inferAdapterDirectKind(segment),
                                                     segment,
+                                                    NULL,
                                                     (HYD_BufferMode)bufferMode,
                                                     fb->AXIS_REF.timestamp);
     if (result == HYD_DIRECT_START_REJECTED) {

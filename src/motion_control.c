@@ -40,6 +40,9 @@ static HYD_BOOL HYD_RunRunningStateCompletion(HYD_MotionControlFB* fb,
                                               const HYD_MotionPlannerOutput* plannerOutput,
                                               const HYD_ExecutionReference* executionReference);
 static HYD_DirectCommandKind HYD_InferDirectCommandKindFromSegment(const HYD_MotionSegment* segment);
+static void HYD_ClearContinuousAbsoluteContext(HYD_ContinuousAbsoluteContext* ctx);
+static void HYD_CopyContinuousAbsoluteContext(HYD_ContinuousAbsoluteContext* dst,
+                                              const HYD_ContinuousAbsoluteContext* src);
 static void HYD_PrimeSegmentControllers(HYD_MotionControlFB* fb,
                                         const HYD_MotionSegment* segment,
                                         HYD_TIME timestamp,
@@ -342,6 +345,29 @@ static void HYD_ClearPendingCommand(HYD_MotionControlFB* fb) {
     fb->_pendingCommandTimestamp = 0.0;
 }
 
+static void HYD_ClearContinuousAbsoluteContext(HYD_ContinuousAbsoluteContext* ctx) {
+    if (ctx == NULL) {
+        return;
+    }
+
+    memset(ctx, 0, sizeof(*ctx));
+    ctx->phase = HYD_CONTABS_PHASE_NONE;
+}
+
+static void HYD_CopyContinuousAbsoluteContext(HYD_ContinuousAbsoluteContext* dst,
+                                              const HYD_ContinuousAbsoluteContext* src) {
+    if (dst == NULL) {
+        return;
+    }
+
+    if (src == NULL || !src->valid) {
+        HYD_ClearContinuousAbsoluteContext(dst);
+        return;
+    }
+
+    *dst = *src;
+}
+
 static HYD_REAL HYD_ResolveSegmentBrakingAccelerationForBlend(const HYD_MotionSegment* segment) {
     if (segment == NULL) {
         return 0.0;
@@ -616,6 +642,7 @@ void HYD_ClearDirectPendingSlot(HYD_MotionControlFB* fb) {
     fb->_directPendingValid = false;
     memset(&fb->_directPendingSegment, 0, sizeof(fb->_directPendingSegment));
     fb->_directPendingKind = HYD_DIRECT_CMD_NONE;
+    HYD_ClearContinuousAbsoluteContext(&fb->_directPendingContinuousAbsolute);
     fb->_directPendingBufferMode = HYD_BUFFER_MODE_ABORT;
     HYD_ClearDirectBlendContext(fb);
 }
@@ -1115,6 +1142,8 @@ static HYD_BOOL HYD_StartPendingDirectSlot(HYD_MotionControlFB* fb,
                                            HYD_TIME timestamp,
                                            HYD_BOOL preservePlannerState) {
     HYD_MotionSegment segment;
+    HYD_DirectCommandKind pendingKind;
+    HYD_ContinuousAbsoluteContext pendingContinuousAbsolute;
     HYD_BOOL savedUseRecipe;
     HYD_MotionPlannerState preservedPlannerState;
     HYD_REAL preservedPumpSpeed = 0.0;
@@ -1131,6 +1160,9 @@ static HYD_BOOL HYD_StartPendingDirectSlot(HYD_MotionControlFB* fb,
     }
 
     segment = fb->_directPendingSegment;
+    pendingKind = fb->_directPendingKind;
+    HYD_CopyContinuousAbsoluteContext(&pendingContinuousAbsolute,
+                                      &fb->_directPendingContinuousAbsolute);
     preservedPlannerState = fb->_plannerState;
     if (preservePlannerState) {
         HYD_REAL preservedVelocityMagnitude = HYD_MotionUtils_AbsReal(preservedPlannerState.lastTargetVelocity);
@@ -1182,6 +1214,10 @@ static HYD_BOOL HYD_StartPendingDirectSlot(HYD_MotionControlFB* fb,
         fb->USE_RECIPE = savedUseRecipe;
         return false;
     }
+    fb->_directOwnerKind = pendingKind;
+    HYD_CopyContinuousAbsoluteContext(&fb->_directContinuousAbsolute,
+                                      &pendingContinuousAbsolute);
+    fb->_directContinuousAbsolute.ownerTicket = fb->_directOwnerTicket;
     if (preservePlannerState) {
         fb->_plannerState = preservedPlannerState;
         /* Blended cutover stays inside one continuous motion command stream.
@@ -1308,6 +1344,9 @@ static void HYD_AbortNow(HYD_MotionControlFB* fb,
     HYD_StateReporter_ClearSegmentTag(fb);
     HYD_StateReporter_SetSegmentSource(fb, HYD_SEGMENT_SOURCE_NONE);
     fb->_directSessionState = HYD_DIRECT_SESSION_ABORTED;
+    fb->_directOwnerKind = HYD_DIRECT_CMD_NONE;
+    fb->_directOwnerTicket = 0U;
+    HYD_ClearContinuousAbsoluteContext(&fb->_directContinuousAbsolute);
     HYD_ClearDirectPendingSlot(fb);
     HYD_StateReporter_SetFbState(fb, HYD_FB_STATE_ABORTED);
     HYD_StateReporter_ReportDiagnostic(fb,
@@ -2726,6 +2765,7 @@ void HYD_MotionControlFB_Init(HYD_MotionControlFB* fb) {
     memset(&fb->_directCompletedTicket, 0, sizeof(fb->_directCompletedTicket));
     memset(fb->_directPreemptedTickets, 0, sizeof(fb->_directPreemptedTickets));
     fb->_directPreemptedCount = 0U;
+    HYD_ClearContinuousAbsoluteContext(&fb->_directContinuousAbsolute);
     fb->_isStopping = false;
     fb->_stopStartTime = 0.0;
     fb->_simStopStartTick = 0U;
@@ -2814,6 +2854,7 @@ void HYD_MotionControlFB_SoftReset(HYD_MotionControlFB* fb) {
     memset(&fb->_directCompletedTicket, 0, sizeof(fb->_directCompletedTicket));
     memset(fb->_directPreemptedTickets, 0, sizeof(fb->_directPreemptedTickets));
     fb->_directPreemptedCount = 0U;
+    HYD_ClearContinuousAbsoluteContext(&fb->_directContinuousAbsolute);
     fb->_isStopping = false;
     fb->_stopStartTime = 0.0;
     fb->_simStopStartTick = 0U;
@@ -2926,7 +2967,9 @@ HYD_BOOL HYD_MotionControlFB_LoadDirectSegment(HYD_MotionControlFB* fb,
 }
 
 HYD_DirectStartResult HYD_MotionControlFB_StartDirectCommand(HYD_MotionControlFB* fb,
+                                                             HYD_DirectCommandKind kind,
                                                              const HYD_MotionSegment* segment,
+                                                             const HYD_ContinuousAbsoluteContext* continuousAbsolute,
                                                              HYD_BufferMode bufferMode,
                                                              HYD_TIME timestamp) {
     HYD_DiagnosticCode code = HYD_DIAG_CODE_NONE;
@@ -3003,6 +3046,10 @@ HYD_DirectStartResult HYD_MotionControlFB_StartDirectCommand(HYD_MotionControlFB
             HYD_AbortNow(fb, timestamp);
         }
         (void)HYD_BeginSegment(fb, 0U, timestamp);
+        fb->_directOwnerKind = kind;
+        HYD_CopyContinuousAbsoluteContext(&fb->_directContinuousAbsolute,
+                                          continuousAbsolute);
+        fb->_directContinuousAbsolute.ownerTicket = fb->_directOwnerTicket;
         fb->USE_RECIPE = savedUseRecipe;
         return HYD_DIRECT_START_STARTED;
     }
@@ -3022,7 +3069,9 @@ HYD_DirectStartResult HYD_MotionControlFB_StartDirectCommand(HYD_MotionControlFB
             return HYD_DIRECT_START_REJECTED;
         }
         fb->_directPendingSegment = *segment;
-        fb->_directPendingKind = HYD_InferDirectCommandKindFromSegment(segment);
+        fb->_directPendingKind = kind;
+        HYD_CopyContinuousAbsoluteContext(&fb->_directPendingContinuousAbsolute,
+                                          continuousAbsolute);
         fb->_directPendingBufferMode = bufferMode;
         fb->_directPendingValid = true;
         (void)HYD_TryCreateDirectBlendContext(fb, bufferMode, segment);
@@ -3049,6 +3098,10 @@ HYD_DirectStartResult HYD_MotionControlFB_StartDirectCommand(HYD_MotionControlFB
         fb->USE_RECIPE = savedUseRecipe;
         return HYD_DIRECT_START_REJECTED;
     }
+    fb->_directOwnerKind = kind;
+    HYD_CopyContinuousAbsoluteContext(&fb->_directContinuousAbsolute,
+                                      continuousAbsolute);
+    fb->_directContinuousAbsolute.ownerTicket = fb->_directOwnerTicket;
     fb->USE_RECIPE = savedUseRecipe;
     return HYD_DIRECT_START_STARTED;
 }

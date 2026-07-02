@@ -170,10 +170,17 @@ typedef enum {
 typedef enum {
     HYD_DIRECT_CMD_NONE = 0,
     HYD_DIRECT_CMD_MOVE_ABSOLUTE,
+    HYD_DIRECT_CMD_MOVE_CONTINUOUS_ABSOLUTE,
     HYD_DIRECT_CMD_MOVE_VELOCITY,
     HYD_DIRECT_CMD_PRESSURE_HANDLE,
     HYD_DIRECT_CMD_STOP
 } HYD_DirectCommandKind;
+
+typedef enum {
+    HYD_CONTABS_PHASE_NONE = 0,
+    HYD_CONTABS_PHASE_APPROACH,
+    HYD_CONTABS_PHASE_SUSTAIN
+} HYD_ContinuousAbsolutePhase;
 
 typedef enum {
     HYD_DIRECT_SESSION_IDLE = 0,
@@ -220,6 +227,21 @@ typedef struct {
     HYD_REAL pressureRampRate;
     HYD_MotionDirection direction;
 } HYD_LiveUpdateRequest;
+
+typedef struct {
+    HYD_BOOL valid;
+    uint16_t ownerTicket;
+    HYD_ContinuousAbsolutePhase phase;
+    HYD_REAL targetPosition;
+    HYD_REAL crossingVelocity;
+    HYD_REAL sustainVelocity;
+    HYD_REAL effectivePressureLimit;
+    HYD_BOOL adaptEndVelEnabled;
+    HYD_MotionDirection approachDirection;
+    HYD_MotionDirection sustainDirection;
+    HYD_BOOL positionReachedLatched;
+    HYD_BOOL inEndVelocityLatched;
+} HYD_ContinuousAbsoluteContext;
 
 typedef struct {
     /* ═══════════════════════════════════════════════════════════════════════
@@ -304,9 +326,11 @@ typedef struct {
     HYD_DirectTicketRecord _directCompletedTicket;
     HYD_DirectTicketRecord _directPreemptedTickets[HYD_DIRECT_PREEMPTED_HISTORY_CAPACITY];
     HYD_UINT8 _directPreemptedCount;
+    HYD_ContinuousAbsoluteContext _directContinuousAbsolute;
     HYD_BOOL _directPendingValid;
     HYD_MotionSegment _directPendingSegment;
     HYD_DirectCommandKind _directPendingKind;
+    HYD_ContinuousAbsoluteContext _directPendingContinuousAbsolute;
     HYD_BufferMode _directPendingBufferMode;
     HYD_MotionBlendContext _directBlendContext;
 
@@ -480,7 +504,9 @@ HYD_BOOL HYD_MotionControlFB_ConsumeDirectTicketCompleted(HYD_MotionControlFB* f
 HYD_BOOL HYD_MotionControlFB_ApplyLiveUpdate(HYD_MotionControlFB* fb,
                                              const HYD_LiveUpdateRequest* request);
 HYD_DirectStartResult HYD_MotionControlFB_StartDirectCommand(HYD_MotionControlFB* fb,
+                                                             HYD_DirectCommandKind kind,
                                                              const HYD_MotionSegment* segment,
+                                                             const HYD_ContinuousAbsoluteContext* continuousAbsolute,
                                                              HYD_BufferMode bufferMode,
                                                              HYD_TIME timestamp);
 
