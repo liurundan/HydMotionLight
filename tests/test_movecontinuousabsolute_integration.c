@@ -411,6 +411,69 @@ static void test_same_direction_reaches_position_and_end_velocity(void) {
                 "Axis velocity should remain non-zero after reaching the same-direction end velocity");
 }
 
+static void test_same_direction_keeps_velocity_across_position_to_sustain_switch(void) {
+    HYD_MOVECONTINUOUSABSOLUTE cmd;
+    HYD_MotionControlFB* core;
+    int axisId;
+    int positionReachedStep = RUN_TIMEOUT;
+    HYD_REAL velocityAtCrossing = 0.0f;
+
+    __HydMotion_framework_Init();
+    axisId = create_sim_axis();
+    ASSERT_TRUE(axisId >= 0, "CreateMotion should allocate a simulation axis");
+    if (axisId < 0) {
+        return;
+    }
+
+    core = __MK_GetPublic_MotionControlFB(axisId);
+    ASSERT_TRUE(core != NULL, "Public motion FB should be available for sustain continuity test");
+    if (core == NULL) {
+        return;
+    }
+
+    init_movecontinuousabsolute(&cmd, axisId, 20.0f, 5.0f, 5.0f,
+                                HYD_DIRECTION_POSITIVE,
+                                HYD_DIRECTION_POSITIVE);
+    rising_edge_scan(&cmd);
+
+    for (int step = 0; step < MAX_SIM_STEPS; step++) {
+        __HydMotion_framework_Publish();
+        hold_true_scan(&cmd);
+
+        if (IEC_VAL(cmd.POSITIONREACHED)) {
+            positionReachedStep = step + 1;
+            velocityAtCrossing = core->AXIS_REF.velocity;
+            break;
+        }
+        if (IEC_VAL(cmd.ERROR)) {
+            positionReachedStep = RUN_ERROR;
+            break;
+        }
+        if (IEC_VAL(cmd.COMMANDABORTED)) {
+            positionReachedStep = RUN_ABORTED;
+            break;
+        }
+    }
+
+    assert_run_result(positionReachedStep,
+                      "Same-direction MoveContinuousAbsolute should reach POSITIONREACHED before sustain continuity is checked");
+    if (positionReachedStep <= 0) {
+        return;
+    }
+
+    __HydMotion_framework_Publish();
+    hold_true_scan(&cmd);
+
+    ASSERT_TRUE(velocityAtCrossing > 4.0f,
+                "The approach segment should hit the target while already moving near the requested end velocity");
+    ASSERT_TRUE(core->STATE.plannedVelocity >= velocityAtCrossing - 0.25f,
+                "Position-to-sustain switch should preserve plannedVelocity instead of restarting from zero");
+    ASSERT_TRUE(core->_simFeedback.targetVelocity >= velocityAtCrossing - 0.25f,
+                "Position-to-sustain switch should preserve simulation feedback velocity instead of restarting from zero");
+    ASSERT_TRUE(core->AXIS_REF.velocity >= velocityAtCrossing - 0.25f,
+                "Position-to-sustain switch should preserve axis velocity instead of restarting from zero");
+}
+
 static void test_negative_same_direction_latches_inendvelocity_on_target_crossing(void) {
     HYD_MOVECONTINUOUSABSOLUTE cmd;
     int axisId;
@@ -802,6 +865,92 @@ static void test_pressure_limit_fault_surfaces_as_error(void) {
                 "Fault-level pressure limiting should clear Busy on the command");
 }
 
+static void test_chained_same_direction_segments_keep_end_velocity_on_takeover_scan(void) {
+    HYD_MOVECONTINUOUSABSOLUTE first;
+    HYD_MOVECONTINUOUSABSOLUTE second;
+    HYD_MotionControlFB* core;
+    int axisId;
+    int inEndVelocityStep = RUN_TIMEOUT;
+    HYD_REAL velocityBeforeTakeover = 0.0f;
+    HYD_REAL plannedVelocityAfterTakeover;
+    HYD_REAL feedbackVelocityAfterTakeover;
+    HYD_REAL observedVelocityAfterTakeover = 0.0f;
+    bool readOk;
+
+    __HydMotion_framework_Init();
+    axisId = create_sim_axis();
+    ASSERT_TRUE(axisId >= 0, "CreateMotion should allocate a simulation axis");
+    if (axisId < 0) {
+        return;
+    }
+
+    core = __MK_GetPublic_MotionControlFB(axisId);
+    ASSERT_TRUE(core != NULL, "Public motion FB should be available for chained takeover test");
+    if (core == NULL) {
+        return;
+    }
+
+    init_movecontinuousabsolute(&first, axisId, 20.0f, 5.0f, 5.0f,
+                                HYD_DIRECTION_POSITIVE,
+                                HYD_DIRECTION_POSITIVE);
+    rising_edge_scan(&first);
+
+    for (int step = 0; step < MAX_SIM_STEPS; step++) {
+        __HydMotion_framework_Publish();
+        hold_true_scan(&first);
+
+        if (IEC_VAL(first.INENDVELOCITY)) {
+            inEndVelocityStep = step + 1;
+            velocityBeforeTakeover = core->AXIS_REF.velocity;
+            break;
+        }
+        if (IEC_VAL(first.ERROR)) {
+            inEndVelocityStep = RUN_ERROR;
+            break;
+        }
+        if (IEC_VAL(first.COMMANDABORTED)) {
+            inEndVelocityStep = RUN_ABORTED;
+            break;
+        }
+    }
+
+    assert_run_result(inEndVelocityStep,
+                      "The first MoveContinuousAbsolute should reach INENDVELOCITY before chaining");
+    if (inEndVelocityStep <= 0) {
+        return;
+    }
+
+    init_movecontinuousabsolute(&second, axisId, 40.0f, 10.0f, 10.0f,
+                                HYD_DIRECTION_POSITIVE,
+                                HYD_DIRECTION_POSITIVE);
+
+    /* Reproduce the field scan order:
+     *   previous scan observed FB1.INENDVELOCITY = TRUE
+     *   current scan executes FB1() -> FB2() -> Publish() -> read outputs
+     */
+    hold_true_scan(&first);
+    rising_edge_scan(&second);
+    __HydMotion_framework_Publish();
+
+    plannedVelocityAfterTakeover = core->STATE.plannedVelocity;
+    feedbackVelocityAfterTakeover = core->_simFeedback.targetVelocity;
+    readOk = read_sim_feedback(axisId, NULL, &observedVelocityAfterTakeover, NULL, NULL);
+    ASSERT_TRUE(readOk,
+                "ReadSimFeedback should expose the chained takeover velocity");
+    if (!readOk) {
+        return;
+    }
+
+    ASSERT_TRUE(velocityBeforeTakeover > 4.0f,
+                "The first segment should already sustain its end velocity before the chained takeover");
+    ASSERT_TRUE(plannedVelocityAfterTakeover >= velocityBeforeTakeover - 0.25f,
+                "Chained MoveContinuousAbsolute should preserve the previous end velocity in plannedVelocity on the takeover scan");
+    ASSERT_TRUE(feedbackVelocityAfterTakeover >= velocityBeforeTakeover - 0.25f,
+                "Chained MoveContinuousAbsolute should preserve the previous end velocity in simulation feedback on the takeover scan");
+    ASSERT_TRUE(observedVelocityAfterTakeover >= velocityBeforeTakeover - 0.25f,
+                "Chained MoveContinuousAbsolute should preserve the previous end velocity in axis feedback on the takeover scan");
+}
+
 static void test_stop_takes_over_and_sets_commandaborted(void) {
     HYD_MOVECONTINUOUSABSOLUTE cmd;
     HYD_STOP stop;
@@ -875,12 +1024,14 @@ int main(void) {
     test_rejects_invalid_end_velocity_direction();
     test_current_end_velocity_direction_uses_velocity_then_last_active_direction();
     test_same_direction_reaches_position_and_end_velocity();
+    test_same_direction_keeps_velocity_across_position_to_sustain_switch();
     test_negative_same_direction_latches_inendvelocity_on_target_crossing();
     test_adapt_lowers_crossing_velocity_when_distance_is_too_short_to_accelerate();
     test_adapt_raises_crossing_velocity_when_distance_is_too_short_to_decelerate();
     test_reverse_sustain_delays_inendvelocity();
     test_pressure_limit_can_hold_positionreached_true_while_inendvelocity_stays_false();
     test_pressure_limit_fault_surfaces_as_error();
+    test_chained_same_direction_segments_keep_end_velocity_on_takeover_scan();
     test_stop_takes_over_and_sets_commandaborted();
 
     printf("\n=== Results: %d/%d passed ===\n", tests_passed, tests_run);
