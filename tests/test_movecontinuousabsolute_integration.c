@@ -238,6 +238,65 @@ static void assert_run_result(int result, const char* successMsg) {
     ASSERT_TRUE(result > 0, successMsg);
 }
 
+static void test_zero_end_velocity_direction_defaults_to_current(void) {
+    HYD_MOVECONTINUOUSABSOLUTE cmd;
+    int axisId;
+    int inEndVelocityStep;
+    bool seededNegativeHistory;
+    HYD_REAL seededVelocity = 0.0f;
+    HYD_REAL finalVelocity = 0.0f;
+
+    __HydMotion_framework_Init();
+    axisId = create_sim_axis();
+    ASSERT_TRUE(axisId >= 0, "CreateMotion should allocate a simulation axis");
+    if (axisId < 0) {
+        return;
+    }
+
+    seededNegativeHistory = seed_negative_velocity_history(axisId, false);
+    ASSERT_TRUE(seededNegativeHistory,
+                "Public commands should be able to create a negative actual velocity before the default current-direction case");
+    if (!seededNegativeHistory) {
+        return;
+    }
+    {
+        bool readOk = read_sim_feedback(axisId, NULL, &seededVelocity, NULL, NULL);
+        ASSERT_TRUE(readOk,
+                    "ReadSimFeedback should expose the seeded negative actual velocity before the default current-direction case");
+        if (!readOk) {
+            return;
+        }
+    }
+    ASSERT_TRUE(seededVelocity < -VELOCITY_EPSILON,
+                "The default current-direction case should start from a proven negative actual velocity");
+
+    init_movecontinuousabsolute(&cmd, axisId, 120.0f, 20.0f, 8.0f,
+                                HYD_DIRECTION_POSITIVE,
+                                0);
+    rising_edge_scan(&cmd);
+    inEndVelocityStep = run_until_inendvelocity(&cmd);
+    assert_run_result(inEndVelocityStep,
+                      "ENDVELOCITYDIRECTION=0 should default to CURRENT and eventually reach INENDVELOCITY");
+    if (inEndVelocityStep <= 0) {
+        return;
+    }
+
+    {
+        bool readOk = read_sim_feedback(axisId, NULL, &finalVelocity, NULL, NULL);
+        ASSERT_TRUE(readOk,
+                    "ReadSimFeedback should expose the sustained velocity in the default current-direction case");
+        if (!readOk) {
+            return;
+        }
+    }
+    ASSERT_TRUE(IEC_VAL(cmd.ERROR) == false,
+                "ENDVELOCITYDIRECTION=0 should not error");
+    ASSERT_TRUE(IEC_VAL(cmd.COMMANDABORTED) == false,
+                "ENDVELOCITYDIRECTION=0 should not be aborted");
+    ASSERT_TRUE(finalVelocity < 0.0f,
+                "ENDVELOCITYDIRECTION=0 should sustain a negative end velocity when the actual velocity starts negative");
+}
+
 static void test_rejects_invalid_end_velocity_direction(void) {
     HYD_MOVECONTINUOUSABSOLUTE cmd;
     int axisId;
@@ -251,11 +310,13 @@ static void test_rejects_invalid_end_velocity_direction(void) {
 
     init_movecontinuousabsolute(&cmd, axisId, 100.0f, 20.0f, 8.0f,
                                 HYD_DIRECTION_POSITIVE,
-                                HYD_DIRECTION_SHORTEST_WAY);
+                                4);
     rising_edge_scan(&cmd);
 
     ASSERT_TRUE(IEC_VAL(cmd.ERROR) == true,
-                "ENDVELOCITYDIRECTION=0 should be rejected");
+                "ENDVELOCITYDIRECTION values above CURRENT should be rejected");
+    ASSERT_TRUE(IEC_VAL(cmd.ERRORID) == HYD_DIAG_CODE_COMMAND_NOT_ALLOWED,
+                "Invalid ENDVELOCITYDIRECTION should surface COMMAND_NOT_ALLOWED");
 }
 
 static void test_current_end_velocity_direction_uses_velocity_then_last_active_direction(void) {
@@ -1021,6 +1082,7 @@ static void test_stop_takes_over_and_sets_commandaborted(void) {
 int main(void) {
     printf("=== MoveContinuousAbsolute integration ===\n\n");
 
+    test_zero_end_velocity_direction_defaults_to_current();
     test_rejects_invalid_end_velocity_direction();
     test_current_end_velocity_direction_uses_velocity_then_last_active_direction();
     test_same_direction_reaches_position_and_end_velocity();

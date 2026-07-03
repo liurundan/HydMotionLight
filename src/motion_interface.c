@@ -86,6 +86,10 @@ static HYD_MotionDirection mapContinuousEndVelocityDirectionRequest(IEC_SINT dir
     }
 
     switch ((int)direction) {
+        case 0:
+            /* Unset IEC inputs arrive as zero; treat that as CURRENT so
+             * defaulted callers use the existing runtime resolution chain. */
+            return HYD_DIRECTION_CURRENT;
         case 1:
             return HYD_DIRECTION_POSITIVE;
         case 2:
