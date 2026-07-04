@@ -1186,15 +1186,19 @@ static void HYD_PrimeSegmentControllers(HYD_MotionControlFB* fb,
     fb->_lastFeedbackTimestamp = controllerTime;
     fb->_simLastFeedbackTick = fb->_simTick;
     HYD_RampController_Init(&fb->_rampController, fb->AXIS_REF.pressure, controllerTime);
-    /* Sprint 2: Carry over velocity state for bumpless transitions.
+    /* Sprint 2: Carry over velocity state for bumpless transitions only
+     * when the caller explicitly allows continuity seeding.
      * P->V: seed with _lastCommandedFlow / velocityToFlowGain
-     * S->S: retain lastTargetVelocity from previous segment */
+     * S->S: retain lastTargetVelocity from previous segment
+     *
+     * Fresh starts after Stop / restart / direction-flip pass
+     * allowFlowCarryover=false and must begin from zero. */
     {
         HYD_REAL carriedVelocity = 0.0;
         HYD_REAL carriedFlow = 0.0;
         HYD_BOOL doCarryover = false;
 
-        if (segment->mode == HYD_MODE_SPEED_RAMP) {
+        if (allowFlowCarryover && segment->mode == HYD_MODE_SPEED_RAMP) {
             if (fb->_previousSegmentMode == HYD_MODE_PRESSURE_CLOSED_LOOP) {
                 HYD_REAL gain = segment->velocityToFlowGain;
                 if (gain <= 0.0) { gain = 1.0; }
