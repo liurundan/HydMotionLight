@@ -1963,6 +1963,7 @@ static void HYD_UpdateExecutionDiagnostics(HYD_MotionControlFB* fb,
     HYD_REAL velocityTolerance;
     HYD_REAL velocityReferenceAbs;
     HYD_REAL actualVelocityAbs;
+    HYD_REAL settledVelocityTolerance;
     HYD_DiagnosticResult pressureResult;
     HYD_DiagnosticResult flowResult;
     HYD_DiagnosticResult velocityResult;
@@ -2232,11 +2233,12 @@ static void HYD_UpdateExecutionDiagnostics(HYD_MotionControlFB* fb,
     /* --- Position diagnostics --- */
     velocityReferenceAbs = fabs(executionReference->velocityReference);
     actualVelocityAbs = fabs(fb->AXIS_REF.velocity);
+    settledVelocityTolerance = (velocityTolerance > 0.0) ? velocityTolerance : 1.0;
     /* Position deviation is only meaningful when the actuator is near the
      * target (both reference and actual velocity are near-zero). During
      * motion the position error equals remaining travel, not a fault.
-     * The velocityTolerance gate ensures we only check position when
-     * the axis has settled, making the diagnostic meaningful.
+     * Require both near-target position and settled velocity before
+     * checking the deviation, making the diagnostic meaningful.
      * The velocityTolerance > 0 requirement was removed - if no velocity
      * tolerance is configured, the check is still gated by actual velocity
      * being below the reference velocity threshold.
@@ -2245,8 +2247,9 @@ static void HYD_UpdateExecutionDiagnostics(HYD_MotionControlFB* fb,
      * is driving toward a target position, regardless of end condition. */
     if (segment->mode == HYD_MODE_POSITION &&
         positionTolerance > 0.0 &&
-        velocityReferenceAbs < (velocityTolerance > 0.0 ? velocityTolerance : 1.0) &&
-        actualVelocityAbs < (velocityTolerance > 0.0 ? velocityTolerance : 1.0)) {
+        HYD_SegmentCompletion_IsPositionReachedRaw(segment, &fb->AXIS_REF, positionTolerance) &&
+        velocityReferenceAbs < settledVelocityTolerance &&
+        actualVelocityAbs < settledVelocityTolerance) {
         isStartupPhase = HYD_IsStartupSuppressActive(elapsed, fb->_positionCriteria.startupSuppressTime);
         if (HYD_DiagnosticCriteria_CheckPosition(&positionResult,
                                                  &fb->_errorMonitor,

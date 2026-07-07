@@ -1012,6 +1012,70 @@ static void test_chained_same_direction_segments_keep_end_velocity_on_takeover_s
                 "Chained MoveContinuousAbsolute should preserve the previous end velocity in axis feedback on the takeover scan");
 }
 
+static void test_low_acceleration_start_does_not_false_trip_position_deviation(void) {
+    HYD_MOVECONTINUOUSABSOLUTE cmd;
+    HYD_MotionControlFB* core;
+    int axisId;
+    bool sawSlowStartup = false;
+    bool sawPositionDeviation = false;
+    int positionDeviationStep = RUN_TIMEOUT;
+
+    __HydMotion_framework_Init();
+    axisId = create_sim_axis();
+    ASSERT_TRUE(axisId >= 0, "CreateMotion should allocate a simulation axis");
+    if (axisId < 0) {
+        return;
+    }
+
+    core = __MK_GetPublic_MotionControlFB(axisId);
+    ASSERT_TRUE(core != NULL, "Public motion FB should be available for low-acceleration startup test");
+    if (core == NULL) {
+        return;
+    }
+
+    init_movecontinuousabsolute(&cmd, axisId, 66.0f, 22.0f, 22.0f,
+                                HYD_DIRECTION_POSITIVE,
+                                HYD_DIRECTION_POSITIVE);
+    IEC_VAL(cmd.ACCELERATION) = 0.056f;
+    IEC_VAL(cmd.DECELERATION) = 0.056f;
+    rising_edge_scan(&cmd);
+
+    for (int step = 0; step < 1200; step++) {
+        __HydMotion_framework_Publish();
+        hold_true_scan(&cmd);
+
+        if (core->AXIS_REF.velocity > 0.0f &&
+            core->AXIS_REF.velocity < 1.0f &&
+            core->AXIS_REF.position < 1.0f) {
+            sawSlowStartup = true;
+        }
+
+        if (core->DIAGNOSTIC.code == HYD_DIAG_CODE_POSITION_DEVIATION ||
+            core->DIAGNOSTIC.positionDeviation) {
+            sawPositionDeviation = true;
+            positionDeviationStep = step + 1;
+            break;
+        }
+
+        if (IEC_VAL(cmd.POSITIONREACHED) || IEC_VAL(cmd.INENDVELOCITY)) {
+            break;
+        }
+    }
+
+    ASSERT_TRUE(sawSlowStartup,
+                "The low-acceleration test should spend time in a slow startup phase far from the target");
+    ASSERT_TRUE(!sawPositionDeviation,
+                "Low-acceleration MoveContinuousAbsolute should not report POSITION_DEVIATION during normal startup far from the target");
+    if (sawPositionDeviation) {
+        printf("  observed false POSITION_DEVIATION at step %d: pos=%.6f vel=%.6f plannedVel=%.6f diag=%d\n",
+               positionDeviationStep,
+               core->AXIS_REF.position,
+               core->AXIS_REF.velocity,
+               core->STATE.plannedVelocity,
+               core->DIAGNOSTIC.code);
+    }
+}
+
 static void test_stop_takes_over_and_sets_commandaborted(void) {
     HYD_MOVECONTINUOUSABSOLUTE cmd;
     HYD_STOP stop;
@@ -1094,6 +1158,7 @@ int main(void) {
     test_pressure_limit_can_hold_positionreached_true_while_inendvelocity_stays_false();
     test_pressure_limit_fault_surfaces_as_error();
     test_chained_same_direction_segments_keep_end_velocity_on_takeover_scan();
+    test_low_acceleration_start_does_not_false_trip_position_deviation();
     test_stop_takes_over_and_sets_commandaborted();
 
     printf("\n=== Results: %d/%d passed ===\n", tests_passed, tests_run);
