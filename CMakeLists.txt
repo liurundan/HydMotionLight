@@ -126,6 +126,11 @@ add_executable(test_movecontinuousabsolute_integration EXCLUDE_FROM_ALL
                tests/test_movecontinuousabsolute_integration.c)
 target_link_libraries(test_movecontinuousabsolute_integration PRIVATE HydroMotionLib)
 
+add_executable(test_movecontinuousabsolute_external_sim_integration
+               tests/test_movecontinuousabsolute_external_sim_integration.c)
+target_link_libraries(test_movecontinuousabsolute_external_sim_integration
+                      PRIVATE HydroMotionLib HydroSimLib)
+
 add_executable(test_moveabsolute_stop_integration tests/test_moveabsolute_stop_integration.c)
 target_link_libraries(test_moveabsolute_stop_integration PRIVATE HydroMotionLib)
 
@@ -216,6 +221,8 @@ add_test(NAME test_movevelocity_stop_reverse_restart
          COMMAND test_movevelocity_stop_reverse_restart)
 add_test(NAME test_movecontinuousabsolute_integration
          COMMAND test_movecontinuousabsolute_integration)
+add_test(NAME test_movecontinuousabsolute_external_sim_integration
+         COMMAND test_movecontinuousabsolute_external_sim_integration)
 add_test(NAME test_moveabsolute_stop_integration COMMAND test_moveabsolute_stop_integration)
 add_test(NAME test_moveabsolute_blending_done COMMAND test_moveabsolute_blending_done)
 add_test(NAME test_stop_immediate_done COMMAND test_stop_immediate_done)
