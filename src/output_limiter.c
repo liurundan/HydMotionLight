@@ -111,9 +111,11 @@ void HYD_OutputLimiter_ResetState(HYD_OutputLimiterState* state) {
  * 压力限制比例限速算法
  * ----------------------------------------------------------------------------
  * 当实际压力超过 effectiveMaxPressure 时，按超压比例线性缩减输出流量。
+ * actualPressure 与 effectiveMaxPressure 必须同单位，当前 IEC 接口层和
+ * HydroMotionLib 压力限制链路均使用 bar，不在此处进行 bar/MPa 换算。
  *
  * 算法：
- *   overRatio = (actualPressure - maxPressure) / maxPressure
+ *   overRatio = (actualPressure_bar - effectiveMaxPressure_bar) / effectiveMaxPressure_bar
  *   scale = 1.0 - Kp * overRatio
  *   scale = clamp(scale, minScale, 1.0)
  *

@@ -148,7 +148,7 @@ static void test_pressure_limit_proportional_reduction(void) {
     input.protectionAction = HYD_PROTECTION_ACTION_NONE;
     input.derateRatio = 0.0;
 
-    /* 超压 10%: scale = 1.0 - 3.0*0.1 = 0.7 */
+    /* 22 bar / 20 bar: overRatio=10%, scale = 1.0 - 3.0*0.1 = 0.7 */
     input.actualPressure = 22.0;
     input.effectiveMaxPressure = 20.0;
     input.strokeMm = 0.0; /* 软限位不启用 */
@@ -159,8 +159,8 @@ static void test_pressure_limit_proportional_reduction(void) {
     assert(output.pressureLimitActive == true);
     assert(output.softLimitActive == false);
     /* 100.0 * 0.7 = 70.0 */
-    assert_real_eq(output.commandFlow, 70.0, 0.01, "pressure limit 10% over");
-    assert_real_eq(output.pumpSpeed, 1050.0, 0.01, "pump speed 10% over");
+    assert_real_eq(output.commandFlow, 70.0, 0.01, "pressure limit 10% over in bar domain");
+    assert_real_eq(output.pumpSpeed, 1050.0, 0.01, "pump speed 10% over in bar domain");
     printf("test_pressure_limit_proportional_reduction PASSED\n");
 }
 
@@ -178,7 +178,7 @@ static void test_pressure_limit_min_scale_clamp(void) {
     input.pumpSpeedLimit = 3000.0;
     input.protectionAction = HYD_PROTECTION_ACTION_NONE;
 
-    /* 超压 50%: scale = 1.0 - 3.0*0.5 = -0.5 → clamp to 0.1 */
+    /* 30 bar / 20 bar: overRatio=50%, scale = 1.0 - 3.0*0.5 = -0.5 -> clamp to 0.1 */
     input.actualPressure = 30.0;
     input.effectiveMaxPressure = 20.0;
     input.strokeMm = 0.0;
