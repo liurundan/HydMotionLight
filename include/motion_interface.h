@@ -23,6 +23,18 @@
 
 
 /*
+ * IEC pressure-unit contract:
+ * All PLC-facing pressure values use bar and bar/s:
+ *   HYD_AXISMOTION.SETPRESSURE / ACTPRESSURE / PRESSURERAMPRATE,
+ *   HYD_MOVECONTINUOUSABSOLUTE.PRESSURELIMIT,
+ *   HYD_PRESSUREHANDLE.PRESSURE / PRESSURERAMPRATE,
+ *   HYD_SETAXISFEEDBACK.ACT_PRESSURE,
+ *   HYD_READSIMFEEDBACK.PRESSURE.
+ * The IEC adapter passes these values into HydroMotionLib without pressure-unit
+ * conversion; the pressure closed-loop path consumes the same bar domain.
+ */
+
+/*
  * HYD_AXISMOTION ownership contract (Sprint 0 spec C-1):
  *
  * The structure is a bidirectional shared buffer between the PLC process

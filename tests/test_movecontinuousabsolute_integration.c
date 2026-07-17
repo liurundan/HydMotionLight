@@ -142,6 +142,43 @@ static bool set_axis_feedback(int axisId,
     return IEC_VAL(writeback.DONE) == true && IEC_VAL(writeback.ERROR) == false;
 }
 
+static void test_plc_pressure_feedback_and_movecontinuousabsolute_limit_use_bar(void) {
+    HYD_MOVECONTINUOUSABSOLUTE cmd;
+    HYD_MotionControlFB* core;
+    int axisId;
+
+    __HydMotion_framework_Init();
+    axisId = create_manual_axis();
+    ASSERT_TRUE(axisId >= 0, "CreateMotion should allocate a manual axis for IEC pressure-unit boundary");
+    if (axisId < 0) {
+        return;
+    }
+
+    core = __MK_GetPublic_MotionControlFB(axisId);
+    ASSERT_TRUE(core != NULL, "IEC pressure-unit boundary should expose the public FB");
+    if (core == NULL) {
+        return;
+    }
+
+    ASSERT_TRUE(set_axis_feedback(axisId, 0.0f, 0.0f, 0.0f, 110.0f, 0.0f),
+                "SetAxisFeedback should accept bar-valued pressure feedback");
+    ASSERT_TRUE(fabsf(core->AXIS_REF.pressure - 110.0f) <= 1e-6f,
+                "SetAxisFeedback ACT_PRESSURE should remain in bar in the core axis feedback");
+
+    init_movecontinuousabsolute(&cmd, axisId, 10.0f, 5.0f, 2.0f,
+                                HYD_DIRECTION_POSITIVE,
+                                HYD_DIRECTION_POSITIVE);
+    IEC_VAL(cmd.PRESSURELIMIT) = 100.0f;
+    rising_edge_scan(&cmd);
+
+    ASSERT_TRUE(IEC_VAL(cmd.ERROR) == false,
+                "MoveContinuousAbsolute should accept a finite bar-valued PRESSURELIMIT");
+    ASSERT_TRUE(fabsf(core->DIRECT_SEGMENT.maxPressure - 100.0f) <= 1e-6f,
+                "MoveContinuousAbsolute PRESSURELIMIT should enter segment.maxPressure in bar");
+    ASSERT_TRUE(fabsf(core->_directContinuousAbsolute.effectivePressureLimit - 100.0f) <= 1e-6f,
+                "MoveContinuousAbsolute direct context should retain the bar-valued pressure limit");
+}
+
 static int run_until_position_reached(HYD_MOVECONTINUOUSABSOLUTE* fb) {
     for (int step = 0; step < MAX_SIM_STEPS; step++) {
         __HydMotion_framework_Publish();
@@ -1155,6 +1192,7 @@ int main(void) {
     test_adapt_lowers_crossing_velocity_when_distance_is_too_short_to_accelerate();
     test_adapt_raises_crossing_velocity_when_distance_is_too_short_to_decelerate();
     test_reverse_sustain_delays_inendvelocity();
+    test_plc_pressure_feedback_and_movecontinuousabsolute_limit_use_bar();
     test_pressure_limit_can_hold_positionreached_true_while_inendvelocity_stays_false();
     test_pressure_limit_fault_surfaces_as_error();
     test_chained_same_direction_segments_keep_end_velocity_on_takeover_scan();

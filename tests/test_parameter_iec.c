@@ -51,7 +51,8 @@ static void test_read_parameter_iec(void) {
 
     ASSERT_TRUE(IEC_VAL(rp.VALID) == true, "ReadParameter should set VALID");
     ASSERT_TRUE(IEC_VAL(rp.ERROR) == false, "ReadParameter should not set ERROR");
-    ASSERT_FLOAT_EQ((HYD_REAL)IEC_VAL(rp.VALUE), 0.1f, 0.001f, "Default positionTolerance should be 0.1");
+    ASSERT_FLOAT_EQ((HYD_REAL)IEC_VAL(rp.VALUE), 0.0001f, 0.00001f,
+                    "Default positionTolerance should be 0.0001");
 }
 
 /* Test: WriteParameter then ReadParameter through IEC FBs */

@@ -733,7 +733,7 @@ static void test_small_kp_produces_proportional_output(void) {
     input.timestamp = 0.01;
     HYD_PressureController_Execute(&segment, &state, &input, &output);
 
-    /* With Kp=0.01 and error=15 MPa, proportional term = 0.01 * 15 = 0.15 */
+    /* With Kp=0.01 and error=15 bar, proportional term = 0.01 * 15 = 0.15 */
     expectedProportional = segment.pressureKp * (20.0 - 5.0);
     assert(fabs(output.proportionalTerm - expectedProportional) < 0.001);
     /* Output should be feedforward + proportional term */
@@ -823,7 +823,7 @@ static void test_gain_scheduling_with_error_magnitude(void) {
 
     HYD_PressureController_InitState(&state, 10.0, segment.targetFlow, 0.0);
 
-    /* Small error (1 MPa / 11 ≈ 9%): closer to low gain */
+    /* Small error (1 bar / 11 ≈ 9%): closer to low gain */
     input.targetPressure = 11.0;
     input.measuredPressure = 10.0;
     input.timestamp = 0.01;
@@ -835,7 +835,7 @@ static void test_gain_scheduling_with_error_magnitude(void) {
     assert(outputLow.proportionalTerm > 0.2);
     assert(outputLow.proportionalTerm < 0.8);
 
-    /* Large error (10 MPa / 20 = 50%): closer to high gain */
+    /* Large error (10 bar / 20 = 50%): closer to high gain */
     segment.pressureKpHigh = 1.0;
     input.targetPressure = 20.0;
     input.measuredPressure = 10.0;

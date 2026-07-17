@@ -655,6 +655,36 @@ static HYD_REAL HYD_SelectDirectBlendVelocity(HYD_BufferMode bufferMode,
     }
 }
 
+static HYD_REAL HYD_ResolveDirectBlendSwitchTolerance(const HYD_MotionSegment* activeSegment,
+                                                      HYD_REAL selectedVelocity) {
+    HYD_REAL tolerance;
+    HYD_REAL terminalVelocity;
+    HYD_REAL deceleration;
+    HYD_REAL throughVelocityDistance;
+
+    if (activeSegment == NULL) {
+        return 0.0f;
+    }
+
+    tolerance = HYD_Segment_GetPositionTolerance(activeSegment);
+    deceleration = (activeSegment->maxDeceleration > 0.0f)
+        ? activeSegment->maxDeceleration
+        : activeSegment->maxAcceleration;
+    terminalVelocity = HYD_ClampReal(selectedVelocity,
+                                     0.0f,
+                                     activeSegment->maxVelocity);
+    if (terminalVelocity <= 0.0f || deceleration <= 0.0f) {
+        return tolerance;
+    }
+
+    /* Direct blending needs a switch window large enough to keep the through
+     * velocity. The user position tolerance remains the final completion
+     * tolerance; this derived distance is only for the blend handoff. */
+    throughVelocityDistance = (terminalVelocity * terminalVelocity) /
+                              (2.0f * deceleration);
+    return (throughVelocityDistance > tolerance) ? throughVelocityDistance : tolerance;
+}
+
 static HYD_REAL HYD_ResolveContinuousAbsoluteCrossingVelocity(
     const HYD_MotionControlFB* fb,
     const HYD_ContinuousAbsoluteContext* ctx,
@@ -774,7 +804,8 @@ static HYD_BOOL HYD_TryCreateDirectBlendContext(HYD_MotionControlFB* fb,
         return false;
     }
 
-    tolerance = HYD_Segment_GetPositionTolerance(&fb->_activeSegment);
+    tolerance = HYD_ResolveDirectBlendSwitchTolerance(&fb->_activeSegment,
+                                                      selectedVelocity);
 
     fb->_directBlendContext.active = true;
     fb->_directBlendContext.bufferMode = bufferMode;

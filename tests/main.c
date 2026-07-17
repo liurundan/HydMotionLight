@@ -187,7 +187,7 @@ int main(void) {
         controller.AXIS_REF = ref;
         HYD_MotionControlFB_Execute(&controller);
 
-        printf("[%.1f s] %s | PumpSpeed=%.1f rpm | Flow=%.1f | Velocity=%.2f | Pressure=%.2f MPa | Status=%s | Changed=%s\n",
+        printf("[%.1f s] %s | PumpSpeed=%.1f rpm | Flow=%.1f | Velocity=%.2f | Pressure=%.2f bar | Status=%s | Changed=%s\n",
                ref.timestamp,
                (controller.STATE.currentSegmentTag == 0 ? "(none)" : "active"),
                controller.PUMP_SPEED,

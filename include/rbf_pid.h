@@ -60,7 +60,7 @@ typedef struct {
     float output_min_flow;          // 输出下限 [L/min]，0 表示使用物理默认值
     float output_max_flow;          // 输出上限 [L/min]，0 表示按 fMaxFlow/fFlowRateLimit 推导
 
-    /* 压力归一化标量（MPa 等设定/反馈单位的满量程）.
+    /* 压力归一化标量（与设定/反馈一致的压力单位，当前为 bar）.
      * 0 或负值 -> 落回内置默认 MAX_PRESSURE. 调用 RBF_PID_SetPressureNormalization()
      * 配置；推荐由 pressure_controller.c 在每段 Resolve 时根据段配置写入。 */
     float pressure_normalization_scale;
@@ -188,7 +188,7 @@ void RBF_PID_SetLearningRates(RBF_PID_Handle *pid,
 /**
  * @brief 配置压力归一化标量
  * @param pid RBF_PID句柄指针
- * @param scale 满量程标量（单位与 setpoint/feedback 相同，例如 MPa）
+ * @param scale 满量程标量（单位与 setpoint/feedback 相同，当前为 bar）
  *              传 0 或负值会清回内部默认 MAX_PRESSURE.
  * @note 推荐在每段开始时调用一次；运行中改变会导致归一化基准跳变。
  */

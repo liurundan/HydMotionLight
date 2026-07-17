@@ -136,7 +136,7 @@ void ContinuityTracker_Check(ContinuityTracker* tracker,
             }
         
         /* Pressure should be smooth */
-        if (pressureJump > 0.5) {  /* MPa tolerance */
+        if (pressureJump > 0.5) {  /* bar tolerance */
             tracker->continuityViolation = true;
         }
     }
@@ -193,10 +193,10 @@ HYD_MotionSegment CreateInjectionSegment(HYD_TIME startTime) {
     segment.targetFlow = 40.0;       /* L/min */
     segment.velocityToFlowGain = 0.2; /* L/min per mm/s */
     
-    segment.pressureRampRate = 10.0; /* MPa/s */
+    segment.pressureRampRate = 10.0; /* bar/s */
     
     segment.positionTolerance = 0.1; /* mm */
-    segment.pressureTolerance = 0.5; /* MPa */
+    segment.pressureTolerance = 0.5; /* bar */
     segment.flowTolerance = 1.0;    /* L/min */
     segment.timeoutLimit = 5.0;     /* s */
     
@@ -213,19 +213,19 @@ HYD_MotionSegment CreateHoldingSegment(HYD_TIME startTime) {
     segment.endCondition = HYD_END_TIME;
     segment.direction = HYD_DIRECTION_HOLD;
     
-    segment.targetPressure = 80.0;   /* MPa */
+    segment.targetPressure = 80.0;   /* bar */
     segment.targetFlow = 5.0;       /* L/min (holding flow) */
     segment.maxFlow = 20.0;         /* L/min */
     segment.duration = 2.0;         /* s */
     
     segment.pressureController = HYD_PRESSURE_CONTROLLER_PI;
-    segment.pressureKp = 0.5;       /* L/min per MPa */
-    segment.pressureKi = 0.1;       /* L/min per (MPa*s) */
+    segment.pressureKp = 0.5;       /* L/min per bar */
+    segment.pressureKi = 0.1;       /* L/min per (bar*s) */
     segment.pressureIntegralLimit = 10.0; /* L/min */
-    segment.pressureDeadband = 0.5; /* MPa */
-    segment.pressureRampRate = 5.0; /* MPa/s */
+    segment.pressureDeadband = 0.5; /* bar */
+    segment.pressureRampRate = 5.0; /* bar/s */
     
-    segment.pressureTolerance = 0.5; /* MPa */
+    segment.pressureTolerance = 0.5; /* bar */
     segment.flowTolerance = 1.0;    /* L/min */
     
     return segment;
@@ -323,7 +323,7 @@ int main(void) {
         
         /* Print periodic status */
         if (step % 500 == 0) {
-            printf("  Step %lu: t=%.3f s, Pos=%.2f mm, Vel=%.2f mm/s, Flow=%.2f L/min, Press=%.2f MPa\n",
+            printf("  Step %lu: t=%.3f s, Pos=%.2f mm, Vel=%.2f mm/s, Flow=%.2f L/min, Press=%.2f bar\n",
                    (unsigned long)step, currentTime, plant.position, plant.velocity, plant.flow, plant.pressure);
             PrintStateInfo(&fb);
             
@@ -404,7 +404,7 @@ int main(void) {
         
         /* Print periodic status */
         if (holdingStep % 500 == 0) {
-            printf("  Step %lu: t=%.3f s, Press=%.2f MPa (target: %.2f), Flow=%.2f L/min\n",
+            printf("  Step %lu: t=%.3f s, Press=%.2f bar (target: %.2f), Flow=%.2f L/min\n",
                    (unsigned long)holdingStep, currentTime, plant.pressure, holdingSeg.targetPressure, plant.flow);
             PrintStateInfo(&fb);
             
@@ -434,7 +434,7 @@ int main(void) {
     }
     
     printf("Holding phase completed at t=%.3f s\n", currentTime);
-    printf("Final pressure: %.2f MPa (target: %.2f MPa)\n", plant.pressure, holdingSeg.targetPressure);
+    printf("Final pressure: %.2f bar (target: %.2f bar)\n", plant.pressure, holdingSeg.targetPressure);
     
     printf("\n=== Phase 3: Retraction Phase ===\n");
     
@@ -518,7 +518,7 @@ int main(void) {
     printf("Total simulation steps: %lu\n", (unsigned long)step);
     printf("Max velocity jump: %.6f mm/s\n", tracker.maxVelocityJump);
     printf("Max acceleration jump: %.6f mm/s²\n", tracker.maxAccelerationJump);
-    printf("Max pressure jump: %.6f MPa\n", tracker.maxPressureJump);
+    printf("Max pressure jump: %.6f bar\n", tracker.maxPressureJump);
     printf("Discontinuity count: %lu\n", (unsigned long)tracker.discontinuityCount);
     printf("Continuity violation: %s\n", tracker.continuityViolation ? "YES" : "NO");
     

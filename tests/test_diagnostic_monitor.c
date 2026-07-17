@@ -285,11 +285,11 @@ static void test_pressure_jitter_does_not_accumulate_duration(void) {
 
     HYD_ErrorMonitor_Init(&monitor);
 
-    /* Set 0.1 MPa pressure tolerance */
+    /* Set 0.1 bar pressure tolerance */
     memset(&tolerances, 0, sizeof(tolerances));
     tolerances.pressure = 0.1;
 
-    /* Reference 10.0 MPa, actual oscillates 9.95 / 10.05 (jitter under tolerance) */
+    /* Reference 10.0 bar, actual oscillates 9.95 / 10.05 (jitter under tolerance) */
     memset(&axisRef, 0, sizeof(axisRef));
     memset(&refs, 0, sizeof(refs));
     refs.pressureReference = 10.0;
@@ -318,7 +318,7 @@ static void test_pressure_real_excursion_accumulates_duration(void) {
     memset(&refs, 0, sizeof(refs));
 
     refs.pressureReference = 10.0;
-    axisRef.pressure = 8.0;  /* 2.0 MPa under reference, way above tolerance */
+    axisRef.pressure = 8.0;  /* 2.0 bar under reference, way above tolerance */
 
     for (i = 0; i < 50; i++) {
         HYD_ErrorMonitor_Update(&monitor, &axisRef, &refs, &tolerances, (HYD_TIME)(i * 0.01));

@@ -43,10 +43,10 @@ void TestResults_CheckPressure(TestResults* results, HYD_REAL currentPress, HYD_
         results->maxPressureJump = jump;
     }
     
-    /* 压力跳变超过1.0 MPa视为不平滑 */
+    /* 压力跳变超过1.0 bar视为不平滑 */
     if (jump > 1.0) {
         results->testPassed = false;
-        printf("ERROR: Pressure jump detected: %.3f MPa\n", jump);
+        printf("ERROR: Pressure jump detected: %.3f bar\n", jump);
     }
 }
 
@@ -117,7 +117,7 @@ int main(void) {
         prevPressure = pressure;
         
         if (phase1Step % 500 == 0) {
-            printf("  Step %lu: t=%.3f s, Pos=%.2f mm, Vel=%.2f mm/s, Press=%.2f MPa\n",
+            printf("  Step %lu: t=%.3f s, Pos=%.2f mm, Vel=%.2f mm/s, Press=%.2f bar\n",
                    (unsigned long)phase1Step, currentTime, position, velocity, pressure);
         }
         
@@ -176,7 +176,7 @@ int main(void) {
         prevPressure = pressure;
         
         if (phase2Step % 500 == 0) {
-            printf("  Step %lu: t=%.3f s, Pos=%.2f mm, Vel=%.2f mm/s, Press=%.2f MPa\n",
+            printf("  Step %lu: t=%.3f s, Pos=%.2f mm, Vel=%.2f mm/s, Press=%.2f bar\n",
                    (unsigned long)phase2Step, currentTime, position, velocity, pressure);
         }
         
@@ -239,7 +239,7 @@ int main(void) {
         prevPressure = pressure;
         
         if (phase3Step % 200 == 0) {
-            printf("  Step %lu: t=%.3f s, Vel=%.2f mm/s, Press=%.2f MPa (target: %.2f)\n",
+            printf("  Step %lu: t=%.3f s, Vel=%.2f mm/s, Press=%.2f bar (target: %.2f)\n",
                    (unsigned long)phase3Step, currentTime, velocity, pressure, holding.targetPressure);
         }
         
@@ -254,13 +254,13 @@ int main(void) {
         step++;
     }
     
-    printf("Phase 3 completed at t=%.3f s, Press=%.2f MPa\n", currentTime, pressure);
+    printf("Phase 3 completed at t=%.3f s, Press=%.2f bar\n", currentTime, pressure);
     
     /* 测试结果 */
     printf("\n=== Test Results ===\n");
     printf("Total steps: %lu\n", (unsigned long)step);
     printf("Max velocity jump: %.6f mm/s\n", results.maxVelocityJump);
-    printf("Max pressure jump: %.6f MPa\n", results.maxPressureJump);
+    printf("Max pressure jump: %.6f bar\n", results.maxPressureJump);
     printf("Velocity discontinuities: %lu\n", (unsigned long)results.discontinuityCount);
     
     printf("\n=== Evaluation ===\n");

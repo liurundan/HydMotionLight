@@ -251,7 +251,7 @@ typedef struct {
     HYD_REAL position;   /* mm */
     HYD_REAL velocity;   /* mm/s, signed by mechanism direction */
     HYD_REAL flow;       /* L/min, magnitude at the pump side */
-    HYD_REAL pressure;   /* MPa */
+    HYD_REAL pressure;   /* bar */
     HYD_TIME timestamp;  /* s */
 } HYD_AxisRef;
 
@@ -284,7 +284,7 @@ typedef struct {
 
     HYD_REAL targetPosition;
     HYD_REAL targetFlow;      /* L/min, mode-dependent setpoint/cap/feedforward */
-    HYD_REAL targetPressure;
+    HYD_REAL targetPressure;  /* bar */
     HYD_REAL maxAcceleration;
     HYD_REAL maxDeceleration;
     HYD_REAL maxVelocity;     /* mm/s, velocity magnitude limit */
@@ -293,14 +293,14 @@ typedef struct {
 
     HYD_REAL tolerance;          /* Legacy generic tolerance fallback. Prefer the typed tolerances below. */
     HYD_REAL positionTolerance;  /* mm */
-    HYD_REAL pressureTolerance;  /* MPa */
+    HYD_REAL pressureTolerance;  /* bar */
     HYD_REAL flowTolerance;      /* L/min */
     HYD_REAL velocityTolerance;  /* mm/s */
     HYD_TIME timeoutLimit;       /* s, 0 means disabled or auto-derived for time-ended segments */
     HYD_TIME stableWindow;       /* s, 0 means immediate completion */
     HYD_REAL stableVelocityLimit; /* mm/s, 0 disables velocity-settled gate */
     HYD_REAL vpTransferPosition;        /* mm, 0 disables position transfer observation */
-    HYD_REAL vpTransferPressure;        /* MPa, 0 disables pressure transfer observation */
+    HYD_REAL vpTransferPressure;        /* bar, 0 disables pressure transfer observation */
     HYD_TIME vpTransferMinTime;         /* s, 0 disables elapsed-time transfer observation */
     HYD_REAL vpTransferVelocityDrop;    /* mm/s, 0 disables velocity-drop observation */
     HYD_VpTransferPriority vpTransferPriority; /* criteria check order; 0 = position-first (default) */
@@ -310,20 +310,20 @@ typedef struct {
     HYD_REAL velocityKp;        /* L/min per mm/s, 0 disables velocity feedback correction */
     HYD_REAL velocityDeadband;  /* mm/s, 0 means no deadband */
     HYD_REAL velocityCorrectionLimit; /* L/min absolute correction limit, 0 uses maxFlow */
-    HYD_REAL pressureRampRate;   /* MPa/s, target pressure ramp rate */
+    HYD_REAL pressureRampRate;   /* bar/s, target pressure ramp rate */
 
     /* Pressure-controller tuning. Zero values keep legacy-compatible defaults.
      * Adaptive RBF-PID reuses the generic filter/deadband envelope and exposes
      * additional bounded tuning / learning fields through pressureRbfConfig.
      */
     HYD_PressureControllerType pressureController;
-    HYD_REAL pressureKp;                     /* L/min per MPa */
-    HYD_REAL pressureKpHigh;                 /* L/min per MPa, high-error gain for scheduling; 0 disables */
+    HYD_REAL pressureKp;                     /* L/min per bar */
+    HYD_REAL pressureKpHigh;                 /* L/min per bar, high-error gain for scheduling; 0 disables */
     HYD_REAL pressureGainBand;               /* error ratio threshold for gain interpolation, 0 uses default 0.2 */
-    HYD_REAL pressureKi;                     /* L/min per (MPa*s) */
-    HYD_REAL pressureKd;                     /* L/min per (MPa/s) */
+    HYD_REAL pressureKi;                     /* L/min per (bar*s) */
+    HYD_REAL pressureKd;                     /* L/min per (bar/s) */
     HYD_REAL pressureIntegralLimit;          /* L/min absolute limit for integral contribution */
-    HYD_REAL pressureDeadband;               /* MPa */
+    HYD_REAL pressureDeadband;               /* bar */
     HYD_REAL pressureFilterAlpha;            /* 0<alpha<=1, 1 means no measurement filtering */
     HYD_REAL pressureDerivativeFilterAlpha;  /* 0<alpha<=1, 1 means no derivative filtering */
 
@@ -332,8 +332,8 @@ typedef struct {
      * pressureCeilingPositionEnd] AND |position end - start| > 0.
      * When both position fields are 0, the ceiling is always-on.
      * Zero pressureCeiling disables the check entirely. */
-    HYD_REAL pressureCeiling;                /* MPa, 0 disables ceiling check */
-    HYD_REAL pressureCeilingTolerance;       /* MPa, hysteresis above ceiling before DERATE; 0 uses pressureTolerance */
+    HYD_REAL pressureCeiling;                /* bar, 0 disables ceiling check */
+    HYD_REAL pressureCeilingTolerance;       /* bar, hysteresis above ceiling before DERATE; 0 uses pressureTolerance */
     HYD_REAL pressureCeilingPositionStart;   /* mm, window lower bound; 0 means always-on with End */
     HYD_REAL pressureCeilingPositionEnd;     /* mm, window upper bound; <=Start means always-on */
 
@@ -342,7 +342,7 @@ typedef struct {
      * Replaces the hardcoded limiterInput.derateRatio = 0.5 in motion_control.c. */
     HYD_REAL derateRatio;
 
-    /* 本段最大压力限制 [MPa]。0 表示使用 FB 级全局 PRESSURE_LIMIT。
+    /* 本段最大压力限制 [bar]。0 表示使用 FB 级全局 PRESSURE_LIMIT。
      * 当 segment.maxPressure > 0 且 fb.PRESSURE_LIMIT > 0 时，取两者较小值生效。
      * 与 pressureCeiling（位置窗口内低压模保护）独立评估，互不干扰。 */
     HYD_REAL maxPressure;

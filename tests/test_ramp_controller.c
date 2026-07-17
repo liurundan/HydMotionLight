@@ -20,17 +20,17 @@ void test_pressure_increase(void) {
     HYD_RampControllerInput input;
     HYD_RampControllerOutput output;
 
-    // Initialize: current pressure = 2.0 MPa
+    // Initialize: current pressure = 2.0 bar
     HYD_RampController_Init(&controller, 2.0, 0.0);
 
-    // Set target: ramp from 2.0 to 10.0 MPa at 5.0 MPa/s
+    // Set target: ramp from 2.0 to 10.0 bar at 5.0 bar/s
     input.targetPressure = 10.0;
     input.rampRate = 5.0;
     input.currentTime = 0.0;
 
-    printf("Initial pressure: %.2f MPa\n", controller.rampedPressure);
-    printf("Target pressure: %.2f MPa\n", input.targetPressure);
-    printf("Ramp rate: %.2f MPa/s\n", input.rampRate);
+    printf("Initial pressure: %.2f bar\n", controller.rampedPressure);
+    printf("Target pressure: %.2f bar\n", input.targetPressure);
+    printf("Ramp rate: %.2f bar/s\n", input.rampRate);
     printf("\n");
 
     // Simulate 2 seconds of execution
@@ -41,19 +41,19 @@ void test_pressure_increase(void) {
 
         // Print every 50 cycles (0.5s)
         if ((i + 1) % 50 == 0) {
-            printf("t=%.2fs: pressure=%.2f MPa\n", input.currentTime, output.rampedPressure);
+            printf("t=%.2fs: pressure=%.2f bar\n", input.currentTime, output.rampedPressure);
         }
     }
 
-    printf("Final pressure: %.2f MPa\n", output.rampedPressure);
+    printf("Final pressure: %.2f bar\n", output.rampedPressure);
 
-    // Verification: after 2 seconds at 5 MPa/s, pressure should increase by 10 MPa
+    // Verification: after 2 seconds at 5 bar/s, pressure should increase by 10 bar
     // Expected: 2.0 + 5.0 * 2.0 = 12.0, but clamped to target 10.0
     HYD_REAL expected = input.targetPressure;
     if (fabs(output.rampedPressure - expected) < EPSILON) {
-        printf("✓ PASS: Final pressure %.2f MPa equals target %.2f MPa\n", output.rampedPressure, expected);
+        printf("✓ PASS: Final pressure %.2f bar equals target %.2f bar\n", output.rampedPressure, expected);
     } else {
-        printf("✗ FAIL: Expected %.2f MPa, got %.2f MPa\n", expected, output.rampedPressure);
+        printf("✗ FAIL: Expected %.2f bar, got %.2f bar\n", expected, output.rampedPressure);
     }
 }
 
@@ -67,17 +67,17 @@ void test_pressure_decrease(void) {
     HYD_RampControllerInput input;
     HYD_RampControllerOutput output;
 
-    // Initialize: current pressure = 10.0 MPa
+    // Initialize: current pressure = 10.0 bar
     HYD_RampController_Init(&controller, 10.0, 0.0);
 
-    // Set target: ramp from 10.0 to 2.0 MPa at 5.0 MPa/s
+    // Set target: ramp from 10.0 to 2.0 bar at 5.0 bar/s
     input.targetPressure = 2.0;
     input.rampRate = 5.0;
     input.currentTime = 0.0;
 
-    printf("Initial pressure: %.2f MPa\n", controller.rampedPressure);
-    printf("Target pressure: %.2f MPa\n", input.targetPressure);
-    printf("Ramp rate: %.2f MPa/s\n", input.rampRate);
+    printf("Initial pressure: %.2f bar\n", controller.rampedPressure);
+    printf("Target pressure: %.2f bar\n", input.targetPressure);
+    printf("Ramp rate: %.2f bar/s\n", input.rampRate);
     printf("\n");
 
     // Simulate 2 seconds of execution
@@ -88,19 +88,19 @@ void test_pressure_decrease(void) {
 
         // Print every 50 cycles (0.5s)
         if ((i + 1) % 50 == 0) {
-            printf("t=%.2fs: pressure=%.2f MPa\n", input.currentTime, output.rampedPressure);
+            printf("t=%.2fs: pressure=%.2f bar\n", input.currentTime, output.rampedPressure);
         }
     }
 
-    printf("Final pressure: %.2f MPa\n", output.rampedPressure);
+    printf("Final pressure: %.2f bar\n", output.rampedPressure);
 
-    // Verification: after 2 seconds at 5 MPa/s, pressure should decrease by 10 MPa
+    // Verification: after 2 seconds at 5 bar/s, pressure should decrease by 10 bar
     // Expected: 10.0 - 5.0 * 2.0 = 0.0, but clamped to target 2.0
     HYD_REAL expected = input.targetPressure;
     if (fabs(output.rampedPressure - expected) < EPSILON) {
-        printf("✓ PASS: Final pressure %.2f MPa equals target %.2f MPa\n", output.rampedPressure, expected);
+        printf("✓ PASS: Final pressure %.2f bar equals target %.2f bar\n", output.rampedPressure, expected);
     } else {
-        printf("✗ FAIL: Expected %.2f MPa, got %.2f MPa\n", expected, output.rampedPressure);
+        printf("✗ FAIL: Expected %.2f bar, got %.2f bar\n", expected, output.rampedPressure);
     }
 }
 
@@ -118,8 +118,8 @@ void test_ramp_symmetry(void) {
     HYD_REAL rampRate = 2.0;
     HYD_TIME rampTime = 1.0;
 
-    // Test increase: 5.0 -> 7.0 MPa
-    printf("\nPart A: Increase from %.1f to %.1f MPa at %.1f MPa/s\n",
+    // Test increase: 5.0 -> 7.0 bar
+    printf("\nPart A: Increase from %.1f to %.1f bar at %.1f bar/s\n",
            startPressure, startPressure + rampRate, rampRate);
     HYD_RampController_Init(&controller, startPressure, 0.0);
     input.targetPressure = startPressure + rampRate;
@@ -133,10 +133,10 @@ void test_ramp_symmetry(void) {
         HYD_RampController_Execute(&controller, &input, &output);
     }
     pressureAfterIncrease = output.rampedPressure;
-    printf("Result: %.4f MPa\n", pressureAfterIncrease);
+    printf("Result: %.4f bar\n", pressureAfterIncrease);
 
-    // Test decrease: 7.0 -> 5.0 MPa
-    printf("\nPart B: Decrease from %.1f to %.1f MPa at %.1f MPa/s\n",
+    // Test decrease: 7.0 -> 5.0 bar
+    printf("\nPart B: Decrease from %.1f to %.1f bar at %.1f bar/s\n",
            pressureAfterIncrease, startPressure, rampRate);
     HYD_RampController_Init(&controller, pressureAfterIncrease, 0.0);
     input.targetPressure = startPressure;
@@ -147,13 +147,13 @@ void test_ramp_symmetry(void) {
         input.currentTime = (i + 1) * 0.01;
         HYD_RampController_Execute(&controller, &input, &output);
     }
-    printf("Result: %.4f MPa\n", output.rampedPressure);
+    printf("Result: %.4f bar\n", output.rampedPressure);
 
     // Verification: should return to start value
     if (fabs(output.rampedPressure - startPressure) < 0.01) {
-        printf("✓ PASS: Ramp is symmetric (returned to %.2f MPa)\n", startPressure);
+        printf("✓ PASS: Ramp is symmetric (returned to %.2f bar)\n", startPressure);
     } else {
-        printf("✗ FAIL: Expected %.2f MPa, got %.2f MPa\n", startPressure, output.rampedPressure);
+        printf("✗ FAIL: Expected %.2f bar, got %.2f bar\n", startPressure, output.rampedPressure);
     }
 }
 
@@ -171,10 +171,10 @@ void test_ramp_rate_calculation(void) {
     HYD_REAL rampRate = 10.0;
     HYD_TIME dt = 0.01;
 
-    printf("Testing pressure increase from %.1f MPa with rate %.1f MPa/s\n",
+    printf("Testing pressure increase from %.1f bar with rate %.1f bar/s\n",
            startPressure, rampRate);
     printf("Cycle time: %.3f s\n", dt);
-    printf("Expected change per cycle: %.4f MPa\n", rampRate * dt);
+    printf("Expected change per cycle: %.4f bar\n", rampRate * dt);
     printf("\n");
 
     HYD_RampController_Init(&controller, startPressure, 0.0);
@@ -191,7 +191,7 @@ void test_ramp_rate_calculation(void) {
         HYD_REAL actualChange = output.rampedPressure - previousPressure;
         HYD_REAL expectedChange = rampRate * dt;
 
-        printf("Cycle %d: pressure=%.4f MPa, change=%.4f MPa (expected=%.4f MPa)\n",
+        printf("Cycle %d: pressure=%.4f bar, change=%.4f bar (expected=%.4f bar)\n",
                i + 1, output.rampedPressure, actualChange, expectedChange);
 
         if (fabs(actualChange - expectedChange) > 0.0001) {
@@ -222,13 +222,13 @@ void test_zero_ramp_rate(void) {
     input.rampRate = 0.0;  // Zero ramp rate should cause immediate jump
     input.currentTime = 0.01;
 
-    printf("Initial pressure: %.2f MPa\n", controller.rampedPressure);
-    printf("Target pressure: %.2f MPa\n", input.targetPressure);
+    printf("Initial pressure: %.2f bar\n", controller.rampedPressure);
+    printf("Target pressure: %.2f bar\n", input.targetPressure);
     printf("Ramp rate: 0.0 (immediate jump)\n");
 
     HYD_RampController_Execute(&controller, &input, &output);
 
-    printf("Result: %.2f MPa\n", output.rampedPressure);
+    printf("Result: %.2f bar\n", output.rampedPressure);
 
     if (fabs(output.rampedPressure - input.targetPressure) < EPSILON) {
         printf("✓ PASS: Zero ramp rate causes immediate jump to target\n");

@@ -35,7 +35,8 @@ static void test_init_sets_defaults(void) {
 
     ok = HYD_MotionControlFB_ReadParameter(&fb, HYD_PARAM_POSITION_TOLERANCE, &val);
     ASSERT_TRUE(ok, "Read positionTolerance should succeed");
-    ASSERT_FLOAT_EQ(val, 0.1f, 0.001f, "Default positionTolerance should be 0.1");
+    ASSERT_FLOAT_EQ(val, 0.0001f, 0.00001f,
+                    "Default positionTolerance should be 0.0001");
 
     ok = HYD_MotionControlFB_ReadParameter(&fb, HYD_PARAM_TIMEOUT_LIMIT, &val);
     ASSERT_TRUE(ok, "Read timeoutLimit should succeed");

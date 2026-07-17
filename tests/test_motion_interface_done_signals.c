@@ -598,7 +598,7 @@ static void test_moveabsolute_done_read_sim_feedback(void) {
            (double)IEC_VAL(rfb.POSITION));
     printf("  Final sim velocity: %.4f mm/s\n", (double)IEC_VAL(rfb.VELOCITY));
     printf("  Final sim flow:     %.4f L/min\n", (double)IEC_VAL(rfb.FLOW));
-    printf("  Final sim pressure: %.4f MPa\n", (double)IEC_VAL(rfb.PRESSURE));
+    printf("  Final sim pressure: %.4f bar\n", (double)IEC_VAL(rfb.PRESSURE));
 }
 
 /* ==================================================================

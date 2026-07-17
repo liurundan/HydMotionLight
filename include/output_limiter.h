@@ -16,8 +16,8 @@ typedef struct {
     HYD_BOOL allowNegativeFlow;    /* true = 允许小幅负流量/负转速用于快速卸压 */
 
     /* --- 压力限制（新增） --- */
-    HYD_REAL actualPressure;         /* 当前压力反馈 [MPa] */
-    HYD_REAL effectiveMaxPressure;   /* 生效的最大压力限制 [MPa], 0 = 不启用 */
+    HYD_REAL actualPressure;         /* 当前压力反馈 [bar] */
+    HYD_REAL effectiveMaxPressure;   /* 生效的最大压力限制 [bar], 0 = 不启用 */
 
     /* --- 软限位（新增） --- */
     HYD_REAL actualPosition;         /* 当前位置反馈 [mm]（电子尺） */

@@ -268,7 +268,7 @@ typedef struct {
      * Zero-initialized after Init() = inactive (segment field used). */
     HYD_CylinderConfig cylinderConfig;
 
-    /* 全局最大压力限制 [MPa]。0 表示不启用。
+    /* 全局最大压力限制 [bar]。0 表示不启用。
      * 当 segment.maxPressure 也 > 0 时，取两者较小值生效。
      * 所有控制模式下均评估（位置/速度/压力闭环）。 */
     HYD_REAL PRESSURE_LIMIT;

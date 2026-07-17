@@ -450,7 +450,7 @@ void HYD_DiagnosticCriteria_CreateDefaultPressureCriteria(HYD_DiagnosticCriteria
 
     memset(criteria, 0, sizeof(*criteria));
 
-    criteria->baseThreshold = 0.5;        /* 默认0.5 MPa */
+    criteria->baseThreshold = 0.5;        /* 默认0.5 bar */
     criteria->debounceTime = 0.1;         /* 默认100ms去抖动 */
     criteria->hysteresisRatio = 0.2;      /* 默认20%滞回 */
 

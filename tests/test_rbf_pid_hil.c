@@ -9,8 +9,8 @@
  *
  * NOTE on sim pressure range: the hydro_sim INJECT axis uses melt_stiffness=150 N/mm
  * and cylinder area=8000 mm². At position 200mm the load force is 30000N giving
- * pressure 30000/8000*10 = 37.5 bar = 3.75 MPa. Target pressure is chosen within
- * the achievable sim range (4 MPa = 40 bar). Assertions are conservative:
+ * pressure 30000/8000*10 = 37.5 bar. Target pressure is chosen within
+ * the achievable sim range. Assertions are conservative:
  * the primary gates are "no fault" and "gains in window" rather than tight
  * pressure tracking (the sim physics does not model a pressure-regulated pump).
  */
@@ -33,10 +33,10 @@
 #define HIL_SCENARIO_B_PI_DUR_S      5.0
 #define HIL_SCENARIO_B_RBF_DUR_S     5.0
 
-/* Target pressure within sim achievable range (MPa) */
-#define HIL_TARGET_A_MPA             3.0
-#define HIL_TARGET_B1_MPA            2.0
-#define HIL_TARGET_B2_MPA            3.0
+/* Target pressure within sim achievable range (bar) */
+#define HIL_TARGET_A_BAR             30.0
+#define HIL_TARGET_B1_BAR            20.0
+#define HIL_TARGET_B2_BAR            30.0
 
 /* ---------- Forward declarations ---------- */
 static void hil_setup_inject_env(HydraulicSimEnv* env);
@@ -78,7 +78,7 @@ static void hil_step_once(HYD_MotionControlFB* fb, HydraulicSimEnv* env, HYD_REA
     int ok;
 
     /* 1. Read sim sensor snapshot into FB AXIS_REF.
-     *    Sim uses bar; FB expects MPa (1 MPa = 10 bar). */
+     *    The FB pressure chain consumes bar directly. */
     ok = HydraulicSim_ReadAxis(env, 0, &sim_fb);
     (void)ok;   /* missing axis returns zeros — acceptable for first frame */
 
@@ -86,8 +86,9 @@ static void hil_step_once(HYD_MotionControlFB* fb, HydraulicSimEnv* env, HYD_REA
     fb->AXIS_REF.position  = (HYD_REAL)sim_fb.position_mm;
     fb->AXIS_REF.velocity  = (HYD_REAL)sim_fb.velocity_mm_s;
     fb->AXIS_REF.flow      = 0.0;   /* flow not provided by sim ReadAxis */
-    /* Convert bar -> MPa */
-    fb->AXIS_REF.pressure  = (HYD_REAL)(sim_fb.pressure_bar * 0.1f);
+    fb->AXIS_REF.pressure  = (HYD_REAL)sim_fb.pressure_bar;
+    assert(fabs((double)(fb->AXIS_REF.pressure - (HYD_REAL)sim_fb.pressure_bar)) < 1e-6 &&
+           "FB pressure feedback should consume simulator pressure in bar without conversion");
 
     /* 2. Tick FB. */
     HYD_MotionControlFB_Execute(fb);
@@ -131,8 +132,8 @@ static void test_long_hold_rbf_no_fault(void) {
     int frame;
     int frames_total = (int)(HIL_SCENARIO_A_DURATION_S / HIL_DT_S);
 
-    printf("HIL scenario A — 10s RBF hold (target=%.1f MPa, %d frames)...\n",
-           HIL_TARGET_A_MPA, frames_total);
+    printf("HIL scenario A - 10s RBF hold (target=%.1f bar, %d frames)...\n",
+           HIL_TARGET_A_BAR, frames_total);
 
     HYD_MotionControlFB_Init(&fb);
     hil_setup_inject_env(&env);
@@ -143,10 +144,10 @@ static void test_long_hold_rbf_no_fault(void) {
     segment.endCondition     = HYD_END_TIME;
     segment.direction        = HYD_DIRECTION_HOLD;
     segment.duration        = HIL_SCENARIO_A_DURATION_S + 5.0;
-    segment.targetPressure  = HIL_TARGET_A_MPA;
-    segment.pressureCeiling = 20.0;   /* 200 bar — safety ceiling */
-    segment.pressureTolerance = 0.5;
-    segment.pressureRampRate  = 10.0;
+    segment.targetPressure  = HIL_TARGET_A_BAR;
+    segment.pressureCeiling = 200.0;   /* safety ceiling */
+    segment.pressureTolerance = 5.0;
+    segment.pressureRampRate  = 100.0;
     segment.pressureFilterAlpha           = 1.0;
     segment.pressureDerivativeFilterAlpha = 1.0;
     segment.maxFlow         = 30.0;
@@ -170,7 +171,7 @@ static void test_long_hold_rbf_no_fault(void) {
 
         /* Primary assertion: no fault escalation during the run */
         if (fb.STATE.faultActive) {
-            printf("  FAIL: fault escalated at frame %d (t=%.3fs), pressure=%.3f MPa\n",
+            printf("  FAIL: fault escalated at frame %d (t=%.3fs), pressure=%.3f bar\n",
                    frame, t, (double)fb.AXIS_REF.pressure);
             assert(!fb.STATE.faultActive);
         }
@@ -181,8 +182,8 @@ static void test_long_hold_rbf_no_fault(void) {
            fb.STATE.pressureLoop.adaptiveKp,
            fb.STATE.pressureLoop.adaptiveKi,
            fb.STATE.pressureLoop.adaptiveKd);
-    printf("  Final pressure=%.3f MPa (target=%.1f)\n",
-           (double)fb.AXIS_REF.pressure, HIL_TARGET_A_MPA);
+    printf("  Final pressure=%.3f bar (target=%.1f)\n",
+           (double)fb.AXIS_REF.pressure, HIL_TARGET_A_BAR);
 
     assert(!fb.STATE.faultActive);
     printf("✓ Scenario A passed (no fault in %d frames)\n\n", frames_total);
@@ -209,9 +210,9 @@ static void test_pi_to_rbf_recipe_is_rejected_when_platform_limit_is_one(void) {
     recipe[0].endCondition      = HYD_END_TIME;
     recipe[0].direction          = HYD_DIRECTION_HOLD;
     recipe[0].duration          = HIL_SCENARIO_B_PI_DUR_S;
-    recipe[0].targetPressure    = HIL_TARGET_B1_MPA;
-    recipe[0].pressureCeiling   = 20.0;
-    recipe[0].pressureRampRate  = 10.0;
+    recipe[0].targetPressure    = HIL_TARGET_B1_BAR;
+    recipe[0].pressureCeiling   = 200.0;
+    recipe[0].pressureRampRate  = 100.0;
     recipe[0].pressureFilterAlpha           = 1.0;
     recipe[0].pressureDerivativeFilterAlpha = 1.0;
     recipe[0].maxFlow           = 30.0;
@@ -226,9 +227,9 @@ static void test_pi_to_rbf_recipe_is_rejected_when_platform_limit_is_one(void) {
     recipe[1].endCondition      = HYD_END_TIME;
     recipe[1].direction          = HYD_DIRECTION_HOLD;
     recipe[1].duration          = HIL_SCENARIO_B_RBF_DUR_S;
-    recipe[1].targetPressure    = HIL_TARGET_B2_MPA;
-    recipe[1].pressureCeiling   = 20.0;
-    recipe[1].pressureRampRate  = 10.0;
+    recipe[1].targetPressure    = HIL_TARGET_B2_BAR;
+    recipe[1].pressureCeiling   = 200.0;
+    recipe[1].pressureRampRate  = 100.0;
     recipe[1].pressureFilterAlpha           = 1.0;
     recipe[1].pressureDerivativeFilterAlpha = 1.0;
     recipe[1].maxFlow           = 30.0;
