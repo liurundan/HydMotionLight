@@ -572,6 +572,66 @@ static void test_same_direction_keeps_velocity_across_position_to_sustain_switch
                 "Position-to-sustain switch should preserve axis velocity instead of restarting from zero");
 }
 
+static void test_omitted_direction_reaches_position_and_end_velocity(void) {
+    HYD_MOVECONTINUOUSABSOLUTE cmd;
+    HYD_MotionControlFB* core;
+    int axisId;
+    int positionReachedStep;
+    int inEndVelocityStep;
+    HYD_REAL finalVelocity = 0.0f;
+    bool readOk = false;
+
+    __HydMotion_framework_Init();
+    axisId = create_sim_axis();
+    ASSERT_TRUE(axisId >= 0, "CreateMotion should allocate a simulation axis");
+    if (axisId < 0) {
+        return;
+    }
+
+    core = __MK_GetPublic_MotionControlFB(axisId);
+    ASSERT_TRUE(core != NULL, "Public motion FB should be available for omitted-direction test");
+    if (core == NULL) {
+        return;
+    }
+
+    init_movecontinuousabsolute(&cmd, axisId, 20.0f, 5.0f, 5.0f,
+                                HYD_DIRECTION_SHORTEST_WAY,
+                                HYD_DIRECTION_POSITIVE);
+    rising_edge_scan(&cmd);
+
+    positionReachedStep = run_until_position_reached(&cmd);
+    assert_run_result(positionReachedStep,
+                      "MoveContinuousAbsolute should reach POSITIONREACHED even when Direction is omitted");
+    if (positionReachedStep <= 0) {
+        return;
+    }
+
+    inEndVelocityStep = run_until_inendvelocity(&cmd);
+    assert_run_result(inEndVelocityStep,
+                      "MoveContinuousAbsolute should eventually reach INENDVELOCITY even when Direction is omitted");
+    if (inEndVelocityStep <= 0) {
+        return;
+    }
+
+    ASSERT_TRUE(IEC_VAL(cmd.POSITIONREACHED) == true,
+                "POSITIONREACHED should stay latched once the target position is crossed with omitted Direction");
+    ASSERT_TRUE(IEC_VAL(cmd.INENDVELOCITY) == true,
+                "INENDVELOCITY should become true after the sustain velocity settles with omitted Direction");
+    ASSERT_TRUE(IEC_VAL(cmd.ERROR) == false,
+                "MoveContinuousAbsolute should not error when Direction is omitted");
+    ASSERT_TRUE(IEC_VAL(cmd.COMMANDABORTED) == false,
+                "MoveContinuousAbsolute should not be aborted when Direction is omitted");
+
+    readOk = read_sim_feedback(axisId, NULL, &finalVelocity, NULL, NULL);
+    ASSERT_TRUE(readOk,
+                "ReadSimFeedback should expose the sustained velocity in the omitted-direction case");
+    if (!readOk) {
+        return;
+    }
+    ASSERT_TRUE(fabsf(finalVelocity) > 0.01f,
+                "Axis velocity should remain non-zero after the omitted-direction case reaches sustain");
+}
+
 static void test_negative_same_direction_latches_inendvelocity_on_target_crossing(void) {
     HYD_MOVECONTINUOUSABSOLUTE cmd;
     int axisId;
@@ -1188,6 +1248,7 @@ int main(void) {
     test_current_end_velocity_direction_uses_velocity_then_last_active_direction();
     test_same_direction_reaches_position_and_end_velocity();
     test_same_direction_keeps_velocity_across_position_to_sustain_switch();
+    test_omitted_direction_reaches_position_and_end_velocity();
     test_negative_same_direction_latches_inendvelocity_on_target_crossing();
     test_adapt_lowers_crossing_velocity_when_distance_is_too_short_to_accelerate();
     test_adapt_raises_crossing_velocity_when_distance_is_too_short_to_decelerate();

@@ -1630,6 +1630,14 @@ void __mcl_cmd_MoveContinuousAbsolute(HYD_MOVECONTINUOUSABSOLUTE *data__)
         approachDirection = HYD_Segment_ResolveDirection(&approachSegment,
                                                          &fb->AXIS_REF,
                                                          fb->_lastActiveDirection);
+        if (requestedDirection == HYD_DIRECTION_SHORTEST_WAY &&
+            (approachDirection == HYD_DIRECTION_POSITIVE ||
+             approachDirection == HYD_DIRECTION_NEGATIVE)) {
+            /* Freeze the initial shortest-way choice for the approach phase so
+             * position crossing and sustain handoff do not re-resolve and flip
+             * direction around the target on later scans. */
+            approachSegment.direction = approachDirection;
+        }
         sustainDirection = resolveContinuousEndVelocityDirection(fb,
                                                                  requestedEndDirection,
                                                                  approachDirection);
