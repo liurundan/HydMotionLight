@@ -813,6 +813,7 @@ static void test_movevelocity_accepts_continuousupdate_and_updates_active_target
     IEC_VAL(mv.ACCELERATION) = 100.0f;
     IEC_VAL(mv.DIRECTION) = 1;
     IEC_VAL(mv.CONTINUOUSUPDATE) = true;
+    IEC_VAL(mv.PRESSURELIMIT) = 140.0f;
 
     __mcl_cmd_MoveVelocity(&mv);
 
@@ -828,14 +829,26 @@ static void test_movevelocity_accepts_continuousupdate_and_updates_active_target
     ASSERT_TRUE(fb->_activeSegmentValid, "MoveVelocity should have an active segment");
     ASSERT_TRUE(fabs(fb->_activeSegment.maxVelocity - 25.0f) < 0.001f,
                "MoveVelocity should latch initial velocity target");
+    ASSERT_TRUE(fabsf(fb->_activeSegment.maxPressure - 140.0f) <= 1e-6f,
+               "MoveVelocity should latch the initial pressure limit");
 
     IEC_VAL(mv.VELOCITY) = 35.0f;
+    IEC_VAL(mv.PRESSURELIMIT) = 110.0f;
     __mcl_cmd_MoveVelocity(&mv);
 
     ASSERT_TRUE(IEC_VAL(mv.ERROR) == false,
                "MoveVelocity continuous update should not raise ERROR");
     ASSERT_TRUE(fabs(fb->_activeSegment.maxVelocity - 35.0f) < 0.001f,
                "MoveVelocity continuous update should update active maxVelocity");
+    ASSERT_TRUE(fabsf(fb->_activeSegment.maxPressure - 110.0f) <= 1e-6f,
+               "MoveVelocity continuous update should update the active pressure limit");
+
+    fb->PRESSURE_LIMIT = 90.0f;
+    IEC_VAL(mv.PRESSURELIMIT) = 0.0f;
+    __mcl_cmd_MoveVelocity(&mv);
+
+    ASSERT_TRUE(fabsf(fb->_activeSegment.maxPressure - 90.0f) <= 1e-6f,
+               "MoveVelocity continuous update should apply the axis pressure default");
 }
 
 static void test_movevelocity_continuousupdate_lower_target_preserves_ramp(void) {
@@ -894,6 +907,84 @@ static void test_movevelocity_continuousupdate_lower_target_preserves_ramp(void)
                "MoveVelocity lower target should not clamp flow to the new steady-state value immediately");
     ASSERT_TRUE(fb->STATE.plannedFlow < previousFlow,
                "MoveVelocity lower target should still reduce flow");
+}
+
+static void test_movevelocity_continuousupdate_rejects_nonfinite_pressure_limit(void) {
+    HYD_MOVEVELOCITY mv;
+    HYD_MotionControlFB* fb;
+
+    __HydMotion_framework_Init();
+    ensure_axes_allocated(1);
+    fb = __MK_GetPublic_MotionControlFB(0);
+    memset(&mv, 0, sizeof(mv));
+
+    IEC_VAL(mv.EN) = true;
+    IEC_VAL(mv.EXECUTE) = true;
+    mv.EXECUTE0.value = false;
+    IEC_VAL(mv.AXISID) = 0;
+    IEC_VAL(mv.VELOCITY) = 25.0f;
+    IEC_VAL(mv.ACCELERATION) = 100.0f;
+    IEC_VAL(mv.DIRECTION) = 1;
+    IEC_VAL(mv.CONTINUOUSUPDATE) = true;
+    IEC_VAL(mv.PRESSURELIMIT) = 140.0f;
+
+    __mcl_cmd_MoveVelocity(&mv);
+    __HydMotion_framework_Publish();
+    mv.EXECUTE0.value = true;
+    __mcl_cmd_MoveVelocity(&mv);
+
+    ASSERT_TRUE(fb != NULL && fb->_activeSegmentValid,
+               "MoveVelocity nonfinite live-update test should start an active segment");
+    if (fb == NULL || !fb->_activeSegmentValid) {
+        return;
+    }
+
+    IEC_VAL(mv.PRESSURELIMIT) = NAN;
+    __mcl_cmd_MoveVelocity(&mv);
+
+    ASSERT_TRUE(IEC_VAL(mv.ERROR) == true,
+               "MoveVelocity continuous update should reject a nonfinite PRESSURELIMIT");
+    ASSERT_TRUE(IEC_VAL(mv.ERRORID) == HYD_DIAG_CODE_COMMAND_NOT_ALLOWED,
+               "Nonfinite live PRESSURELIMIT should surface COMMAND_NOT_ALLOWED");
+    ASSERT_TRUE(fabsf(fb->_activeSegment.maxPressure - 140.0f) <= 1e-6f,
+               "Rejected live PRESSURELIMIT should not modify the active segment");
+}
+
+static void test_movevelocity_pressure_limit_stays_latched_without_continuousupdate(void) {
+    HYD_MOVEVELOCITY mv;
+    HYD_MotionControlFB* fb;
+
+    __HydMotion_framework_Init();
+    ensure_axes_allocated(1);
+    fb = __MK_GetPublic_MotionControlFB(0);
+    memset(&mv, 0, sizeof(mv));
+
+    IEC_VAL(mv.EN) = true;
+    IEC_VAL(mv.EXECUTE) = true;
+    mv.EXECUTE0.value = false;
+    IEC_VAL(mv.AXISID) = 0;
+    IEC_VAL(mv.VELOCITY) = 25.0f;
+    IEC_VAL(mv.ACCELERATION) = 100.0f;
+    IEC_VAL(mv.DIRECTION) = 1;
+    IEC_VAL(mv.CONTINUOUSUPDATE) = false;
+    IEC_VAL(mv.PRESSURELIMIT) = 140.0f;
+
+    __mcl_cmd_MoveVelocity(&mv);
+    __HydMotion_framework_Publish();
+    mv.EXECUTE0.value = true;
+    __mcl_cmd_MoveVelocity(&mv);
+
+    ASSERT_TRUE(fb != NULL && fb->_activeSegmentValid,
+               "MoveVelocity latch test should start an active segment");
+    if (fb == NULL || !fb->_activeSegmentValid) {
+        return;
+    }
+
+    IEC_VAL(mv.PRESSURELIMIT) = 110.0f;
+    __mcl_cmd_MoveVelocity(&mv);
+
+    ASSERT_TRUE(fabsf(fb->_activeSegment.maxPressure - 140.0f) <= 1e-6f,
+               "MoveVelocity should keep PRESSURELIMIT latched when CONTINUOUSUPDATE is false");
 }
 
 static void test_moveabsolute_continuousupdate_lower_velocity_preserves_ramp(void) {
@@ -1079,6 +1170,106 @@ static void test_movevelocity_maps_deceleration_independently(void) {
                "MoveVelocity should map DECELERATION independently");
 }
 
+static void test_movevelocity_maps_explicit_pressure_limit_to_direct_segment(void) {
+    HYD_MOVEVELOCITY mv;
+    HYD_MotionControlFB* fb;
+
+    __HydMotion_framework_Init();
+    ensure_axes_allocated(1);
+    memset(&mv, 0, sizeof(mv));
+
+    IEC_VAL(mv.EN) = true;
+    IEC_VAL(mv.EXECUTE) = true;
+    mv.EXECUTE0.value = false;
+    IEC_VAL(mv.AXISID) = 0;
+    IEC_VAL(mv.VELOCITY) = 25.0f;
+    IEC_VAL(mv.ACCELERATION) = 100.0f;
+    IEC_VAL(mv.DECELERATION) = 6.0f;
+    IEC_VAL(mv.DIRECTION) = 1;
+    IEC_VAL(mv.PRESSURELIMIT) = 120.0f;
+
+    __mcl_cmd_MoveVelocity(&mv);
+
+    fb = __MK_GetPublic_MotionControlFB(0);
+    ASSERT_TRUE(fb != NULL, "MoveVelocity pressure-limit test should resolve an FB");
+    ASSERT_TRUE(IEC_VAL(mv.ERROR) == false,
+               "MoveVelocity should accept a finite PRESSURELIMIT");
+    ASSERT_TRUE(fb->DIRECT_SEGMENT_VALID == true,
+               "MoveVelocity should load a direct segment for pressure limiting");
+    ASSERT_TRUE(fabsf(fb->DIRECT_SEGMENT.maxPressure - 120.0f) <= 1e-6f,
+               "MoveVelocity PRESSURELIMIT should enter segment.maxPressure in bar");
+}
+
+static void test_movevelocity_nonpositive_pressure_limit_uses_axis_default(void) {
+    const HYD_REAL inputs[] = {0.0f, -1.0f};
+
+    for (size_t i = 0; i < sizeof(inputs) / sizeof(inputs[0]); ++i) {
+        HYD_MOVEVELOCITY mv;
+        HYD_MotionControlFB* fb;
+
+        __HydMotion_framework_Init();
+        ensure_axes_allocated(1);
+        fb = __MK_GetPublic_MotionControlFB(0);
+        memset(&mv, 0, sizeof(mv));
+
+        ASSERT_TRUE(fb != NULL, "MoveVelocity fallback test should resolve an FB");
+        if (fb == NULL) {
+            continue;
+        }
+        fb->PRESSURE_LIMIT = 180.0f;
+
+        IEC_VAL(mv.EN) = true;
+        IEC_VAL(mv.EXECUTE) = true;
+        mv.EXECUTE0.value = false;
+        IEC_VAL(mv.AXISID) = 0;
+        IEC_VAL(mv.VELOCITY) = 25.0f;
+        IEC_VAL(mv.ACCELERATION) = 100.0f;
+        IEC_VAL(mv.DECELERATION) = 6.0f;
+        IEC_VAL(mv.DIRECTION) = 1;
+        IEC_VAL(mv.PRESSURELIMIT) = inputs[i];
+
+        __mcl_cmd_MoveVelocity(&mv);
+
+        ASSERT_TRUE(IEC_VAL(mv.ERROR) == false,
+                   "MoveVelocity should accept a nonpositive PRESSURELIMIT as fallback");
+        ASSERT_TRUE(fabsf(fb->DIRECT_SEGMENT.maxPressure - 180.0f) <= 1e-6f,
+                   "MoveVelocity nonpositive PRESSURELIMIT should use the axis default");
+    }
+}
+
+static void test_movevelocity_rejects_nonfinite_pressure_limit(void) {
+    const HYD_REAL inputs[] = {NAN, INFINITY, -INFINITY};
+
+    for (size_t i = 0; i < sizeof(inputs) / sizeof(inputs[0]); ++i) {
+        HYD_MOVEVELOCITY mv;
+        HYD_MotionControlFB* fb;
+
+        __HydMotion_framework_Init();
+        ensure_axes_allocated(1);
+        fb = __MK_GetPublic_MotionControlFB(0);
+        memset(&mv, 0, sizeof(mv));
+
+        IEC_VAL(mv.EN) = true;
+        IEC_VAL(mv.EXECUTE) = true;
+        mv.EXECUTE0.value = false;
+        IEC_VAL(mv.AXISID) = 0;
+        IEC_VAL(mv.VELOCITY) = 25.0f;
+        IEC_VAL(mv.ACCELERATION) = 100.0f;
+        IEC_VAL(mv.DECELERATION) = 6.0f;
+        IEC_VAL(mv.DIRECTION) = 1;
+        IEC_VAL(mv.PRESSURELIMIT) = inputs[i];
+
+        __mcl_cmd_MoveVelocity(&mv);
+
+        ASSERT_TRUE(IEC_VAL(mv.ERROR) == true,
+                   "MoveVelocity should reject a nonfinite PRESSURELIMIT");
+        ASSERT_TRUE(IEC_VAL(mv.ERRORID) == HYD_DIAG_CODE_COMMAND_NOT_ALLOWED,
+                   "Nonfinite MoveVelocity PRESSURELIMIT should surface COMMAND_NOT_ALLOWED");
+        ASSERT_TRUE(fb != NULL && fb->DIRECT_SEGMENT_VALID == false,
+                   "Nonfinite MoveVelocity PRESSURELIMIT should not start a direct segment");
+    }
+}
+
 /* ==================================================================
  * Test 12: Stop 在空闲轴上立即完成
  * ================================================================== */
@@ -1213,6 +1404,7 @@ static void test_reset_preserves_direct_segment_configuration(void) {
     ASSERT_TRUE(fb != NULL, "FB instance should exist");
     ASSERT_TRUE(fb->DIRECT_SEGMENT_VALID == true,
                "Direct segment should be loaded before reset");
+    fb->PRESSURE_LIMIT = 180.0f;
 
     memset(&reset, 0, sizeof(reset));
     IEC_VAL(reset.EN) = true;
@@ -1223,6 +1415,8 @@ static void test_reset_preserves_direct_segment_configuration(void) {
 
     ASSERT_TRUE(fb->DIRECT_SEGMENT_VALID == true,
                "SoftReset should preserve the direct segment");
+    ASSERT_TRUE(fb->PRESSURE_LIMIT == 180.0f,
+               "SoftReset should preserve the axis pressure limit");
     ASSERT_TRUE(fb->STATE.active == false,
                "SoftReset should clear active execution state");
 }
@@ -2892,11 +3086,16 @@ int main(void) {
     test_moveabsolute_rejects_nonzero_jerk_until_supported();
     test_movevelocity_accepts_continuousupdate_and_updates_active_target();
     test_movevelocity_continuousupdate_lower_target_preserves_ramp();
+    test_movevelocity_continuousupdate_rejects_nonfinite_pressure_limit();
+    test_movevelocity_pressure_limit_stays_latched_without_continuousupdate();
     test_moveabsolute_continuousupdate_lower_velocity_preserves_ramp();
     test_moveabsolute_accepts_beckhoff_buffer_modes();
     test_movevelocity_execute_rising_starts_velocity_control();
     test_movevelocity_rejects_invalid_axis_index();
     test_movevelocity_maps_deceleration_independently();
+    test_movevelocity_maps_explicit_pressure_limit_to_direct_segment();
+    test_movevelocity_nonpositive_pressure_limit_uses_axis_default();
+    test_movevelocity_rejects_nonfinite_pressure_limit();
     test_stop_on_idle_axis_immediate_done();
     test_stop_rejects_invalid_axis_index();
     test_reset_immediate_done_on_initialized_axis();

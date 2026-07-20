@@ -166,6 +166,7 @@ static HYD_MotionSegment buildVelocitySegment(
     HYD_REAL acceleration,
     HYD_REAL deceleration,
     HYD_MotionDirection direction,
+    HYD_REAL pressureLimit,
     const HYD_MotionControlFB* fb)
 {
     HYD_MotionSegment seg;
@@ -183,6 +184,7 @@ static HYD_MotionSegment buildVelocitySegment(
     seg.maxDeceleration = (deceleration > 0.0f) ? deceleration : acceleration;
     seg.maxFlow = (velocity > 0.0f) ? velocity * fb->_params.velocityToFlowGain : fb->_params.maxFlow;
     seg.velocityToFlowGain = fb->_params.velocityToFlowGain;
+    seg.maxPressure = pressureLimit;
 
     seg.timeoutLimit = 0.0f;
 
@@ -517,6 +519,32 @@ static HYD_BOOL validateUnsupportedMotionOptions(IEC_REAL jerk,
     return false;
 }
 
+static HYD_BOOL resolvePressureLimit(HYD_REAL requestedLimit,
+                                     const HYD_MotionControlFB* fb,
+                                     HYD_REAL* resolvedLimit,
+                                     IEC_WORD* errorId)
+{
+    HYD_REAL effectiveLimit;
+
+    if (!isfinite(requestedLimit) || fb == NULL || resolvedLimit == NULL) {
+        if (errorId != NULL) {
+            *errorId = (IEC_WORD)HYD_DIAG_CODE_COMMAND_NOT_ALLOWED;
+        }
+        return false;
+    }
+
+    effectiveLimit = (requestedLimit > 0.0f) ? requestedLimit : fb->PRESSURE_LIMIT;
+    if (!isfinite(effectiveLimit)) {
+        if (errorId != NULL) {
+            *errorId = (IEC_WORD)HYD_DIAG_CODE_COMMAND_NOT_ALLOWED;
+        }
+        return false;
+    }
+
+    *resolvedLimit = effectiveLimit;
+    return true;
+}
+
 static HYD_BOOL applyMoveAbsoluteLiveUpdate(HYD_MotionControlFB* fb,
                                             IEC_WORD execId,
                                             HYD_MOVEABSOLUTE* data__)
@@ -549,9 +577,18 @@ static HYD_BOOL applyMoveVelocityLiveUpdate(HYD_MotionControlFB* fb,
                                             HYD_MOVEVELOCITY* data__)
 {
     HYD_LiveUpdateRequest request;
+    IEC_WORD errorId = 0;
+    HYD_REAL pressureLimit;
 
     if (fb == NULL || data__ == NULL || !__GET_VAR(data__->CONTINUOUSUPDATE)) {
         return true;
+    }
+
+    if (!resolvePressureLimit(__GET_VAR(data__->PRESSURELIMIT),
+                              fb,
+                              &pressureLimit,
+                              &errorId)) {
+        return false;
     }
 
     HYD_REAL rawVelocity = __GET_VAR(data__->VELOCITY);
@@ -574,12 +611,14 @@ static HYD_BOOL applyMoveVelocityLiveUpdate(HYD_MotionControlFB* fb,
                     HYD_LIVE_UPDATE_ACCELERATION |
                     HYD_LIVE_UPDATE_DECELERATION |
                     HYD_LIVE_UPDATE_CONTINUOUS_UPDATE |
-                    HYD_LIVE_UPDATE_DIRECTION;
+                    HYD_LIVE_UPDATE_DIRECTION |
+                    HYD_LIVE_UPDATE_MAX_PRESSURE;
     request.ownerKind = HYD_DIRECT_CMD_MOVE_VELOCITY;
     request.ownerTicket = (uint16_t)execId;
     request.maxVelocity = (IEC_REAL)fabs((double)rawVelocity);
     request.maxAcceleration = __GET_VAR(data__->ACCELERATION);
     request.maxDeceleration = __GET_VAR(data__->DECELERATION);
+    request.maxPressure = pressureLimit;
     request.direction = dir;
     return HYD_MotionControlFB_ApplyLiveUpdate(fb, &request);
 }
@@ -1678,9 +1717,14 @@ void __mcl_cmd_MoveVelocity(HYD_MOVEVELOCITY *data__)
     if (execRising)
     {
         IEC_WORD errorId = 0;
+        HYD_REAL pressureLimit;
         if (!validateSupportedBufferMode(bufferMode, &errorId) ||
             !validateUnsupportedMotionOptions(__GET_VAR(data__->JERK),
-                                              &errorId)) {
+                                              &errorId) ||
+            !resolvePressureLimit(__GET_VAR(data__->PRESSURELIMIT),
+                                  fb,
+                                  &pressureLimit,
+                                  &errorId)) {
             __SET_VAR(data__->, ERROR, , true);
             __SET_VAR(data__->, ERRORID, , errorId);
             __SET_VAR(data__->, EXECUTE0, , execute);
@@ -1713,6 +1757,7 @@ void __mcl_cmd_MoveVelocity(HYD_MOVEVELOCITY *data__)
             __GET_VAR(data__->ACCELERATION),
             __GET_VAR(data__->DECELERATION),
             dir,
+            pressureLimit,
             fb);
 
         HYD_DirectStartResult startResult =

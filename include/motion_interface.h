@@ -27,6 +27,7 @@
  * All PLC-facing pressure values use bar and bar/s:
  *   HYD_AXISMOTION.SETPRESSURE / ACTPRESSURE / PRESSURERAMPRATE,
  *   HYD_MOVECONTINUOUSABSOLUTE.PRESSURELIMIT,
+ *   HYD_MOVEVELOCITY.PRESSURELIMIT,
  *   HYD_PRESSUREHANDLE.PRESSURE / PRESSURERAMPRATE,
  *   HYD_SETAXISFEEDBACK.ACT_PRESSURE,
  *   HYD_READSIMFEEDBACK.PRESSURE.
@@ -277,8 +278,11 @@ typedef struct {
 
 
 // FUNCTION_BLOCK HYD_MoveVelocity
-// Note: JERK and CONTINUOUSUPDATE are currently reserved compatibility pins.
-// Non-default values are rejected by the IEC adapter until runtime support exists.
+// PRESSURELIMIT is a HYD hydraulic extension to the PLCopen-style interface.
+// It uses bar; positive values set the command limit, while nonpositive values
+// use the axis-level HYD_MotionControlFB.PRESSURE_LIMIT default.
+// CONTINUOUSUPDATE also updates PRESSURELIMIT while this FB owns the active segment.
+// JERK remains reserved and nonzero values are rejected by the IEC adapter.
 // Data part
 typedef struct {
   // FB Interface - IN, OUT, IN_OUT variables
@@ -293,6 +297,7 @@ typedef struct {
   __DECLARE_VAR(REAL,JERK)
   __DECLARE_VAR(SINT,DIRECTION)
   __DECLARE_VAR(INT,BUFFERMODE)
+  __DECLARE_VAR(REAL,PRESSURELIMIT)
   __DECLARE_VAR(BOOL,INVELOCITY)
   __DECLARE_VAR(BOOL,BUSY)
   __DECLARE_VAR(BOOL,ACTIVE)

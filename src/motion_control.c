@@ -1045,6 +1045,10 @@ static HYD_BOOL HYD_ApplyLiveUpdateOverrides(const HYD_LiveUpdateRequest* reques
             : seg->maxAcceleration;
     }
 
+    if ((request->flags & HYD_LIVE_UPDATE_MAX_PRESSURE) != 0U) {
+        seg->maxPressure = request->maxPressure;
+    }
+
     if ((request->flags & HYD_LIVE_UPDATE_TARGET_PRESSURE) != 0U) {
         if (seg->mode != HYD_MODE_PRESSURE_CLOSED_LOOP) {
             return false;
@@ -3069,7 +3073,7 @@ void HYD_MotionControlFB_Init(HYD_MotionControlFB* fb) {
     fb->_simDecelStartTick = 0U;
     fb->_simHoldStartTick = 0U;
     fb->_simCompletionCandidateStartTick = 0U;
-
+    fb->PRESSURE_LIMIT = 250.0f;
 }
 
 void HYD_MotionControlFB_SoftReset(HYD_MotionControlFB* fb) {
@@ -3080,6 +3084,7 @@ void HYD_MotionControlFB_SoftReset(HYD_MotionControlFB* fb) {
     HYD_BOOL savedDirectSegmentValid;
     HYD_REAL savedFlowToPumpSpeedGain;
     HYD_REAL savedPumpSpeedLimit;
+    HYD_REAL savedPressureLimit;
     HYD_BOOL savedConfiguredUseRecipe;
     HYD_BOOL savedUseSimulation;
     HYD_TIME savedSimulationCycleTime;
@@ -3103,6 +3108,7 @@ void HYD_MotionControlFB_SoftReset(HYD_MotionControlFB* fb) {
     savedDirectSegmentValid = fb->DIRECT_SEGMENT_VALID;
     savedFlowToPumpSpeedGain = fb->FLOW_TO_PUMP_SPEED_GAIN;
     savedPumpSpeedLimit = fb->PUMP_SPEED_LIMIT;
+    savedPressureLimit = fb->PRESSURE_LIMIT;
     savedConfiguredUseRecipe = fb->_configuredUseRecipe;
     savedUseSimulation = fb->_useSimulation;
     savedSimulationCycleTime = fb->_simulationCycleTime;
@@ -3129,6 +3135,7 @@ void HYD_MotionControlFB_SoftReset(HYD_MotionControlFB* fb) {
     fb->DIRECT_SEGMENT_VALID = savedDirectSegmentValid;
     fb->FLOW_TO_PUMP_SPEED_GAIN = savedFlowToPumpSpeedGain;
     fb->PUMP_SPEED_LIMIT = savedPumpSpeedLimit;
+    fb->PRESSURE_LIMIT = savedPressureLimit;
     fb->USE_RECIPE = savedConfiguredUseRecipe;
     fb->_params = savedParams;
     fb->FLOW_TO_PUMP_SPEED_GAIN = savedParams.flowToPumpSpeedGain;

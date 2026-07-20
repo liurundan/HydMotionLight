@@ -28,6 +28,10 @@ POU_TO_C_TYPE = {
     "HYD_WriteBoolParameter": "HYD_WRITEBOOLPARAMETER",
 }
 
+POU_ALLOWED_C_ONLY_FIELDS = {
+    "HYD_GetPumpRequest": {"ALLOW_NEGATIVE0"},
+}
+
 XML_TO_C_FIELD = {
     "ContinuousUpdate": "CONTINUOUSUPDATE",
     "Execute0": "EXECUTE0",
@@ -139,13 +143,22 @@ def parse_header(header_path: Path):
     return structs
 
 
-def compare_sequences(label: str, expected: list[str], actual: list[str], errors: list[str]) -> None:
+def compare_sequences(
+    label: str,
+    expected: list[str],
+    actual: list[str],
+    errors: list[str],
+    allowed_extra: set[str] | None = None,
+) -> None:
+    allowed_extra = allowed_extra or set()
+    unexpected = [field for field in actual if field not in set(expected) | allowed_extra]
     filtered_actual = [field for field in actual if field in set(expected)]
-    if expected != filtered_actual:
+    if expected != filtered_actual or unexpected:
         errors.append(
             f"{label} mismatch\n"
             f"  xml: {expected}\n"
-            f"  c  : {filtered_actual}"
+            f"  c  : {filtered_actual}\n"
+            f"  unexpected c-only fields: {unexpected}"
         )
 
 
@@ -175,7 +188,8 @@ def main() -> int:
         if actual is None:
             errors.append(f"{pou_name} ({c_name}) missing in header")
             continue
-        compare_sequences(pou_name, expected, actual, errors)
+        allowed_extra = {"EN", "ENO"} | POU_ALLOWED_C_ONLY_FIELDS.get(pou_name, set())
+        compare_sequences(pou_name, expected, actual, errors, allowed_extra)
 
     if errors:
         print("Interface layout consistency check failed:")

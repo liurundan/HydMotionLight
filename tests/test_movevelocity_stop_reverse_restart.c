@@ -262,11 +262,93 @@ static void test_continuousupdate_direction_flip_restarts_from_zero(void) {
         "Continuous-update direction flip pump-speed magnitude should ramp upward monotonically from zero");
 }
 
+static void test_pressure_limit_derates_output_and_faults(void) {
+    HYD_MOVEVELOCITY mv;
+    HYD_MotionControlFB* fb;
+    HYD_REAL unrestricted_pump_speed;
+    HYD_REAL limited_pump_speed;
+    HYD_REAL axis_limited_pump_speed;
+    int axis_id;
+
+    printf("--- Test: MoveVelocity pressure limit should derate then fault ---\n");
+
+    __HydMotion_framework_Init();
+    axis_id = create_sim_axis_with_gain(100.0f);
+    ASSERT_TRUE(axis_id >= 0, "CreateMotion should allocate a pressure-limit simulation axis");
+    if (axis_id < 0) {
+        return;
+    }
+
+    fb = __MK_GetPublic_MotionControlFB(axis_id);
+    ASSERT_TRUE(fb != NULL, "Pressure-limit test should resolve its FB");
+    if (fb == NULL) {
+        return;
+    }
+
+    memset(&mv, 0, sizeof(mv));
+    IEC_VAL(mv.EN) = true;
+    IEC_VAL(mv.AXISID) = axis_id;
+    IEC_VAL(mv.VELOCITY) = 5.0f;
+    IEC_VAL(mv.ACCELERATION) = 100.0f;
+    IEC_VAL(mv.DECELERATION) = 100.0f;
+    IEC_VAL(mv.DIRECTION) = 1;
+    IEC_VAL(mv.PRESSURELIMIT) = 100.0f;
+    IEC_VAL(mv.EXECUTE) = true;
+    mv.EXECUTE0.value = false;
+    __mcl_cmd_MoveVelocity(&mv);
+
+    for (int step = 0; step < 100; ++step) {
+        fb->AXIS_REF.pressure = 0.0f;
+        __HydMotion_framework_Publish();
+        hold_movevelocity_scan(&mv);
+    }
+    unrestricted_pump_speed = fb->PUMP_SPEED;
+
+    fb->AXIS_REF.pressure = 110.0f;
+    __HydMotion_framework_Publish();
+    hold_movevelocity_scan(&mv);
+    limited_pump_speed = fb->PUMP_SPEED;
+
+    ASSERT_TRUE(unrestricted_pump_speed > 90.0f,
+                "MoveVelocity should reach steady unrestricted pump speed before pressure limiting");
+    ASSERT_TRUE(limited_pump_speed > unrestricted_pump_speed * 0.68f &&
+                limited_pump_speed < unrestricted_pump_speed * 0.72f,
+                "A 10 percent pressure excess should reduce pump speed to about 70 percent");
+    ASSERT_TRUE(IEC_VAL(mv.BUSY) == true && IEC_VAL(mv.ACTIVE) == true,
+                "Pressure derating should keep MoveVelocity busy and active before fault escalation");
+
+    fb->PRESSURE_LIMIT = 80.0f;
+    fb->AXIS_REF.pressure = 88.0f;
+    __HydMotion_framework_Publish();
+    hold_movevelocity_scan(&mv);
+    axis_limited_pump_speed = fb->PUMP_SPEED;
+
+    ASSERT_TRUE(axis_limited_pump_speed > unrestricted_pump_speed * 0.68f &&
+                axis_limited_pump_speed < unrestricted_pump_speed * 0.72f,
+                "The lower axis pressure limit should override the command pressure limit");
+
+    for (int step = 0; step < 2000 && !IEC_VAL(mv.ERROR); ++step) {
+        fb->AXIS_REF.pressure = 110.0f;
+        __HydMotion_framework_Publish();
+        hold_movevelocity_scan(&mv);
+    }
+
+    ASSERT_TRUE(IEC_VAL(mv.ERROR) == true,
+                "Sustained pressure limiting should surface ERROR on MoveVelocity");
+    ASSERT_TRUE(IEC_VAL(mv.ERRORID) == HYD_DIAG_CODE_OVER_PRESSURE_LIMIT_FAULT,
+                "Sustained pressure limiting should report the pressure-limit fault code");
+    ASSERT_TRUE(IEC_VAL(mv.BUSY) == false && IEC_VAL(mv.ACTIVE) == false,
+                "Pressure-limit fault should clear MoveVelocity busy and active outputs");
+    ASSERT_TRUE(IEC_VAL(mv.COMMANDABORTED) == false,
+                "Pressure-limit fault should not be reported as command preemption");
+}
+
 int main(void) {
     printf("=== MoveVelocity Stop/Reverse Restart Regression ===\n\n");
 
     test_reverse_restart_after_stop_starts_from_zero();
     test_continuousupdate_direction_flip_restarts_from_zero();
+    test_pressure_limit_derates_output_and_faults();
 
     printf("\nTests passed: %d/%d\n", tests_passed, tests_run);
     return (tests_passed == tests_run) ? 0 : 1;

@@ -675,6 +675,11 @@
 								<INT />
 							</type>
 						</variable>
+						<variable name="PRESSURELIMIT">
+							<type>
+								<REAL />
+							</type>
+						</variable>
 					</inputVars>
 					<outputVars>
 						<variable name="INVELOCITY">

@@ -385,6 +385,7 @@ void HYD_MOVEVELOCITY_init__(HYD_MOVEVELOCITY *data__, BOOL retain) {
   __INIT_VAR(data__->JERK,0,retain)
   __INIT_VAR(data__->DIRECTION,0,retain)
   __INIT_VAR(data__->BUFFERMODE,0,retain)
+  __INIT_VAR(data__->PRESSURELIMIT,0,retain)
   __INIT_VAR(data__->INVELOCITY,__BOOL_LITERAL(FALSE),retain)
   __INIT_VAR(data__->BUSY,__BOOL_LITERAL(FALSE),retain)
   __INIT_VAR(data__->ACTIVE,__BOOL_LITERAL(FALSE),retain)
@@ -2672,7 +2673,6 @@ void TESTPRESSURECTRL_body__(TESTPRESSURECTRL *data__) {
 __end:
   return;
 } // TESTPRESSURECTRL_body__() 
-
 
 
 
