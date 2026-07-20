@@ -1237,6 +1237,101 @@ static void test_movevelocity_nonpositive_pressure_limit_uses_axis_default(void)
     }
 }
 
+static void test_movevelocity_uses_cylinder_gain_for_flow_limit(void) {
+    HYD_MOVEVELOCITY mv;
+    HYD_MotionControlFB* fb;
+
+    __HydMotion_framework_Init();
+    ensure_axes_allocated(1);
+    fb = __MK_GetPublic_MotionControlFB(0);
+    memset(&mv, 0, sizeof(mv));
+
+    ASSERT_TRUE(fb != NULL, "MoveVelocity cylinder-gain test should resolve an FB");
+    if (fb == NULL) {
+        return;
+    }
+
+    fb->cylinderConfig.areaExtendMm2 = 10000.0f;
+    fb->cylinderConfig.areaRetractMm2 = 6000.0f;
+
+    IEC_VAL(mv.EN) = true;
+    IEC_VAL(mv.EXECUTE) = true;
+    mv.EXECUTE0.value = false;
+    IEC_VAL(mv.AXISID) = 0;
+    IEC_VAL(mv.VELOCITY) = 100.0f;
+    IEC_VAL(mv.ACCELERATION) = 500.0f;
+    IEC_VAL(mv.DIRECTION) = HYD_DIRECTION_POSITIVE;
+
+    __mcl_cmd_MoveVelocity(&mv);
+    __HydMotion_framework_Publish();
+    mv.EXECUTE0.value = true;
+    __mcl_cmd_MoveVelocity(&mv);
+
+    ASSERT_TRUE(fb->_activeSegmentValid,
+               "MoveVelocity cylinder-gain test should start an active segment");
+    ASSERT_TRUE(fabsf(fb->_activeSegment.velocityToFlowGain - 0.6f) <= 0.001f,
+               "MoveVelocity should use extend-side cylinder gain");
+    ASSERT_TRUE(fabsf(fb->_activeSegment.maxFlow - 60.0f) <= 0.001f,
+               "MoveVelocity maxFlow should use cylinder-derived velocity gain");
+}
+
+static void test_movecontinuousabsolute_sustain_uses_cylinder_gain(void) {
+    HYD_MOVECONTINUOUSABSOLUTE move;
+    HYD_MotionControlFB* fb;
+    int axisId;
+    int reachedStep = -1;
+
+    __HydMotion_framework_Init();
+    axisId = create_sim_axis();
+    fb = __MK_GetPublic_MotionControlFB(axisId);
+    memset(&move, 0, sizeof(move));
+
+    ASSERT_TRUE(axisId >= 0, "MoveContinuousAbsolute cylinder-gain test should allocate an axis");
+    ASSERT_TRUE(fb != NULL, "MoveContinuousAbsolute cylinder-gain test should resolve an FB");
+    if (fb == NULL) {
+        return;
+    }
+
+    fb->cylinderConfig.areaExtendMm2 = 10000.0f;
+    fb->cylinderConfig.areaRetractMm2 = 6000.0f;
+
+    IEC_VAL(move.EN) = true;
+    IEC_VAL(move.EXECUTE) = true;
+    move.EXECUTE0.value = false;
+    IEC_VAL(move.AXISID) = axisId;
+    IEC_VAL(move.POSITION) = 1.0f;
+    IEC_VAL(move.VELOCITY) = 10.0f;
+    IEC_VAL(move.ENDVELOCITY) = 5.0f;
+    IEC_VAL(move.ENDVELOCITYDIRECTION) = HYD_DIRECTION_NEGATIVE;
+    IEC_VAL(move.ACCELERATION) = 100.0f;
+    IEC_VAL(move.DECELERATION) = 100.0f;
+    IEC_VAL(move.DIRECTION) = HYD_DIRECTION_POSITIVE;
+
+    __mcl_cmd_MoveContinuousAbsolute(&move);
+    __HydMotion_framework_Publish();
+    move.EXECUTE0.value = true;
+    __mcl_cmd_MoveContinuousAbsolute(&move);
+
+    for (int step = 0; step < 1000; step++) {
+        __HydMotion_framework_Publish();
+        __mcl_cmd_MoveContinuousAbsolute(&move);
+        if (fb->_directContinuousAbsolute.phase == HYD_CONTABS_PHASE_SUSTAIN &&
+            fb->_activeSegmentValid) {
+            reachedStep = step;
+            break;
+        }
+    }
+
+    ASSERT_TRUE(reachedStep >= 0,
+               "MoveContinuousAbsolute should transition to sustain phase");
+    ASSERT_TRUE(fb->_activeSegment.direction == HYD_DIRECTION_NEGATIVE,
+               "MoveContinuousAbsolute sustain should use requested negative direction");
+    ASSERT_TRUE(fabsf(fb->_activeSegment.velocityToFlowGain - 0.36f) <= 0.001f,
+               "MoveContinuousAbsolute sustain should use retract-side cylinder gain");
+    ASSERT_TRUE(fabsf(fb->_activeSegment.maxFlow - 1.8f) <= 0.001f,
+               "MoveContinuousAbsolute sustain maxFlow should use cylinder-derived gain");
+}
+
 static void test_movevelocity_rejects_nonfinite_pressure_limit(void) {
     const HYD_REAL inputs[] = {NAN, INFINITY, -INFINITY};
 
@@ -2579,10 +2674,8 @@ static void test_movevelocity_live_update_direction_flip(void) {
     fb.DIRECT_SEGMENT = segment;
     fb.DIRECT_SEGMENT_VALID = true;
 
-    /* Flip direction to RETRACT via live update.
-     * Since velocityToFlowGain is > 0, the recalculation condition
-     * (gain <= 0) won't fire, but the direction should still flip
-     * and planner should be re-primed. */
+    /* Flip direction to RETRACT via live update. A configured retract-side
+     * cylinder area should override the positive segment gain. */
     memset(&req, 0, sizeof(req));
     req.flags = HYD_LIVE_UPDATE_MAX_VELOCITY |
                 HYD_LIVE_UPDATE_CONTINUOUS_UPDATE |
@@ -2598,11 +2691,72 @@ static void test_movevelocity_live_update_direction_flip(void) {
     ASSERT_TRUE(fb._activeSegment.direction == HYD_DIRECTION_NEGATIVE,
         "Direction should be NEGATIVE after flip");
 
-    /* velocityToFlowGain may or may not change depending on whether
-     * the recalculation condition fires (gain <= 0). The key assertion
-     * is that direction was flipped and the request was accepted. */
+    ASSERT_TRUE(fabs(fb._activeSegment.velocityToFlowGain - 0.36) < 0.001,
+        "Direction flip should recompute gain from retract-side cylinder area");
 
     printf("  PASS: MoveVelocity LiveUpdate direction flip\n");
+}
+
+static void test_movevelocity_live_update_direction_flip_updates_flow_limit(void) {
+    HYD_MotionControlFB fb;
+    HYD_MotionSegment segment;
+    HYD_LiveUpdateRequest req;
+
+    printf("--- Test: MoveVelocity LiveUpdate direction flip updates flow limit ---\n");
+
+    memset(&fb, 0, sizeof(fb));
+    fb.USE_RECIPE = false;
+    fb.FB_STATE = HYD_FB_STATE_IDLE;
+    fb.cylinderConfig.areaExtendMm2 = 10000.0;
+    fb.cylinderConfig.areaRetractMm2 = 6000.0;
+
+    memset(&segment, 0, sizeof(segment));
+    segment.mode = HYD_MODE_SPEED_RAMP;
+    segment.endCondition = HYD_END_MANUAL;
+    segment.planner = HYD_PLANNER_TIME_BASED;
+    segment.maxVelocity = 60.0;
+    segment.maxAcceleration = 50.0;
+    segment.maxDeceleration = 50.0;
+    segment.maxFlow = 60.0;
+    segment.velocityToFlowGain = 0.6;
+    segment.direction = HYD_DIRECTION_POSITIVE;
+
+    fb._activeSegment = segment;
+    fb._activeSegmentValid = true;
+    fb._activeSegmentSource = HYD_SEGMENT_SOURCE_DIRECT;
+    fb.STATE.active = true;
+    fb._directOwnerKind = HYD_DIRECT_CMD_MOVE_VELOCITY;
+    fb._directOwnerTicket = 11;
+    fb._executionId = 11;
+    fb.AXIS_REF.timestamp = 1.0;
+    fb.AXIS_REF.position = 0.0;
+    fb.AXIS_REF.flow = 0.0;
+    fb.AXIS_REF.pressure = 0.0;
+    fb.DIRECT_SEGMENT = segment;
+    fb.DIRECT_SEGMENT_VALID = true;
+
+    memset(&req, 0, sizeof(req));
+    req.flags = HYD_LIVE_UPDATE_MAX_VELOCITY |
+                HYD_LIVE_UPDATE_CONTINUOUS_UPDATE |
+                HYD_LIVE_UPDATE_DIRECTION;
+    req.ownerKind = HYD_DIRECT_CMD_MOVE_VELOCITY;
+    req.ownerTicket = 11;
+    req.maxVelocity = 100.0;
+    req.direction = HYD_DIRECTION_NEGATIVE;
+
+    ASSERT_TRUE(HYD_MotionControlFB_ApplyLiveUpdate(&fb, &req),
+        "Direction flip with velocity update should succeed");
+
+    ASSERT_TRUE(fabs(fb._activeSegment.velocityToFlowGain - 0.36) < 0.001,
+        "Direction flip should recompute gain from retract-side cylinder area");
+    ASSERT_TRUE(fabs(fb._activeSegment.maxFlow - 36.0) < 0.001,
+        "Direction flip should update maxFlow using the recomputed cylinder gain");
+    ASSERT_TRUE(fabs(fb.DIRECT_SEGMENT.velocityToFlowGain - 0.6) < 0.001,
+        "Direction flip should preserve DIRECT_SEGMENT explicit gain as the source fallback");
+    ASSERT_TRUE(fabs(fb.DIRECT_SEGMENT.maxFlow - 60.0) < 0.001,
+        "Direction flip should preserve DIRECT_SEGMENT flow limit as the source segment value");
+
+    printf("  PASS: MoveVelocity LiveUpdate direction flip updates flow limit\n");
 }
 
 /* Test: MoveAbsolute (POSITION mode) direction flip is rejected when
@@ -3095,6 +3249,8 @@ int main(void) {
     test_movevelocity_maps_deceleration_independently();
     test_movevelocity_maps_explicit_pressure_limit_to_direct_segment();
     test_movevelocity_nonpositive_pressure_limit_uses_axis_default();
+    test_movevelocity_uses_cylinder_gain_for_flow_limit();
+    test_movecontinuousabsolute_sustain_uses_cylinder_gain();
     test_movevelocity_rejects_nonfinite_pressure_limit();
     test_stop_on_idle_axis_immediate_done();
     test_stop_rejects_invalid_axis_index();
@@ -3125,6 +3281,7 @@ int main(void) {
     test_live_update_request_carries_flags_and_direction();
     test_live_update_continuous_suppresses_diagnostic();
     test_movevelocity_live_update_direction_flip();
+    test_movevelocity_live_update_direction_flip_updates_flow_limit();
     test_moveabsolute_live_update_direction_rejected();
     test_pressurehandle_live_update_direction_rejected();
     test_movevelocity_live_update_negative_velocity_flips_direction();

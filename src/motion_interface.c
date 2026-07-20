@@ -15,6 +15,39 @@ static unsigned int nextAllocatedFB = 0;
 
 static const HYD_REAL HYD_CONTABS_DIRECTION_VELOCITY_THRESHOLD = 0.01f;
 
+static HYD_MotionDirection resolve_velocity_gain_direction(const HYD_MotionControlFB* fb,
+                                                           const HYD_MotionSegment* segment)
+{
+    if (segment == NULL) {
+        return HYD_DIRECTION_HOLD;
+    }
+
+    if (fb == NULL) {
+        return segment->direction;
+    }
+
+    return HYD_Segment_ResolveDirection(segment, &fb->AXIS_REF, fb->_lastActiveDirection);
+}
+
+static HYD_REAL resolve_velocity_to_flow_gain(const HYD_MotionControlFB* fb,
+                                              const HYD_MotionSegment* segment)
+{
+    HYD_REAL derivedGain;
+    HYD_MotionDirection direction;
+
+    if (fb == NULL || segment == NULL) {
+        return 0.0f;
+    }
+
+    direction = resolve_velocity_gain_direction(fb, segment);
+    derivedGain = HYD_CylinderConfig_GetVelocityToFlowGain(&fb->cylinderConfig, direction);
+    if (derivedGain > 0.0f) {
+        return derivedGain;
+    }
+
+    return segment->velocityToFlowGain;
+}
+
 static int allocMotionControlFB(void)
 {
     if (nextAllocatedFB < HYD_MAX_AXIS_MOTION) {
@@ -138,6 +171,7 @@ static HYD_MotionSegment buildPositionSegment(
     const HYD_MotionControlFB* fb)
 {
     HYD_MotionSegment seg;
+    HYD_REAL velocityToFlowGain;
     memset(&seg, 0, sizeof(seg));
 
     seg.segmentTag = HYD_SEGMENT_TYPE_OTHER;
@@ -151,11 +185,13 @@ static HYD_MotionSegment buildPositionSegment(
     seg.maxVelocity = velocity;
     seg.maxAcceleration = acceleration;
     seg.maxDeceleration = (deceleration > 0.0f) ? deceleration : acceleration;
-    seg.maxFlow = (velocity > 0.0f) ? velocity * fb->_params.velocityToFlowGain : fb->_params.maxFlow;
     seg.velocityToFlowGain = fb->_params.velocityToFlowGain;
 
     seg.positionTolerance = fb->_params.positionTolerance;
     seg.timeoutLimit = fb->_params.timeoutLimit;
+
+    velocityToFlowGain = resolve_velocity_to_flow_gain(fb, &seg);
+    seg.maxFlow = (velocity > 0.0f) ? velocity * velocityToFlowGain : fb->_params.maxFlow;
 
     return seg;
 }
@@ -170,6 +206,7 @@ static HYD_MotionSegment buildVelocitySegment(
     const HYD_MotionControlFB* fb)
 {
     HYD_MotionSegment seg;
+    HYD_REAL velocityToFlowGain;
     memset(&seg, 0, sizeof(seg));
 
     seg.segmentTag = HYD_SEGMENT_TYPE_OTHER;
@@ -182,11 +219,13 @@ static HYD_MotionSegment buildVelocitySegment(
     seg.maxVelocity = velocity;
     seg.maxAcceleration = acceleration;
     seg.maxDeceleration = (deceleration > 0.0f) ? deceleration : acceleration;
-    seg.maxFlow = (velocity > 0.0f) ? velocity * fb->_params.velocityToFlowGain : fb->_params.maxFlow;
     seg.velocityToFlowGain = fb->_params.velocityToFlowGain;
     seg.maxPressure = pressureLimit;
 
     seg.timeoutLimit = 0.0f;
+
+    velocityToFlowGain = resolve_velocity_to_flow_gain(fb, &seg);
+    seg.maxFlow = (velocity > 0.0f) ? velocity * velocityToFlowGain : fb->_params.maxFlow;
 
     return seg;
 }

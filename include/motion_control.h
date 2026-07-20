@@ -264,9 +264,10 @@ typedef struct {
      * Zero-initialized after Init() = inactive (legacy fields used). */
     HYD_PumpConfig pumpConfig;
 
-    /* Cylinder physical parameters. When valid (area > 0), the library
-     * derives velocityToFlowGain from area + direction at segment-start,
-     * unless the segment explicitly sets velocityToFlowGain > 0.
+    /* Cylinder physical parameters. When the current direction has a configured
+     * area > 0, the library derives velocityToFlowGain from area + direction
+     * ahead of the segment field. If that direction has no configured area,
+     * the segment field remains the fallback.
      * Zero-initialized after Init() = inactive (segment field used). */
     HYD_CylinderConfig cylinderConfig;
 

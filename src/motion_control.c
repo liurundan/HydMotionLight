@@ -102,6 +102,58 @@ static HYD_TIME HYD_GetSimulationTickElapsed(const HYD_MotionControlFB* fb,
     return HYD_ConvertSimulationTicksToTime(fb, fb->_simTick - startTick);
 }
 
+static HYD_MotionDirection HYD_ResolveVelocityGainDirection(const HYD_MotionControlFB* fb,
+                                                            const HYD_MotionSegment* segment) {
+    if (segment == NULL) {
+        return HYD_DIRECTION_HOLD;
+    }
+
+    if (fb == NULL) {
+        return segment->direction;
+    }
+
+    return HYD_Segment_ResolveDirection(segment, &fb->AXIS_REF, fb->_lastActiveDirection);
+}
+
+static HYD_REAL HYD_ResolveVelocityToFlowGain(const HYD_MotionControlFB* fb,
+                                              const HYD_MotionSegment* segment) {
+    HYD_REAL derivedGain;
+    HYD_MotionDirection direction;
+
+    if (segment == NULL) {
+        return 0.0f;
+    }
+
+    direction = HYD_ResolveVelocityGainDirection(fb, segment);
+    derivedGain = HYD_CylinderConfig_GetVelocityToFlowGain(
+        (fb != NULL) ? &fb->cylinderConfig : NULL,
+        direction);
+    if (derivedGain > 0.0f) {
+        return derivedGain;
+    }
+
+    return segment->velocityToFlowGain;
+}
+
+static void HYD_ApplyVelocityToFlowGainResolution(const HYD_MotionControlFB* fb,
+                                                  HYD_MotionSegment* segment) {
+    if (segment == NULL) {
+        return;
+    }
+
+    segment->velocityToFlowGain = HYD_ResolveVelocityToFlowGain(fb, segment);
+}
+
+static void HYD_RecalculateVelocityFlowLimit(HYD_MotionSegment* segment) {
+    if (segment == NULL ||
+        segment->maxVelocity <= 0.0f ||
+        segment->velocityToFlowGain <= 0.0f) {
+        return;
+    }
+
+    segment->maxFlow = segment->maxVelocity * segment->velocityToFlowGain;
+}
+
 static HYD_TIME HYD_GetSegmentElapsedTime(const HYD_MotionControlFB* fb) {
     if (HYD_UseSimulationFixedStep(fb)) {
         return HYD_GetSimulationTickElapsed(fb, fb->_simSegmentStartTick);
@@ -766,10 +818,11 @@ static HYD_MotionSegment HYD_BuildContinuousAbsoluteSustainSegment(
     seg.direction = ctx->sustainDirection;
     seg.planner = HYD_PLANNER_TIME_BASED;
     seg.maxVelocity = fabs(ctx->sustainVelocity);
-    seg.maxFlow = (seg.maxVelocity > 0.0f)
-        ? seg.maxVelocity * fb->_params.velocityToFlowGain
-        : fb->_params.maxFlow;
     seg.velocityToFlowGain = fb->_params.velocityToFlowGain;
+    HYD_ApplyVelocityToFlowGainResolution(fb, &seg);
+    seg.maxFlow = (seg.maxVelocity > 0.0f)
+        ? seg.maxVelocity * seg.velocityToFlowGain
+        : fb->_params.maxFlow;
     seg.maxPressure = ctx->effectivePressureLimit;
     return seg;
 }
@@ -1334,13 +1387,8 @@ static HYD_BOOL HYD_BeginSegment(HYD_MotionControlFB* fb,
     fb->_activeSegmentValid = true;
     fb->_activeSegmentSource = resolvedSource;
 
-    /* Resolve velocityToFlowGain: segment explicit > cylinderConfig > existing fallback */
-    if (fb->_activeSegment.velocityToFlowGain <= 0.0f &&
-        HYD_CylinderConfig_IsValid(&fb->cylinderConfig)) {
-        fb->_activeSegment.velocityToFlowGain =
-            HYD_CylinderConfig_GetVelocityToFlowGain(
-                &fb->cylinderConfig, fb->_activeSegment.direction);
-    }
+    /* Resolve velocityToFlowGain: cylinderConfig > segment explicit > existing fallback */
+    HYD_ApplyVelocityToFlowGainResolution(fb, &fb->_activeSegment);
     fb->STATE.currentSegmentIndex = resolvedSegmentIndex;
     fb->_segmentStartTime = timestamp;
     fb->_simSegmentStartTick = fb->_simTick;
@@ -3740,16 +3788,18 @@ HYD_BOOL HYD_MotionControlFB_ApplyLiveUpdate(HYD_MotionControlFB* fb,
     if (isSegmentActive) {
         HYD_BOOL directionChanged = false;
         HYD_MotionDirection previousDirection;
+        HYD_MotionDirection updatedDirection;
 
-        previousDirection = fb->_activeSegment.direction;
-        directionChanged = ((request->flags & HYD_LIVE_UPDATE_DIRECTION) != 0U) &&
-                           (request->direction != previousDirection);
+        previousDirection = HYD_ResolveVelocityGainDirection(fb, &fb->_activeSegment);
 
-        updated = fb->_activeSegment;
+        updated = fb->DIRECT_SEGMENT;
 
         if (!HYD_ApplyLiveUpdateOverrides(request, &updated)) {
             return false;
         }
+
+        updatedDirection = HYD_ResolveVelocityGainDirection(fb, &updated);
+        directionChanged = updatedDirection != previousDirection;
 
         /* Position-direction consistency check.
          * POSITIVE requires target >= current; NEGATIVE requires target <= current.
@@ -3797,18 +3847,15 @@ HYD_BOOL HYD_MotionControlFB_ApplyLiveUpdate(HYD_MotionControlFB* fb,
             return false;
         }
 
-        fb->_activeSegment = updated;
         fb->DIRECT_SEGMENT = updated;
+        fb->_activeSegment = updated;
+        HYD_ApplyVelocityToFlowGainResolution(fb, &fb->_activeSegment);
 
-        /* Direction flip: recalculate velocityToFlowGain and re-prime controllers.
-         * Different cylinder areas (extend vs retract) change the flow-to-velocity
-         * relationship; the planner also needs a fresh velocity-curve baseline. */
+        /* Effective direction change: recalculate area-derived gain and
+         * restart the planner baseline from the new physical direction. */
         if (directionChanged) {
-            if (fb->_activeSegment.velocityToFlowGain <= 0.0f &&
-                HYD_CylinderConfig_IsValid(&fb->cylinderConfig)) {
-                fb->_activeSegment.velocityToFlowGain =
-                    HYD_CylinderConfig_GetVelocityToFlowGain(
-                        &fb->cylinderConfig, fb->_activeSegment.direction);
+            if (fb->_activeSegment.mode != HYD_MODE_PRESSURE_CLOSED_LOOP) {
+                HYD_RecalculateVelocityFlowLimit(&fb->_activeSegment);
             }
             /* Re-prime WITHOUT flow carryover — direction flip is a fresh start */
             HYD_PrimeSegmentControllers(fb, &fb->_activeSegment,
@@ -3833,12 +3880,19 @@ HYD_BOOL HYD_MotionControlFB_ApplyLiveUpdate(HYD_MotionControlFB* fb,
      *             Re-build from DIRECT_SEGMENT and re-start execution. --- */
     if (isSegmentCompleted) {
         HYD_TIME timestamp = fb->AXIS_REF.timestamp;
+        HYD_BOOL directionChanged = false;
+        HYD_MotionDirection previousDirection;
+        HYD_MotionDirection updatedDirection;
 
         updated = fb->DIRECT_SEGMENT;
+        previousDirection = HYD_ResolveVelocityGainDirection(fb, &fb->DIRECT_SEGMENT);
 
         if (!HYD_ApplyLiveUpdateOverrides(request, &updated)) {
             return false;
         }
+
+        updatedDirection = HYD_ResolveVelocityGainDirection(fb, &updated);
+        directionChanged = updatedDirection != previousDirection;
 
         /* PLCopen CONTINUOUSUPDATE guard: restart only when the Position
          * INPUT has actually changed, not when position feedback drifts.
@@ -3932,11 +3986,10 @@ HYD_BOOL HYD_MotionControlFB_ApplyLiveUpdate(HYD_MotionControlFB* fb,
         fb->_activeSegmentValid = true;
         fb->_activeSegmentSource = HYD_SEGMENT_SOURCE_DIRECT;
 
-        if (fb->_activeSegment.velocityToFlowGain <= 0.0f &&
-            HYD_CylinderConfig_IsValid(&fb->cylinderConfig)) {
-            fb->_activeSegment.velocityToFlowGain =
-                HYD_CylinderConfig_GetVelocityToFlowGain(
-                    &fb->cylinderConfig, fb->_activeSegment.direction);
+        HYD_ApplyVelocityToFlowGainResolution(fb, &fb->_activeSegment);
+        if (directionChanged &&
+            fb->_activeSegment.mode != HYD_MODE_PRESSURE_CLOSED_LOOP) {
+            HYD_RecalculateVelocityFlowLimit(&fb->_activeSegment);
         }
 
         fb->_segmentStartTime = timestamp;

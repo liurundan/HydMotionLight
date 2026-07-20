@@ -202,6 +202,149 @@ static void test_fb_cylinder_config_derivation(void) {
     printf("  PASS: FB cylinder config derivation\n");
 }
 
+static void test_fb_cylinder_config_overrides_segment_gain(void) {
+    HYD_MotionControlFB fb;
+    HYD_MotionSegment seg;
+
+    HYD_MotionControlFB_Init(&fb);
+    fb.cylinderConfig.areaExtendMm2 = 10000.0f;
+    fb.cylinderConfig.areaRetractMm2 = 6000.0f;
+
+    memset(&seg, 0, sizeof(seg));
+    seg.segmentTag = 1;
+    seg.planner = HYD_PLANNER_TIME_BASED;
+    seg.mode = HYD_MODE_SPEED_RAMP;
+    seg.endCondition = HYD_END_TIME;
+    seg.direction = HYD_DIRECTION_EXTEND;
+    seg.maxVelocity = 100.0f;
+    seg.maxFlow = 100.0f;
+    seg.velocityToFlowGain = 0.2f;
+    seg.duration = 2.0f;
+    seg.maxAcceleration = 500.0f;
+    seg.maxDeceleration = 500.0f;
+
+    fb.USE_RECIPE = false;
+    assert(HYD_MotionControlFB_LoadDirectSegment(&fb, &seg));
+    assert(HYD_MotionControlFB_StartSegment(&fb, 0, 0.0f));
+
+    fb.AXIS_REF.position = 0.0f;
+    fb.AXIS_REF.velocity = 0.0f;
+    fb.AXIS_REF.pressure = 0.0f;
+    fb.AXIS_REF.timestamp = 0.001f;
+    HYD_MotionControlFB_Cycle(&fb);
+
+    assert(fb._activeSegmentValid);
+    assert(fabsf(fb._activeSegment.velocityToFlowGain - 0.6f) < 0.001f);
+    printf("  PASS: FB cylinder config overrides segment gain\n");
+}
+
+static void test_fb_cylinder_config_keeps_segment_gain_when_direction_area_missing(void) {
+    HYD_MotionControlFB fb;
+    HYD_MotionSegment seg;
+
+    HYD_MotionControlFB_Init(&fb);
+    fb.cylinderConfig.areaExtendMm2 = 10000.0f;
+
+    memset(&seg, 0, sizeof(seg));
+    seg.segmentTag = 1;
+    seg.planner = HYD_PLANNER_TIME_BASED;
+    seg.mode = HYD_MODE_SPEED_RAMP;
+    seg.endCondition = HYD_END_TIME;
+    seg.direction = HYD_DIRECTION_RETRACT;
+    seg.maxVelocity = 100.0f;
+    seg.maxFlow = 100.0f;
+    seg.velocityToFlowGain = 0.25f;
+    seg.duration = 2.0f;
+    seg.maxAcceleration = 500.0f;
+    seg.maxDeceleration = 500.0f;
+
+    fb.USE_RECIPE = false;
+    assert(HYD_MotionControlFB_LoadDirectSegment(&fb, &seg));
+    assert(HYD_MotionControlFB_StartSegment(&fb, 0, 0.0f));
+
+    fb.AXIS_REF.position = 0.0f;
+    fb.AXIS_REF.velocity = 0.0f;
+    fb.AXIS_REF.pressure = 0.0f;
+    fb.AXIS_REF.timestamp = 0.001f;
+    HYD_MotionControlFB_Cycle(&fb);
+
+    assert(fb._activeSegmentValid);
+    assert(fabsf(fb._activeSegment.velocityToFlowGain - 0.25f) < 0.001f);
+    printf("  PASS: FB cylinder config keeps segment gain when direction area missing\n");
+}
+
+static void test_fb_cylinder_config_uses_resolved_current_direction(void) {
+    HYD_MotionControlFB fb;
+    HYD_MotionSegment seg;
+
+    HYD_MotionControlFB_Init(&fb);
+    fb.cylinderConfig.areaRetractMm2 = 6000.0f;
+    fb._lastActiveDirection = HYD_DIRECTION_NEGATIVE;
+
+    memset(&seg, 0, sizeof(seg));
+    seg.segmentTag = 1;
+    seg.planner = HYD_PLANNER_TIME_BASED;
+    seg.mode = HYD_MODE_SPEED_RAMP;
+    seg.endCondition = HYD_END_TIME;
+    seg.direction = HYD_DIRECTION_CURRENT;
+    seg.maxVelocity = 100.0f;
+    seg.maxFlow = 100.0f;
+    seg.velocityToFlowGain = 0.25f;
+    seg.duration = 2.0f;
+    seg.maxAcceleration = 500.0f;
+    seg.maxDeceleration = 500.0f;
+
+    fb.USE_RECIPE = false;
+    assert(HYD_MotionControlFB_LoadDirectSegment(&fb, &seg));
+    assert(HYD_MotionControlFB_StartSegment(&fb, 0, 0.0f));
+
+    fb.AXIS_REF.position = 0.0f;
+    fb.AXIS_REF.velocity = 0.0f;
+    fb.AXIS_REF.pressure = 0.0f;
+    fb.AXIS_REF.timestamp = 0.001f;
+    HYD_MotionControlFB_Cycle(&fb);
+
+    assert(fb._activeSegmentValid);
+    assert(fabsf(fb._activeSegment.velocityToFlowGain - 0.36f) < 0.001f);
+    printf("  PASS: FB cylinder config uses resolved CURRENT direction\n");
+}
+
+static void test_fb_cylinder_config_uses_resolved_shortest_way_direction(void) {
+    HYD_MotionControlFB fb;
+    HYD_MotionSegment seg;
+
+    HYD_MotionControlFB_Init(&fb);
+    fb.cylinderConfig.areaRetractMm2 = 6000.0f;
+
+    memset(&seg, 0, sizeof(seg));
+    seg.segmentTag = 1;
+    seg.planner = HYD_PLANNER_POSITION_BASED;
+    seg.mode = HYD_MODE_POSITION;
+    seg.endCondition = HYD_END_POSITION;
+    seg.direction = HYD_DIRECTION_SHORTEST_WAY;
+    seg.targetPosition = -10.0f;
+    seg.positionTolerance = 0.1f;
+    seg.maxVelocity = 100.0f;
+    seg.maxFlow = 100.0f;
+    seg.velocityToFlowGain = 0.25f;
+    seg.maxAcceleration = 500.0f;
+    seg.maxDeceleration = 500.0f;
+
+    fb.USE_RECIPE = false;
+    assert(HYD_MotionControlFB_LoadDirectSegment(&fb, &seg));
+    assert(HYD_MotionControlFB_StartSegment(&fb, 0, 0.0f));
+
+    fb.AXIS_REF.position = 0.0f;
+    fb.AXIS_REF.velocity = 0.0f;
+    fb.AXIS_REF.pressure = 0.0f;
+    fb.AXIS_REF.timestamp = 0.001f;
+    HYD_MotionControlFB_Cycle(&fb);
+
+    assert(fb._activeSegmentValid);
+    assert(fabsf(fb._activeSegment.velocityToFlowGain - 0.36f) < 0.001f);
+    printf("  PASS: FB cylinder config uses resolved SHORTEST_WAY direction\n");
+}
+
 static void test_parameter_access(void) {
     HYD_MotionControlFB fb;
     HYD_MotionControlFB_Init(&fb);
@@ -245,6 +388,10 @@ int main(void) {
     test_fb_pump_config_derivation();
     test_fb_pump_config_fallback_to_legacy();
     test_fb_cylinder_config_derivation();
+    test_fb_cylinder_config_overrides_segment_gain();
+    test_fb_cylinder_config_keeps_segment_gain_when_direction_area_missing();
+    test_fb_cylinder_config_uses_resolved_current_direction();
+    test_fb_cylinder_config_uses_resolved_shortest_way_direction();
     test_parameter_access();
     printf("All pump/cylinder config tests passed.\n");
     return 0;
