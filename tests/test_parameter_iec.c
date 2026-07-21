@@ -183,7 +183,7 @@ static void test_read_status_reports_applied_pressure_controller(void) {
                 "ReadStatus should clear applied controller when disabled");
 }
 
-static void test_pressure_handle_uses_configured_max_flow(void) {
+static void test_pressure_handle_preserves_legacy_max_flow(void) {
     HYD_PRESSUREHANDLE ph;
     HYD_MotionControlFB* fb;
 
@@ -201,8 +201,8 @@ static void test_pressure_handle_uses_configured_max_flow(void) {
     IEC_VAL(ph.DURATION) = 1.0;
     __mcl_cmd_PressureHandle(&ph);
 
-    ASSERT_TRUE(fabsf((float)(fb->_activeSegment.maxFlow - 37.0)) < 0.001f,
-                "PressureHandle should use configured max flow");
+    ASSERT_TRUE(fabsf((float)(fb->_activeSegment.maxFlow - 20.0)) < 0.001f,
+                "PressureHandle should preserve its established 20 L/min limit");
 }
 
 int main(void) {
@@ -212,7 +212,7 @@ int main(void) {
     test_invalid_axisid_iec();
     test_segment_builder_uses_fb_params();
     test_read_status_reports_applied_pressure_controller();
-    test_pressure_handle_uses_configured_max_flow();
+    test_pressure_handle_preserves_legacy_max_flow();
 
     printf("IEC parameter FB tests: %d/%d passed\n", tests_passed, tests_run);
     return (tests_passed == tests_run) ? 0 : 1;

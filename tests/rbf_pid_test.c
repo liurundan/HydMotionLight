@@ -64,6 +64,34 @@ static void test_control_mode_round_trip_restores_pid_configuration(void) {
     printf("✓ RBF PI/PID mode round-trip configuration test passed\n");
 }
 
+static void test_pid_saturation_does_not_freeze_network_learning(void) {
+    RBF_PID_Handle pid;
+    float weights_before[RBF_HNUM];
+    bool changed = false;
+    int i;
+
+    printf("Testing legacy RBF-PID network learning under saturation...\n");
+    RBF_PID_Init(&pid, 0.001f, 10.0f, 1.0f);
+    RBF_PID_SetLearningRates(&pid, 0.2f, 0.2f, 0.2f,
+                             0.1f, 0.1f, 0.1f);
+    pid.Output = 10.0f;
+    pid.u_prev = 10.0f;
+    pid.output_saturated = true;
+    for (i = 0; i < RBF_HNUM; ++i) {
+        weights_before[i] = pid.w[i];
+    }
+
+    (void)RBF_PID_Update(&pid, 100.0f, 20.0f);
+
+    for (i = 0; i < RBF_HNUM; ++i) {
+        if (fabsf(pid.w[i] - weights_before[i]) > 1.0e-8f) {
+            changed = true;
+        }
+    }
+    assert(changed);
+    printf("✓ Legacy RBF-PID network learning under saturation test passed\n");
+}
+
 static void test_enabled_controller_respects_limits_and_drives_feedback(void) {
     RBF_PID_Handle pid;
     float feedback = 0.0f;
@@ -413,6 +441,7 @@ int main(void) {
 
     test_init_sets_ready_defaults();
     test_control_mode_round_trip_restores_pid_configuration();
+    test_pid_saturation_does_not_freeze_network_learning();
     test_enabled_controller_respects_limits_and_drives_feedback();
     test_explicit_reset_restores_runtime_state();
     test_adaptive_learning_rate_scales_with_error();

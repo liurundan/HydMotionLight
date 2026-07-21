@@ -678,6 +678,7 @@ void HYD_READSTATUS_init__(HYD_READSTATUS *data__, BOOL retain) {
   __INIT_VAR(data__->ERROR,__BOOL_LITERAL(FALSE),retain)
   __INIT_VAR(data__->ERRORID,0,retain)
   __INIT_VAR(data__->STATE,0,retain)
+  __INIT_VAR(data__->PRESSURECONTROLLERAPPLIED,0,retain)
 }
 
 // Code part

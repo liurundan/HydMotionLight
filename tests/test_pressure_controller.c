@@ -628,6 +628,45 @@ static void test_rbf_pi_soft_cap_saturation_survives_outer_wrapper(void) {
     printf("✓ RBF-PI soft-cap saturation tracking test passed\n");
 }
 
+static void test_rbf_pid_soft_cap_preserves_legacy_wrapper_state(void) {
+    HYD_MotionSegment segment;
+    HYD_PressureControllerState state;
+    HYD_PressureControllerInput input;
+    HYD_PressureControllerOutput output;
+    HYD_BOOL reachedSoftCap = false;
+    int step;
+
+    printf("Testing legacy RBF-PID soft-cap wrapper state...\n");
+    segment = make_pressure_segment();
+    segment.pressureController = HYD_PRESSURE_CONTROLLER_RBF_PID;
+    segment.targetFlow = 0.0;
+    segment.maxFlow = 90.0;
+    segment.systemGain = 100.0;
+
+    HYD_PressureController_InitState(&state, 0.0, 0.0, 0.0);
+    memset(&input, 0, sizeof(input));
+    input.targetPressure = 100.0;
+    input.measuredPressure = 0.0;
+    input.outputMin = 0.0;
+    input.outputMax = segment.maxFlow;
+    input.flowToPumpSpeedGain = 20.0;
+    input.pumpSpeedLimit = 1800.0;
+    for (step = 0; step < 100; ++step) {
+        input.timestamp = (HYD_REAL)(step + 1) * 0.001;
+        HYD_PressureController_Execute(&segment, &state, &input, &output);
+        if (output.outputFlow > 1.0 &&
+            fabs(output.outputFlow - output.unsaturatedOutputFlow) < 1e-9) {
+            reachedSoftCap = true;
+            break;
+        }
+    }
+
+    assert(reachedSoftCap);
+    assert(!output.saturated);
+    assert(!state.rbfPid.output_saturated);
+    printf("✓ Legacy RBF-PID soft-cap wrapper state test passed\n");
+}
+
 /* ---- P1-5: Boundary and edge-case tests ---- */
 
 static void test_cross_controller_switch_seeds_rbf_within_clamp_window(void) {
@@ -1355,6 +1394,7 @@ int main(void) {
     test_rbf_pi_strategy_switch_tracks_previous_output_bumplessly();
     test_rbf_pid_deadzone_clamp_marks_internal_saturation();
     test_rbf_pi_soft_cap_saturation_survives_outer_wrapper();
+    test_rbf_pid_soft_cap_preserves_legacy_wrapper_state();
     test_cross_controller_switch_seeds_rbf_within_clamp_window();
     test_pi_integral_saturates_and_back_calculates_on_recovery();
     test_p_to_pi_strategy_switch_preinitializes_integral();

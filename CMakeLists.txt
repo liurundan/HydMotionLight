@@ -122,7 +122,7 @@ add_executable(test_movevelocity_stop_reverse_restart
                tests/test_movevelocity_stop_reverse_restart.c)
 target_link_libraries(test_movevelocity_stop_reverse_restart PRIVATE HydroMotionLib)
 
-add_executable(test_movecontinuousabsolute_integration EXCLUDE_FROM_ALL
+add_executable(test_movecontinuousabsolute_integration
                tests/test_movecontinuousabsolute_integration.c)
 target_link_libraries(test_movecontinuousabsolute_integration PRIVATE HydroMotionLib)
 

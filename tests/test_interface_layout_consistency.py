@@ -9,6 +9,7 @@ SCRIPT = ROOT / "scripts" / "check_interface_layout_consistency.py"
 XML = ROOT / "pousHydMotion.xml"
 HEADER = ROOT / "include" / "motion_interface.h"
 BAD_XML = ROOT / "tests" / "fixtures" / "pous_layout_bad.xml"
+PLC_SOURCE = ROOT / "tests" / "plcdemo" / "POUS.c"
 
 
 def run_check(xml_path: Path, header_path: Path) -> subprocess.CompletedProcess:
@@ -40,6 +41,16 @@ def main() -> int:
         print("expected failing output to mention HYD_Stop mismatch")
         print(bad.stdout)
         print(bad.stderr)
+        return 1
+
+    plc_source = PLC_SOURCE.read_text(encoding="utf-8")
+    init_start = plc_source.find("void HYD_READSTATUS_init__")
+    init_end = plc_source.find("// Code part", init_start)
+    if init_start < 0 or init_end < 0:
+        print("expected generated HYD_READSTATUS initializer")
+        return 1
+    if "PRESSURECONTROLLERAPPLIED" not in plc_source[init_start:init_end]:
+        print("expected generated HYD_READSTATUS initializer to clear PRESSURECONTROLLERAPPLIED")
         return 1
 
     print("interface layout consistency tests passed")

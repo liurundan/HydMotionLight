@@ -44,6 +44,17 @@ static float finite_or_default(float value, float fallback) {
     return isfinite(value) ? value : fallback;
 }
 
+static float rbf_pid_clamp_adaptive_value(const RBF_PID_Handle *pid,
+                                          float min_value,
+                                          float value,
+                                          float max_value,
+                                          float fallback) {
+    if (pid->control_mode == RBF_PID_CONTROL_MODE_PI) {
+        return clamp_finite(min_value, value, max_value, fallback);
+    }
+    return clampf(min_value, value, max_value);
+}
+
 static float rbf_pid_max_flow_output(const RBF_PID_Handle *pid) {
     float max_output = pid->fMaxFlow * pid->fFlowRateLimit;
 
@@ -229,10 +240,15 @@ static bool rbf_pid_same_direction_saturation(const RBF_PID_Handle *pid, float e
     }
 
     output_min = rbf_pid_output_lower_bound(pid);
-    output_max = rbf_pid_output_upper_bound(pid);
     soft_cap = rbf_pid_compute_soft_flow_cap(pid);
-    if (soft_cap < output_max) {
-        output_max = soft_cap;
+    if (pid->control_mode == RBF_PID_CONTROL_MODE_PI) {
+        output_max = rbf_pid_output_upper_bound(pid);
+        if (soft_cap < output_max) {
+            output_max = soft_cap;
+        }
+    } else {
+        float hard_limit = rbf_pid_max_flow_output(pid);
+        output_max = (soft_cap < hard_limit) ? soft_cap : hard_limit;
     }
 
     return (pid->Output >= output_max - 1.0e-6f && error > 0.0f) ||
@@ -254,10 +270,12 @@ static void rbf_pid_step_rbf_nn(RBF_PID_Handle *pid) {
     float error_rbf_n;
     int i;
 
-    rbf_pid_sanitize_network(pid);
-    for (i = 0; i < RBF_INPUT_DIM; ++i) {
-        if (!isfinite(x[i])) {
-            x[i] = 0.0f;
+    if (pid->control_mode == RBF_PID_CONTROL_MODE_PI) {
+        rbf_pid_sanitize_network(pid);
+        for (i = 0; i < RBF_INPUT_DIM; ++i) {
+            if (!isfinite(x[i])) {
+                x[i] = 0.0f;
+            }
         }
     }
     memcpy(pid->last_rbf_input, x, sizeof(x));
@@ -279,13 +297,14 @@ static void rbf_pid_step_rbf_nn(RBF_PID_Handle *pid) {
             (pid->b_rbf[i] * pid->b_rbf[i]);
     }
 
-    pid->Jacobian = clamp_finite(-5.0f,
+    pid->Jacobian = rbf_pid_clamp_adaptive_value(pid, -5.0f,
         (pressure_scale / flow_scale) * jacobian_n,
         50.0f,
         0.0f);
     error_rbf_n = y_n - y_hat_n;
 
-    if (rbf_pid_same_direction_saturation(pid, pid->Error)) {
+    if (pid->control_mode == RBF_PID_CONTROL_MODE_PI &&
+        rbf_pid_same_direction_saturation(pid, pid->Error)) {
         return;
     }
 
@@ -298,19 +317,22 @@ static void rbf_pid_step_rbf_nn(RBF_PID_Handle *pid) {
         float norm_val = 0.0f;
         int j;
 
-        pid->w[i] = clamp_finite(-RBF_PID_WEIGHT_LIMIT,
-                                 pid->w[i] + delta_w,
-                                 RBF_PID_WEIGHT_LIMIT,
-                                 pid->w[i]);
+        if (pid->control_mode == RBF_PID_CONTROL_MODE_PI) {
+            pid->w[i] = clamp_finite(-RBF_PID_WEIGHT_LIMIT,
+                                     pid->w[i] + delta_w,
+                                     RBF_PID_WEIGHT_LIMIT,
+                                     pid->w[i]);
+        } else {
+            pid->w[i] += delta_w;
+        }
 
         for (j = 0; j < RBF_INPUT_DIM; ++j) {
             float delta_center = pid->eta_c * error_rbf_n * pid->w[i] * h[i] *
                 (x[j] - pid->c[i][j]) / width_sq +
                 pid->alpha * (pid->ci_1[i][j] - pid->ci_2[i][j]);
-            pid->c[i][j] = clamp_finite(-2.0f,
-                                        pid->c[i][j] + delta_center,
-                                        2.0f,
-                                        pid->c[i][j]);
+            pid->c[i][j] = rbf_pid_clamp_adaptive_value(
+                pid, -2.0f, pid->c[i][j] + delta_center, 2.0f,
+                pid->c[i][j]);
         }
 
         for (j = 0; j < RBF_INPUT_DIM; ++j) {
@@ -318,7 +340,7 @@ static void rbf_pid_step_rbf_nn(RBF_PID_Handle *pid) {
             norm_val += diff * diff;
         }
 
-        pid->b_rbf[i] = clamp_finite(0.2f,
+        pid->b_rbf[i] = rbf_pid_clamp_adaptive_value(pid, 0.2f,
             pid->b_rbf[i] + pid->eta_b * error_rbf_n * pid->w[i] * h[i] *
             norm_val / width_cu +
             pid->alpha * (pid->bi_1[i] - pid->bi_2[i]),
@@ -391,18 +413,18 @@ static void rbf_pid_step_adaptive_gains(RBF_PID_Handle *pid, float error, float 
             break;
     }
 
-    pid->KP = clamp_finite(pid->min_KP,
+    pid->KP = rbf_pid_clamp_adaptive_value(pid, pid->min_KP,
         pid->KP + learning_scale * pid->eta_p * error * pid->Jacobian * de,
         pid->max_KP,
         pid->min_KP);
-    pid->KI = clamp_finite(pid->min_KI,
+    pid->KI = rbf_pid_clamp_adaptive_value(pid, pid->min_KI,
         pid->KI + learning_scale * pid->eta_i * error * pid->Jacobian * error,
         pid->max_KI,
         pid->min_KI);
     if (pid->control_mode == RBF_PID_CONTROL_MODE_PI) {
         pid->KD = 0.0f;
     } else {
-        pid->KD = clamp_finite(pid->min_KD,
+        pid->KD = rbf_pid_clamp_adaptive_value(pid, pid->min_KD,
             pid->KD + learning_scale * pid->eta_d * error * pid->Jacobian * dde,
             pid->max_KD,
             pid->min_KD);
@@ -459,7 +481,8 @@ static void rbf_pid_step_incremental_output(RBF_PID_Handle *pid, float error, fl
 
     du += dynamic_ff + f_uff;
 
-    pid->du = isfinite(du) ? du : 0.0f;
+    pid->du = (pid->control_mode == RBF_PID_CONTROL_MODE_PI && !isfinite(du))
+        ? 0.0f : du;
     pid->Output = clampf(output_min, pid->u_prev + pid->du, soft_output_max);
     pid->output_saturated = (pid->Output <= output_min + 1.0e-6f) ||
         (pid->Output >= soft_output_max - 1.0e-6f);
@@ -536,9 +559,14 @@ float RBF_PID_Update(RBF_PID_Handle *pid, float setpoint, float feedback) {
     float raw_error;
     float error;
 
-    pid->P_set = isfinite(setpoint) ? setpoint : 0.0f;
-    pid->P_actual = isfinite(feedback) ? feedback : 0.0f;
-    rbf_pid_sanitize_runtime_state(pid);
+    if (pid->control_mode == RBF_PID_CONTROL_MODE_PI) {
+        pid->P_set = isfinite(setpoint) ? setpoint : 0.0f;
+        pid->P_actual = isfinite(feedback) ? feedback : 0.0f;
+        rbf_pid_sanitize_runtime_state(pid);
+    } else {
+        pid->P_set = setpoint;
+        pid->P_actual = feedback;
+    }
     rbf_pid_enforce_control_mode(pid);
     raw_error = pid->P_set - pid->P_actual;
     error = rbf_pid_apply_deadband(raw_error);

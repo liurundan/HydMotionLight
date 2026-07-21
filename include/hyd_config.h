@@ -242,9 +242,13 @@ typedef HYD_REAL HYD_TIME;
 
 /* 库版本号 */
 #define HYD_VERSION_MAJOR 1
-#define HYD_VERSION_MINOR 0
+#define HYD_VERSION_MINOR 1
 #define HYD_VERSION_PATCH 0
-#define HYD_VERSION_STRING "1.0.0"
+#define HYD_VERSION_STRING "1.1.0"
+
+/* Public state/PLC function-block layouts changed in 1.1.0. Consumers must
+ * rebuild all objects against the headers shipped with the static library. */
+#define HYD_ABI_VERSION 2
 
 /* 构建时间戳 */
 #ifdef HYD_VERSION_BUILD_TIME

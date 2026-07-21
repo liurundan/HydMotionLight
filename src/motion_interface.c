@@ -311,7 +311,9 @@ static HYD_MotionSegment buildPressureSegment(
 
     seg.targetPressure = targetPressure;
     seg.targetFlow = fb->_params.defaultTargetFlow;
-    seg.maxFlow = fb->_params.maxFlow;
+    /* Preserve the established PressureHandle limit; recipe/profile paths use
+     * the configurable maxFlow parameter independently. */
+    seg.maxFlow = 20.0;
     seg.duration = duration;
     seg.pressureRampRate = rampRate;
     seg.pressureCeiling  = MAX_PRESSURE;
