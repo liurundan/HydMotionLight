@@ -691,6 +691,10 @@ END_IF
 | `ERROR` | BOOL | OUT | 错误标志 |
 | `ERRORID` | WORD | OUT | 错误码 |
 | `STATE` | UINT | OUT | 控制器状态值（参见2.2节状态枚举） |
+| `PRESSURECONTROLLERAPPLIED` | INT | OUT | 当前生效的压力控制器类型（参见压力控制器枚举） |
+
+压力控制器枚举值：`NONE=0`、`P=1`、`PI=2`、`PID=3`、`RBF_PID=4`、`RBF_PI=5`。
+通过 `HYD_WriteParameter` 设置 `PARAMETERNUMBER=25`（`HYD_PARAM_PRESSURE_CONTROLLER_TYPE`）选择算法；新值在下一次压力命令执行沿生效，当前活动压力段不会热切换。
 
 ---
 

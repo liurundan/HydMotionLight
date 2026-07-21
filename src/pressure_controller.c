@@ -357,6 +357,10 @@ static void HYD_ApplyRbfPidConfig(HYD_PressureControllerState* state,
     state->rbfPid.KD = (float)HYD_ClampReal((HYD_REAL)state->rbfPid.KD,
                                             config->rbf.minKd,
                                             config->rbf.maxKd);
+    state->rbfPid.pid_mode_kd = state->rbfPid.KD;
+    if (config->strategy == HYD_PRESSURE_CONTROLLER_RBF_PI) {
+        state->rbfPid.KD = 0.0f;
+    }
 
     {
         HYD_REAL pressureScale = 0.0;
@@ -529,6 +533,7 @@ void HYD_PressureController_Execute(const HYD_MotionSegment* segment,
         HYD_REAL effectiveTargetPressure;
         HYD_REAL rawOutputFlow;
         HYD_BOOL needsAdaptiveReset;
+        HYD_BOOL internalSaturated;
 
         needsAdaptiveReset = trackingRequested ||
             !state->rbfInitialized ||
@@ -552,6 +557,7 @@ void HYD_PressureController_Execute(const HYD_MotionSegment* segment,
         rawOutputFlow = (HYD_REAL)RBF_PID_Update(&state->rbfPid,
                                                  (float)effectiveTargetPressure,
                                                  (float)filteredPressure);
+        internalSaturated = state->rbfPid.output_saturated;
 
         outputFlow = HYD_ClampReal(rawOutputFlow, config.outputMin, config.outputMax);
 
@@ -569,7 +575,7 @@ void HYD_PressureController_Execute(const HYD_MotionSegment* segment,
         output->adaptiveKi = (HYD_REAL)state->rbfPid.KI;
         output->adaptiveKd = (HYD_REAL)state->rbfPid.KD;
         output->adaptiveJacobian = (HYD_REAL)state->rbfPid.Jacobian;
-        output->saturated = (outputFlow != rawOutputFlow);
+        output->saturated = internalSaturated || (outputFlow != rawOutputFlow);
 
         state->rbfPid.output_saturated = output->saturated ? true : false;
         state->rbfPid.Output = (float)outputFlow;

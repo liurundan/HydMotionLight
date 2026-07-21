@@ -25,6 +25,7 @@ static HYD_BOOL HYD_QueuePendingCommand(HYD_MotionControlFB* fb,
                                         HYD_FbCommand command,
                                         HYD_UINT segmentIndex,
                                         HYD_TIME timestamp);
+static HYD_BOOL HYD_IsValidPressureControllerParameter(HYD_REAL value);
 static void HYD_MotionControlFB_RunRunningState(HYD_MotionControlFB* fb);
 static void HYD_RunRunningStateStopping(HYD_MotionControlFB* fb,
                                         const HYD_MotionSegment* segment,
@@ -3693,7 +3694,10 @@ HYD_BOOL HYD_MotionControlFB_WriteParameter(HYD_MotionControlFB* fb, int paramNu
             fb->_params.pumpSpeedLimit = value;
             fb->PUMP_SPEED_LIMIT = value;
             break;
-        case HYD_PARAM_PRESSURE_CONTROLLER_TYPE:       fb->_params.pressureControllerType = value; break;
+        case HYD_PARAM_PRESSURE_CONTROLLER_TYPE:
+            if (!HYD_IsValidPressureControllerParameter(value)) return false;
+            fb->_params.pressureControllerType = value;
+            break;
         case HYD_PARAM_DEFAULT_TARGET_FLOW:            fb->_params.defaultTargetFlow = value; break;
         case HYD_PARAM_PUMP_DISPLACEMENT:              fb->pumpConfig.displacementMlRev = value; break;
         case HYD_PARAM_PUMP_VOLUMETRIC_EFF:            fb->pumpConfig.volumetricEfficiency = value; break;
@@ -3704,6 +3708,31 @@ HYD_BOOL HYD_MotionControlFB_WriteParameter(HYD_MotionControlFB* fb, int paramNu
         default: return false;
     }
     return true;
+}
+
+static HYD_BOOL HYD_IsValidPressureControllerParameter(HYD_REAL value)
+{
+    int strategy;
+
+    if (!isfinite(value) ||
+        value < (HYD_REAL)HYD_PRESSURE_CONTROLLER_NONE ||
+        value > (HYD_REAL)HYD_PRESSURE_CONTROLLER_RBF_PI) {
+        return false;
+    }
+    strategy = (int)value;
+    if ((HYD_REAL)strategy != value) return false;
+
+    switch ((HYD_PressureControllerType)strategy) {
+        case HYD_PRESSURE_CONTROLLER_NONE:
+        case HYD_PRESSURE_CONTROLLER_P:
+        case HYD_PRESSURE_CONTROLLER_PI:
+        case HYD_PRESSURE_CONTROLLER_PID:
+        case HYD_PRESSURE_CONTROLLER_RBF_PID:
+        case HYD_PRESSURE_CONTROLLER_RBF_PI:
+            return true;
+        default:
+            return false;
+    }
 }
 
 HYD_DirectCommandKind HYD_MotionControlFB_GetDirectOwnerKind(const HYD_MotionControlFB* fb) {

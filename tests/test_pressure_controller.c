@@ -455,6 +455,91 @@ static void test_rbf_pid_strategy_switch_tracks_previous_output_bumplessly(void)
     printf("✓ RBF-PID strategy switch bumpless tracking test passed\n");
 }
 
+static void test_rbf_pi_strategy_disables_derivative_behavior(void) {
+    HYD_MotionSegment segment;
+    HYD_PressureControllerState state;
+    HYD_PressureControllerInput input;
+    HYD_PressureControllerOutput output;
+
+    printf("Testing adaptive RBF-PI derivative suppression...\n");
+    segment = make_pressure_segment();
+    segment.pressureController = HYD_PRESSURE_CONTROLLER_RBF_PI;
+    segment.targetFlow = 0.0;
+    segment.maxFlow = 10.0;
+    segment.pressureRbfConfig.minKd = 1.24;
+    segment.pressureRbfConfig.maxKd = 1.26;
+    segment.pressureRbfConfig.etaD = 0.13;
+
+    HYD_PressureController_InitState(&state, 5.0, segment.targetFlow, 0.0);
+
+    memset(&input, 0, sizeof(input));
+    input.targetPressure = 20.0;
+    input.measuredPressure = 8.0;
+    input.feedforwardFlow = segment.targetFlow;
+    input.outputMin = 0.0;
+    input.outputMax = segment.maxFlow;
+    input.flowToPumpSpeedGain = 20.0;
+    input.pumpSpeedLimit = 1800.0;
+    input.timestamp = 0.01;
+    HYD_PressureController_Execute(&segment, &state, &input, &output);
+
+    assert(output.appliedStrategy == HYD_PRESSURE_CONTROLLER_RBF_PI);
+    assert(output.adaptiveActive);
+    assert(fabs(output.adaptiveKd) < 1e-9);
+    assert(fabs(output.derivativeTerm) < 1e-9);
+    assert(fabsf(state.rbfPid.KD) < 1e-6f);
+    assert(fabsf(state.rbfPid.eta_d) < 1e-6f);
+    assert(!state.rbfPid.pressure_accel_ff_enabled);
+    printf("✓ Adaptive RBF-PI derivative suppression test passed\n");
+}
+
+static void test_rbf_pi_strategy_switch_tracks_previous_output_bumplessly(void) {
+    HYD_MotionSegment segment;
+    HYD_PressureControllerState state;
+    HYD_PressureControllerInput input;
+    HYD_PressureControllerOutput output0;
+    HYD_PressureControllerOutput output1;
+
+    printf("Testing RBF-PI strategy switch bumpless tracking...\n");
+    segment = make_pressure_segment();
+    segment.pressureController = HYD_PRESSURE_CONTROLLER_PI;
+    segment.pressureKp = 0.5;
+    segment.pressureKi = 1.0;
+    segment.pressureIntegralLimit = 10.0;
+    segment.maxFlow = 10.0;
+
+    HYD_PressureController_InitState(&state, 10.0, segment.targetFlow, 0.0);
+
+    memset(&input, 0, sizeof(input));
+    input.targetPressure = 14.0;
+    input.measuredPressure = 10.0;
+    input.feedforwardFlow = segment.targetFlow;
+    input.outputMin = 0.0;
+    input.outputMax = segment.maxFlow;
+    input.timestamp = 0.0;
+    HYD_PressureController_Execute(&segment, &state, &input, &output0);
+
+    assert(output0.appliedStrategy == HYD_PRESSURE_CONTROLLER_PI);
+    assert(fabs(output0.outputFlow - 5.0) < 0.001);
+
+    segment.pressureController = HYD_PRESSURE_CONTROLLER_RBF_PI;
+    input.targetPressure = 10.0;
+    input.measuredPressure = 10.0;
+    input.flowToPumpSpeedGain = 20.0;
+    input.pumpSpeedLimit = 1800.0;
+    input.timestamp = 0.001;
+    HYD_PressureController_Execute(&segment, &state, &input, &output1);
+
+    assert(output1.trackingApplied);
+    assert(output1.appliedStrategy == HYD_PRESSURE_CONTROLLER_RBF_PI);
+    assert(fabs(output1.outputFlow - output0.outputFlow) < 0.05);
+    assert(fabs(output1.adaptiveKd) < 1e-9);
+    assert(state.activeStrategy == HYD_PRESSURE_CONTROLLER_RBF_PI);
+    assert(state.rbfInitialized);
+    assert(!state.rbfPid.pressure_accel_ff_enabled);
+    printf("✓ RBF-PI strategy switch bumpless tracking test passed\n");
+}
+
 static void test_rbf_pid_deadzone_clamp_marks_internal_saturation(void) {
     HYD_MotionSegment segment;
     HYD_PressureControllerState state;
@@ -502,6 +587,45 @@ static void test_rbf_pid_deadzone_clamp_marks_internal_saturation(void) {
     }
 
     assert(saw_deadzone_clamp);
+}
+
+static void test_rbf_pi_soft_cap_saturation_survives_outer_wrapper(void) {
+    HYD_MotionSegment segment;
+    HYD_PressureControllerState state;
+    HYD_PressureControllerInput input;
+    HYD_PressureControllerOutput output;
+    HYD_BOOL sawSoftCap = false;
+    int step;
+
+    printf("Testing RBF-PI soft-cap saturation tracking...\n");
+    segment = make_pressure_segment();
+    segment.pressureController = HYD_PRESSURE_CONTROLLER_RBF_PI;
+    segment.targetFlow = 0.0;
+    segment.maxFlow = 90.0;
+    segment.systemGain = 100.0;
+
+    HYD_PressureController_InitState(&state, 0.0, 0.0, 0.0);
+    memset(&input, 0, sizeof(input));
+    input.targetPressure = 100.0;
+    input.measuredPressure = 0.0;
+    input.outputMin = 0.0;
+    input.outputMax = segment.maxFlow;
+    input.flowToPumpSpeedGain = 20.0;
+    input.pumpSpeedLimit = 1800.0;
+    for (step = 0; step < 100; ++step) {
+        input.timestamp = (HYD_REAL)(step + 1) * 0.001;
+        HYD_PressureController_Execute(&segment, &state, &input, &output);
+        if (output.saturated) {
+            sawSoftCap = true;
+            break;
+        }
+    }
+
+    assert(sawSoftCap);
+    assert(fabs(output.outputFlow - output.unsaturatedOutputFlow) < 1e-9);
+    assert(output.outputFlow < input.outputMax);
+    assert(state.rbfPid.output_saturated);
+    printf("✓ RBF-PI soft-cap saturation tracking test passed\n");
 }
 
 /* ---- P1-5: Boundary and edge-case tests ---- */
@@ -948,6 +1072,16 @@ static HYD_MotionSegment make_rbf_pid_segment(HYD_REAL target_bar) {
     return seg;
 }
 
+static HYD_MotionSegment make_rbf_pi_segment(HYD_REAL target_bar) {
+    HYD_MotionSegment seg = make_rbf_pid_segment(target_bar);
+
+    seg.pressureController = HYD_PRESSURE_CONTROLLER_RBF_PI;
+    seg.pressureRbfConfig.minKd = 0.0;
+    seg.pressureRbfConfig.maxKd = 0.0;
+    seg.pressureRbfConfig.etaD = 0.0;
+    return seg;
+}
+
 static void test_rbf_pid_single_setpoint_plant_convergence(void) {
     HYD_REAL targets[] = {50.0, 100.0, 200.0};
     int num_targets = 3;
@@ -1115,6 +1249,95 @@ static void test_rbf_pid_setpoint_switching_plant(void) {
     printf("✓ RBF-PID setpoint switching test passed\n");
 }
 
+static void test_rbf_pi_single_setpoint_plant_convergence(void) {
+    HYD_MotionSegment segment = make_rbf_pi_segment(100.0);
+    HYD_PressureControllerState state;
+    HYD_PressureControllerInput input;
+    HYD_PressureControllerOutput output;
+    HYD_REAL pressure_bar = 0.0;
+    PlantStepMetrics metrics;
+    int k;
+    const int steps = 8000;
+
+    printf("Testing RBF-PI single-setpoint convergence against plant model...\n");
+    plant_step_metrics_init(&metrics);
+    HYD_PressureController_InitState(&state, 0.0, 0.0, 0.0);
+
+    for (k = 0; k < steps; k++) {
+        input.targetPressure = 100.0;
+        input.measuredPressure = pressure_bar;
+        input.feedforwardFlow = 0.0;
+        input.outputMin = 0.0;
+        input.outputMax = segment.maxFlow;
+        input.flowToPumpSpeedGain = PLANT_GAIN;
+        input.pumpSpeedLimit = PLANT_PUMP_LIMIT;
+        input.timestamp = (HYD_REAL)(k + 1) * PLANT_TS;
+
+        HYD_PressureController_Execute(&segment, &state, &input, &output);
+        assert(output.appliedStrategy == HYD_PRESSURE_CONTROLLER_RBF_PI);
+        assert(fabs(output.derivativeTerm) < 1e-6);
+        assert(state.rbfPid.KD == 0.0f);
+        assert(state.rbfPid.eta_d == 0.0f);
+
+        pressure_bar = plant_model_step(pressure_bar, pump_convert(output.outputFlow));
+        plant_step_metrics_record(&metrics, 100.0, pressure_bar, k >= steps - 1000 ? 0 : -1);
+    }
+
+    assert(fabs(pressure_bar - 100.0) < 1.0);
+    assert(plant_step_metrics_tail_ripple(&metrics) < 1.0);
+    printf("  RBF-PI final pressure=%.2f bar, tail_ripple=%.3f\n",
+           (double)pressure_bar,
+           (double)plant_step_metrics_tail_ripple(&metrics));
+    printf("✓ RBF-PI single-setpoint plant convergence test passed\n");
+}
+
+static void test_rbf_pi_setpoint_switching_plant(void) {
+    const HYD_REAL sequence[] = {50.0, 200.0, 50.0};
+    HYD_PressureControllerState state;
+    HYD_PressureControllerInput input;
+    HYD_PressureControllerOutput output;
+    HYD_REAL pressure_bar = 0.0;
+    HYD_REAL previous_flow = 0.0;
+    int ti;
+    int k;
+
+    printf("Testing RBF-PI setpoint switching against plant model...\n");
+    HYD_PressureController_InitState(&state, 0.0, 0.0, 0.0);
+
+    for (ti = 0; ti < 3; ++ti) {
+        HYD_MotionSegment segment = make_rbf_pi_segment(sequence[ti]);
+
+        for (k = 0; k < 4000; ++k) {
+            input.targetPressure = sequence[ti];
+            input.measuredPressure = pressure_bar;
+            input.feedforwardFlow = 0.0;
+            input.outputMin = 0.0;
+            input.outputMax = segment.maxFlow;
+            input.flowToPumpSpeedGain = PLANT_GAIN;
+            input.pumpSpeedLimit = PLANT_PUMP_LIMIT;
+            input.timestamp = (HYD_REAL)(ti * 4000 + k + 1) * PLANT_TS;
+
+            HYD_PressureController_Execute(&segment, &state, &input, &output);
+            assert(output.appliedStrategy == HYD_PRESSURE_CONTROLLER_RBF_PI);
+            assert(fabs(output.derivativeTerm) < 1e-6);
+            assert(output.outputFlow >= -1e-6);
+            assert(output.outputFlow <= segment.maxFlow + 1e-6);
+
+            if (k == 0 && ti > 0 && sequence[ti] < sequence[ti - 1]) {
+                assert(output.outputFlow <= previous_flow * 1.5 + 0.1);
+            }
+
+            pressure_bar = plant_model_step(pressure_bar, pump_convert(output.outputFlow));
+            previous_flow = output.outputFlow;
+        }
+
+        assert(pressure_bar >= sequence[ti] * 0.95);
+        assert(pressure_bar <= sequence[ti] * 1.10);
+    }
+
+    printf("✓ RBF-PI setpoint switching test passed\n");
+}
+
 int main(void) {
     printf("Running PressureController tests...\n\n");
 
@@ -1128,7 +1351,10 @@ int main(void) {
     test_rbf_pid_strategy_uses_library_default_tuning_profile();
     test_rbf_pid_strategy_uses_segment_level_tuning_profile();
     test_rbf_pid_strategy_switch_tracks_previous_output_bumplessly();
+    test_rbf_pi_strategy_disables_derivative_behavior();
+    test_rbf_pi_strategy_switch_tracks_previous_output_bumplessly();
     test_rbf_pid_deadzone_clamp_marks_internal_saturation();
+    test_rbf_pi_soft_cap_saturation_survives_outer_wrapper();
     test_cross_controller_switch_seeds_rbf_within_clamp_window();
     test_pi_integral_saturates_and_back_calculates_on_recovery();
     test_p_to_pi_strategy_switch_preinitializes_integral();
@@ -1138,6 +1364,8 @@ int main(void) {
     test_gain_scheduling_with_error_magnitude();
     test_rbf_pid_single_setpoint_plant_convergence();
     test_rbf_pid_setpoint_switching_plant();
+    test_rbf_pi_single_setpoint_plant_convergence();
+    test_rbf_pi_setpoint_switching_plant();
 
     printf("\n✅ All PressureController tests passed successfully!\n");
     return 0;

@@ -311,7 +311,7 @@ static HYD_MotionSegment buildPressureSegment(
 
     seg.targetPressure = targetPressure;
     seg.targetFlow = fb->_params.defaultTargetFlow;
-    seg.maxFlow = 20;//fb->_params.maxFlow;
+    seg.maxFlow = fb->_params.maxFlow;
     seg.duration = duration;
     seg.pressureRampRate = rampRate;
     seg.pressureCeiling  = MAX_PRESSURE;
@@ -2232,6 +2232,8 @@ void __mcl_cmd_ReadStatus(HYD_READSTATUS* data__)
     {
         __SET_VAR(data__->, STATE,, 0);
         __SET_VAR(data__->, BUSY,, false);
+        __SET_VAR(data__->, PRESSURECONTROLLERAPPLIED,,
+                  (IEC_INT)HYD_PRESSURE_CONTROLLER_NONE);
         return;
     }
 
@@ -2241,11 +2243,15 @@ void __mcl_cmd_ReadStatus(HYD_READSTATUS* data__)
     {
         __SET_VAR(data__->, STATE,, (IEC_UINT)fb->STATE.status);
         __SET_VAR(data__->, BUSY,, HYD_MotionControlFB_IsBusy(fb) ? true : false);
+        __SET_VAR(data__->, PRESSURECONTROLLERAPPLIED,,
+                  (IEC_INT)fb->STATE.pressureControllerApplied);
     }
     else
     {
         __SET_VAR(data__->, STATE,, 0);
         __SET_VAR(data__->, BUSY,, false);
+        __SET_VAR(data__->, PRESSURECONTROLLERAPPLIED,,
+                  (IEC_INT)HYD_PRESSURE_CONTROLLER_NONE);
     }
 
 

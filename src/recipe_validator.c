@@ -43,7 +43,8 @@ static HYD_BOOL HYD_IsValidPressureControllerType(HYD_PressureControllerType str
            (strategy == HYD_PRESSURE_CONTROLLER_P) ||
            (strategy == HYD_PRESSURE_CONTROLLER_PI) ||
            (strategy == HYD_PRESSURE_CONTROLLER_PID) ||
-           (strategy == HYD_PRESSURE_CONTROLLER_RBF_PID);
+           (strategy == HYD_PRESSURE_CONTROLLER_RBF_PID) ||
+           (strategy == HYD_PRESSURE_CONTROLLER_RBF_PI);
 }
 
 static HYD_BOOL HYD_IsSupportedPressureControllerType(HYD_PressureControllerType strategy) {
@@ -51,7 +52,8 @@ static HYD_BOOL HYD_IsSupportedPressureControllerType(HYD_PressureControllerType
            (strategy == HYD_PRESSURE_CONTROLLER_P) ||
            (strategy == HYD_PRESSURE_CONTROLLER_PI) ||
            (strategy == HYD_PRESSURE_CONTROLLER_PID) ||
-           (strategy == HYD_PRESSURE_CONTROLLER_RBF_PID);
+           (strategy == HYD_PRESSURE_CONTROLLER_RBF_PID) ||
+           (strategy == HYD_PRESSURE_CONTROLLER_RBF_PI);
 }
 
 static HYD_BOOL HYD_RecipeValidator_Fail(HYD_DiagnosticCode* code,
@@ -241,6 +243,7 @@ HYD_BOOL HYD_RecipeValidator_ValidateSegment(const HYD_MotionSegment* segment,
 
     if ((segment->mode == HYD_MODE_PRESSURE_CLOSED_LOOP) &&
         (segment->pressureController == HYD_PRESSURE_CONTROLLER_RBF_PID ||
+         segment->pressureController == HYD_PRESSURE_CONTROLLER_RBF_PI ||
          HYD_RecipeValidator_HasCustomRbfConfig(segment))) {
         HYD_REAL resolvedMinKp;
         HYD_REAL resolvedMaxKp;

@@ -10,6 +10,7 @@ static void test_pressure_accel_feedforward_toggle_changes_incremental_output(vo
 static void test_pressure_accel_feedforward_is_suppressed_inside_near_target_band(void);
 static void test_pressure_accel_feedforward_remains_active_outside_near_target_band(void);
 static void test_target_relative_small_error_reduces_gain_drift(void);
+static void test_control_mode_round_trip_restores_pid_configuration(void);
 
 static void test_init_sets_ready_defaults(void) {
     RBF_PID_Handle pid;
@@ -34,6 +35,33 @@ static void test_init_sets_ready_defaults(void) {
     assert(fabsf(pid.e_prev2) < 1e-6f);
     assert(!pid.output_saturated);
     printf("✓ RBF_PID initialization defaults test passed\n");
+}
+
+static void test_control_mode_round_trip_restores_pid_configuration(void) {
+    RBF_PID_Handle pid;
+
+    printf("Testing RBF PI/PID mode round-trip configuration...\n");
+    RBF_PID_Init(&pid, 0.001f, 90.0f, 1.0f);
+    RBF_PID_SetParamLimits(&pid, 0.01f, 2.0f, 0.001f, 1.0f, 0.0f, 2.0f);
+    RBF_PID_SetLearningRates(&pid, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.3f);
+    RBF_PID_SetPressureAccelFeedforwardEnabled(&pid, true);
+    pid.KD = 0.75f;
+
+    RBF_PID_SetControlMode(&pid, RBF_PID_CONTROL_MODE_PI);
+    assert(pid.control_mode == RBF_PID_CONTROL_MODE_PI);
+    assert(pid.KD == 0.0f);
+    assert(pid.eta_d == 0.0f);
+    assert(!pid.pressure_accel_ff_enabled);
+
+    RBF_PID_SetLearningRates(&pid, 0.1f, 0.1f, 0.1f, 0.1f, 0.1f, 0.4f);
+    RBF_PID_SetPressureAccelFeedforwardEnabled(&pid, true);
+    RBF_PID_SetControlMode(&pid, RBF_PID_CONTROL_MODE_PID);
+
+    assert(pid.control_mode == RBF_PID_CONTROL_MODE_PID);
+    assert(fabsf(pid.KD - 0.75f) < 1e-6f);
+    assert(fabsf(pid.eta_d - 0.4f) < 1e-6f);
+    assert(pid.pressure_accel_ff_enabled);
+    printf("✓ RBF PI/PID mode round-trip configuration test passed\n");
 }
 
 static void test_enabled_controller_respects_limits_and_drives_feedback(void) {
@@ -384,6 +412,7 @@ int main(void) {
     printf("Running RBF_PID tests...\n\n");
 
     test_init_sets_ready_defaults();
+    test_control_mode_round_trip_restores_pid_configuration();
     test_enabled_controller_respects_limits_and_drives_feedback();
     test_explicit_reset_restores_runtime_state();
     test_adaptive_learning_rate_scales_with_error();

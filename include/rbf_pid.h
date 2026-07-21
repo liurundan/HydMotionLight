@@ -77,7 +77,6 @@ typedef struct {
     float fGainCompensation;        // 兼容字段：保留最近一次计算的补偿因子
     bool gain_compensation_enabled; // 是否在输出末端应用兼容增益补偿
     bool pressure_accel_ff_enabled;
-    RBF_PID_ControlMode control_mode;
     float gain_compensation_factor; // 输出补偿因子，默认 1.0
 
     /* 最近一次控制结果 */
@@ -142,6 +141,10 @@ typedef struct {
     float prev_d_term;                // 上一次微分项
     /* 网络初始化种子 */
     uint32_t network_seed;          // 兼容保留字段：当前仅存储，尚未接入网络初始化流程
+    float pid_mode_kd;
+    float pid_mode_eta_d;
+    bool pressure_accel_ff_requested;
+    RBF_PID_ControlMode control_mode; /* Appended to preserve existing field offsets. */
 } RBF_PID_Handle;
 
 /**

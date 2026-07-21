@@ -1169,6 +1169,11 @@
 								<UINT />
 							</type>
 						</variable>
+						<variable name="PRESSURECONTROLLERAPPLIED">
+							<type>
+								<INT />
+							</type>
+						</variable>
 					</outputVars>
 				</interface>
 				<body>

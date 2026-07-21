@@ -1586,6 +1586,67 @@ static void test_pressurehandle_accepts_continuousupdate_and_updates_active_targ
                "PressureHandle continuous update should update active pressureRampRate");
 }
 
+static void test_pressurehandle_latches_controller_until_next_execute(void) {
+    HYD_PRESSUREHANDLE ph;
+    HYD_MotionControlFB* fb;
+
+    __HydMotion_framework_Init();
+    ensure_axes_allocated(1);
+    fb = __MK_GetPublic_MotionControlFB(0);
+    ASSERT_TRUE(fb != NULL, "PressureHandle controller latch test should resolve FB");
+    ASSERT_TRUE(HYD_MotionControlFB_WriteParameter(
+                    fb,
+                    HYD_PARAM_PRESSURE_CONTROLLER_TYPE,
+                    (HYD_REAL)HYD_PRESSURE_CONTROLLER_RBF_PID),
+                "RBF-PID controller selection should be writable");
+
+    memset(&ph, 0, sizeof(ph));
+    IEC_VAL(ph.EN) = true;
+    IEC_VAL(ph.EXECUTE) = true;
+    IEC_VAL(ph.AXISID) = 0;
+    IEC_VAL(ph.PRESSURE) = 20.0f;
+    IEC_VAL(ph.PRESSURERAMPRATE) = 10.0f;
+    IEC_VAL(ph.DURATION) = 5.0f;
+    IEC_VAL(ph.CONTINUOUSUPDATE) = true;
+    __mcl_cmd_PressureHandle(&ph);
+
+    ASSERT_TRUE(fb->_activeSegment.pressureController ==
+                    HYD_PRESSURE_CONTROLLER_RBF_PID,
+                "PressureHandle should latch RBF-PID on the execute edge");
+
+    __HydMotion_framework_Publish();
+    ph.EXECUTE0.value = true;
+    __mcl_cmd_PressureHandle(&ph);
+    ASSERT_TRUE(fb->STATE.pressureControllerApplied ==
+                    HYD_PRESSURE_CONTROLLER_RBF_PID,
+                "Runtime state should report the latched RBF-PID controller");
+
+    ASSERT_TRUE(HYD_MotionControlFB_WriteParameter(
+                    fb,
+                    HYD_PARAM_PRESSURE_CONTROLLER_TYPE,
+                    (HYD_REAL)HYD_PRESSURE_CONTROLLER_RBF_PI),
+                "RBF-PI controller selection should be writable while active");
+    __mcl_cmd_PressureHandle(&ph);
+
+    ASSERT_TRUE(fb->_activeSegment.pressureController ==
+                    HYD_PRESSURE_CONTROLLER_RBF_PID,
+                "Active PressureHandle should not hot-switch controller strategy");
+    ASSERT_TRUE(fb->STATE.pressureControllerApplied ==
+                    HYD_PRESSURE_CONTROLLER_RBF_PID,
+                "Applied controller should remain RBF-PID until the next command");
+
+    HYD_MotionControlFB_SoftReset(fb);
+    IEC_VAL(ph.EXECUTE) = false;
+    __mcl_cmd_PressureHandle(&ph);
+    IEC_VAL(ph.EXECUTE) = true;
+    ph.EXECUTE0.value = false;
+    __mcl_cmd_PressureHandle(&ph);
+
+    ASSERT_TRUE(fb->_activeSegment.pressureController ==
+                    HYD_PRESSURE_CONTROLLER_RBF_PI,
+                "Next PressureHandle execute should latch the pending RBF-PI controller");
+}
+
 /* ==================================================================
  * Test 18: PressureHandle EN=false 清除输出
  * ================================================================== */
@@ -3259,6 +3320,7 @@ int main(void) {
     test_reset_preserves_direct_segment_configuration();
     test_pressurehandle_execute_rising_starts_pressure_control();
     test_pressurehandle_accepts_continuousupdate_and_updates_active_target();
+    test_pressurehandle_latches_controller_until_next_execute();
     test_pressurehandle_en_false_clears_outputs();
     test_pressurehandle_rejects_invalid_axis_index();
     test_pressurehandle_completion_keeps_completion_semantics();

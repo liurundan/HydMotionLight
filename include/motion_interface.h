@@ -442,6 +442,7 @@ typedef struct {
   __DECLARE_VAR(BOOL,ERROR)
   __DECLARE_VAR(WORD,ERRORID)
   __DECLARE_VAR(UINT,STATE)
+  __DECLARE_VAR(INT,PRESSURECONTROLLERAPPLIED)
 
   // FB private variables - TEMP, private and located variables
 

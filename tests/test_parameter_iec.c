@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <math.h>
 #include <string.h>
 #include "motion_interface.h"
 #include "motion_control.h"
@@ -156,12 +157,62 @@ static void test_segment_builder_uses_fb_params(void) {
                     "FB _params.positionTolerance should be 0.025 after WriteParameter");
 }
 
+static void test_read_status_reports_applied_pressure_controller(void) {
+    HYD_READSTATUS rs;
+    HYD_MotionControlFB* fb;
+
+    __HydMotion_framework_Init();
+    ensure_axis_allocated();
+    fb = __MK_GetPublic_MotionControlFB(0);
+    fb->STATE.pressureControllerApplied = HYD_PRESSURE_CONTROLLER_RBF_PI;
+
+    memset(&rs, 0, sizeof(rs));
+    IEC_VAL(rs.EN) = true;
+    IEC_VAL(rs.AXISID) = 0;
+    IEC_VAL(rs.ENABLE) = true;
+    __mcl_cmd_ReadStatus(&rs);
+
+    ASSERT_TRUE(IEC_VAL(rs.PRESSURECONTROLLERAPPLIED) ==
+                    (IEC_INT)HYD_PRESSURE_CONTROLLER_RBF_PI,
+                "ReadStatus should expose the applied RBF-PI controller");
+
+    IEC_VAL(rs.ENABLE) = false;
+    __mcl_cmd_ReadStatus(&rs);
+    ASSERT_TRUE(IEC_VAL(rs.PRESSURECONTROLLERAPPLIED) ==
+                    (IEC_INT)HYD_PRESSURE_CONTROLLER_NONE,
+                "ReadStatus should clear applied controller when disabled");
+}
+
+static void test_pressure_handle_uses_configured_max_flow(void) {
+    HYD_PRESSUREHANDLE ph;
+    HYD_MotionControlFB* fb;
+
+    __HydMotion_framework_Init();
+    ensure_axis_allocated();
+    fb = __MK_GetPublic_MotionControlFB(0);
+    ASSERT_TRUE(HYD_MotionControlFB_WriteParameter(fb, HYD_PARAM_MAX_FLOW, 37.0),
+                "Max flow parameter should be writable");
+
+    memset(&ph, 0, sizeof(ph));
+    IEC_VAL(ph.EN) = true;
+    IEC_VAL(ph.EXECUTE) = true;
+    IEC_VAL(ph.AXISID) = 0;
+    IEC_VAL(ph.PRESSURE) = 10.0;
+    IEC_VAL(ph.DURATION) = 1.0;
+    __mcl_cmd_PressureHandle(&ph);
+
+    ASSERT_TRUE(fabsf((float)(fb->_activeSegment.maxFlow - 37.0)) < 0.001f,
+                "PressureHandle should use configured max flow");
+}
+
 int main(void) {
     test_read_parameter_iec();
     test_write_then_read_iec();
     test_write_read_bool_iec();
     test_invalid_axisid_iec();
     test_segment_builder_uses_fb_params();
+    test_read_status_reports_applied_pressure_controller();
+    test_pressure_handle_uses_configured_max_flow();
 
     printf("IEC parameter FB tests: %d/%d passed\n", tests_passed, tests_run);
     return (tests_passed == tests_run) ? 0 : 1;

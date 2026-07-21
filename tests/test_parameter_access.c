@@ -109,6 +109,36 @@ static void test_write_read_roundtrip(void) {
     ASSERT_FLOAT_EQ(val, 20.0f, 0.001f, "velocityCorrectionLimit should round-trip");
 }
 
+static void test_pressure_controller_type_validation(void) {
+    HYD_MotionControlFB fb;
+    HYD_REAL val;
+    HYD_BOOL ok;
+
+    HYD_MotionControlFB_Init(&fb);
+
+    ok = HYD_MotionControlFB_WriteParameter(
+        &fb, HYD_PARAM_PRESSURE_CONTROLLER_TYPE,
+        (HYD_REAL)HYD_PRESSURE_CONTROLLER_RBF_PI);
+    ASSERT_TRUE(ok, "RBF-PI controller type should be accepted");
+    ok = HYD_MotionControlFB_ReadParameter(
+        &fb, HYD_PARAM_PRESSURE_CONTROLLER_TYPE, &val);
+    ASSERT_TRUE(ok, "RBF-PI controller type should be readable");
+    ASSERT_EQ((int)val, (int)HYD_PRESSURE_CONTROLLER_RBF_PI,
+              "RBF-PI controller type should round-trip");
+
+    ok = HYD_MotionControlFB_WriteParameter(
+        &fb, HYD_PARAM_PRESSURE_CONTROLLER_TYPE, 5.5f);
+    ASSERT_TRUE(!ok, "Non-integer controller type should be rejected");
+
+    ok = HYD_MotionControlFB_WriteParameter(
+        &fb, HYD_PARAM_PRESSURE_CONTROLLER_TYPE, 99.0f);
+    ASSERT_TRUE(!ok, "Unknown controller type should be rejected");
+
+    ok = HYD_MotionControlFB_WriteParameter(
+        &fb, HYD_PARAM_PRESSURE_CONTROLLER_TYPE, (HYD_REAL)1.0e30);
+    ASSERT_TRUE(!ok, "Out-of-range controller type should be rejected safely");
+}
+
 /* Test: Write then Read Bool round-trip */
 static void test_write_read_bool_roundtrip(void) {
     HYD_MotionControlFB fb;
@@ -205,6 +235,7 @@ int main(void) {
     test_init_sets_defaults();
     test_init_syncs_legacy_fields();
     test_write_read_roundtrip();
+    test_pressure_controller_type_validation();
     test_write_read_bool_roundtrip();
     test_invalid_param_number();
     test_type_mismatch_rejected();

@@ -525,6 +525,9 @@ void RBF_PID_Init(RBF_PID_Handle *pid, float sampling_period,
     rbf_pid_apply_default_limits(pid);
     rbf_pid_apply_default_learning_rates(pid);
     rbf_pid_apply_default_gains(pid);
+    pid->pid_mode_kd = pid->KD;
+    pid->pid_mode_eta_d = pid->eta_d;
+    pid->pressure_accel_ff_requested = true;
     rbf_pid_refresh_gain_compensation(pid);
     rbf_pid_init_network(pid);
 }
@@ -578,6 +581,7 @@ void RBF_PID_SetParamLimits(RBF_PID_Handle *pid,
     sort_pair(&pid->min_KP, &pid->max_KP);
     sort_pair(&pid->min_KI, &pid->max_KI);
     sort_pair(&pid->min_KD, &pid->max_KD);
+    pid->pid_mode_kd = clampf(pid->min_KD, pid->pid_mode_kd, pid->max_KD);
 }
 
 void RBF_PID_SetLearningRates(RBF_PID_Handle *pid,
@@ -588,7 +592,8 @@ void RBF_PID_SetLearningRates(RBF_PID_Handle *pid,
     pid->eta_b = clamp_finite(0.0f, eta_b, 10.0f, 0.0f);
     pid->eta_p = clamp_finite(0.0f, eta_p, 10.0f, 0.0f);
     pid->eta_i = clamp_finite(0.0f, eta_i, 10.0f, 0.0f);
-    pid->eta_d = clamp_finite(0.0f, eta_d, 10.0f, 0.0f);
+    pid->pid_mode_eta_d = clamp_finite(0.0f, eta_d, 10.0f, 0.0f);
+    pid->eta_d = pid->pid_mode_eta_d;
     rbf_pid_enforce_control_mode(pid);
 }
 
@@ -621,18 +626,42 @@ void RBF_PID_SetPressureAccelFeedforwardEnabled(RBF_PID_Handle *pid, bool enable
         return;
     }
 
+    pid->pressure_accel_ff_requested = enabled;
     pid->pressure_accel_ff_enabled =
-        (pid->control_mode == RBF_PID_CONTROL_MODE_PID) && enabled;
+        (pid->control_mode == RBF_PID_CONTROL_MODE_PID) &&
+        pid->pressure_accel_ff_requested;
 }
 
 void RBF_PID_SetControlMode(RBF_PID_Handle *pid, RBF_PID_ControlMode mode) {
+    RBF_PID_ControlMode requestedMode;
+
     if (pid == NULL) {
         return;
     }
 
-    pid->control_mode = (mode == RBF_PID_CONTROL_MODE_PI)
+    requestedMode = (mode == RBF_PID_CONTROL_MODE_PI)
         ? RBF_PID_CONTROL_MODE_PI
         : RBF_PID_CONTROL_MODE_PID;
+
+    if (pid->control_mode == requestedMode) {
+        rbf_pid_enforce_control_mode(pid);
+        return;
+    }
+
+    if (pid->control_mode == RBF_PID_CONTROL_MODE_PID &&
+        requestedMode == RBF_PID_CONTROL_MODE_PI) {
+        pid->pid_mode_kd = pid->KD;
+        pid->pid_mode_eta_d = pid->eta_d;
+        pid->pressure_accel_ff_requested = pid->pressure_accel_ff_enabled;
+    }
+
+    pid->control_mode = requestedMode;
+    if (requestedMode == RBF_PID_CONTROL_MODE_PID) {
+        pid->KD = clampf(pid->min_KD, pid->pid_mode_kd, pid->max_KD);
+        pid->eta_d = pid->pid_mode_eta_d;
+        pid->pressure_accel_ff_enabled = pid->pressure_accel_ff_requested;
+        return;
+    }
     rbf_pid_enforce_control_mode(pid);
 }
 
