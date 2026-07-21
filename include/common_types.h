@@ -192,7 +192,9 @@ typedef enum {
     HYD_PRESSURE_CONTROLLER_P,
     HYD_PRESSURE_CONTROLLER_PI,
     HYD_PRESSURE_CONTROLLER_PID,
-    HYD_PRESSURE_CONTROLLER_RBF_PID
+    HYD_PRESSURE_CONTROLLER_RBF_PID,
+    /* Appended to preserve the numeric values used by existing PLC recipes. */
+    HYD_PRESSURE_CONTROLLER_RBF_PI
 } HYD_PressureControllerType;
 
 /* BufferMode values follow Beckhoff / PLCopen MC2 ordering.

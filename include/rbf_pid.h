@@ -46,6 +46,11 @@ typedef enum {
     RBF_PID_CONTROL_STATE_RELIEF
 } RBF_PID_ControlState;
 
+typedef enum {
+    RBF_PID_CONTROL_MODE_PID = 0,
+    RBF_PID_CONTROL_MODE_PI
+} RBF_PID_ControlMode;
+
 /**
  * @brief RBF-PID控制器状态结构体
  * @note 所有持久状态均内聚在此，支持多实例静态分配
@@ -72,6 +77,7 @@ typedef struct {
     float fGainCompensation;        // 兼容字段：保留最近一次计算的补偿因子
     bool gain_compensation_enabled; // 是否在输出末端应用兼容增益补偿
     bool pressure_accel_ff_enabled;
+    RBF_PID_ControlMode control_mode;
     float gain_compensation_factor; // 输出补偿因子，默认 1.0
 
     /* 最近一次控制结果 */
@@ -205,6 +211,13 @@ void RBF_PID_SetFlowNormalization(RBF_PID_Handle *pid, float scale);
 void RBF_PID_SetGainCompensation(RBF_PID_Handle *pid, float systemGain);
 
 void RBF_PID_SetPressureAccelFeedforwardEnabled(RBF_PID_Handle *pid, bool enabled);
+
+/**
+ * @brief Select the adaptive feedback mode.
+ * @note PID is the default. PI mode keeps the same RBF adaptation and
+ *       incremental controller while disabling all derivative behavior.
+ */
+void RBF_PID_SetControlMode(RBF_PID_Handle *pid, RBF_PID_ControlMode mode);
 
 /**
  * @brief 设置网络初始化种子兼容字段

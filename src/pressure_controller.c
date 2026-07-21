@@ -52,7 +52,8 @@ static const HYD_PressureStrategySpec HYD_PRESSURE_STRATEGY_SPECS[] = {
     {HYD_PRESSURE_CONTROLLER_P, false, false, false},
     {HYD_PRESSURE_CONTROLLER_PI, true, false, false},
     {HYD_PRESSURE_CONTROLLER_PID, true, true, false},
-    {HYD_PRESSURE_CONTROLLER_RBF_PID, true, true, true}
+    {HYD_PRESSURE_CONTROLLER_RBF_PID, true, true, true},
+    {HYD_PRESSURE_CONTROLLER_RBF_PI, true, false, true}
 };
 
 static const HYD_PressureStrategySpec* HYD_FindPressureStrategySpec(HYD_PressureControllerType strategy) {
@@ -334,9 +335,15 @@ static void HYD_ApplyRbfPidConfig(HYD_PressureControllerState* state,
                              (float)config->rbf.etaP,
                              (float)config->rbf.etaI,
                              (float)config->rbf.etaD);
+    RBF_PID_SetControlMode(
+        &state->rbfPid,
+        config->strategy == HYD_PRESSURE_CONTROLLER_RBF_PI
+            ? RBF_PID_CONTROL_MODE_PI
+            : RBF_PID_CONTROL_MODE_PID);
     RBF_PID_SetPressureAccelFeedforwardEnabled(
         &state->rbfPid,
-        config->rbf.disablePressureAccelFeedforward ? false : true);
+        config->strategy == HYD_PRESSURE_CONTROLLER_RBF_PI ||
+            config->rbf.disablePressureAccelFeedforward ? false : true);
     RBF_PID_SetFlowNormalization(
         &state->rbfPid,
         (float)HYD_ResolvePositiveOrDefault(config->outputMax,
@@ -517,7 +524,8 @@ void HYD_PressureController_Execute(const HYD_MotionSegment* segment,
     output->samplingPeriod = config.dt;
     output->adaptiveActive = config.strategySpec->adaptive;
 
-    if (config.strategy == HYD_PRESSURE_CONTROLLER_RBF_PID) {
+    if (config.strategy == HYD_PRESSURE_CONTROLLER_RBF_PID ||
+        config.strategy == HYD_PRESSURE_CONTROLLER_RBF_PI) {
         HYD_REAL effectiveTargetPressure;
         HYD_REAL rawOutputFlow;
         HYD_BOOL needsAdaptiveReset;
