@@ -24,6 +24,7 @@
 7. 实时路径使用 `Xm -> Xs`、`Vm -> Vs`；`Xs -> Xm` 反解用于标定和诊断，不进入当前 1 ms 热路径。
 8. 直压轴保持原有行为和数据流，除一个机构类型分支外不承担运动学计算。
 9. 本阶段只做 PC 基准和 Cortex-M7F 运算量估算。没有 ARM GCC 和目标板 DWT 数据时，不宣称 STM32 1 ms WCET 已通过。
+10. 有效在线区间为 `[xHandoffEffective, Sm]`。几何模块自动推导 `xGeometryMin`；`xHandoff=0` 使用自动值，显式值不得低于它。
 
 ## 3. 当前实现约束
 
@@ -195,6 +196,7 @@ typedef struct {
     HYD_REAL hm;
     HYD_REAL dc;
     HYD_REAL sm;
+    HYD_REAL xHandoff; /* 0 = use derived xGeometryMin */
     int8_t sigmaK;
     int8_t signB;
     int8_t tauS;
@@ -205,7 +207,7 @@ typedef struct {
 
 ```text
 Lr=150 mm, Lf=230 mm, LPF=135 mm, LPK=75 mm, Ld=60 mm
-HF=130 mm, HM=100 mm, dc=380 mm, Sm=202 mm
+HF=130 mm, HM=100 mm, dc=378 mm, Sm=202 mm, xHandoff=0 (auto)
 sigmaK=-1, signB=-1, tauS=-1
 ```
 
@@ -218,6 +220,7 @@ sigmaK=-1, signB=-1, tauS=-1
 - 全行程 `Xs` 范围和 `k` 范围。
 - 最小根式余量。
 - 最小归一化主雅可比。
+- 自动推导的 `xGeometryMin` 和最终 `xHandoffEffective`。
 - 配置版本和有效标志。
 
 只保存能够减少实时运算或支持故障诊断的数据，不缓存每个采样点，不在首版引入 LUT。
@@ -301,7 +304,7 @@ HYD_ConfigureToggleMechanism
 
 Inputs:
   AXISID, EXECUTE
-  LR, LF, LPF, LPK, LD, HF, HM, DC, SM
+  LR, LF, LPF, LPK, LD, HF, HM, DC, SM, XHANDOFF
   SIGMA_K, SIGN_B, TAU_S
 
 Outputs:
@@ -327,9 +330,10 @@ Inputs:
 
 Outputs:
   VALID, USING_DEFAULTS
-  LR, LF, LPF, LPK, LD, HF, HM, DC, SM
+  LR, LF, LPF, LPK, LD, HF, HM, DC, SM, XHANDOFF
   SIGMA_K, SIGN_B, TAU_S
   CONFIG_VERSION
+  X_GEOMETRY_MIN, X_HANDOFF_EFFECTIVE
   XS_MIN, XS_MAX, K_MIN, K_MAX
   ERROR, ERRORID
 ```
@@ -368,7 +372,7 @@ HYD_BOOL HYD_ToggleKinematics_InversePosition(
 
 位置和雅可比不能由两个独立热路径 API 分别计算，否则会重复计算几何和开方。
 
-`InversePosition` 只在已经校验为严格单调的 `[0, Sm]` 区间工作，使用固定上限次数的二分法。首版不使用 Newton 法，以避免初值依赖和近奇异区发散。失败时不返回最近一次迭代值作为有效结果。
+`InversePosition` 只在已经校验为严格单调的 `[xGeometryMin, Sm]` 区间工作，使用固定上限次数的二分法。首版不使用 Newton 法，以避免初值依赖和近奇异区发散。失败时不返回最近一次迭代值作为有效结果。
 
 ## 11. 配置校验
 
@@ -386,12 +390,21 @@ HYD_BOOL HYD_ToggleKinematics_InversePosition(
 - `LPF^2-aP^2` 有足够正余量，拒绝退化或近共线装配。
 - `|py| <= Ld` 并保留根式安全裕量。
 - `Sm` 与公共轴行程、软限位和可配置目标范围不冲突。
+- `xHandoff=0` 表示自动；显式值必须有限并位于 `[xGeometryMin, Sm]`。
 - 如果油缸面积已配置，则相关面积必须有限且为正。
 - 如果没有面积配置，仍可使用兼容的活塞速度到流量增益；但段开始前必须证明执行器侧速度能够转换为有效流量。
 
 ### 11.3 全行程验证
 
-验证区间为 `[0, Sm]`。使用端点检查加确定性致密/自适应扫描，每次配置提交至少检查：
+几何扫描先覆盖 `[0, Sm]`，但允许靠近锁紧区的一段不满足普通速度控制裕量。校验器从 `Sm` 向 `0` 搜索连续安全后缀，并自动推导最小在线位置 `xGeometryMin`：
+
+1. 每个采样点按根式余量、归一化雅可比、驱动杆投影、`|k|` 最小值和最大值判定是否适合普通速度控制。
+2. 从 `Sm` 向闭模方向扫描，找到最后一个安全到不安全的边界。
+3. 使用固定次数二分法在安全侧细化边界，并加入固定几何安全裕量。
+4. `[xGeometryMin, Sm]` 必须连续安全、严格单调且支路连续；安全区内部再次出现不安全点时拒绝整组配置。
+5. `xHandoff=0` 时令 `xHandoffEffective=xGeometryMin`；否则要求显式值不小于 `xGeometryMin`。
+
+每次配置提交至少检查：
 
 - `rK` 和 `rS` 根式余量。
 - `deltaJ` 和归一化条件指标。
@@ -402,6 +415,8 @@ HYD_BOOL HYD_ToggleKinematics_InversePosition(
 - 全部中间量和输出有限。
 
 数学上可达但安全裕量低于配置阈值时仍拒绝提交。浮点根式只允许吸收舍入级微小负数，禁止用无条件 `max(0, radicand)` 掩盖真实不可达几何。
+
+默认 `dc=378 mm` 时，`Xm=0` 的主曲肘距离为 `D=379.188607 mm < Lr+Lf=380 mm`，主根式余量 `rK=147.145273 mm^2`，满足主曲肘可达条件。是否允许在 `Xm=0` 执行普通速度控制仍由上述安全阈值和自动 `xGeometryMin` 决定，不能仅凭可达条件判定。
 
 ### 11.4 跨扫描校验
 
@@ -580,6 +595,7 @@ Cortex-M7 480 MHz
 - 驱动杆不可达。
 - 行程/软限位冲突。
 - 数学可达但奇异裕量不足。
+- 自动 `xGeometryMin`、显式 `xHandoff` 下界和安全区连续性。
 - 跨扫描 `BUSY` 和固定工作量。
 - 失败提交不改变旧配置和版本。
 - 运行轴拒绝配置。
@@ -629,7 +645,7 @@ Cortex-M7 480 MHz
 
 本设计对应的实现只有在以下条件全部满足时才可结束：
 
-- 默认五铰点参数可创建、配置、读取和运行。
+- 默认五铰点参数使用 `dc=378 mm`，可创建、配置、读取，并在自动推导的有效在线区间内运行。
 - 曲肘轴按当前位置动态完成 `Vm -> Vs -> flow`。
 - `Xm -> Xs`、`Xs -> Xm` 和解析雅可比通过参考测试。
 - 所有几何矛盾和奇异风险在配置期或运行期被明确拒绝。

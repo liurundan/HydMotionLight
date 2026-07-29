@@ -60,6 +60,9 @@ Dp, etaV, G
 motorMaxRpm, pumpTimeConstant
 xMin, xMax, xHandoff
 ```
+锁模结构的默认曲肘机械参数是Lr=150mm,Lf=230mm,LPF=135mm,LPK=75mm,Ld=60mm,HF=130mm,HM=100mm,dc=378mm,Sm=202mm,sigmaK=-1,signB=-1,tauS=-1。
+
+`xGeometryMin` 由根式余量、归一化雅可比、驱动杆投影和最大速度比阈值自动推导。`xHandoff=0` 表示使用该自动下界；显式配置 `xHandoff` 时必须满足 `xHandoff>=xGeometryMin`。普通位置/速度控制只允许在 `[xHandoff,Sm]` 内运行，靠近锁紧区后交给独立压力阶段。
 
 其中 `G=np/nm`，直联时 `G=1`。
 
