@@ -311,6 +311,23 @@ typedef HYD_REAL HYD_TIME;
  * 那些应当保留在源码上下文中以保证算法可读性。
  * ============================================================================ */
 
+/* --- 五点式肘杆机构数值保护（src/toggle_kinematics.c） --- */
+
+/* 负被开方数的浮点舍入容差。 */
+#ifndef HYD_TOGGLE_RADICAND_EPS
+    #define HYD_TOGGLE_RADICAND_EPS 1.0e-4f
+#endif
+
+/* 奇异位形与不安全除数的判定阈值。 */
+#ifndef HYD_TOGGLE_UNSAFE_EPS
+    #define HYD_TOGGLE_UNSAFE_EPS 1.0e-6f
+#endif
+
+/* 输出速度比绝对值的安全上限。 */
+#ifndef HYD_TOGGLE_VELOCITY_RATIO_LIMIT
+    #define HYD_TOGGLE_VELOCITY_RATIO_LIMIT 1.0e6f
+#endif
+
 /* --- 停车减速完成阈值（src/motion_control.c stopping-branch） --- */
 
 /* 当 commanded deceleration ramp 输出幅值 (decelMag) 跌破该阈值，

@@ -3,10 +3,6 @@
 #include <math.h>
 #include <string.h>
 
-#define HYD_TOGGLE_RADICAND_EPS 1.0e-4f
-#define HYD_TOGGLE_UNSAFE_EPS 1.0e-6f
-#define HYD_TOGGLE_VELOCITY_RATIO_LIMIT 1.0e6f
-
 static void set_error(HYD_ToggleError *error, HYD_ToggleError value)
 {
     if (error != NULL) {
