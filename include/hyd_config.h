@@ -448,6 +448,18 @@ typedef HYD_REAL HYD_TIME;
 
 #define HYD_MAX_AXIS_MOTION  20 /* 最大液压轴数量，包括合模、射胶、顶出、座台、中子等 */
 
+#ifndef HYD_MAX_TOGGLE_MECHANISMS
+#define HYD_MAX_TOGGLE_MECHANISMS HYD_MAX_AXIS_MOTION
+#endif
+
+#ifndef HYD_MAX_TOGGLE_VALIDATIONS
+#define HYD_MAX_TOGGLE_VALIDATIONS 1
+#endif
+
+#ifndef HYD_ENABLE_MECHANISM_TELEMETRY
+#define HYD_ENABLE_MECHANISM_TELEMETRY 1
+#endif
+
 /* ============================================================================
  * 14C. 泵负转速下限比例（Pump Negative Speed Ratio）
  *
