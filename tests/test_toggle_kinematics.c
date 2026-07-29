@@ -217,14 +217,13 @@ static void test_automatic_and_explicit_handoff_bounds(void)
     assert(error == HYD_TOGGLE_ERROR_POSITION_OUT_OF_RANGE);
     assert(memcmp(&solution, &solution_before, sizeof(solution)) == 0);
 
-    assert(HYD_ToggleKinematics_SolveOnline(&explicit_handoff,
-                                            chosen_handoff,
+    assert(HYD_ToggleKinematics_SolveOnline(&automatic,
+                                            chosen_handoff - 0.25f,
                                             0.0f,
                                             &solution,
                                             &error));
-    assert_near(explicit_handoff.xsMax, solution.xs, 2e-4f);
     assert(!HYD_ToggleKinematics_InversePosition(&explicit_handoff,
-                                                 solution.xs + 1.0f,
+                                                 solution.xs,
                                                  &recovered_xm,
                                                  &error));
     assert(error == HYD_TOGGLE_ERROR_POSITION_OUT_OF_RANGE);
@@ -301,6 +300,23 @@ static void test_inverse_uses_validated_increasing_direction(void)
     assert_near(xm, 101.0f, 2e-4f);
 }
 
+static void test_inverse_accepts_single_point_handoff_interval(void)
+{
+    HYD_ToggleGeometryConfig config = HYD_ToggleKinematics_DefaultConfig();
+    HYD_TogglePreparedConfig prepared;
+    HYD_ToggleSolution solution;
+    HYD_ToggleError error = HYD_TOGGLE_ERROR_NONE;
+    HYD_REAL xm = -1.0f;
+
+    config.xHandoff = config.sm;
+    assert(HYD_ToggleKinematics_ValidateBlocking(&config, &prepared, &error));
+    assert(HYD_ToggleKinematics_SolveOnline(&prepared, config.sm, 0.0f,
+                                            &solution, &error));
+    assert(HYD_ToggleKinematics_InversePosition(&prepared, solution.xs,
+                                                &xm, &error));
+    assert_near(xm, config.sm, 0.0f);
+}
+
 int main(void)
 {
     test_default_prepare();
@@ -312,6 +328,7 @@ int main(void)
     test_nonmonotonic_and_unsafe_validation_protections();
     test_inverse_rejects_outside_envelope_without_output_change();
     test_inverse_uses_validated_increasing_direction();
+    test_inverse_accepts_single_point_handoff_interval();
     printf("toggle kinematics core tests passed\n");
     return 0;
 }

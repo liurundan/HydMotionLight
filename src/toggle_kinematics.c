@@ -409,9 +409,6 @@ static HYD_BOOL safe_point_keeps_branch(const HYD_ToggleValidation *validation,
 static HYD_BOOL resolve_handoff(HYD_ToggleValidation *validation,
                                 HYD_ToggleError *error)
 {
-    HYD_ToggleSolution handoff_solution;
-    HYD_ToggleSolution stroke_end_solution;
-    HYD_ToggleError point_error = HYD_TOGGLE_ERROR_NONE;
     HYD_REAL raw_handoff = validation->candidate.raw.xHandoff;
 
     validation->candidate.xHandoffEffective =
@@ -425,28 +422,6 @@ static HYD_BOOL resolve_handoff(HYD_ToggleValidation *validation,
         set_error(error, HYD_TOGGLE_ERROR_POSITION_OUT_OF_RANGE);
         return 0;
     }
-
-    if (!solve_at(&validation->candidate,
-                  validation->candidate.xHandoffEffective,
-                  0.0f,
-                  validation->limits.radicandTolerance,
-                  &handoff_solution,
-                  &point_error) ||
-        !solve_at(&validation->candidate,
-                  validation->candidate.raw.sm,
-                  0.0f,
-                  validation->limits.radicandTolerance,
-                  &stroke_end_solution,
-                  &point_error)) {
-        validation->phase = HYD_TOGGLE_VALIDATION_FAILED;
-        set_error(error, point_error);
-        return 0;
-    }
-
-    validation->candidate.xsMin = fminf(handoff_solution.xs,
-                                        stroke_end_solution.xs);
-    validation->candidate.xsMax = fmaxf(handoff_solution.xs,
-                                        stroke_end_solution.xs);
 
     validation->phase = HYD_TOGGLE_VALIDATION_COMPLETE;
     set_error(error, HYD_TOGGLE_ERROR_NONE);
@@ -761,6 +736,22 @@ HYD_BOOL HYD_ToggleKinematics_InversePosition(
                                           &low_solution, error) ||
         !HYD_ToggleKinematics_SolveOnline(prepared, high, 0.0f,
                                           &high_solution, error)) {
+        return 0;
+    }
+
+    if (low == high) {
+        if (xs != low_solution.xs) {
+            set_error(error, HYD_TOGGLE_ERROR_POSITION_OUT_OF_RANGE);
+            return 0;
+        }
+        *xm = low;
+        set_error(error, HYD_TOGGLE_ERROR_NONE);
+        return 1;
+    }
+
+    if ((xs < fminf(low_solution.xs, high_solution.xs)) ||
+        (xs > fmaxf(low_solution.xs, high_solution.xs))) {
+        set_error(error, HYD_TOGGLE_ERROR_POSITION_OUT_OF_RANGE);
         return 0;
     }
 
