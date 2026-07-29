@@ -10,6 +10,15 @@ static void assert_near(HYD_REAL actual, HYD_REAL expected, HYD_REAL tolerance)
     assert(fabsf(actual - expected) <= tolerance);
 }
 
+static void test_validation_phase_ordinals_remain_stable(void)
+{
+    assert(HYD_TOGGLE_VALIDATION_SCAN == 0);
+    assert(HYD_TOGGLE_VALIDATION_REFINE == 1);
+    assert(HYD_TOGGLE_VALIDATION_COMPLETE == 2);
+    assert(HYD_TOGGLE_VALIDATION_FAILED == 3);
+    assert(HYD_TOGGLE_VALIDATION_HANDOFF == 4);
+}
+
 static void test_default_prepare(void)
 {
     HYD_ToggleGeometryConfig config = HYD_ToggleKinematics_DefaultConfig();
@@ -317,8 +326,45 @@ static void test_inverse_accepts_single_point_handoff_interval(void)
     assert_near(xm, config.sm, 0.0f);
 }
 
+static void test_explicit_handoff_is_exactly_validated_within_budget(void)
+{
+    HYD_ToggleGeometryConfig config = {
+        0x1.50dd3p+7f, 0x1.470496p+7f, 0x1.575054p+6f,
+        0x1.acd65cp+6f, 0x1.e883f2p+7f, 0x1.5b9af2p+6f,
+        0x1.10a604p+6f, 0x1.6a408p+7f, 0x1.d0c9aap+7f,
+        0x1.663c6ep+7f, (int8_t)-1, (int8_t)1, (int8_t)1
+    };
+    HYD_ToggleValidationLimits limits = HYD_ToggleKinematics_DefaultValidationLimits();
+    HYD_ToggleValidation validation;
+    HYD_ToggleError error = HYD_TOGGLE_ERROR_NONE;
+    HYD_UINT16 evaluations = 0u;
+
+    limits.minNormalizedMainJacobian = 1.0e-6f;
+    limits.minDriveProjectionRatio = 1.0e-6f;
+    limits.minAbsVelocityRatio = 1.0e-6f;
+    limits.maxAbsVelocityRatio = 0x1.ef6282p+1f;
+    limits.geometryMarginMm = 0.0f;
+    assert(HYD_ToggleKinematics_BeginValidation(&config, &limits,
+                                                &validation, &error));
+
+    while (!HYD_ToggleKinematics_ValidationDone(&validation)) {
+        assert(evaluations < (HYD_TOGGLE_VALIDATION_POINTS + 1u));
+        if (!HYD_ToggleKinematics_ValidationStep(&validation, 1u, &error)) {
+            ++evaluations;
+            assert(evaluations == (HYD_TOGGLE_VALIDATION_POINTS + 1u));
+            assert(error == HYD_TOGGLE_ERROR_VELOCITY_RATIO_UNSAFE);
+            assert(validation.phase == HYD_TOGGLE_VALIDATION_FAILED);
+            return;
+        }
+        ++evaluations;
+    }
+
+    assert(0 && "explicit non-grid xHandoff must fail exact validation");
+}
+
 int main(void)
 {
+    test_validation_phase_ordinals_remain_stable();
     test_default_prepare();
     test_online_golden_points();
     test_default_validation_and_inverse_round_trip();
@@ -329,6 +375,7 @@ int main(void)
     test_inverse_rejects_outside_envelope_without_output_change();
     test_inverse_uses_validated_increasing_direction();
     test_inverse_accepts_single_point_handoff_interval();
+    test_explicit_handoff_is_exactly_validated_within_budget();
     printf("toggle kinematics core tests passed\n");
     return 0;
 }

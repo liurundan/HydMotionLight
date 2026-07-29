@@ -423,6 +423,35 @@ static HYD_BOOL resolve_handoff(HYD_ToggleValidation *validation,
         return 0;
     }
 
+    validation->phase = HYD_TOGGLE_VALIDATION_HANDOFF;
+    set_error(error, HYD_TOGGLE_ERROR_NONE);
+    return 1;
+}
+
+static HYD_BOOL validate_handoff(HYD_ToggleValidation *validation,
+                                 HYD_ToggleError *error)
+{
+    HYD_ToggleSolution solution;
+    HYD_ToggleError point_error = HYD_TOGGLE_ERROR_NONE;
+
+    if (!solve_at(&validation->candidate,
+                  validation->candidate.xHandoffEffective,
+                  0.0f,
+                  validation->limits.radicandTolerance,
+                  &solution,
+                  &point_error) ||
+        !evaluate_validation_point(validation, &solution, &point_error)) {
+        validation->phase = HYD_TOGGLE_VALIDATION_FAILED;
+        set_error(error, point_error);
+        return 0;
+    }
+
+    if (!safe_point_keeps_branch(validation, &solution)) {
+        validation->phase = HYD_TOGGLE_VALIDATION_FAILED;
+        set_error(error, HYD_TOGGLE_ERROR_NONMONOTONIC);
+        return 0;
+    }
+
     validation->phase = HYD_TOGGLE_VALIDATION_COMPLETE;
     set_error(error, HYD_TOGGLE_ERROR_NONE);
     return 1;
@@ -610,7 +639,8 @@ HYD_BOOL HYD_ToggleKinematics_ValidationStep(HYD_ToggleValidation *validation,
 
     while ((evaluations < maxEvaluations) &&
            ((validation->phase == HYD_TOGGLE_VALIDATION_SCAN) ||
-            (validation->phase == HYD_TOGGLE_VALIDATION_REFINE))) {
+            (validation->phase == HYD_TOGGLE_VALIDATION_REFINE) ||
+            (validation->phase == HYD_TOGGLE_VALIDATION_HANDOFF))) {
         if (validation->phase == HYD_TOGGLE_VALIDATION_SCAN) {
             if (!scan_validation_point(validation, error)) {
                 return 0;
@@ -627,8 +657,13 @@ HYD_BOOL HYD_ToggleKinematics_ValidationStep(HYD_ToggleValidation *validation,
                     validation->phase = HYD_TOGGLE_VALIDATION_REFINE;
                 }
             }
-        } else {
+        } else if (validation->phase == HYD_TOGGLE_VALIDATION_REFINE) {
             if (!refine_validation_boundary(validation, error)) {
+                return 0;
+            }
+            ++evaluations;
+        } else {
+            if (!validate_handoff(validation, error)) {
                 return 0;
             }
             ++evaluations;
