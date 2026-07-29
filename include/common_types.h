@@ -435,6 +435,11 @@ typedef struct {
 } HYD_DiagnosticHistory;
 #endif
 
+typedef enum {
+    HYD_MECHANISM_DIRECT = 0,
+    HYD_MECHANISM_FIVE_POINT_TOGGLE = 1
+} HYD_MechanismType;
+
 typedef struct {
     HYD_UINT currentSegmentIndex;
     HYD_BOOL active;
