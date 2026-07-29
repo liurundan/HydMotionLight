@@ -136,26 +136,39 @@ ctest --test-dir out/build/unixgcc -R '^test_hydro_sim_fb$' --output-on-failure
 ./out/build/unixgcc/main
 ```
 
-### 性能基准测试 (新增)
+### 性能与资源基准
 
-运行性能基准测试程序：
+曲肘运动学基准必须使用独立的 `-Os` 构建，避免把默认 Debug 结果误当成
+嵌入式优化结果：
 
 ```bash
-./out/build/unixgcc/benchmark_performance
+cmake -S . -B out/build/unixgcc-os \
+  -DCMAKE_TOOLCHAIN_FILE=cmake/unixgcc_toolchain.cmake \
+  -DCMAKE_BUILD_TYPE=MinSizeRel \
+  -DCMAKE_C_FLAGS_MINSIZEREL="-Os -DNDEBUG"
+cmake --build out/build/unixgcc-os --target benchmark_performance
+./out/build/unixgcc-os/benchmark_performance
 ```
 
-这将测试库中各个模块的执行性能，包括：
-- 运动工具函数性能
-- 运动规划器性能
-- 压力控制器性能
-- 泵转换器性能
-- 完整控制周期性能
+2026-07-29 的 PC 回归环境为 x86_64、Intel Core i7-9700F 3.00 GHz、
+GCC 11.4.0、`MinSizeRel/-Os`。以 100,000 次调用扫过已校验的
+`Xm=[0, 202] mm` 行程，当前一次采样结果为：
 
-性能测试结果可用于：
-- 验证实时控制可行性
-- 识别性能瓶颈
-- 指导性能优化方向
-- 不同平台性能对比
+| 项目 | 均值 | 最大 100 次批耗时 |
+|------|------|-------------------|
+| 在线曲肘正/速度解 | 63.05 ns/call | 51.2 us |
+| 直压轴完整控制周期 | 284.07 ns/call | 71.0 us |
+| 曲肘轴完整控制周期 | 327.85 ns/call | 87.3 us |
+
+曲肘完整周期相对直压轴的 PC 均值增量为 `15.41%`。资源回归值为：曲肘槽
+`104 B`、增量校验工作区 `140 B`、`HYD_MotionControlFB` `3208 B`；后者
+相对提交 `f8bc1b9` 的主机 ABI 基线 `3176 B` 增长 `32 B`，轴对象中只保存
+机构类型、槽句柄和状态，不嵌入几何对象。
+
+以上数据仅用于 PC 版本间回归，不能换算或宣称为 STM32 WCET。目标估算基础
+是 Cortex-M7F 480 MHz、`-Os`、1 ms 周期共有 480,000 个时钟周期；当前 Linux
+环境没有 STM32 交叉工具链，因此尚未完成 H743/H750 生产固件编译和 DWT
+`CYCCNT` 最坏耗时测量。在取得目标板证据前，1 ms 合规性保持为未验证。
 
 ### 平台配置 (新增)
 

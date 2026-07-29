@@ -1,356 +1,281 @@
-/**
- * @file benchmark_performance.c
- * @brief Performance benchmarking for motion control library
- * 
- * This program measures the execution time of key functions in the motion
- * control library under various configuration scenarios. It helps identify
- * performance bottlenecks and validates optimization efforts.
- */
+#define _POSIX_C_SOURCE 200809L
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <time.h>
+#include <inttypes.h>
+#include <math.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <string.h>
+#include <time.h>
+
 #include "motion_control.h"
-#include "motion_utils.h"
-#include "motion_planner.h"
-#include "pressure_controller.h"
-#include "pump_converter.h"
-#include "common_types.h"
+#include "toggle_mechanism_pool.h"
 
-/* Benchmark configuration */
-#define BENCHMARK_ITERATIONS 10000
-#define BENCHMARK_WARMUP 1000
+#define BENCHMARK_ITERATIONS 100000U
+#define BENCHMARK_WARMUP 10000U
+#define BENCHMARK_BATCH_SIZE 100U
 
-/* Timing utilities */
-static clock_t start_time;
-static clock_t end_time;
+static volatile HYD_REAL benchmark_checksum;
 
-static void benchmark_start(void) {
-    start_time = clock();
+typedef struct {
+    uint64_t totalNs;
+    uint64_t maxBatchNs;
+} BenchmarkTiming;
+
+static clockid_t benchmark_clock_id(void)
+{
+#if defined(__linux__) && defined(CLOCK_MONOTONIC_RAW)
+    return CLOCK_MONOTONIC_RAW;
+#else
+    return CLOCK_MONOTONIC;
+#endif
 }
 
-static void benchmark_end(const char* name, int iterations) {
-    end_time = clock();
-    double elapsed_ms = ((double)(end_time - start_time)) * 1000.0 / CLOCKS_PER_SEC;
-    double avg_us = elapsed_ms * 1000.0 / iterations;
-    
-    printf("%-40s %8.2f ms  (%8.2f µs/call)\n", name, elapsed_ms, avg_us);
+static uint64_t elapsed_ns(struct timespec start, struct timespec end)
+{
+    return (uint64_t)(end.tv_sec - start.tv_sec) * 1000000000ULL +
+           (uint64_t)(end.tv_nsec - start.tv_nsec);
 }
 
-/* Test data creation */
-static void create_test_axis_ref(HYD_AxisRef* axis_ref, HYD_TIME time_offset) {
-    axis_ref->position = 100.0 + time_offset * 10.0;
-    axis_ref->velocity = 50.0;
-    axis_ref->flow = 5.0;
-    axis_ref->pressure = 2.5;
-    axis_ref->timestamp = time_offset;
+static HYD_REAL sweep_position(const HYD_TogglePreparedConfig *prepared,
+                               uint32_t iteration)
+{
+    HYD_REAL span = prepared->raw.sm - prepared->xHandoffEffective;
+    HYD_REAL fraction = (HYD_REAL)(iteration % 1000U) / 999.0f;
+
+    return prepared->xHandoffEffective + span * fraction;
 }
 
-static void create_test_segment(HYD_MotionSegment* segment, HYD_ControlMode mode) {
-    segment->segmentTag = 1;
-    segment->segmentType = HYD_SEGMENT_TYPE_INJECTION;
-    segment->planner = HYD_PLANNER_TIME_BASED;
-    segment->mode = mode;
-    segment->endCondition = HYD_END_POSITION;
-    segment->direction = HYD_DIRECTION_EXTEND;
-    
-    segment->targetPosition = 200.0;
-    segment->targetFlow = 10.0;
-    segment->targetPressure = 5.0;
-    segment->maxAcceleration = 1000.0;
-    segment->maxVelocity = 500.0;
-    segment->maxFlow = 20.0;
-    segment->duration = 2.0;
-    
-    segment->tolerance = 1.0;
-    segment->positionTolerance = 0.1;
-    segment->pressureTolerance = 0.1;
-    segment->flowTolerance = 0.5;
-    segment->velocityTolerance = 10.0;
-    segment->timeoutLimit = 10.0;
-    
-    segment->velocityToFlowGain = 0.02;
-    segment->pressureRampRate = 10.0;
-    
-    segment->pressureController = HYD_PRESSURE_CONTROLLER_PI;
-    segment->pressureKp = 2.0;
-    segment->pressureKi = 0.5;
-    segment->pressureKd = 0.1;
-    segment->pressureIntegralLimit = 5.0;
-    segment->pressureDeadband = 0.05;
-    segment->pressureFilterAlpha = 0.8;
-    segment->pressureDerivativeFilterAlpha = 0.9;
+static void print_timing(const char *label, BenchmarkTiming timing)
+{
+    double mean = (double)timing.totalNs / (double)BENCHMARK_ITERATIONS;
+
+    printf("%-30s mean %.2f ns/call, max batch %" PRIu64 " ns\n",
+           label, mean, timing.maxBatchNs);
 }
 
-/* Benchmark functions */
+static int prepare_default_toggle(HYD_TogglePreparedConfig *prepared)
+{
+    HYD_ToggleGeometryConfig raw = HYD_ToggleKinematics_DefaultConfig();
+    HYD_ToggleError error = HYD_TOGGLE_ERROR_NONE;
 
-static void benchmark_motion_utils(void) {
-    HYD_REAL a = 123.456;
-    HYD_REAL b = 789.012;
-    HYD_AxisRef axis_ref;
-    
-    create_test_axis_ref(&axis_ref, 1.0);
-    
-    printf("\n=== Motion Utils Performance ===\n");
-    
-    /* Warmup */
-    for (int i = 0; i < BENCHMARK_WARMUP; i++) {
-        HYD_MotionUtils_MinReal(a, b);
-        HYD_MotionUtils_AbsReal(-a);
-        HYD_MotionUtils_IsFiniteReal(a);
-        HYD_MotionUtils_AxisRefIsValid(&axis_ref);
+    if (!HYD_ToggleKinematics_ValidateBlocking(&raw, prepared, &error)) {
+        fprintf(stderr, "default toggle validation failed: %d\n", (int)error);
+        return 0;
     }
-    
-    /* Benchmark MinReal */
-    benchmark_start();
-    for (int i = 0; i < BENCHMARK_ITERATIONS; i++) {
-        HYD_MotionUtils_MinReal(a, b);
-    }
-    benchmark_end("MinReal", BENCHMARK_ITERATIONS);
-    
-    /* Benchmark AbsReal */
-    benchmark_start();
-    for (int i = 0; i < BENCHMARK_ITERATIONS; i++) {
-        HYD_MotionUtils_AbsReal(-a);
-    }
-    benchmark_end("AbsReal", BENCHMARK_ITERATIONS);
-    
-    /* Benchmark IsFiniteReal */
-    benchmark_start();
-    for (int i = 0; i < BENCHMARK_ITERATIONS; i++) {
-        HYD_MotionUtils_IsFiniteReal(a);
-    }
-    benchmark_end("IsFiniteReal", BENCHMARK_ITERATIONS);
-    
-    /* Benchmark AxisRefIsValid */
-    benchmark_start();
-    for (int i = 0; i < BENCHMARK_ITERATIONS; i++) {
-        HYD_MotionUtils_AxisRefIsValid(&axis_ref);
-    }
-    benchmark_end("AxisRefIsValid", BENCHMARK_ITERATIONS);
+    return 1;
 }
 
-static void benchmark_motion_planner(void) {
-    HYD_MotionPlannerInput input;
-    HYD_MotionPlannerOutput output;
-    HYD_AxisRef axis_ref;
+static BenchmarkTiming benchmark_kinematics(
+    const HYD_TogglePreparedConfig *prepared)
+{
+    BenchmarkTiming timing = {0U, 0U};
+    HYD_ToggleSolution solution;
+    HYD_ToggleError error = HYD_TOGGLE_ERROR_NONE;
+    clockid_t clock_id = benchmark_clock_id();
+    uint32_t batch;
+    uint32_t i;
+
+    for (i = 0U; i < BENCHMARK_WARMUP; ++i) {
+        HYD_REAL xm = sweep_position(prepared, i);
+        if (!HYD_ToggleKinematics_SolveOnline(
+                prepared, xm, 50.0f, &solution, &error)) {
+            fprintf(stderr, "kinematics warmup failed: %d\n", (int)error);
+            return timing;
+        }
+        benchmark_checksum += solution.vs;
+    }
+
+    for (batch = 0U;
+         batch < BENCHMARK_ITERATIONS / BENCHMARK_BATCH_SIZE;
+         ++batch) {
+        struct timespec start;
+        struct timespec end;
+        uint64_t batch_ns;
+        HYD_REAL batch_checksum = 0.0f;
+
+        (void)clock_gettime(clock_id, &start);
+        for (i = 0U; i < BENCHMARK_BATCH_SIZE; ++i) {
+            uint32_t iteration = batch * BENCHMARK_BATCH_SIZE + i;
+            HYD_REAL xm = sweep_position(prepared, iteration);
+            if (!HYD_ToggleKinematics_SolveOnline(
+                    prepared, xm, 50.0f, &solution, &error)) {
+                fprintf(stderr, "kinematics benchmark failed: %d\n",
+                        (int)error);
+                return timing;
+            }
+            batch_checksum += solution.xs + solution.velocityRatio +
+                              solution.vs;
+        }
+        (void)clock_gettime(clock_id, &end);
+        batch_ns = elapsed_ns(start, end);
+        timing.totalNs += batch_ns;
+        if (batch_ns > timing.maxBatchNs) {
+            timing.maxBatchNs = batch_ns;
+        }
+        benchmark_checksum += batch_checksum;
+    }
+
+    return timing;
+}
+
+static HYD_MotionSegment make_cycle_segment(void)
+{
     HYD_MotionSegment segment;
-    
-    create_test_axis_ref(&axis_ref, 1.0);
-    create_test_segment(&segment, HYD_MODE_POSITION);
-    
-    memset(&input, 0, sizeof(input));
-    input.axisRef = &axis_ref;
-    input.segment = &segment;
-    input.elapsedTime = 0.5;
-    input.rampedPressure = 2.5;
-    
-    printf("\n=== Motion Planner Performance ===\n");
-    
-    /* Warmup */
-    for (int i = 0; i < BENCHMARK_WARMUP; i++) {
-        axis_ref.position += 0.01;
-        axis_ref.timestamp += 0.001;
-        HYD_MotionPlanner_Execute(&input, &output);
-    }
-    
-    /* Benchmark Execute (POSITION mode) */
-    benchmark_start();
-    for (int i = 0; i < BENCHMARK_ITERATIONS; i++) {
-        axis_ref.position += 0.01;
-        axis_ref.timestamp += 0.001;
-        HYD_MotionPlanner_Execute(&input, &output);
-    }
-    benchmark_end("Planner Execute (POSITION)", BENCHMARK_ITERATIONS);
-    
-    /* Benchmark Execute (SPEED_RAMP mode) */
+
+    memset(&segment, 0, sizeof(segment));
+    segment.segmentType = HYD_SEGMENT_TYPE_OTHER;
+    segment.planner = HYD_PLANNER_TIME_BASED;
     segment.mode = HYD_MODE_SPEED_RAMP;
-    axis_ref.position = 100.0;
-    benchmark_start();
-    for (int i = 0; i < BENCHMARK_ITERATIONS; i++) {
-        axis_ref.position += 0.01;
-        axis_ref.timestamp += 0.001;
-        HYD_MotionPlanner_Execute(&input, &output);
-    }
-    benchmark_end("Planner Execute (SPEED_RAMP)", BENCHMARK_ITERATIONS);
+    segment.endCondition = HYD_END_MANUAL;
+    segment.direction = HYD_DIRECTION_EXTEND;
+    segment.maxVelocity = 50.0f;
+    segment.maxAcceleration = 500.0f;
+    segment.maxDeceleration = 500.0f;
+    segment.maxFlow = 50.0f;
+    segment.velocityToFlowGain = 0.2f;
+    return segment;
 }
 
-static void benchmark_pressure_controller(void) {
-    HYD_PressureControllerInput input;
-    HYD_PressureControllerOutput output;
-    HYD_MotionSegment segment;
-    HYD_PressureControllerState state;
-    
-    create_test_segment(&segment, HYD_MODE_PRESSURE_CLOSED_LOOP);
-    
-    input.targetPressure = 5.0;
-    input.measuredPressure = 4.8;
-    input.feedforwardFlow = 2.0;
-    input.outputMin = 0.0;
-    input.outputMax = segment.maxFlow;
-    input.timestamp = 1.0;
-    
-    HYD_PressureController_InitState(&state, 4.8, 2.0, 0.0);
-    
-    printf("\n=== Pressure Controller Performance ===\n");
-    
-    /* Warmup */
-    for (int i = 0; i < BENCHMARK_WARMUP; i++) {
-        input.timestamp += 0.001;
-        input.measuredPressure += 0.001;
-        HYD_PressureController_Execute(&segment, &state, &input, &output);
+static int initialize_cycle_fb(
+    HYD_MotionControlFB *fb,
+    HYD_BOOL toggle,
+    const HYD_TogglePreparedConfig *prepared)
+{
+    HYD_MotionSegment segment = make_cycle_segment();
+
+    HYD_MotionControlFB_Init(fb);
+    fb->USE_RECIPE = false;
+    fb->FLOW_TO_PUMP_SPEED_GAIN = 20.0f;
+    fb->PUMP_SPEED_LIMIT = 3000.0f;
+    fb->_useFixedCycleTime = true;
+    fb->_simulationCycleTime = 0.001f;
+    fb->AXIS_REF.position = prepared->xHandoffEffective;
+    fb->AXIS_REF.pressure = 20.0f;
+
+    if (toggle) {
+        HYD_UINT8 slot = HYD_TOGGLE_SLOT_NONE;
+
+        HYD_ToggleMechanismPool_Reset();
+        if (!HYD_ToggleMechanismPool_Reserve(0U, &slot) ||
+            !HYD_ToggleMechanismPool_Commit(slot, prepared, true)) {
+            return 0;
+        }
+        fb->mechanismType = (HYD_UINT8)HYD_MECHANISM_FIVE_POINT_TOGGLE;
+        fb->mechanismSlot = slot;
+        fb->STATE.mechanismType = fb->mechanismType;
+        fb->STATE.mechanismConfigVersion =
+            HYD_ToggleMechanismPool_GetVersion(slot);
     }
-    
-    /* Benchmark Execute (PI controller) */
-    benchmark_start();
-    for (int i = 0; i < BENCHMARK_ITERATIONS; i++) {
-        input.timestamp += 0.001;
-        input.measuredPressure += 0.001;
-        HYD_PressureController_Execute(&segment, &state, &input, &output);
+
+    if (!HYD_MotionControlFB_LoadDirectSegment(fb, &segment) ||
+        !HYD_MotionControlFB_StartSegment(fb, 0U, 0.0f)) {
+        return 0;
     }
-    benchmark_end("Pressure Controller Execute (PI)", BENCHMARK_ITERATIONS);
+    HYD_MotionControlFB_Execute(fb);
+    return fb->FB_STATE != HYD_FB_STATE_FAULT;
 }
 
-static void benchmark_pump_converter(void) {
-    HYD_PumpConverterInput input;
-    HYD_PumpConverterOutput output;
-    
-    input.requestedFlow = 10.0;
-    input.flowToPumpSpeedGain = 1500.0;
-    input.pumpSpeedLimit = 3000.0;
-    input.direction = HYD_DIRECTION_EXTEND;
-    
-    printf("\n=== Pump Converter Performance ===\n");
-    
-    /* Warmup */
-    for (int i = 0; i < BENCHMARK_WARMUP; i++) {
-        input.requestedFlow = 5.0 + (i % 100) / 10.0;
-        HYD_PumpConverter_Execute(&input, &output);
-    }
-    
-    /* Benchmark Execute */
-    benchmark_start();
-    for (int i = 0; i < BENCHMARK_ITERATIONS; i++) {
-        input.requestedFlow = 5.0 + (i % 100) / 10.0;
-        HYD_PumpConverter_Execute(&input, &output);
-    }
-    benchmark_end("Pump Converter Execute", BENCHMARK_ITERATIONS);
-}
-
-static void benchmark_motion_control_cycle(void) {
+static BenchmarkTiming benchmark_full_cycle(
+    HYD_BOOL toggle,
+    const HYD_TogglePreparedConfig *prepared)
+{
+    BenchmarkTiming timing = {0U, 0U};
     HYD_MotionControlFB fb;
-    HYD_MotionSegment segment;
-    HYD_AxisRef axis_ref;
-    
-    HYD_MotionControlFB_Init(&fb);
-    create_test_segment(&segment, HYD_MODE_POSITION);
-    
-    fb.FLOW_TO_PUMP_SPEED_GAIN = 1500.0;
-    fb.PUMP_SPEED_LIMIT = 3000.0;
-    /* EN gate handled by IEC layer */
-    fb.USE_RECIPE = true;
-    
-    HYD_MotionControlFB_LoadRecipe(&fb, &segment, 1);
-    HYD_MotionControlFB_StartSegment(&fb, 0, 0.0);
-    
-    create_test_axis_ref(&axis_ref, 0.001);
-    fb.AXIS_REF = axis_ref;
-    
-    printf("\n=== Motion Control Cycle Performance ===\n");
-    
-    /* Warmup */
-    for (int i = 0; i < BENCHMARK_WARMUP; i++) {
-        axis_ref.position += 0.1;
-        axis_ref.timestamp += 0.001;
-        fb.AXIS_REF = axis_ref;
-        HYD_MotionControlFB_Execute(&fb);
-        
-        /* Reset if completed */
-        if (fb.SEGMENT_COMPLETED) {
-            HYD_MotionControlFB_StartSegment(&fb, 0, axis_ref.timestamp);
-        }
+    clockid_t clock_id = benchmark_clock_id();
+    uint32_t batch;
+    uint32_t i;
+
+    if (!initialize_cycle_fb(&fb, toggle, prepared)) {
+        fprintf(stderr, "full-cycle benchmark initialization failed\n");
+        return timing;
     }
-    
-    /* Benchmark Execute */
-    benchmark_start();
-    for (int i = 0; i < BENCHMARK_ITERATIONS; i++) {
-        axis_ref.position += 0.1;
-        axis_ref.timestamp += 0.001;
-        fb.AXIS_REF = axis_ref;
+
+    for (i = 0U; i < BENCHMARK_WARMUP; ++i) {
+        fb.AXIS_REF.position = sweep_position(prepared, i);
+        fb.AXIS_REF.velocity = fb.STATE.plannedVelocity;
+        fb.AXIS_REF.flow = fb.STATE.plannedFlow;
+        fb.AXIS_REF.timestamp += 0.001f;
         HYD_MotionControlFB_Execute(&fb);
-        
-        /* Reset if completed */
-        if (fb.SEGMENT_COMPLETED) {
-            HYD_MotionControlFB_StartSegment(&fb, 0, axis_ref.timestamp);
-        }
+        benchmark_checksum += fb.STATE.plannedFlow;
     }
-    benchmark_end("Motion Control Cycle (full)", BENCHMARK_ITERATIONS);
+
+    for (batch = 0U;
+         batch < BENCHMARK_ITERATIONS / BENCHMARK_BATCH_SIZE;
+         ++batch) {
+        struct timespec start;
+        struct timespec end;
+        uint64_t batch_ns;
+        HYD_REAL batch_checksum = 0.0f;
+
+        (void)clock_gettime(clock_id, &start);
+        for (i = 0U; i < BENCHMARK_BATCH_SIZE; ++i) {
+            uint32_t iteration = batch * BENCHMARK_BATCH_SIZE + i;
+            fb.AXIS_REF.position = sweep_position(prepared, iteration);
+            fb.AXIS_REF.velocity = fb.STATE.plannedVelocity;
+            fb.AXIS_REF.flow = fb.STATE.plannedFlow;
+            fb.AXIS_REF.timestamp += 0.001f;
+            HYD_MotionControlFB_Execute(&fb);
+            batch_checksum += fb.STATE.plannedVelocity +
+                              fb.STATE.plannedFlow + fb.PUMP_SPEED;
+        }
+        (void)clock_gettime(clock_id, &end);
+        batch_ns = elapsed_ns(start, end);
+        timing.totalNs += batch_ns;
+        if (batch_ns > timing.maxBatchNs) {
+            timing.maxBatchNs = batch_ns;
+        }
+        benchmark_checksum += batch_checksum;
+    }
+
+    if (fb.FB_STATE == HYD_FB_STATE_FAULT) {
+        fprintf(stderr, "full-cycle benchmark entered fault state: %d\n",
+                (int)fb.DIAGNOSTIC.code);
+        timing.totalNs = 0U;
+    }
+    return timing;
 }
 
-static void print_system_info(void) {
-    HYD_ConfigInfo config = HYD_GetConfigInfo();
-    
-    printf("╔════════════════════════════════════════════════════════════╗\n");
-    printf("║   HydroMotion Library - Performance Benchmark               ║\n");
-    printf("╚════════════════════════════════════════════════════════════╝\n");
-    printf("\n");
-    printf("Library Version: %s\n", config.versionString);
-    printf("Build Time:     %s\n", config.buildTime);
-    printf("\n");
-    printf("Configuration:\n");
-    printf("  Max Segments:            %d\n", config.maxSegments);
-    printf("  Max Name Length:         %d\n", config.maxNameLength);
-    printf("  Max History Depth:       %d\n", config.maxHistoryDepth);
-    printf("  Diagnostic History:      %s\n", config.diagnosticHistoryEnabled ? "Enabled" : "Disabled");
-    printf("  Pressure Loop Telemetry: %s\n", config.pressureLoopTelemetryEnabled ? "Enabled" : "Disabled");
-    printf("  Execution Reference:      %s\n", config.executionReferenceEnabled ? "Enabled" : "Disabled");
-    printf("\n");
-    printf("Benchmark Parameters:\n");
-    printf("  Iterations:  %d\n", BENCHMARK_ITERATIONS);
-    printf("  Warmup:      %d cycles\n", BENCHMARK_WARMUP);
-    printf("\n");
-}
+int main(void)
+{
+    HYD_TogglePreparedConfig prepared;
+    BenchmarkTiming kinematics;
+    BenchmarkTiming direct_cycle;
+    BenchmarkTiming toggle_cycle;
+    double direct_mean;
+    double toggle_mean;
+    double incremental_percent;
 
-int main(void) {
-    printf("\n");
-    printf("┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓\n");
-    printf("┃                                                          ┃\n");
-    printf("┃          HydroMotion Library Performance Benchmark        ┃\n");
-    printf("┃                                                          ┃\n");
-    printf("┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛\n");
-    printf("\n");
-    
-    print_system_info();
-    
-    printf("╔════════════════════════════════════════════════════════════╗\n");
-    printf("║                   Performance Results                       ║\n");
-    printf("╚════════════════════════════════════════════════════════════╝\n");
-    
-    benchmark_motion_utils();
-    benchmark_motion_planner();
-    benchmark_pressure_controller();
-    benchmark_pump_converter();
-    benchmark_motion_control_cycle();
-    
-    printf("\n");
-    printf("╔════════════════════════════════════════════════════════════╗\n");
-    printf("║                    Summary & Analysis                       ║\n");
-    printf("╚════════════════════════════════════════════════════════════╝\n");
-    printf("\n");
-    printf("Key Findings:\n");
-    printf("  • Motion control cycle time determines real-time feasibility\n");
-    printf("  • < 100 µs per cycle is excellent for 1 kHz control loop\n");
-    printf("  • < 10 µs for utility functions indicates efficient implementation\n");
-    printf("  • Memory usage can be optimized via configuration flags\n");
-    printf("\n");
-    printf("Recommendations:\n");
-    printf("  • Profile on target hardware for accurate timing\n");
-    printf("  • Consider compiler optimization flags (-O2/-O3)\n");
-    printf("  • Use configuration to disable unused features\n");
-    printf("  • Monitor CPU load in production deployment\n");
-    printf("\n");
-    
+    if (!prepare_default_toggle(&prepared)) {
+        return 1;
+    }
+
+    printf("PC regression evidence only; not STM32 WCET.\n");
+    printf("Target estimate basis: Cortex-M7F 480 MHz, -Os, "
+           "480000 cycles per 1 ms.\n");
+    printf("iterations=%u warmup=%u sweep=[%.3f, %.3f] mm\n",
+           BENCHMARK_ITERATIONS, BENCHMARK_WARMUP,
+           prepared.xHandoffEffective, prepared.raw.sm);
+    printf("toggle slot bytes=%zu validation bytes=%zu motion fb bytes=%zu\n",
+           HYD_ToggleMechanismPool_SlotSize(),
+           sizeof(HYD_ToggleValidation), sizeof(HYD_MotionControlFB));
+
+    kinematics = benchmark_kinematics(&prepared);
+    direct_cycle = benchmark_full_cycle(false, &prepared);
+    toggle_cycle = benchmark_full_cycle(true, &prepared);
+    if (kinematics.totalNs == 0U || direct_cycle.totalNs == 0U ||
+        toggle_cycle.totalNs == 0U) {
+        return 1;
+    }
+
+    print_timing("toggle kinematics", kinematics);
+    print_timing("direct full cycle", direct_cycle);
+    print_timing("toggle full cycle", toggle_cycle);
+    direct_mean = (double)direct_cycle.totalNs /
+                  (double)BENCHMARK_ITERATIONS;
+    toggle_mean = (double)toggle_cycle.totalNs /
+                  (double)BENCHMARK_ITERATIONS;
+    incremental_percent = (toggle_mean - direct_mean) * 100.0 / direct_mean;
+    printf("toggle full-cycle increment %.2f%%\n", incremental_percent);
+    printf("checksum=%.6f\n", (double)benchmark_checksum);
     return 0;
 }

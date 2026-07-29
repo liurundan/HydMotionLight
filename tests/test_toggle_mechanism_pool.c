@@ -1,7 +1,10 @@
 #include <assert.h>
 #include <stdio.h>
 
+#include "motion_control.h"
 #include "toggle_mechanism_pool.h"
+
+#define HYD_BASELINE_MOTION_FB_BYTES 3176U /* host ABI at commit f8bc1b9 */
 
 static HYD_TogglePreparedConfig validated_default(void)
 {
@@ -159,6 +162,19 @@ static void test_invalid_arguments_preserve_outputs(void)
     assert(token != HYD_TOGGLE_VALIDATION_NONE);
 }
 
+static void test_resource_budget(void)
+{
+    size_t slot_bytes = HYD_ToggleMechanismPool_SlotSize();
+    size_t validation_bytes = sizeof(HYD_ToggleValidation);
+    size_t motion_fb_bytes = sizeof(HYD_MotionControlFB);
+
+    printf("toggle slot bytes=%zu validation bytes=%zu motion fb bytes=%zu\n",
+           slot_bytes, validation_bytes, motion_fb_bytes);
+    assert(slot_bytes <= 112U);
+    assert(validation_bytes <= 160U);
+    assert(motion_fb_bytes <= HYD_BASELINE_MOTION_FB_BYTES + 32U);
+}
+
 int main(void)
 {
     test_all_slots_are_bounded_and_reusable();
@@ -166,6 +182,7 @@ int main(void)
     test_validation_workspace_is_shared_and_reusable();
     test_version_wrap_never_publishes_reserved_zero();
     test_invalid_arguments_preserve_outputs();
+    test_resource_budget();
     printf("toggle mechanism pool tests passed\n");
     return 0;
 }
