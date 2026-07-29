@@ -28,12 +28,12 @@ static HYD_BOOL HYD_QueuePendingCommand(HYD_MotionControlFB* fb,
                                         HYD_TIME timestamp);
 static HYD_BOOL HYD_IsValidPressureControllerParameter(HYD_REAL value);
 static void HYD_MotionControlFB_RunRunningState(HYD_MotionControlFB* fb);
-static void HYD_RunRunningStateStopping(HYD_MotionControlFB* fb,
-                                        const HYD_MotionSegment* segment,
-                                        HYD_MotionPlannerOutput* plannerOutput,
-                                        HYD_PumpConverterOutput* pumpOutput,
-                                        HYD_ExecutionReference* executionReference,
-                                        HYD_PressureControllerOutput* pressureOutput);
+static HYD_BOOL HYD_RunRunningStateStopping(HYD_MotionControlFB* fb,
+                                            const HYD_MotionSegment* segment,
+                                            HYD_MotionPlannerOutput* plannerOutput,
+                                            HYD_PumpConverterOutput* pumpOutput,
+                                            HYD_ExecutionReference* executionReference,
+                                            HYD_PressureControllerOutput* pressureOutput);
 static HYD_BOOL HYD_RunRunningStateBlendCutover(HYD_MotionControlFB* fb,
                                                 const HYD_MotionSegment* segment,
                                                 const HYD_ExecutionReference* executionReference);
@@ -49,15 +49,15 @@ static void HYD_PrimeSegmentControllers(HYD_MotionControlFB* fb,
                                         const HYD_MotionSegment* segment,
                                         HYD_TIME timestamp,
                                         HYD_BOOL allowFlowCarryover);
-static void HYD_ExecuteActiveSegmentControl(HYD_MotionControlFB* fb,
-                                            const HYD_MotionSegment* segment,
-                                            HYD_REAL elapsed,
-                                            HYD_REAL deltaTime,
-                                            HYD_RampControllerOutput* rampOutput,
-                                            HYD_MotionPlannerOutput* plannerOutput,
-                                            HYD_PressureControllerOutput* pressureOutput,
-                                            HYD_PumpConverterOutput* pumpOutput,
-                                            HYD_ExecutionReference* executionReference);
+static HYD_BOOL HYD_ExecuteActiveSegmentControl(HYD_MotionControlFB* fb,
+                                                const HYD_MotionSegment* segment,
+                                                HYD_REAL elapsed,
+                                                HYD_REAL deltaTime,
+                                                HYD_RampControllerOutput* rampOutput,
+                                                HYD_MotionPlannerOutput* plannerOutput,
+                                                HYD_PressureControllerOutput* pressureOutput,
+                                                HYD_PumpConverterOutput* pumpOutput,
+                                                HYD_ExecutionReference* executionReference);
 static void HYD_UpdateExecutionDiagnostics(HYD_MotionControlFB* fb,
                                            const HYD_MotionSegment* segment,
                                            const HYD_ExecutionReference* executionReference,
@@ -151,6 +151,78 @@ static HYD_DiagnosticCode HYD_ToggleErrorToRuntimeDiagnostic(
     return (error == HYD_TOGGLE_ERROR_POSITION_OUT_OF_RANGE)
         ? HYD_DIAG_CODE_KINEMATICS_POSITION_OUT_OF_RANGE
         : HYD_DIAG_CODE_KINEMATICS_RUNTIME_INVALID;
+}
+
+static void HYD_ReportKinematicsRuntimeFault(
+    HYD_MotionControlFB *fb,
+    HYD_DiagnosticCode code,
+    const HYD_MotionSegment *segment,
+    const HYD_ExecutionReference *references) {
+    if (fb == NULL) {
+        return;
+    }
+
+    fb->STATE.actuatorDirection = HYD_DIRECTION_HOLD;
+#if HYD_ENABLE_MECHANISM_TELEMETRY
+    fb->STATE.actuatorVelocityCommand = 0.0f;
+#endif
+    fb->_lastCommandedFlow = 0.0f;
+    fb->_plannerState.lastTargetFlow = 0.0f;
+    HYD_StateReporter_ApplySafeOutputs(fb);
+    HYD_StateReporter_ReportFault(fb, code, fb->AXIS_REF.timestamp,
+                                  segment, references);
+}
+
+static HYD_BOOL HYD_MotionControlFB_MapActuatorFlowToTemplateVelocity(
+    HYD_MotionControlFB *fb,
+    const HYD_MotionSegment *segment,
+    HYD_REAL actuatorFlow,
+    HYD_REAL *templateVelocity,
+    HYD_DiagnosticCode *code) {
+    HYD_ActuationMapperInput input;
+    HYD_ToggleError error = HYD_TOGGLE_ERROR_NONE;
+    HYD_MotionDirection direction;
+    HYD_REAL signedFlow;
+
+    if (code != NULL) {
+        *code = HYD_DIAG_CODE_NONE;
+    }
+    if (fb == NULL || segment == NULL || templateVelocity == NULL) {
+        if (code != NULL) {
+            *code = HYD_DIAG_CODE_KINEMATICS_RUNTIME_INVALID;
+        }
+        return false;
+    }
+
+    memset(&input, 0, sizeof(input));
+    input.mechanismType = (HYD_MechanismType)fb->mechanismType;
+    input.templatePosition = fb->AXIS_REF.position;
+    input.cylinderConfig = &fb->cylinderConfig;
+    input.fallbackCylinderVelocityToFlowGain =
+        segment->velocityToFlowGain;
+    if (input.mechanismType == HYD_MECHANISM_FIVE_POINT_TOGGLE) {
+        if (fb->mechanismSlot == HYD_TOGGLE_SLOT_NONE) {
+            if (code != NULL) {
+                *code = HYD_DIAG_CODE_KINEMATICS_RUNTIME_INVALID;
+            }
+            return false;
+        }
+        input.toggleConfig =
+            HYD_ToggleMechanismPool_GetPrepared(fb->mechanismSlot);
+    }
+
+    direction = HYD_ResolveVelocityGainDirection(fb, segment);
+    signedFlow = (direction == HYD_DIRECTION_RETRACT)
+        ? -HYD_MotionUtils_AbsReal(actuatorFlow)
+        : HYD_MotionUtils_AbsReal(actuatorFlow);
+    if (!HYD_ActuationMapper_FlowToTemplateVelocity(
+            &input, signedFlow, templateVelocity, &error)) {
+        if (code != NULL) {
+            *code = HYD_ToggleErrorToRuntimeDiagnostic(error);
+        }
+        return false;
+    }
+    return true;
 }
 
 HYD_BOOL HYD_MotionControlFB_MapTemplateVelocity(
@@ -1346,7 +1418,7 @@ static void HYD_PrimeSegmentControllers(HYD_MotionControlFB* fb,
     HYD_RampController_Init(&fb->_rampController, fb->AXIS_REF.pressure, controllerTime);
     /* Sprint 2: Carry over velocity state for bumpless transitions only
      * when the caller explicitly allows continuity seeding.
-     * P->V: seed with _lastCommandedFlow / velocityToFlowGain
+     * P->V: invert the current actuator flow through the mechanism mapping
      * S->S: retain lastTargetVelocity from previous segment
      *
      * Fresh starts after Stop / restart / direction-flip pass
@@ -1358,11 +1430,15 @@ static void HYD_PrimeSegmentControllers(HYD_MotionControlFB* fb,
 
         if (allowFlowCarryover && segment->mode == HYD_MODE_SPEED_RAMP) {
             if (fb->_previousSegmentMode == HYD_MODE_PRESSURE_CLOSED_LOOP) {
-                HYD_REAL gain = segment->velocityToFlowGain;
-                if (gain <= 0.0) { gain = 1.0; }
                 if (fb->_lastCommandedFlow > 0.0) {
-                    carriedVelocity = fb->_lastCommandedFlow / gain;
-                    doCarryover = true;
+                    HYD_DiagnosticCode mapCode = HYD_DIAG_CODE_NONE;
+                    doCarryover =
+                        HYD_MotionControlFB_MapActuatorFlowToTemplateVelocity(
+                            fb, segment, fb->_lastCommandedFlow,
+                            &carriedVelocity, &mapCode);
+                    if (doCarryover) {
+                        carriedFlow = fb->_lastCommandedFlow;
+                    }
                 }
             } else if (fb->_previousSegmentMode == HYD_MODE_SPEED_RAMP) {
                 if (fabs(fb->_plannerState.lastTargetVelocity) > 0.0) {
@@ -1978,15 +2054,15 @@ static void HYD_UpdateMonitorPositionError(HYD_ErrorMonitor* monitor,
     monitor->positionErrorDuration = currentTime - monitor->positionErrorStartTime;
 }
 
-static void HYD_ExecuteActiveSegmentControl(HYD_MotionControlFB* fb,
-                                            const HYD_MotionSegment* segment,
-                                            HYD_REAL elapsed,
-                                            HYD_REAL deltaTime,
-                                            HYD_RampControllerOutput* rampOutput,
-                                            HYD_MotionPlannerOutput* plannerOutput,
-                                            HYD_PressureControllerOutput* pressureOutput,
-                                            HYD_PumpConverterOutput* pumpOutput,
-                                            HYD_ExecutionReference* executionReference) {
+static HYD_BOOL HYD_ExecuteActiveSegmentControl(HYD_MotionControlFB* fb,
+                                                const HYD_MotionSegment* segment,
+                                                HYD_REAL elapsed,
+                                                HYD_REAL deltaTime,
+                                                HYD_RampControllerOutput* rampOutput,
+                                                HYD_MotionPlannerOutput* plannerOutput,
+                                                HYD_PressureControllerOutput* pressureOutput,
+                                                HYD_PumpConverterOutput* pumpOutput,
+                                                HYD_ExecutionReference* executionReference) {
     HYD_RampControllerInput rampInput;
     HYD_MotionPlannerInput plannerInput;
     HYD_PressureControllerInput pressureInput;
@@ -2002,8 +2078,14 @@ static void HYD_ExecuteActiveSegmentControl(HYD_MotionControlFB* fb,
 
     if (fb == NULL || segment == NULL || rampOutput == NULL || plannerOutput == NULL ||
         pressureOutput == NULL || pumpOutput == NULL || executionReference == NULL) {
-        return;
+        return false;
     }
+
+    memset(rampOutput, 0, sizeof(*rampOutput));
+    memset(plannerOutput, 0, sizeof(*plannerOutput));
+    memset(pressureOutput, 0, sizeof(*pressureOutput));
+    memset(pumpOutput, 0, sizeof(*pumpOutput));
+    memset(executionReference, 0, sizeof(*executionReference));
 
     {
         HYD_TIME controllerTime = HYD_GetCurrentSegmentTime(fb);
@@ -2018,8 +2100,6 @@ static void HYD_ExecuteActiveSegmentControl(HYD_MotionControlFB* fb,
         }
     }
 
-    memset(plannerOutput, 0, sizeof(*plannerOutput));
-    memset(pressureOutput, 0, sizeof(*pressureOutput));
     plannerOutput->direction = HYD_DIRECTION_HOLD;
     pressureOutput->appliedStrategy = HYD_PRESSURE_CONTROLLER_NONE;
 
@@ -2074,14 +2154,29 @@ static void HYD_ExecuteActiveSegmentControl(HYD_MotionControlFB* fb,
         plannerInput.lastActiveDirection = fb->_lastActiveDirection;
         HYD_MotionPlanner_Execute(&plannerInput, plannerOutput);
 
-        if (HYD_MotionControlFB_MapTemplateVelocity(
-                fb, segment, plannerOutput->targetVelocity,
-                segment->maxFlow, &mapped, &mappingCode)) {
-            plannerOutput->targetFlow = mapped.requestedFlow;
-            fb->_plannerState.lastTargetFlow = mapped.requestedFlow;
-        } else {
-            plannerOutput->targetFlow = 0.0f;
-            fb->_plannerState.lastTargetFlow = 0.0f;
+        {
+            HYD_REAL velocityFlowLimit = segment->maxFlow;
+            if (segment->targetFlow > 0.0f &&
+                segment->targetFlow < velocityFlowLimit) {
+                velocityFlowLimit = segment->targetFlow;
+            }
+            if (HYD_MotionControlFB_MapTemplateVelocity(
+                    fb, segment, plannerOutput->targetVelocity,
+                    velocityFlowLimit, &mapped, &mappingCode)) {
+                plannerOutput->targetFlow = mapped.requestedFlow;
+                fb->_plannerState.lastTargetFlow = mapped.requestedFlow;
+            } else {
+                plannerOutput->targetFlow = 0.0f;
+                fb->_plannerState.lastTargetFlow = 0.0f;
+                executionReference->elapsedTime = elapsed;
+                executionReference->pressureReference =
+                    segment->targetPressure;
+                executionReference->velocityReference =
+                    plannerOutput->targetVelocity;
+                HYD_ReportKinematicsRuntimeFault(fb, mappingCode, segment,
+                                                 executionReference);
+                return false;
+            }
         }
 
         if (segment->mode == HYD_MODE_SPEED_RAMP && segment->velocityKp > 0.0) {
@@ -2116,6 +2211,7 @@ static void HYD_ExecuteActiveSegmentControl(HYD_MotionControlFB* fb,
         : segment->targetPressure;
     executionReference->flowReference = pumpOutput->commandFlow;
     executionReference->velocityReference = plannerOutput->targetVelocity;
+    return true;
 }
 
 static void HYD_UpdateExecutionDiagnostics(HYD_MotionControlFB* fb,
@@ -2620,15 +2716,17 @@ static void HYD_MotionControlFB_RunRunningState(HYD_MotionControlFB* fb) {
         elapsed = 0.0;
     }
 
-    HYD_ExecuteActiveSegmentControl(fb,
-                                    segment,
-                                    elapsed,
-                                    deltaTime,
-                                    &rampOutput,
-                                    &plannerOutput,
-                                    &pressureOutput,
-                                    &pumpOutput,
-                                    &executionReference);
+    if (!HYD_ExecuteActiveSegmentControl(fb,
+                                         segment,
+                                         elapsed,
+                                         deltaTime,
+                                         &rampOutput,
+                                         &plannerOutput,
+                                         &pressureOutput,
+                                         &pumpOutput,
+                                         &executionReference)) {
+        return;
+    }
     fb->_lastFeedbackTimestamp = HYD_GetCurrentSegmentTime(fb);
     fb->_simLastFeedbackTick = fb->_simTick;
     HYD_UpdateExecutionDiagnostics(fb, segment, &executionReference, elapsed);
@@ -2712,8 +2810,9 @@ static void HYD_MotionControlFB_RunRunningState(HYD_MotionControlFB* fb) {
     fb->_lastCommandedFlow = pumpOutput.commandFlow;
 
     if (fb->_isStopping) {
-        HYD_RunRunningStateStopping(fb, segment, &plannerOutput, &pumpOutput,
-                                    &executionReference, &pressureOutput);
+        (void)HYD_RunRunningStateStopping(
+            fb, segment, &plannerOutput, &pumpOutput,
+            &executionReference, &pressureOutput);
         return;
     }
 
@@ -2793,12 +2892,12 @@ static void HYD_MotionControlFB_RunRunningState(HYD_MotionControlFB* fb) {
     fb->SEGMENT_COMPLETED = false;
 }
 
-static void HYD_RunRunningStateStopping(HYD_MotionControlFB* fb,
-                                        const HYD_MotionSegment* segment,
-                                        HYD_MotionPlannerOutput* plannerOutput,
-                                        HYD_PumpConverterOutput* pumpOutput,
-                                        HYD_ExecutionReference* executionReference,
-                                        HYD_PressureControllerOutput* pressureOutput) {
+static HYD_BOOL HYD_RunRunningStateStopping(HYD_MotionControlFB* fb,
+                                            const HYD_MotionSegment* segment,
+                                            HYD_MotionPlannerOutput* plannerOutput,
+                                            HYD_PumpConverterOutput* pumpOutput,
+                                            HYD_ExecutionReference* executionReference,
+                                            HYD_PressureControllerOutput* pressureOutput) {
     HYD_REAL stopElapsed = HYD_GetStopElapsedTime(fb);
     HYD_REAL stopMag = fabs(fb->_stopStartVel);
     HYD_REAL stopSign = (fb->_stopStartVel >= 0.0f) ? 1.0f : -1.0f;
@@ -2806,15 +2905,27 @@ static void HYD_RunRunningStateStopping(HYD_MotionControlFB* fb,
         ? fb->_stopDeceleration
         : ((segment->maxDeceleration > 0.0f) ? segment->maxDeceleration : segment->maxAcceleration);
     HYD_REAL decelMag = stopMag - stopDeceleration * stopElapsed;
+    HYD_ActuationMapperOutput mapped;
+    HYD_DiagnosticCode mappingCode = HYD_DIAG_CODE_NONE;
 
     if (decelMag < 0.0f) {
         decelMag = 0.0f;
     }
 
     plannerOutput->targetVelocity = decelMag * stopSign;
-    plannerOutput->targetFlow = HYD_ClampReal(decelMag * segment->velocityToFlowGain,
-                                              0.0f,
-                                              segment->maxFlow);
+    if (!HYD_MotionControlFB_MapTemplateVelocity(
+            fb, segment, plannerOutput->targetVelocity,
+            segment->maxFlow, &mapped, &mappingCode)) {
+        plannerOutput->targetFlow = 0.0f;
+        memset(pumpOutput, 0, sizeof(*pumpOutput));
+        executionReference->flowReference = 0.0f;
+        executionReference->velocityReference = plannerOutput->targetVelocity;
+        HYD_ReportKinematicsRuntimeFault(fb, mappingCode, segment,
+                                         executionReference);
+        return false;
+    }
+    plannerOutput->targetFlow = mapped.requestedFlow;
+    fb->_plannerState.lastTargetFlow = mapped.requestedFlow;
     pumpOutput->commandFlow = plannerOutput->targetFlow;
     {
         HYD_REAL effectiveGain, effectiveLimit;
@@ -2874,6 +2985,7 @@ static void HYD_RunRunningStateStopping(HYD_MotionControlFB* fb,
             HYD_SafetyStateManager_EnterFaultStop(fb);
         }
     }
+    return true;
 }
 
 /* Returns true if the caller should immediately return (cutover/fault transition occurred). */
@@ -3230,6 +3342,9 @@ void HYD_MotionControlFB_SoftReset(HYD_MotionControlFB* fb) {
     HYD_DiagnosticCriteria savedVelocityCriteria;
     HYD_DiagnosticCriteria savedPositionCriteria;
     HYD_MotionDirection savedLastActiveDirection;
+    HYD_UINT8 savedMechanismType;
+    HYD_UINT8 savedMechanismSlot;
+    HYD_UINT16 savedMechanismConfigVersion;
 
     if (fb == NULL) {
         return;
@@ -3254,6 +3369,9 @@ void HYD_MotionControlFB_SoftReset(HYD_MotionControlFB* fb) {
     savedVelocityCriteria = fb->_velocityCriteria;
     savedPositionCriteria = fb->_positionCriteria;
     savedLastActiveDirection = fb->_lastActiveDirection;
+    savedMechanismType = fb->mechanismType;
+    savedMechanismSlot = fb->mechanismSlot;
+    savedMechanismConfigVersion = fb->STATE.mechanismConfigVersion;
 
     /* 2. Full memset to clear all runtime state cleanly */
     (void)memset(fb, 0, sizeof(*fb));
@@ -3261,6 +3379,8 @@ void HYD_MotionControlFB_SoftReset(HYD_MotionControlFB* fb) {
     fb->_simulationCycleTime = savedSimulationCycleTime;
     fb->_useFixedCycleTime = savedUseFixedCycleTime;
     fb->_lastActiveDirection = savedLastActiveDirection;  /* 保留方向记忆 */
+    fb->mechanismType = savedMechanismType;
+    fb->mechanismSlot = savedMechanismSlot;
 
     /* 3. Restore persistent configuration */
     (void)memcpy(fb->RECIPE, savedRecipe, sizeof(fb->RECIPE));
@@ -3281,6 +3401,9 @@ void HYD_MotionControlFB_SoftReset(HYD_MotionControlFB* fb) {
     fb->_flowCriteria = savedFlowCriteria;
     fb->_velocityCriteria = savedVelocityCriteria;
     fb->_positionCriteria = savedPositionCriteria;
+    fb->STATE.mechanismType = savedMechanismType;
+    fb->STATE.actuatorDirection = HYD_DIRECTION_HOLD;
+    fb->STATE.mechanismConfigVersion = savedMechanismConfigVersion;
     fb->_directOwnerKind = HYD_DIRECT_CMD_NONE;
     fb->_directSessionState = HYD_DIRECT_SESSION_IDLE;
     fb->_directOwnerTicket = 0U;

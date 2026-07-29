@@ -281,6 +281,10 @@ void HYD_StateReporter_ApplySafeOutputs(HYD_MotionControlFB* fb) {
     fb->STATE.plannedVelocity = 0.0;
     fb->STATE.plannedFlow = 0.0;
     fb->STATE.commandedPumpSpeed = 0.0;
+    fb->STATE.actuatorDirection = HYD_DIRECTION_HOLD;
+#if HYD_ENABLE_MECHANISM_TELEMETRY
+    fb->STATE.actuatorVelocityCommand = 0.0f;
+#endif
     fb->STATE.vpTransferReady = false;
     fb->STATE.vpTransferReason = (HYD_UINT8)HYD_VP_TRANSFER_REASON_NONE;
     /* Clear simulation feedback to prevent stale velocity from driving

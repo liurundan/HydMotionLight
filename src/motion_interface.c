@@ -2725,8 +2725,13 @@ void __mcl_cmd_GetPumpRequest(HYD_GETPUMPREQUEST *data__)
             }
         }
 
-        /* 方向冲突检测（原有逻辑保留） */
-        switch (fb->STATE.plannedDirection) {
+        /* Toggle platen and cylinder directions can be opposite. */
+        HYD_MotionDirection arbitrationDirection =
+            (fb->mechanismType ==
+             (HYD_UINT8)HYD_MECHANISM_FIVE_POINT_TOGGLE)
+                ? fb->STATE.actuatorDirection
+                : fb->STATE.plannedDirection;
+        switch (arbitrationDirection) {
             case HYD_DIRECTION_EXTEND:
                 sawExtend = true;
                 break;

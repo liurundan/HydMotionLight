@@ -243,6 +243,28 @@ static void test_ceiling_flag_mask_round_trip(void) {
     printf("test_ceiling_flag_mask_round_trip PASSED\n");
 }
 
+static void test_mechanism_diagnostic_recovery_contract(void) {
+    HYD_DiagnosticInfo info;
+
+    memset(&info, 0, sizeof(info));
+    HYD_Diagnostics_SetEvent(&info,
+                             HYD_DIAG_CODE_MECHANISM_CONFIG_INVALID,
+                             HYD_DIAG_SEVERITY_NONE);
+    assert(info.severity == HYD_DIAG_SEVERITY_WARNING);
+    assert(info.recovery == HYD_DIAG_RECOVERY_CHECK_COMMAND);
+
+    HYD_Diagnostics_SetEvent(&info,
+                             HYD_DIAG_CODE_KINEMATICS_RUNTIME_INVALID,
+                             HYD_DIAG_SEVERITY_NONE);
+    assert(info.severity == HYD_DIAG_SEVERITY_FAULT);
+    assert(info.recovery == HYD_DIAG_RECOVERY_RESET_CONTROLLER);
+    assert(info.protectionAction == HYD_PROTECTION_ACTION_STOP);
+    assert(strcmp(HYD_Diagnostics_CodeToString(
+                      HYD_DIAG_CODE_KINEMATICS_RUNTIME_INVALID),
+                  "KINEMATICS_RUNTIME_INVALID") == 0);
+    printf("test_mechanism_diagnostic_recovery_contract PASSED\n");
+}
+
 int main(void) {
     test_set_event_timeout_applies_fault_severity_and_stop_action();
     test_set_event_position_deviation_applies_warning_severity();
@@ -256,5 +278,6 @@ int main(void) {
     test_diag_spec_returns_warning_for_pressure_ceiling_exceeded();
     test_diag_spec_returns_fault_for_pressure_ceiling_violated();
     test_ceiling_flag_mask_round_trip();
+    test_mechanism_diagnostic_recovery_contract();
     return 0;
 }

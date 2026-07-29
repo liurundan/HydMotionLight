@@ -199,11 +199,140 @@ static void test_pressure_flow_bypasses_toggle_velocity_mapping(void)
     assert_near(toggle.STATE.plannedFlow, 5.0f, 0.0001f);
 }
 
+static void start_bound_toggle_speed(
+    HYD_MotionControlFB *fb,
+    const HYD_TogglePreparedConfig *prepared,
+    HYD_REAL position)
+{
+    HYD_MotionSegment segment = make_speed_segment();
+
+    HYD_MotionControlFB_Init(fb);
+    fb->USE_RECIPE = false;
+    fb->FLOW_TO_PUMP_SPEED_GAIN = 10.0f;
+    fb->PUMP_SPEED_LIMIT = 3000.0f;
+    fb->AXIS_REF.position = position;
+    fb->AXIS_REF.pressure = 20.0f;
+    bind_toggle(fb, prepared);
+    assert(HYD_MotionControlFB_LoadDirectSegment(fb, &segment));
+    assert(HYD_MotionControlFB_StartSegment(fb, 0u, 0.0f));
+    HYD_MotionControlFB_Scan(fb);
+    fb->AXIS_REF.timestamp = 0.1f;
+    HYD_MotionControlFB_Scan(fb);
+}
+
+static void assert_toggle_stop_flow_at_position(HYD_REAL position)
+{
+    HYD_TogglePreparedConfig prepared = prepare_default_toggle();
+    HYD_MotionControlFB fb;
+    HYD_ToggleSolution solution;
+    HYD_ToggleError error = HYD_TOGGLE_ERROR_NONE;
+
+    start_bound_toggle_speed(&fb, &prepared, position);
+    fb.AXIS_REF.velocity = fb.STATE.plannedVelocity;
+    assert(HYD_MotionControlFB_Stop(&fb, 0.1f, 20.0f));
+    fb.AXIS_REF.timestamp = 0.2f;
+    HYD_MotionControlFB_Scan(&fb);
+
+    assert(HYD_ToggleKinematics_SolveOnline(
+        &prepared, position, fb.STATE.plannedVelocity, &solution, &error));
+    assert_near(fb.STATE.plannedFlow, fabsf(solution.vs) * 2.0f, 0.003f);
+    assert_near(fb.PUMP_SPEED, fb.STATE.plannedFlow * 10.0f, 0.003f);
+}
+
+static void test_stop_deceleration_uses_dynamic_gain_at_each_position(void)
+{
+    assert_toggle_stop_flow_at_position(101.0f);
+    assert_toggle_stop_flow_at_position(180.0f);
+}
+
+static void test_runtime_mapping_failures_zero_outputs_in_same_cycle(void)
+{
+    HYD_TogglePreparedConfig prepared = prepare_default_toggle();
+    HYD_MotionControlFB fb;
+
+    start_bound_toggle_speed(&fb, &prepared, 101.0f);
+    assert(fb.PUMP_SPEED > 0.0f);
+
+    fb.AXIS_REF.position = prepared.raw.sm + 1.0f;
+    fb.AXIS_REF.timestamp = 0.2f;
+    HYD_MotionControlFB_Scan(&fb);
+    assert(fb.FB_STATE == HYD_FB_STATE_FAULT);
+    assert(fb.DIAGNOSTIC.code ==
+           HYD_DIAG_CODE_KINEMATICS_POSITION_OUT_OF_RANGE);
+    assert_near(fb.STATE.plannedFlow, 0.0f, 0.0f);
+    assert_near(fb.PUMP_SPEED, 0.0f, 0.0f);
+    assert_near(fb._lastCommandedFlow, 0.0f, 0.0f);
+
+    HYD_MotionControlFB_Init(&fb);
+    start_bound_toggle_speed(&fb, &prepared, 101.0f);
+    HYD_ToggleMechanismPool_Release(fb.mechanismSlot);
+    fb.AXIS_REF.timestamp = 0.2f;
+    HYD_MotionControlFB_Scan(&fb);
+    assert(fb.FB_STATE == HYD_FB_STATE_FAULT);
+    assert(fb.DIAGNOSTIC.code == HYD_DIAG_CODE_KINEMATICS_RUNTIME_INVALID);
+    assert_near(fb.STATE.plannedFlow, 0.0f, 0.0f);
+    assert_near(fb.PUMP_SPEED, 0.0f, 0.0f);
+    assert_near(fb._lastCommandedFlow, 0.0f, 0.0f);
+}
+
+static void test_soft_reset_preserves_toggle_binding(void)
+{
+    HYD_TogglePreparedConfig prepared = prepare_default_toggle();
+    HYD_MotionControlFB fb;
+    HYD_UINT8 slot;
+
+    HYD_MotionControlFB_Init(&fb);
+    bind_toggle(&fb, &prepared);
+    slot = fb.mechanismSlot;
+    HYD_MotionControlFB_SoftReset(&fb);
+
+    assert(fb.mechanismType ==
+           (HYD_UINT8)HYD_MECHANISM_FIVE_POINT_TOGGLE);
+    assert(fb.mechanismSlot == slot);
+    assert(fb.STATE.mechanismType == fb.mechanismType);
+    assert(fb.STATE.mechanismConfigVersion == 1u);
+    assert(HYD_ToggleMechanismPool_GetPrepared(slot) != NULL);
+}
+
+static void test_hold_resume_preserves_template_position(void)
+{
+    HYD_TogglePreparedConfig prepared = prepare_default_toggle();
+    HYD_MotionControlFB fb;
+    HYD_REAL heldPosition;
+
+    start_bound_toggle_speed(&fb, &prepared, 101.0f);
+    heldPosition = fb.AXIS_REF.position;
+    assert(HYD_MotionControlFB_Hold(&fb));
+    fb.AXIS_REF.timestamp = 0.2f;
+    HYD_MotionControlFB_Scan(&fb);
+    assert(fb.FB_STATE == HYD_FB_STATE_HOLD);
+    assert_near(fb.AXIS_REF.position, heldPosition, 0.0f);
+    assert_near(fb.PUMP_SPEED, 0.0f, 0.0f);
+    assert(fb.STATE.actuatorDirection == HYD_DIRECTION_HOLD);
+#if HYD_ENABLE_MECHANISM_TELEMETRY
+    assert_near(fb.STATE.actuatorVelocityCommand, 0.0f, 0.0f);
+#endif
+
+    assert(HYD_MotionControlFB_Resume(&fb));
+    fb.AXIS_REF.timestamp = 0.3f;
+    HYD_MotionControlFB_Scan(&fb);
+    fb.AXIS_REF.timestamp = 0.4f;
+    HYD_MotionControlFB_Scan(&fb);
+    assert_near(fb.AXIS_REF.position, heldPosition, 0.0f);
+    assert(fb.STATE.mechanismType ==
+           (HYD_UINT8)HYD_MECHANISM_FIVE_POINT_TOGGLE);
+    assert(fabsf(fb.STATE.plannedVelocity) <= 20.0f);
+}
+
 int main(void)
 {
     test_direct_position_and_velocity_flow_are_unchanged();
     test_toggle_mapping_varies_with_position_in_actuator_space();
     test_pressure_flow_bypasses_toggle_velocity_mapping();
+    test_stop_deceleration_uses_dynamic_gain_at_each_position();
+    test_runtime_mapping_failures_zero_outputs_in_same_cycle();
+    test_soft_reset_preserves_toggle_binding();
+    test_hold_resume_preserves_template_position();
     printf("toggle motion integration tests passed\n");
     return 0;
 }

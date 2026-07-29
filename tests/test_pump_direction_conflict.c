@@ -116,11 +116,44 @@ static void test_no_conflict_when_some_axes_hold(void) {
     printf("  HOLD/AUTO conflict-ignore test passed\n");
 }
 
+static void test_toggle_axis_uses_actuator_direction_for_conflict(void) {
+    HYD_GETPUMPREQUEST req;
+    HYD_MotionControlFB* direct;
+    HYD_MotionControlFB* toggle;
+
+    printf("Testing toggle axes arbitrate with actuator direction...\n");
+
+    __HydMotion_framework_Init();
+    ensure_axes_allocated(2);
+    direct = __MK_GetPublic_MotionControlFB(0);
+    toggle = __MK_GetPublic_MotionControlFB(1);
+    assert(direct != NULL && toggle != NULL);
+
+    direct->STATE.active = true;
+    direct->STATE.plannedDirection = HYD_DIRECTION_EXTEND;
+    direct->PUMP_SPEED = 1000.0f;
+    toggle->STATE.active = true;
+    toggle->mechanismType = (HYD_UINT8)HYD_MECHANISM_FIVE_POINT_TOGGLE;
+    toggle->STATE.mechanismType = toggle->mechanismType;
+    toggle->STATE.plannedDirection = HYD_DIRECTION_EXTEND;
+    toggle->STATE.actuatorDirection = HYD_DIRECTION_RETRACT;
+    toggle->PUMP_SPEED = 1200.0f;
+
+    memset(&req, 0, sizeof(req));
+    IEC_VAL(req.ENABLE) = true;
+    __mcl_cmd_GetPumpRequest(&req);
+
+    assert(IEC_VAL(req.CONFLICT) == true);
+    assert(IEC_VAL(req.PUMPSPEED) > 1199.0f);
+    printf("  Toggle actuator-direction conflict test passed\n");
+}
+
 int main(void) {
     printf("Running pump-direction-conflict tests...\n\n");
     test_no_conflict_when_directions_match();
     test_conflict_detected_when_directions_oppose();
     test_no_conflict_when_some_axes_hold();
+    test_toggle_axis_uses_actuator_direction_for_conflict();
     printf("\nAll pump-direction-conflict tests passed.\n");
     return 0;
 }
