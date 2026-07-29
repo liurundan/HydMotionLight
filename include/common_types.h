@@ -469,6 +469,14 @@ typedef struct {
     HYD_UINT8 currentSegmentTag;
     HYD_BOOL vpTransferReady;
     HYD_UINT8 vpTransferReason;
+    HYD_UINT8 mechanismType;
+    HYD_MotionDirection actuatorDirection;
+    HYD_UINT16 mechanismConfigVersion;
+#if HYD_ENABLE_MECHANISM_TELEMETRY
+    HYD_REAL actuatorPosition;
+    HYD_REAL actuatorVelocityCommand;
+    HYD_REAL velocityRatio;
+#endif
 } HYD_MotionState;
 
 /* ============================================================================

@@ -17,6 +17,8 @@ POU_TO_C_TYPE = {
     "HYD_Reset": "HYD_RESET",
     "HYD_PressureHandle": "HYD_PRESSUREHANDLE",
     "HYD_CreateMotion": "HYD_CREATEMOTION",
+    "HYD_ConfigureToggleMechanism": "HYD_CONFIGURETOGGLEMECHANISM",
+    "HYD_ReadToggleMechanism": "HYD_READTOGGLEMECHANISM",
     "HYD_SetAxisFeedback": "HYD_SETAXISFEEDBACK",
     "HYD_GetPumpRequest": "HYD_GETPUMPREQUEST",
     "HYD_ReadStatus": "HYD_READSTATUS",

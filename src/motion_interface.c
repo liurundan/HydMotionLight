@@ -915,6 +915,12 @@ static void initializeCreatedAxis(HYD_CREATEMOTION *data__, int axisIndex,
     fb->_index = (HYD_UINT8)axisIndex;
     fb->mechanismType = (HYD_UINT8)mechanismType;
     fb->mechanismSlot = mechanismSlot;
+    fb->STATE.mechanismType = (HYD_UINT8)mechanismType;
+    fb->STATE.actuatorDirection = HYD_DIRECTION_HOLD;
+    fb->STATE.mechanismConfigVersion =
+        (mechanismSlot == HYD_TOGGLE_SLOT_NONE)
+            ? 0u
+            : HYD_ToggleMechanismPool_GetVersion(mechanismSlot);
     fb->FB_STATE = HYD_FB_STATE_IDLE;
     fb->USE_RECIPE = __GET_VAR(data__->USE_RECIPE);
     fb->_configuredUseRecipe = fb->USE_RECIPE;
@@ -1220,6 +1226,8 @@ void __mcl_cmd_ConfigureToggleMechanism(
         __SET_VAR(data__->, CONFIG_VERSION, ,
                   (IEC_WORD)HYD_ToggleMechanismPool_GetVersion(
                       fb->mechanismSlot));
+        fb->STATE.mechanismConfigVersion =
+            HYD_ToggleMechanismPool_GetVersion(fb->mechanismSlot);
         if (!toggleConfigurationStateAllowed(fb)) {
             failToggleConfiguration(data__,
                                     HYD_DIAG_CODE_MECHANISM_CONFIG_BUSY,
@@ -1295,6 +1303,8 @@ void __mcl_cmd_ConfigureToggleMechanism(
         }
 
         clearToggleConfigurationTransaction(data__, true);
+        fb->STATE.mechanismConfigVersion =
+            HYD_ToggleMechanismPool_GetVersion(fb->mechanismSlot);
         __SET_VAR(data__->, CONFIG_VERSION, ,
                   (IEC_WORD)HYD_ToggleMechanismPool_GetVersion(
                       fb->mechanismSlot));
@@ -2758,6 +2768,14 @@ void __mcl_cmd_ReadStatus(HYD_READSTATUS* data__)
         __SET_VAR(data__->, BUSY,, false);
         __SET_VAR(data__->, PRESSURECONTROLLERAPPLIED,,
                   (IEC_INT)HYD_PRESSURE_CONTROLLER_NONE);
+        __SET_VAR(data__->, MECHANISMTYPE,,
+                  (IEC_SINT)HYD_MECHANISM_DIRECT);
+        __SET_VAR(data__->, ACTUATORDIRECTION,,
+                  (IEC_SINT)HYD_DIRECTION_HOLD);
+        __SET_VAR(data__->, ACTUATORPOSITION,, (IEC_REAL)0.0f);
+        __SET_VAR(data__->, ACTUATORVELOCITYCOMMAND,, (IEC_REAL)0.0f);
+        __SET_VAR(data__->, VELOCITYRATIO,, (IEC_REAL)0.0f);
+        __SET_VAR(data__->, MECHANISMCONFIGVERSION,, (IEC_WORD)0u);
         return;
     }
 
@@ -2769,6 +2787,24 @@ void __mcl_cmd_ReadStatus(HYD_READSTATUS* data__)
         __SET_VAR(data__->, BUSY,, HYD_MotionControlFB_IsBusy(fb) ? true : false);
         __SET_VAR(data__->, PRESSURECONTROLLERAPPLIED,,
                   (IEC_INT)fb->STATE.pressureControllerApplied);
+        __SET_VAR(data__->, MECHANISMTYPE,,
+                  (IEC_SINT)fb->STATE.mechanismType);
+        __SET_VAR(data__->, ACTUATORDIRECTION,,
+                  (IEC_SINT)fb->STATE.actuatorDirection);
+        __SET_VAR(data__->, MECHANISMCONFIGVERSION,,
+                  (IEC_WORD)fb->STATE.mechanismConfigVersion);
+#if HYD_ENABLE_MECHANISM_TELEMETRY
+        __SET_VAR(data__->, ACTUATORPOSITION,,
+                  (IEC_REAL)fb->STATE.actuatorPosition);
+        __SET_VAR(data__->, ACTUATORVELOCITYCOMMAND,,
+                  (IEC_REAL)fb->STATE.actuatorVelocityCommand);
+        __SET_VAR(data__->, VELOCITYRATIO,,
+                  (IEC_REAL)fb->STATE.velocityRatio);
+#else
+        __SET_VAR(data__->, ACTUATORPOSITION,, (IEC_REAL)0.0f);
+        __SET_VAR(data__->, ACTUATORVELOCITYCOMMAND,, (IEC_REAL)0.0f);
+        __SET_VAR(data__->, VELOCITYRATIO,, (IEC_REAL)0.0f);
+#endif
     }
     else
     {
@@ -2776,6 +2812,14 @@ void __mcl_cmd_ReadStatus(HYD_READSTATUS* data__)
         __SET_VAR(data__->, BUSY,, false);
         __SET_VAR(data__->, PRESSURECONTROLLERAPPLIED,,
                   (IEC_INT)HYD_PRESSURE_CONTROLLER_NONE);
+        __SET_VAR(data__->, MECHANISMTYPE,,
+                  (IEC_SINT)HYD_MECHANISM_DIRECT);
+        __SET_VAR(data__->, ACTUATORDIRECTION,,
+                  (IEC_SINT)HYD_DIRECTION_HOLD);
+        __SET_VAR(data__->, ACTUATORPOSITION,, (IEC_REAL)0.0f);
+        __SET_VAR(data__->, ACTUATORVELOCITYCOMMAND,, (IEC_REAL)0.0f);
+        __SET_VAR(data__->, VELOCITYRATIO,, (IEC_REAL)0.0f);
+        __SET_VAR(data__->, MECHANISMCONFIGVERSION,, (IEC_WORD)0u);
     }
 
 

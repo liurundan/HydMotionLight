@@ -944,6 +944,14 @@
 								<simpleValue value="0" />
 							</initialValue>
 						</variable>
+						<variable name="MECHANISM_TYPE">
+							<type>
+								<SINT />
+							</type>
+							<initialValue>
+								<simpleValue value="0" />
+							</initialValue>
+						</variable>
 					</inputVars>
 					<outputVars>
 						<variable name="AXISID">
@@ -978,6 +986,21 @@
 								<BOOL />
 							</type>
 						</variable>
+						<variable name="_RESERVED_AXIS">
+							<type><SINT /></type>
+						</variable>
+						<variable name="_RESERVED_SLOT">
+							<type><USINT /></type>
+						</variable>
+						<variable name="_VALIDATION_TOKEN">
+							<type><USINT /></type>
+						</variable>
+						<variable name="_CREATE_ACTIVE">
+							<type><BOOL /></type>
+						</variable>
+						<variable name="_FRAMEWORK_GENERATION">
+							<type><WORD /></type>
+						</variable>
 					</localVars>
 				</interface>
 				<body>
@@ -986,6 +1009,79 @@
 					</ST>
 				</body>
 				<documentation><![CDATA[This allocates a simulation Axis, for testing.One axis per instanciated FB.]]></documentation>
+			</pou>
+			<pou name="HYD_ConfigureToggleMechanism" pouType="functionBlock">
+				<interface>
+					<inputVars>
+						<variable name="AXISID"><type><SINT /></type></variable>
+						<variable name="EXECUTE"><type><BOOL /></type></variable>
+						<variable name="LR"><type><LREAL /></type></variable>
+						<variable name="LF"><type><LREAL /></type></variable>
+						<variable name="LPF"><type><LREAL /></type></variable>
+						<variable name="LPK"><type><LREAL /></type></variable>
+						<variable name="LD"><type><LREAL /></type></variable>
+						<variable name="HF"><type><LREAL /></type></variable>
+						<variable name="HM"><type><LREAL /></type></variable>
+						<variable name="DC"><type><LREAL /></type></variable>
+						<variable name="SM"><type><LREAL /></type></variable>
+						<variable name="XHANDOFF"><type><LREAL /></type></variable>
+						<variable name="SIGMA_K"><type><SINT /></type></variable>
+						<variable name="SIGN_B"><type><SINT /></type></variable>
+						<variable name="TAU_S"><type><SINT /></type></variable>
+					</inputVars>
+					<outputVars>
+						<variable name="DONE"><type><BOOL /></type></variable>
+						<variable name="BUSY"><type><BOOL /></type></variable>
+						<variable name="ERROR"><type><BOOL /></type></variable>
+						<variable name="ERRORID"><type><WORD /></type></variable>
+						<variable name="CONFIG_VERSION"><type><WORD /></type></variable>
+					</outputVars>
+					<localVars>
+						<variable name="EXECUTE0"><type><BOOL /></type></variable>
+						<variable name="VALIDATION_TOKEN"><type><USINT /></type></variable>
+						<variable name="ACTIVE"><type><BOOL /></type></variable>
+						<variable name="CONFIG_AXIS"><type><SINT /></type></variable>
+						<variable name="_FRAMEWORK_GENERATION"><type><WORD /></type></variable>
+					</localVars>
+				</interface>
+				<body><ST><xhtml:p><![CDATA[{{ extern void __mcl_cmd_ConfigureToggleMechanism(HYD_CONFIGURETOGGLEMECHANISM*); __mcl_cmd_ConfigureToggleMechanism(data__); }} ]]></xhtml:p></ST></body>
+				<documentation><![CDATA[Atomically validates and commits five-point toggle geometry.]]></documentation>
+			</pou>
+			<pou name="HYD_ReadToggleMechanism" pouType="functionBlock">
+				<interface>
+					<inputVars>
+						<variable name="AXISID"><type><SINT /></type></variable>
+						<variable name="ENABLE"><type><BOOL /></type></variable>
+					</inputVars>
+					<outputVars>
+						<variable name="VALID"><type><BOOL /></type></variable>
+						<variable name="USING_DEFAULTS"><type><BOOL /></type></variable>
+						<variable name="LR"><type><LREAL /></type></variable>
+						<variable name="LF"><type><LREAL /></type></variable>
+						<variable name="LPF"><type><LREAL /></type></variable>
+						<variable name="LPK"><type><LREAL /></type></variable>
+						<variable name="LD"><type><LREAL /></type></variable>
+						<variable name="HF"><type><LREAL /></type></variable>
+						<variable name="HM"><type><LREAL /></type></variable>
+						<variable name="DC"><type><LREAL /></type></variable>
+						<variable name="SM"><type><LREAL /></type></variable>
+						<variable name="XHANDOFF"><type><LREAL /></type></variable>
+						<variable name="SIGMA_K"><type><SINT /></type></variable>
+						<variable name="SIGN_B"><type><SINT /></type></variable>
+						<variable name="TAU_S"><type><SINT /></type></variable>
+						<variable name="CONFIG_VERSION"><type><WORD /></type></variable>
+						<variable name="X_GEOMETRY_MIN"><type><LREAL /></type></variable>
+						<variable name="X_HANDOFF_EFFECTIVE"><type><LREAL /></type></variable>
+						<variable name="XS_MIN"><type><LREAL /></type></variable>
+						<variable name="XS_MAX"><type><LREAL /></type></variable>
+						<variable name="K_MIN"><type><LREAL /></type></variable>
+						<variable name="K_MAX"><type><LREAL /></type></variable>
+						<variable name="ERROR"><type><BOOL /></type></variable>
+						<variable name="ERRORID"><type><WORD /></type></variable>
+					</outputVars>
+				</interface>
+				<body><ST><xhtml:p><![CDATA[{{ extern void __mcl_cmd_ReadToggleMechanism(HYD_READTOGGLEMECHANISM*); __mcl_cmd_ReadToggleMechanism(data__); }} ]]></xhtml:p></ST></body>
+				<documentation><![CDATA[Reads the committed five-point toggle geometry and safe envelope.]]></documentation>
 			</pou>
 			<pou name="HYD_SetAxisFeedback" pouType="functionBlock">
 				<interface>
@@ -1174,6 +1270,12 @@
 								<INT />
 							</type>
 						</variable>
+						<variable name="MECHANISMTYPE"><type><SINT /></type></variable>
+						<variable name="ACTUATORDIRECTION"><type><SINT /></type></variable>
+						<variable name="ACTUATORPOSITION"><type><REAL /></type></variable>
+						<variable name="ACTUATORVELOCITYCOMMAND"><type><REAL /></type></variable>
+						<variable name="VELOCITYRATIO"><type><REAL /></type></variable>
+						<variable name="MECHANISMCONFIGVERSION"><type><WORD /></type></variable>
 					</outputVars>
 				</interface>
 				<body>

@@ -536,12 +536,18 @@ void HYD_CREATEMOTION_init__(HYD_CREATEMOTION *data__, BOOL retain) {
   __INIT_VAR(data__->FLOW_TO_PUMPSPEED,20.0,retain)
   __INIT_VAR(data__->PUMPSPEED_LIMIT,1800.0,retain)
   __INIT_VAR(data__->USE_SIMULATION,0,retain)
+  __INIT_VAR(data__->MECHANISM_TYPE,0,retain)
   __INIT_VAR(data__->AXISID,0,retain)
   __INIT_VAR(data__->DONE,__BOOL_LITERAL(FALSE),retain)
   __INIT_VAR(data__->BUSY,__BOOL_LITERAL(FALSE),retain)
   __INIT_VAR(data__->ERROR,__BOOL_LITERAL(FALSE),retain)
   __INIT_VAR(data__->ERRORID,0,retain)
   __INIT_VAR(data__->DONE0,__BOOL_LITERAL(FALSE),retain)
+  __INIT_VAR(data__->_RESERVED_AXIS,-1,retain)
+  __INIT_VAR(data__->_RESERVED_SLOT,255,retain)
+  __INIT_VAR(data__->_VALIDATION_TOKEN,255,retain)
+  __INIT_VAR(data__->_CREATE_ACTIVE,__BOOL_LITERAL(FALSE),retain)
+  __INIT_VAR(data__->_FRAMEWORK_GENERATION,0,retain)
 }
 
 // Code part
@@ -574,6 +580,91 @@ __end:
 
 
 
+
+void HYD_CONFIGURETOGGLEMECHANISM_init__(HYD_CONFIGURETOGGLEMECHANISM *data__, BOOL retain) {
+  __INIT_VAR(data__->EN,__BOOL_LITERAL(TRUE),retain)
+  __INIT_VAR(data__->ENO,__BOOL_LITERAL(TRUE),retain)
+  __INIT_VAR(data__->AXISID,0,retain)
+  __INIT_VAR(data__->EXECUTE,__BOOL_LITERAL(FALSE),retain)
+  __INIT_VAR(data__->LR,0,retain)
+  __INIT_VAR(data__->LF,0,retain)
+  __INIT_VAR(data__->LPF,0,retain)
+  __INIT_VAR(data__->LPK,0,retain)
+  __INIT_VAR(data__->LD,0,retain)
+  __INIT_VAR(data__->HF,0,retain)
+  __INIT_VAR(data__->HM,0,retain)
+  __INIT_VAR(data__->DC,0,retain)
+  __INIT_VAR(data__->SM,0,retain)
+  __INIT_VAR(data__->XHANDOFF,0,retain)
+  __INIT_VAR(data__->SIGMA_K,0,retain)
+  __INIT_VAR(data__->SIGN_B,0,retain)
+  __INIT_VAR(data__->TAU_S,0,retain)
+  __INIT_VAR(data__->DONE,__BOOL_LITERAL(FALSE),retain)
+  __INIT_VAR(data__->BUSY,__BOOL_LITERAL(FALSE),retain)
+  __INIT_VAR(data__->ERROR,__BOOL_LITERAL(FALSE),retain)
+  __INIT_VAR(data__->ERRORID,0,retain)
+  __INIT_VAR(data__->CONFIG_VERSION,0,retain)
+  __INIT_VAR(data__->EXECUTE0,__BOOL_LITERAL(FALSE),retain)
+  __INIT_VAR(data__->VALIDATION_TOKEN,255,retain)
+  __INIT_VAR(data__->ACTIVE,__BOOL_LITERAL(FALSE),retain)
+  __INIT_VAR(data__->CONFIG_AXIS,-1,retain)
+  __INIT_VAR(data__->_FRAMEWORK_GENERATION,0,retain)
+}
+
+void HYD_CONFIGURETOGGLEMECHANISM_body__(HYD_CONFIGURETOGGLEMECHANISM *data__) {
+  if (!__GET_VAR(data__->EN)) {
+    __SET_VAR(data__->,ENO,,__BOOL_LITERAL(FALSE));
+    return;
+  }
+  __SET_VAR(data__->,ENO,,__BOOL_LITERAL(TRUE));
+  {
+    extern void __mcl_cmd_ConfigureToggleMechanism(HYD_CONFIGURETOGGLEMECHANISM*);
+    __mcl_cmd_ConfigureToggleMechanism(data__);
+  }
+}
+
+void HYD_READTOGGLEMECHANISM_init__(HYD_READTOGGLEMECHANISM *data__, BOOL retain) {
+  __INIT_VAR(data__->EN,__BOOL_LITERAL(TRUE),retain)
+  __INIT_VAR(data__->ENO,__BOOL_LITERAL(TRUE),retain)
+  __INIT_VAR(data__->AXISID,0,retain)
+  __INIT_VAR(data__->ENABLE,__BOOL_LITERAL(FALSE),retain)
+  __INIT_VAR(data__->VALID,__BOOL_LITERAL(FALSE),retain)
+  __INIT_VAR(data__->USING_DEFAULTS,__BOOL_LITERAL(FALSE),retain)
+  __INIT_VAR(data__->LR,0,retain)
+  __INIT_VAR(data__->LF,0,retain)
+  __INIT_VAR(data__->LPF,0,retain)
+  __INIT_VAR(data__->LPK,0,retain)
+  __INIT_VAR(data__->LD,0,retain)
+  __INIT_VAR(data__->HF,0,retain)
+  __INIT_VAR(data__->HM,0,retain)
+  __INIT_VAR(data__->DC,0,retain)
+  __INIT_VAR(data__->SM,0,retain)
+  __INIT_VAR(data__->XHANDOFF,0,retain)
+  __INIT_VAR(data__->SIGMA_K,0,retain)
+  __INIT_VAR(data__->SIGN_B,0,retain)
+  __INIT_VAR(data__->TAU_S,0,retain)
+  __INIT_VAR(data__->CONFIG_VERSION,0,retain)
+  __INIT_VAR(data__->X_GEOMETRY_MIN,0,retain)
+  __INIT_VAR(data__->X_HANDOFF_EFFECTIVE,0,retain)
+  __INIT_VAR(data__->XS_MIN,0,retain)
+  __INIT_VAR(data__->XS_MAX,0,retain)
+  __INIT_VAR(data__->K_MIN,0,retain)
+  __INIT_VAR(data__->K_MAX,0,retain)
+  __INIT_VAR(data__->ERROR,__BOOL_LITERAL(FALSE),retain)
+  __INIT_VAR(data__->ERRORID,0,retain)
+}
+
+void HYD_READTOGGLEMECHANISM_body__(HYD_READTOGGLEMECHANISM *data__) {
+  if (!__GET_VAR(data__->EN)) {
+    __SET_VAR(data__->,ENO,,__BOOL_LITERAL(FALSE));
+    return;
+  }
+  __SET_VAR(data__->,ENO,,__BOOL_LITERAL(TRUE));
+  {
+    extern void __mcl_cmd_ReadToggleMechanism(HYD_READTOGGLEMECHANISM*);
+    __mcl_cmd_ReadToggleMechanism(data__);
+  }
+}
 
 void HYD_SETAXISFEEDBACK_init__(HYD_SETAXISFEEDBACK *data__, BOOL retain) {
   __INIT_VAR(data__->EN,__BOOL_LITERAL(TRUE),retain)
@@ -628,6 +719,7 @@ void HYD_GETPUMPREQUEST_init__(HYD_GETPUMPREQUEST *data__, BOOL retain) {
   __INIT_VAR(data__->ENO,__BOOL_LITERAL(TRUE),retain)
   __INIT_VAR(data__->ENABLE,__BOOL_LITERAL(FALSE),retain)
   __INIT_VAR(data__->STRATEGY,0,retain)
+  __INIT_VAR(data__->ALLOW_NEGATIVE,__BOOL_LITERAL(FALSE),retain)
   __INIT_VAR(data__->PUMPSPEED,0,retain)
   __INIT_VAR(data__->CONFLICT,__BOOL_LITERAL(FALSE),retain)
   __INIT_VAR(data__->BUSY,__BOOL_LITERAL(FALSE),retain)
@@ -679,6 +771,12 @@ void HYD_READSTATUS_init__(HYD_READSTATUS *data__, BOOL retain) {
   __INIT_VAR(data__->ERRORID,0,retain)
   __INIT_VAR(data__->STATE,0,retain)
   __INIT_VAR(data__->PRESSURECONTROLLERAPPLIED,0,retain)
+  __INIT_VAR(data__->MECHANISMTYPE,0,retain)
+  __INIT_VAR(data__->ACTUATORDIRECTION,4,retain)
+  __INIT_VAR(data__->ACTUATORPOSITION,0,retain)
+  __INIT_VAR(data__->ACTUATORVELOCITYCOMMAND,0,retain)
+  __INIT_VAR(data__->VELOCITYRATIO,0,retain)
+  __INIT_VAR(data__->MECHANISMCONFIGVERSION,0,retain)
 }
 
 // Code part
@@ -2674,7 +2772,5 @@ void TESTPRESSURECTRL_body__(TESTPRESSURECTRL *data__) {
 __end:
   return;
 } // TESTPRESSURECTRL_body__() 
-
-
 
 

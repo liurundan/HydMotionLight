@@ -3027,6 +3027,8 @@ void HYD_MotionControlFB_Init(HYD_MotionControlFB* fb) {
     fb->_lastActiveDirection = HYD_DIRECTION_POSITIVE;  /* 静止轴默认正向 */
     fb->mechanismType = (HYD_UINT8)HYD_MECHANISM_DIRECT;
     fb->mechanismSlot = HYD_TOGGLE_SLOT_NONE;
+    fb->STATE.mechanismType = (HYD_UINT8)HYD_MECHANISM_DIRECT;
+    fb->STATE.actuatorDirection = HYD_DIRECTION_HOLD;
     fb->USE_RECIPE = false;
     fb->FB_STATE = HYD_FB_STATE_IDLE;
     fb->STATE.currentSegmentIndex = HYD_MAX_SEGMENTS;

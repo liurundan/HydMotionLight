@@ -183,6 +183,58 @@ static void test_read_status_reports_applied_pressure_controller(void) {
                 "ReadStatus should clear applied controller when disabled");
 }
 
+static void test_read_status_reports_mechanism_state(void) {
+    HYD_READSTATUS rs;
+    HYD_MotionControlFB* fb;
+
+    __HydMotion_framework_Init();
+    ensure_axis_allocated();
+    fb = __MK_GetPublic_MotionControlFB(0);
+    fb->STATE.mechanismType = HYD_MECHANISM_FIVE_POINT_TOGGLE;
+    fb->STATE.actuatorDirection = HYD_DIRECTION_NEGATIVE;
+    fb->STATE.mechanismConfigVersion = 7u;
+#if HYD_ENABLE_MECHANISM_TELEMETRY
+    fb->STATE.actuatorPosition = 12.5f;
+    fb->STATE.actuatorVelocityCommand = -3.25f;
+    fb->STATE.velocityRatio = -0.75f;
+#endif
+
+    memset(&rs, 0, sizeof(rs));
+    IEC_VAL(rs.AXISID) = 0;
+    IEC_VAL(rs.ENABLE) = true;
+    __mcl_cmd_ReadStatus(&rs);
+
+    ASSERT_TRUE(IEC_VAL(rs.MECHANISMTYPE) == HYD_MECHANISM_FIVE_POINT_TOGGLE,
+                "ReadStatus should expose mechanism type");
+    ASSERT_TRUE(IEC_VAL(rs.ACTUATORDIRECTION) == HYD_DIRECTION_NEGATIVE,
+                "ReadStatus should expose actuator direction");
+    ASSERT_TRUE(IEC_VAL(rs.MECHANISMCONFIGVERSION) == 7u,
+                "ReadStatus should expose mechanism config version");
+#if HYD_ENABLE_MECHANISM_TELEMETRY
+    ASSERT_FLOAT_EQ(IEC_VAL(rs.ACTUATORPOSITION), 12.5f, 0.001f,
+                    "ReadStatus should expose actuator position");
+    ASSERT_FLOAT_EQ(IEC_VAL(rs.ACTUATORVELOCITYCOMMAND), -3.25f, 0.001f,
+                    "ReadStatus should expose actuator velocity command");
+    ASSERT_FLOAT_EQ(IEC_VAL(rs.VELOCITYRATIO), -0.75f, 0.001f,
+                    "ReadStatus should expose velocity ratio");
+#endif
+
+    IEC_VAL(rs.ENABLE) = false;
+    __mcl_cmd_ReadStatus(&rs);
+    ASSERT_TRUE(IEC_VAL(rs.MECHANISMTYPE) == HYD_MECHANISM_DIRECT,
+                "Disabled ReadStatus should clear mechanism type");
+    ASSERT_TRUE(IEC_VAL(rs.ACTUATORDIRECTION) == HYD_DIRECTION_HOLD,
+                "Disabled ReadStatus should clear actuator direction");
+    ASSERT_TRUE(IEC_VAL(rs.MECHANISMCONFIGVERSION) == 0u,
+                "Disabled ReadStatus should clear mechanism version");
+    ASSERT_FLOAT_EQ(IEC_VAL(rs.ACTUATORPOSITION), 0.0f, 0.0f,
+                    "Disabled ReadStatus should clear actuator position");
+    ASSERT_FLOAT_EQ(IEC_VAL(rs.ACTUATORVELOCITYCOMMAND), 0.0f, 0.0f,
+                    "Disabled ReadStatus should clear actuator velocity");
+    ASSERT_FLOAT_EQ(IEC_VAL(rs.VELOCITYRATIO), 0.0f, 0.0f,
+                    "Disabled ReadStatus should clear velocity ratio");
+}
+
 static void test_pressure_handle_preserves_legacy_max_flow(void) {
     HYD_PRESSUREHANDLE ph;
     HYD_MotionControlFB* fb;
@@ -212,6 +264,7 @@ int main(void) {
     test_invalid_axisid_iec();
     test_segment_builder_uses_fb_params();
     test_read_status_reports_applied_pressure_controller();
+    test_read_status_reports_mechanism_state();
     test_pressure_handle_preserves_legacy_max_flow();
 
     printf("IEC parameter FB tests: %d/%d passed\n", tests_passed, tests_run);
