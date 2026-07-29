@@ -8,6 +8,7 @@
 #include "diagnostics_monitor.h"
 #include "diagnostics_criteria.h"
 #include "motion_planner.h"
+#include "actuation_mapper.h"
 
 /*
  * PLCopen-style motion control function block lifecycle:
@@ -523,6 +524,15 @@ void HYD_MotionControlFB_Scan(HYD_MotionControlFB* fb);
 
 /* Compatibility cyclic entry; currently equivalent to Scan(). */
 void HYD_MotionControlFB_Execute(HYD_MotionControlFB* fb);
+
+/* Maps platen-side velocity planning to actuator-side hydraulic demand. */
+HYD_BOOL HYD_MotionControlFB_MapTemplateVelocity(
+    HYD_MotionControlFB *fb,
+    const HYD_MotionSegment *segment,
+    HYD_REAL templateVelocity,
+    HYD_REAL maxFlow,
+    HYD_ActuationMapperOutput *mapped,
+    HYD_DiagnosticCode *code);
 
 /* Parameter accessors for IEC Read/Write Parameter FBs.
  * Return false on out-of-range paramNumber or type mismatch. */

@@ -192,6 +192,9 @@ target_link_libraries(test_actuation_mapper PRIVATE HydroMotionLib m)
 add_executable(test_toggle_motion_interface tests/test_toggle_motion_interface.c)
 target_link_libraries(test_toggle_motion_interface PRIVATE HydroMotionLib m)
 
+add_executable(test_toggle_motion_integration tests/test_toggle_motion_integration.c)
+target_link_libraries(test_toggle_motion_integration PRIVATE HydroMotionLib m)
+
 add_executable(main tests/main.c)
 target_link_libraries(main PRIVATE HydroMotionLib)
 
@@ -281,6 +284,7 @@ add_test(NAME test_toggle_kinematics COMMAND test_toggle_kinematics)
 add_test(NAME test_toggle_mechanism_pool COMMAND test_toggle_mechanism_pool)
 add_test(NAME test_actuation_mapper COMMAND test_actuation_mapper)
 add_test(NAME test_toggle_motion_interface COMMAND test_toggle_motion_interface)
+add_test(NAME test_toggle_motion_integration COMMAND test_toggle_motion_integration)
 
 add_executable(test_motion_interface_negative_speed tests/test_motion_interface_negative_speed.c)
 target_link_libraries(test_motion_interface_negative_speed PRIVATE HydroMotionLib)

@@ -146,6 +146,74 @@ static void HYD_ApplyVelocityToFlowGainResolution(const HYD_MotionControlFB* fb,
     segment->velocityToFlowGain = HYD_ResolveVelocityToFlowGain(fb, segment);
 }
 
+static HYD_DiagnosticCode HYD_ToggleErrorToRuntimeDiagnostic(
+    HYD_ToggleError error) {
+    return (error == HYD_TOGGLE_ERROR_POSITION_OUT_OF_RANGE)
+        ? HYD_DIAG_CODE_KINEMATICS_POSITION_OUT_OF_RANGE
+        : HYD_DIAG_CODE_KINEMATICS_RUNTIME_INVALID;
+}
+
+HYD_BOOL HYD_MotionControlFB_MapTemplateVelocity(
+    HYD_MotionControlFB *fb,
+    const HYD_MotionSegment *segment,
+    HYD_REAL templateVelocity,
+    HYD_REAL maxFlow,
+    HYD_ActuationMapperOutput *mapped,
+    HYD_DiagnosticCode *code) {
+    HYD_ActuationMapperInput input;
+    HYD_ToggleError error = HYD_TOGGLE_ERROR_NONE;
+
+    if (code != NULL) {
+        *code = HYD_DIAG_CODE_NONE;
+    }
+    if (fb == NULL || segment == NULL || mapped == NULL) {
+        if (code != NULL) {
+            *code = HYD_DIAG_CODE_KINEMATICS_RUNTIME_INVALID;
+        }
+        return false;
+    }
+
+    memset(&input, 0, sizeof(input));
+    input.mechanismType = (HYD_MechanismType)fb->mechanismType;
+    input.templatePosition = fb->AXIS_REF.position;
+    input.templateVelocity = templateVelocity;
+    input.cylinderConfig = &fb->cylinderConfig;
+    input.fallbackCylinderVelocityToFlowGain =
+        segment->velocityToFlowGain;
+    input.maxFlow = maxFlow;
+
+    if (input.mechanismType == HYD_MECHANISM_FIVE_POINT_TOGGLE) {
+        if (fb->mechanismSlot == HYD_TOGGLE_SLOT_NONE) {
+            if (code != NULL) {
+                *code = HYD_DIAG_CODE_KINEMATICS_RUNTIME_INVALID;
+            }
+            return false;
+        }
+        input.toggleConfig =
+            HYD_ToggleMechanismPool_GetPrepared(fb->mechanismSlot);
+    }
+
+    if (!HYD_ActuationMapper_MapVelocity(&input, mapped, &error)) {
+        if (code != NULL) {
+            *code = HYD_ToggleErrorToRuntimeDiagnostic(error);
+        }
+        return false;
+    }
+
+    fb->STATE.mechanismType = fb->mechanismType;
+    fb->STATE.actuatorDirection = mapped->actuatorDirection;
+    fb->STATE.mechanismConfigVersion =
+        (fb->mechanismType == (HYD_UINT8)HYD_MECHANISM_FIVE_POINT_TOGGLE)
+            ? HYD_ToggleMechanismPool_GetVersion(fb->mechanismSlot)
+            : 0u;
+#if HYD_ENABLE_MECHANISM_TELEMETRY
+    fb->STATE.actuatorPosition = mapped->actuatorPosition;
+    fb->STATE.actuatorVelocityCommand = mapped->actuatorVelocity;
+    fb->STATE.velocityRatio = mapped->velocityRatio;
+#endif
+    return true;
+}
+
 static void HYD_RecalculateVelocityFlowLimit(HYD_MotionSegment* segment) {
     if (segment == NULL ||
         segment->maxVelocity <= 0.0f ||
@@ -1925,6 +1993,8 @@ static void HYD_ExecuteActiveSegmentControl(HYD_MotionControlFB* fb,
     HYD_PumpConverterInput pumpInput;
     HYD_VelocityControllerInput velocityInput;
     HYD_VelocityControllerOutput velocityOutput;
+    HYD_ActuationMapperOutput mapped;
+    HYD_DiagnosticCode mappingCode;
     HYD_MotionBlendContext localContinuousBlend;
     const HYD_MotionBlendContext* selectedBlend = fb->_directBlendContext.active
         ? &fb->_directBlendContext
@@ -2003,6 +2073,16 @@ static void HYD_ExecuteActiveSegmentControl(HYD_MotionControlFB* fb,
         plannerInput.blend = selectedBlend;
         plannerInput.lastActiveDirection = fb->_lastActiveDirection;
         HYD_MotionPlanner_Execute(&plannerInput, plannerOutput);
+
+        if (HYD_MotionControlFB_MapTemplateVelocity(
+                fb, segment, plannerOutput->targetVelocity,
+                segment->maxFlow, &mapped, &mappingCode)) {
+            plannerOutput->targetFlow = mapped.requestedFlow;
+            fb->_plannerState.lastTargetFlow = mapped.requestedFlow;
+        } else {
+            plannerOutput->targetFlow = 0.0f;
+            fb->_plannerState.lastTargetFlow = 0.0f;
+        }
 
         if (segment->mode == HYD_MODE_SPEED_RAMP && segment->velocityKp > 0.0) {
             velocityInput.targetVelocity = plannerOutput->targetVelocity;
