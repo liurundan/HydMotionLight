@@ -45,10 +45,10 @@ static HYD_DirectCommandKind HYD_InferDirectCommandKindFromSegment(const HYD_Mot
 static void HYD_ClearContinuousAbsoluteContext(HYD_ContinuousAbsoluteContext* ctx);
 static void HYD_CopyContinuousAbsoluteContext(HYD_ContinuousAbsoluteContext* dst,
                                               const HYD_ContinuousAbsoluteContext* src);
-static void HYD_PrimeSegmentControllers(HYD_MotionControlFB* fb,
-                                        const HYD_MotionSegment* segment,
-                                        HYD_TIME timestamp,
-                                        HYD_BOOL allowFlowCarryover);
+static HYD_BOOL HYD_PrimeSegmentControllers(HYD_MotionControlFB* fb,
+                                            const HYD_MotionSegment* segment,
+                                            HYD_TIME timestamp,
+                                            HYD_BOOL allowFlowCarryover);
 static HYD_BOOL HYD_ExecuteActiveSegmentControl(HYD_MotionControlFB* fb,
                                                 const HYD_MotionSegment* segment,
                                                 HYD_REAL elapsed,
@@ -1385,16 +1385,16 @@ static HYD_BOOL HYD_ValidateNextRequest(const HYD_MotionControlFB* fb,
     return true;
 }
 
-static void HYD_PrimeSegmentControllers(HYD_MotionControlFB* fb,
-                                        const HYD_MotionSegment* segment,
-                                        HYD_TIME timestamp,
-                                        HYD_BOOL allowFlowCarryover) {
+static HYD_BOOL HYD_PrimeSegmentControllers(HYD_MotionControlFB* fb,
+                                            const HYD_MotionSegment* segment,
+                                            HYD_TIME timestamp,
+                                            HYD_BOOL allowFlowCarryover) {
     HYD_REAL initialPressureControlOutput;
     HYD_TIME controllerTime;
     HYD_REAL trackingFlowReference;
 
     if (fb == NULL || segment == NULL) {
-        return;
+        return false;
     }
 
     fb->_isDecelerating = false;
@@ -1432,13 +1432,15 @@ static void HYD_PrimeSegmentControllers(HYD_MotionControlFB* fb,
             if (fb->_previousSegmentMode == HYD_MODE_PRESSURE_CLOSED_LOOP) {
                 if (fb->_lastCommandedFlow > 0.0) {
                     HYD_DiagnosticCode mapCode = HYD_DIAG_CODE_NONE;
-                    doCarryover =
-                        HYD_MotionControlFB_MapActuatorFlowToTemplateVelocity(
+                    if (!HYD_MotionControlFB_MapActuatorFlowToTemplateVelocity(
                             fb, segment, fb->_lastCommandedFlow,
-                            &carriedVelocity, &mapCode);
-                    if (doCarryover) {
-                        carriedFlow = fb->_lastCommandedFlow;
+                            &carriedVelocity, &mapCode)) {
+                        HYD_ReportKinematicsRuntimeFault(
+                            fb, mapCode, segment, &fb->STATE.references);
+                        return false;
                     }
+                    carriedFlow = fb->_lastCommandedFlow;
+                    doCarryover = true;
                 }
             } else if (fb->_previousSegmentMode == HYD_MODE_SPEED_RAMP) {
                 if (fabs(fb->_plannerState.lastTargetVelocity) > 0.0) {
@@ -1479,6 +1481,7 @@ static void HYD_PrimeSegmentControllers(HYD_MotionControlFB* fb,
     if (segment->mode == HYD_MODE_PRESSURE_CLOSED_LOOP && trackingFlowReference > 0.0) {
         HYD_PressureController_RequestTracking(&fb->_pressureController, initialPressureControlOutput);
     }
+    return true;
 }
 
 static HYD_BOOL HYD_BeginSegment(HYD_MotionControlFB* fb,
@@ -1547,7 +1550,10 @@ static HYD_BOOL HYD_BeginSegment(HYD_MotionControlFB* fb,
     /* Reset diagnostic criteria layer for new segment */
     HYD_ResetCriteriaForSegment(fb, sourceSegment);
 
-    HYD_PrimeSegmentControllers(fb, &fb->_activeSegment, timestamp, preserveFlowCarryover);
+    if (!HYD_PrimeSegmentControllers(fb, &fb->_activeSegment, timestamp,
+                                     preserveFlowCarryover)) {
+        return false;
+    }
 
     HYD_StateReporter_SetSegmentTag(fb, fb->_activeSegment.segmentTag);
     HYD_StateReporter_SetSegmentSource(fb, resolvedSource);
@@ -1740,7 +1746,10 @@ static HYD_BOOL HYD_ResumeHeldSegment(HYD_MotionControlFB* fb,
 
     fb->_holdStateTime = 0.0;
     fb->SEGMENT_COMPLETED = false;
-    HYD_PrimeSegmentControllers(fb, &fb->_activeSegment, timestamp, true);
+    if (!HYD_PrimeSegmentControllers(fb, &fb->_activeSegment, timestamp,
+                                     true)) {
+        return false;
+    }
     HYD_StateReporter_SetSegmentTag(fb, fb->_activeSegment.segmentTag);
     HYD_StateReporter_SetSegmentSource(fb, fb->_activeSegmentSource);
     HYD_StateReporter_SetActive(fb, true);
@@ -1890,8 +1899,7 @@ static HYD_BOOL HYD_MotionControlFB_ConsumePendingCommand(HYD_MotionControlFB* f
              * NOT bump _recipeBatchId — multi-segment recipe progress must
              * not look like external takeover. */
             fb->_recipeBatchId++;
-            (void)HYD_BeginSegment(fb, segmentIndex, timestamp);
-            return true;
+            return HYD_BeginSegment(fb, segmentIndex, timestamp);
         case HYD_CMD_NEXT:
             (void)HYD_AdvanceToNextSegment(fb, timestamp);
             return true;
@@ -2852,7 +2860,10 @@ static void HYD_MotionControlFB_RunRunningState(HYD_MotionControlFB* fb) {
         fb->_activeSegmentValid = true;
         fb->_activeSegmentSource = HYD_SEGMENT_SOURCE_DIRECT;
         fb->_segmentStartTime = fb->AXIS_REF.timestamp;
-        HYD_PrimeSegmentControllers(fb, &fb->_activeSegment, fb->AXIS_REF.timestamp, false);
+        if (!HYD_PrimeSegmentControllers(
+                fb, &fb->_activeSegment, fb->AXIS_REF.timestamp, false)) {
+            return;
+        }
         HYD_RestoreDirectContinuityState(fb, &continuityState);
         HYD_StateReporter_SetPlannedDirection(fb, fb->_activeSegment.direction);
         HYD_StateReporter_SetFbState(fb, HYD_FB_STATE_STARTING);
@@ -3614,7 +3625,10 @@ HYD_DirectStartResult HYD_MotionControlFB_StartDirectCommand(HYD_MotionControlFB
         if (activeDirect || fb->STATE.active || HYD_MotionControlFB_IsBusy(fb)) {
             HYD_AbortNow(fb, timestamp);
         }
-        (void)HYD_BeginSegment(fb, 0U, timestamp);
+        if (!HYD_BeginSegment(fb, 0U, timestamp)) {
+            fb->USE_RECIPE = savedUseRecipe;
+            return HYD_DIRECT_START_REJECTED;
+        }
         fb->_directOwnerKind = kind;
         HYD_CopyContinuousAbsoluteContext(&fb->_directContinuousAbsolute,
                                           continuousAbsolute);
@@ -4095,8 +4109,10 @@ HYD_BOOL HYD_MotionControlFB_ApplyLiveUpdate(HYD_MotionControlFB* fb,
                 HYD_RecalculateVelocityFlowLimit(&fb->_activeSegment);
             }
             /* Re-prime WITHOUT flow carryover — direction flip is a fresh start */
-            HYD_PrimeSegmentControllers(fb, &fb->_activeSegment,
-                                        fb->AXIS_REF.timestamp, false);
+            if (!HYD_PrimeSegmentControllers(
+                    fb, &fb->_activeSegment, fb->AXIS_REF.timestamp, false)) {
+                return false;
+            }
         }
 
         HYD_StateReporter_SetPlannedDirection(fb, fb->_activeSegment.direction);
@@ -4239,7 +4255,10 @@ HYD_BOOL HYD_MotionControlFB_ApplyLiveUpdate(HYD_MotionControlFB* fb,
         HYD_ResetCriteriaForSegment(fb, &updated);
 
         /* Prime controllers with no flow carryover (fresh start) */
-        HYD_PrimeSegmentControllers(fb, &fb->_activeSegment, timestamp, false);
+        if (!HYD_PrimeSegmentControllers(
+                fb, &fb->_activeSegment, timestamp, false)) {
+            return false;
+        }
 
         HYD_StateReporter_SetSegmentTag(fb, fb->_activeSegment.segmentTag);
         HYD_StateReporter_SetSegmentSource(fb, HYD_SEGMENT_SOURCE_DIRECT);
