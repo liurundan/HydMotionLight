@@ -20,6 +20,63 @@ static void create_until_terminal(HYD_CREATEMOTION *create)
     }
 }
 
+static int create_toggle_axis(void)
+{
+    HYD_CREATEMOTION create;
+
+    memset(&create, 0, sizeof(create));
+    IEC_VAL(create.MECHANISM_TYPE) = HYD_MECHANISM_FIVE_POINT_TOGGLE;
+    create_until_terminal(&create);
+    assert(IEC_VAL(create.DONE));
+    return (int)IEC_VAL(create.AXISID);
+}
+
+static void set_config_inputs(HYD_CONFIGURETOGGLEMECHANISM *configure,
+                              int axis,
+                              const HYD_ToggleGeometryConfig *raw)
+{
+    memset(configure, 0, sizeof(*configure));
+    IEC_VAL(configure->AXISID) = (IEC_SINT)axis;
+    IEC_VAL(configure->EXECUTE) = true;
+    IEC_VAL(configure->LR) = raw->lr;
+    IEC_VAL(configure->LF) = raw->lf;
+    IEC_VAL(configure->LPF) = raw->lpf;
+    IEC_VAL(configure->LPK) = raw->lpk;
+    IEC_VAL(configure->LD) = raw->ld;
+    IEC_VAL(configure->HF) = raw->hf;
+    IEC_VAL(configure->HM) = raw->hm;
+    IEC_VAL(configure->DC) = raw->dc;
+    IEC_VAL(configure->SM) = raw->sm;
+    IEC_VAL(configure->XHANDOFF) = raw->xHandoff;
+    IEC_VAL(configure->SIGMA_K) = raw->sigmaK;
+    IEC_VAL(configure->SIGN_B) = raw->signB;
+    IEC_VAL(configure->TAU_S) = raw->tauS;
+}
+
+static void configure_until_terminal(HYD_CONFIGURETOGGLEMECHANISM *configure)
+{
+    unsigned int scans = 0u;
+
+    while (!IEC_VAL(configure->DONE) && !IEC_VAL(configure->ERROR)) {
+        __mcl_cmd_ConfigureToggleMechanism(configure);
+        ++scans;
+        assert(scans < 128u);
+    }
+}
+
+static HYD_READTOGGLEMECHANISM read_toggle(int axis)
+{
+    HYD_READTOGGLEMECHANISM read;
+
+    memset(&read, 0, sizeof(read));
+    IEC_VAL(read.AXISID) = (IEC_SINT)axis;
+    IEC_VAL(read.ENABLE) = true;
+    __mcl_cmd_ReadToggleMechanism(&read);
+    assert(IEC_VAL(read.VALID));
+    assert(!IEC_VAL(read.ERROR));
+    return read;
+}
+
 static void test_zero_initialized_create_remains_direct(void)
 {
     HYD_CREATEMOTION create;
@@ -189,6 +246,128 @@ static void test_stale_transaction_cannot_alias_reinitialized_resources(void)
     assert(IEC_VAL(current.AXISID) == 0);
 }
 
+static void test_configure_latches_inputs_and_reads_committed_state(void)
+{
+    HYD_ToggleGeometryConfig raw = HYD_ToggleKinematics_DefaultConfig();
+    HYD_CONFIGURETOGGLEMECHANISM configure;
+    HYD_READTOGGLEMECHANISM read;
+    int axis;
+
+    __HydMotion_framework_Init();
+    axis = create_toggle_axis();
+    raw.dc = 377.5f;
+    set_config_inputs(&configure, axis, &raw);
+
+    __mcl_cmd_ConfigureToggleMechanism(&configure);
+    assert(IEC_VAL(configure.BUSY));
+    assert(!IEC_VAL(configure.DONE));
+    assert(IEC_VAL(configure.CONFIG_VERSION) == 1u);
+
+    read = read_toggle(axis);
+    assert(fabs(IEC_VAL(read.DC) - 378.0) < 1e-9);
+    assert(IEC_VAL(read.CONFIG_VERSION) == 1u);
+
+    IEC_VAL(configure.DC) = 400.0;
+    IEC_VAL(configure.AXISID) = 99;
+    configure_until_terminal(&configure);
+    assert(IEC_VAL(configure.DONE));
+    assert(IEC_VAL(configure.CONFIG_VERSION) == 2u);
+
+    read = read_toggle(axis);
+    assert(fabs(IEC_VAL(read.DC) - 377.5) < 1e-9);
+    assert(IEC_VAL(read.CONFIG_VERSION) == 2u);
+    assert(!IEC_VAL(read.USING_DEFAULTS));
+}
+
+static void test_invalid_configure_preserves_committed_geometry(void)
+{
+    HYD_ToggleGeometryConfig raw = HYD_ToggleKinematics_DefaultConfig();
+    HYD_CONFIGURETOGGLEMECHANISM configure;
+    HYD_READTOGGLEMECHANISM before;
+    HYD_READTOGGLEMECHANISM after;
+    int axis;
+
+    __HydMotion_framework_Init();
+    axis = create_toggle_axis();
+    before = read_toggle(axis);
+
+    raw.dc = 400.0f;
+    set_config_inputs(&configure, axis, &raw);
+    configure_until_terminal(&configure);
+    assert(IEC_VAL(configure.ERROR));
+    assert(IEC_VAL(configure.ERRORID) ==
+           HYD_DIAG_CODE_MECHANISM_CONFIG_INVALID);
+    assert(IEC_VAL(configure.CONFIG_VERSION) ==
+           IEC_VAL(before.CONFIG_VERSION));
+
+    after = read_toggle(axis);
+    assert(fabs(IEC_VAL(after.DC) - IEC_VAL(before.DC)) < 1e-9);
+    assert(IEC_VAL(after.CONFIG_VERSION) == IEC_VAL(before.CONFIG_VERSION));
+}
+
+static void test_handoff_validation_and_automatic_mode(void)
+{
+    HYD_ToggleGeometryConfig raw = HYD_ToggleKinematics_DefaultConfig();
+    HYD_CONFIGURETOGGLEMECHANISM configure;
+    HYD_READTOGGLEMECHANISM read;
+    HYD_UINT16 version;
+    int axis;
+
+    __HydMotion_framework_Init();
+    axis = create_toggle_axis();
+    read = read_toggle(axis);
+    version = (HYD_UINT16)IEC_VAL(read.CONFIG_VERSION);
+
+    raw.xHandoff = -0.5f;
+    set_config_inputs(&configure, axis, &raw);
+    configure_until_terminal(&configure);
+    assert(IEC_VAL(configure.ERROR));
+    assert(IEC_VAL(configure.CONFIG_VERSION) == version);
+    read = read_toggle(axis);
+    assert(IEC_VAL(read.CONFIG_VERSION) == version);
+
+    raw.xHandoff = 0.0f;
+    set_config_inputs(&configure, axis, &raw);
+    configure_until_terminal(&configure);
+    assert(IEC_VAL(configure.DONE));
+    read = read_toggle(axis);
+    assert(fabs(IEC_VAL(read.XHANDOFF)) < 1e-9);
+    assert(fabs(IEC_VAL(read.X_HANDOFF_EFFECTIVE) -
+                IEC_VAL(read.X_GEOMETRY_MIN)) < 1e-9);
+    assert(IEC_VAL(read.CONFIG_VERSION) == (HYD_UINT16)(version + 1u));
+}
+
+static void test_active_axis_rejects_configuration(void)
+{
+    HYD_ToggleGeometryConfig raw = HYD_ToggleKinematics_DefaultConfig();
+    HYD_CONFIGURETOGGLEMECHANISM configure;
+    HYD_READTOGGLEMECHANISM before;
+    HYD_READTOGGLEMECHANISM after;
+    HYD_MotionControlFB *fb;
+    int axis;
+
+    __HydMotion_framework_Init();
+    axis = create_toggle_axis();
+    fb = __MK_GetPublic_MotionControlFB(axis);
+    assert(fb != NULL);
+    before = read_toggle(axis);
+    fb->STATE.active = true;
+    fb->FB_STATE = HYD_FB_STATE_RUNNING;
+
+    raw.dc = 377.5f;
+    set_config_inputs(&configure, axis, &raw);
+    __mcl_cmd_ConfigureToggleMechanism(&configure);
+    assert(IEC_VAL(configure.ERROR));
+    assert(IEC_VAL(configure.ERRORID) ==
+           HYD_DIAG_CODE_MECHANISM_CONFIG_BUSY);
+    assert(IEC_VAL(configure.CONFIG_VERSION) ==
+           IEC_VAL(before.CONFIG_VERSION));
+
+    after = read_toggle(axis);
+    assert(IEC_VAL(after.CONFIG_VERSION) == IEC_VAL(before.CONFIG_VERSION));
+    assert(fabs(IEC_VAL(after.DC) - IEC_VAL(before.DC)) < 1e-9);
+}
+
 int main(void)
 {
     test_zero_initialized_create_remains_direct();
@@ -198,5 +377,9 @@ int main(void)
     test_validation_workspace_exhaustion_rolls_back();
     test_framework_reinit_releases_inflight_resources();
     test_stale_transaction_cannot_alias_reinitialized_resources();
+    test_configure_latches_inputs_and_reads_committed_state();
+    test_invalid_configure_preserves_committed_geometry();
+    test_handoff_validation_and_automatic_mode();
+    test_active_axis_rejects_configuration();
     return 0;
 }

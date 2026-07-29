@@ -1074,6 +1074,314 @@ void __mcl_cmd_CreateMotion(HYD_CREATEMOTION *data__)
     completeCreateTransaction(data__, (int)axisIndex);
 }
 
+static HYD_BOOL toggleConfigurationStateAllowed(
+    const HYD_MotionControlFB *fb)
+{
+    if ((fb == NULL) || fb->STATE.active) {
+        return false;
+    }
+
+    switch (fb->FB_STATE) {
+        case HYD_FB_STATE_IDLE:
+        case HYD_FB_STATE_READY:
+        case HYD_FB_STATE_DONE:
+        case HYD_FB_STATE_ABORTED:
+            return true;
+        default:
+            return false;
+    }
+}
+
+static void clearToggleConfigurationTransaction(
+    HYD_CONFIGURETOGGLEMECHANISM *data__, HYD_BOOL releaseWorkspace)
+{
+    if (releaseWorkspace && __GET_VAR(data__->ACTIVE) &&
+        (__GET_VAR(data__->_FRAMEWORK_GENERATION) ==
+         (IEC_WORD)HYD_FrameworkGeneration)) {
+        IEC_USINT token = __GET_VAR(data__->VALIDATION_TOKEN);
+
+        if (token != (IEC_USINT)HYD_TOGGLE_VALIDATION_NONE) {
+            HYD_ToggleMechanismPool_ReleaseValidation((HYD_UINT8)token);
+        }
+    }
+
+    __SET_VAR(data__->, VALIDATION_TOKEN, ,
+              (IEC_USINT)HYD_TOGGLE_VALIDATION_NONE);
+    __SET_VAR(data__->, ACTIVE, , false);
+    __SET_VAR(data__->, CONFIG_AXIS, , (IEC_SINT)-1);
+    __SET_VAR(data__->, _FRAMEWORK_GENERATION, , (IEC_WORD)0);
+}
+
+static IEC_WORD currentToggleConfigurationVersion(
+    const HYD_CONFIGURETOGGLEMECHANISM *data__)
+{
+    IEC_SINT axisIndex = __GET_VAR(data__->ACTIVE)
+        ? __GET_VAR(data__->CONFIG_AXIS)
+        : __GET_VAR(data__->AXISID);
+    HYD_MotionControlFB *fb = __MK_GetPublic_MotionControlFB((int)axisIndex);
+
+    if ((fb == NULL) ||
+        (fb->mechanismType !=
+         (HYD_UINT8)HYD_MECHANISM_FIVE_POINT_TOGGLE) ||
+        (fb->mechanismSlot == HYD_TOGGLE_SLOT_NONE)) {
+        return (IEC_WORD)0;
+    }
+
+    return (IEC_WORD)HYD_ToggleMechanismPool_GetVersion(fb->mechanismSlot);
+}
+
+static void failToggleConfiguration(HYD_CONFIGURETOGGLEMECHANISM *data__,
+                                    HYD_DiagnosticCode diagnostic,
+                                    HYD_BOOL releaseWorkspace)
+{
+    IEC_WORD version = currentToggleConfigurationVersion(data__);
+
+    clearToggleConfigurationTransaction(data__, releaseWorkspace);
+    __SET_VAR(data__->, DONE, , false);
+    __SET_VAR(data__->, BUSY, , false);
+    __SET_VAR(data__->, ERROR, , true);
+    __SET_VAR(data__->, ERRORID, , (IEC_WORD)diagnostic);
+    __SET_VAR(data__->, CONFIG_VERSION, , version);
+}
+
+static HYD_ToggleGeometryConfig toggleConfigurationInputs(
+    const HYD_CONFIGURETOGGLEMECHANISM *data__)
+{
+    HYD_ToggleGeometryConfig raw;
+
+    raw.lr = (HYD_REAL)__GET_VAR(data__->LR);
+    raw.lf = (HYD_REAL)__GET_VAR(data__->LF);
+    raw.lpf = (HYD_REAL)__GET_VAR(data__->LPF);
+    raw.lpk = (HYD_REAL)__GET_VAR(data__->LPK);
+    raw.ld = (HYD_REAL)__GET_VAR(data__->LD);
+    raw.hf = (HYD_REAL)__GET_VAR(data__->HF);
+    raw.hm = (HYD_REAL)__GET_VAR(data__->HM);
+    raw.dc = (HYD_REAL)__GET_VAR(data__->DC);
+    raw.sm = (HYD_REAL)__GET_VAR(data__->SM);
+    raw.xHandoff = (HYD_REAL)__GET_VAR(data__->XHANDOFF);
+    raw.sigmaK = (int8_t)__GET_VAR(data__->SIGMA_K);
+    raw.signB = (int8_t)__GET_VAR(data__->SIGN_B);
+    raw.tauS = (int8_t)__GET_VAR(data__->TAU_S);
+    return raw;
+}
+
+void __mcl_cmd_ConfigureToggleMechanism(
+    HYD_CONFIGURETOGGLEMECHANISM *data__)
+{
+    IEC_BOOL execute = __GET_VAR(data__->EXECUTE);
+    IEC_BOOL rising = execute && !__GET_VAR(data__->EXECUTE0);
+    HYD_ToggleValidation *validation;
+    HYD_ToggleError toggleError = HYD_TOGGLE_ERROR_NONE;
+    HYD_MotionControlFB *fb;
+    IEC_SINT axisIndex;
+
+    if (!execute) {
+        clearToggleConfigurationTransaction(data__, true);
+        __SET_VAR(data__->, DONE, , false);
+        __SET_VAR(data__->, BUSY, , false);
+        __SET_VAR(data__->, ERROR, , false);
+        __SET_VAR(data__->, ERRORID, , (IEC_WORD)HYD_DIAG_CODE_NONE);
+        __SET_VAR(data__->, EXECUTE0, , false);
+        return;
+    }
+
+    if (__GET_VAR(data__->ACTIVE) &&
+        (__GET_VAR(data__->_FRAMEWORK_GENERATION) !=
+         (IEC_WORD)HYD_FrameworkGeneration)) {
+        failToggleConfiguration(data__, HYD_DIAG_CODE_MECHANISM_CONFIG_BUSY,
+                                false);
+        __SET_VAR(data__->, EXECUTE0, , true);
+        return;
+    }
+
+    if (rising) {
+        HYD_UINT8 validationToken;
+        HYD_ToggleGeometryConfig raw;
+        HYD_ToggleValidationLimits limits;
+
+        axisIndex = __GET_VAR(data__->AXISID);
+        fb = __MK_GetPublic_MotionControlFB((int)axisIndex);
+        if (fb == NULL) {
+            failToggleConfiguration(data__,
+                                    HYD_DIAG_CODE_START_CONTEXT_INVALID,
+                                    false);
+            __SET_VAR(data__->, EXECUTE0, , true);
+            return;
+        }
+        if ((fb->mechanismType !=
+             (HYD_UINT8)HYD_MECHANISM_FIVE_POINT_TOGGLE) ||
+            (fb->mechanismSlot == HYD_TOGGLE_SLOT_NONE)) {
+            failToggleConfiguration(data__,
+                                    HYD_DIAG_CODE_MECHANISM_TYPE_INVALID,
+                                    false);
+            __SET_VAR(data__->, EXECUTE0, , true);
+            return;
+        }
+        __SET_VAR(data__->, CONFIG_VERSION, ,
+                  (IEC_WORD)HYD_ToggleMechanismPool_GetVersion(
+                      fb->mechanismSlot));
+        if (!toggleConfigurationStateAllowed(fb)) {
+            failToggleConfiguration(data__,
+                                    HYD_DIAG_CODE_MECHANISM_CONFIG_BUSY,
+                                    false);
+            __SET_VAR(data__->, EXECUTE0, , true);
+            return;
+        }
+        if (!HYD_ToggleMechanismPool_AcquireValidation(&validationToken)) {
+            failToggleConfiguration(
+                data__, HYD_DIAG_CODE_MECHANISM_VALIDATION_BUSY, false);
+            __SET_VAR(data__->, EXECUTE0, , true);
+            return;
+        }
+
+        __SET_VAR(data__->, VALIDATION_TOKEN, ,
+                  (IEC_USINT)validationToken);
+        __SET_VAR(data__->, ACTIVE, , true);
+        __SET_VAR(data__->, CONFIG_AXIS, , axisIndex);
+        __SET_VAR(data__->, _FRAMEWORK_GENERATION, ,
+                  (IEC_WORD)HYD_FrameworkGeneration);
+        validation = HYD_ToggleMechanismPool_GetValidation(validationToken);
+        raw = toggleConfigurationInputs(data__);
+        limits = HYD_ToggleKinematics_DefaultValidationLimits();
+        if ((validation == NULL) ||
+            !HYD_ToggleKinematics_BeginValidation(
+                &raw, &limits, validation, &toggleError)) {
+            failToggleConfiguration(
+                data__, HYD_DIAG_CODE_MECHANISM_CONFIG_INVALID, true);
+            __SET_VAR(data__->, EXECUTE0, , true);
+            return;
+        }
+
+        __SET_VAR(data__->, DONE, , false);
+        __SET_VAR(data__->, BUSY, , true);
+        __SET_VAR(data__->, ERROR, , false);
+        __SET_VAR(data__->, ERRORID, , (IEC_WORD)HYD_DIAG_CODE_NONE);
+    }
+
+    if (!__GET_VAR(data__->ACTIVE)) {
+        __SET_VAR(data__->, EXECUTE0, , true);
+        return;
+    }
+
+    validation = HYD_ToggleMechanismPool_GetValidation(
+        (HYD_UINT8)__GET_VAR(data__->VALIDATION_TOKEN));
+    if ((validation == NULL) ||
+        !HYD_ToggleKinematics_ValidationStep(validation, 4u,
+                                             &toggleError)) {
+        failToggleConfiguration(data__,
+                                HYD_DIAG_CODE_MECHANISM_CONFIG_INVALID,
+                                true);
+        __SET_VAR(data__->, EXECUTE0, , true);
+        return;
+    }
+
+    if (HYD_ToggleKinematics_ValidationDone(validation)) {
+        HYD_TogglePreparedConfig prepared;
+
+        axisIndex = __GET_VAR(data__->CONFIG_AXIS);
+        fb = __MK_GetPublic_MotionControlFB((int)axisIndex);
+        if ((fb == NULL) ||
+            (fb->mechanismType !=
+             (HYD_UINT8)HYD_MECHANISM_FIVE_POINT_TOGGLE) ||
+            !toggleConfigurationStateAllowed(fb) ||
+            !HYD_ToggleKinematics_FinishValidation(validation, &prepared,
+                                                   &toggleError) ||
+            !HYD_ToggleMechanismPool_Commit(fb->mechanismSlot, &prepared,
+                                            false)) {
+            failToggleConfiguration(
+                data__, HYD_DIAG_CODE_MECHANISM_CONFIG_INVALID, true);
+            __SET_VAR(data__->, EXECUTE0, , true);
+            return;
+        }
+
+        clearToggleConfigurationTransaction(data__, true);
+        __SET_VAR(data__->, CONFIG_VERSION, ,
+                  (IEC_WORD)HYD_ToggleMechanismPool_GetVersion(
+                      fb->mechanismSlot));
+        __SET_VAR(data__->, DONE, , true);
+        __SET_VAR(data__->, BUSY, , false);
+        __SET_VAR(data__->, ERROR, , false);
+        __SET_VAR(data__->, ERRORID, , (IEC_WORD)HYD_DIAG_CODE_NONE);
+    } else {
+        __SET_VAR(data__->, BUSY, , true);
+    }
+
+    __SET_VAR(data__->, EXECUTE0, , true);
+}
+
+void __mcl_cmd_ReadToggleMechanism(HYD_READTOGGLEMECHANISM *data__)
+{
+    IEC_SINT axisIndex = __GET_VAR(data__->AXISID);
+    HYD_MotionControlFB *fb;
+    const HYD_TogglePreparedConfig *prepared;
+    const HYD_ToggleGeometryConfig *raw;
+
+    if (!__GET_VAR(data__->ENABLE)) {
+        __SET_VAR(data__->, VALID, , false);
+        __SET_VAR(data__->, ERROR, , false);
+        __SET_VAR(data__->, ERRORID, , (IEC_WORD)HYD_DIAG_CODE_NONE);
+        return;
+    }
+
+    fb = __MK_GetPublic_MotionControlFB((int)axisIndex);
+    if (fb == NULL) {
+        __SET_VAR(data__->, VALID, , false);
+        __SET_VAR(data__->, ERROR, , true);
+        __SET_VAR(data__->, ERRORID, ,
+                  (IEC_WORD)HYD_DIAG_CODE_START_CONTEXT_INVALID);
+        return;
+    }
+    if ((fb->mechanismType !=
+         (HYD_UINT8)HYD_MECHANISM_FIVE_POINT_TOGGLE) ||
+        (fb->mechanismSlot == HYD_TOGGLE_SLOT_NONE)) {
+        __SET_VAR(data__->, VALID, , false);
+        __SET_VAR(data__->, ERROR, , true);
+        __SET_VAR(data__->, ERRORID, ,
+                  (IEC_WORD)HYD_DIAG_CODE_MECHANISM_TYPE_INVALID);
+        return;
+    }
+
+    prepared = HYD_ToggleMechanismPool_GetPrepared(fb->mechanismSlot);
+    raw = HYD_ToggleMechanismPool_GetRaw(fb->mechanismSlot);
+    if ((prepared == NULL) || (raw == NULL)) {
+        __SET_VAR(data__->, VALID, , false);
+        __SET_VAR(data__->, ERROR, , true);
+        __SET_VAR(data__->, ERRORID, ,
+                  (IEC_WORD)HYD_DIAG_CODE_MECHANISM_CONFIG_INVALID);
+        return;
+    }
+
+    __SET_VAR(data__->, LR, , (IEC_LREAL)raw->lr);
+    __SET_VAR(data__->, LF, , (IEC_LREAL)raw->lf);
+    __SET_VAR(data__->, LPF, , (IEC_LREAL)raw->lpf);
+    __SET_VAR(data__->, LPK, , (IEC_LREAL)raw->lpk);
+    __SET_VAR(data__->, LD, , (IEC_LREAL)raw->ld);
+    __SET_VAR(data__->, HF, , (IEC_LREAL)raw->hf);
+    __SET_VAR(data__->, HM, , (IEC_LREAL)raw->hm);
+    __SET_VAR(data__->, DC, , (IEC_LREAL)raw->dc);
+    __SET_VAR(data__->, SM, , (IEC_LREAL)raw->sm);
+    __SET_VAR(data__->, XHANDOFF, , (IEC_LREAL)raw->xHandoff);
+    __SET_VAR(data__->, SIGMA_K, , (IEC_SINT)raw->sigmaK);
+    __SET_VAR(data__->, SIGN_B, , (IEC_SINT)raw->signB);
+    __SET_VAR(data__->, TAU_S, , (IEC_SINT)raw->tauS);
+    __SET_VAR(data__->, CONFIG_VERSION, ,
+              (IEC_WORD)HYD_ToggleMechanismPool_GetVersion(
+                  fb->mechanismSlot));
+    __SET_VAR(data__->, X_GEOMETRY_MIN, ,
+              (IEC_LREAL)prepared->xGeometryMin);
+    __SET_VAR(data__->, X_HANDOFF_EFFECTIVE, ,
+              (IEC_LREAL)prepared->xHandoffEffective);
+    __SET_VAR(data__->, XS_MIN, , (IEC_LREAL)prepared->xsMin);
+    __SET_VAR(data__->, XS_MAX, , (IEC_LREAL)prepared->xsMax);
+    __SET_VAR(data__->, K_MIN, , (IEC_LREAL)prepared->kMin);
+    __SET_VAR(data__->, K_MAX, , (IEC_LREAL)prepared->kMax);
+    __SET_VAR(data__->, USING_DEFAULTS, ,
+              HYD_ToggleMechanismPool_UsingDefaults(fb->mechanismSlot));
+    __SET_VAR(data__->, VALID, , true);
+    __SET_VAR(data__->, ERROR, , false);
+    __SET_VAR(data__->, ERRORID, , (IEC_WORD)HYD_DIAG_CODE_NONE);
+}
+
 /* ======================================================================
  * MoveProfile (Recipe模式) 命令实现
  * ====================================================================== */
