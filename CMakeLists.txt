@@ -180,6 +180,9 @@ add_executable(test_pump_cylinder_config tests/test_pump_cylinder_config.c)
 target_link_libraries(test_pump_cylinder_config PRIVATE HydroMotionLib m)
 add_test(NAME test_pump_cylinder_config COMMAND test_pump_cylinder_config)
 
+add_executable(test_toggle_kinematics tests/test_toggle_kinematics.c)
+target_link_libraries(test_toggle_kinematics PRIVATE HydroMotionLib m)
+
 add_executable(main tests/main.c)
 target_link_libraries(main PRIVATE HydroMotionLib)
 
@@ -265,6 +268,7 @@ add_test(NAME test_interface_layout_consistency
                  python3 ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_interface_layout_consistency.py)
 
 add_test(NAME test_negative_flow COMMAND test_negative_flow)
+add_test(NAME test_toggle_kinematics COMMAND test_toggle_kinematics)
 
 add_executable(test_motion_interface_negative_speed tests/test_motion_interface_negative_speed.c)
 target_link_libraries(test_motion_interface_negative_speed PRIVATE HydroMotionLib)
