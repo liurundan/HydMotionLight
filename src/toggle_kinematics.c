@@ -89,12 +89,12 @@ HYD_ToggleGeometryConfig HYD_ToggleKinematics_DefaultConfig(void)
 HYD_ToggleValidationLimits HYD_ToggleKinematics_DefaultValidationLimits(void)
 {
     HYD_ToggleValidationLimits limits = {
-        32.0f * HYD_REAL_EPSILON,
-        0.02f,
-        0.02f,
-        0.01f,
-        20.0f,
-        0.5f
+        HYD_TOGGLE_RADICAND_TOLERANCE_FACTOR,
+        HYD_TOGGLE_MIN_NORMALIZED_MAIN_JACOBIAN,
+        HYD_TOGGLE_MIN_DRIVE_PROJECTION_RATIO,
+        HYD_TOGGLE_MIN_ABS_VELOCITY_RATIO,
+        HYD_TOGGLE_MAX_ABS_VELOCITY_RATIO,
+        HYD_TOGGLE_GEOMETRY_MARGIN_MM
     };
 
     return limits;
@@ -313,7 +313,7 @@ HYD_BOOL HYD_ToggleKinematics_SolveOnline(const HYD_TogglePreparedConfig *prepar
         return 0;
     }
 
-    if ((xm < prepared->xGeometryMin) || (xm > prepared->raw.sm)) {
+    if ((xm < prepared->xHandoffEffective) || (xm > prepared->raw.sm)) {
         set_error(error, HYD_TOGGLE_ERROR_POSITION_OUT_OF_RANGE);
         return 0;
     }
@@ -409,6 +409,9 @@ static HYD_BOOL safe_point_keeps_branch(const HYD_ToggleValidation *validation,
 static HYD_BOOL resolve_handoff(HYD_ToggleValidation *validation,
                                 HYD_ToggleError *error)
 {
+    HYD_ToggleSolution handoff_solution;
+    HYD_ToggleSolution stroke_end_solution;
+    HYD_ToggleError point_error = HYD_TOGGLE_ERROR_NONE;
     HYD_REAL raw_handoff = validation->candidate.raw.xHandoff;
 
     validation->candidate.xHandoffEffective =
@@ -422,6 +425,28 @@ static HYD_BOOL resolve_handoff(HYD_ToggleValidation *validation,
         set_error(error, HYD_TOGGLE_ERROR_POSITION_OUT_OF_RANGE);
         return 0;
     }
+
+    if (!solve_at(&validation->candidate,
+                  validation->candidate.xHandoffEffective,
+                  0.0f,
+                  validation->limits.radicandTolerance,
+                  &handoff_solution,
+                  &point_error) ||
+        !solve_at(&validation->candidate,
+                  validation->candidate.raw.sm,
+                  0.0f,
+                  validation->limits.radicandTolerance,
+                  &stroke_end_solution,
+                  &point_error)) {
+        validation->phase = HYD_TOGGLE_VALIDATION_FAILED;
+        set_error(error, point_error);
+        return 0;
+    }
+
+    validation->candidate.xsMin = fminf(handoff_solution.xs,
+                                        stroke_end_solution.xs);
+    validation->candidate.xsMax = fmaxf(handoff_solution.xs,
+                                        stroke_end_solution.xs);
 
     validation->phase = HYD_TOGGLE_VALIDATION_COMPLETE;
     set_error(error, HYD_TOGGLE_ERROR_NONE);
@@ -730,7 +755,7 @@ HYD_BOOL HYD_ToggleKinematics_InversePosition(
         return 0;
     }
 
-    low = prepared->xGeometryMin;
+    low = prepared->xHandoffEffective;
     high = prepared->raw.sm;
     if (!HYD_ToggleKinematics_SolveOnline(prepared, low, 0.0f,
                                           &low_solution, error) ||

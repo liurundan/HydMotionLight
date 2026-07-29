@@ -311,6 +311,32 @@ typedef HYD_REAL HYD_TIME;
  * 那些应当保留在源码上下文中以保证算法可读性。
  * ============================================================================ */
 
+/* --- 五点式肘杆机构验证默认值（src/toggle_kinematics.c） --- */
+
+#ifndef HYD_TOGGLE_RADICAND_TOLERANCE_FACTOR
+    #define HYD_TOGGLE_RADICAND_TOLERANCE_FACTOR (32.0f * HYD_REAL_EPSILON)
+#endif
+
+#ifndef HYD_TOGGLE_MIN_NORMALIZED_MAIN_JACOBIAN
+    #define HYD_TOGGLE_MIN_NORMALIZED_MAIN_JACOBIAN 0.02f
+#endif
+
+#ifndef HYD_TOGGLE_MIN_DRIVE_PROJECTION_RATIO
+    #define HYD_TOGGLE_MIN_DRIVE_PROJECTION_RATIO 0.02f
+#endif
+
+#ifndef HYD_TOGGLE_MIN_ABS_VELOCITY_RATIO
+    #define HYD_TOGGLE_MIN_ABS_VELOCITY_RATIO 0.01f
+#endif
+
+#ifndef HYD_TOGGLE_MAX_ABS_VELOCITY_RATIO
+    #define HYD_TOGGLE_MAX_ABS_VELOCITY_RATIO 20.0f
+#endif
+
+#ifndef HYD_TOGGLE_GEOMETRY_MARGIN_MM
+    #define HYD_TOGGLE_GEOMETRY_MARGIN_MM 0.5f
+#endif
+
 /* --- 停车减速完成阈值（src/motion_control.c stopping-branch） --- */
 
 /* 当 commanded deceleration ramp 输出幅值 (decelMag) 跌破该阈值，

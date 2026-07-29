@@ -180,7 +180,10 @@ static void test_automatic_and_explicit_handoff_bounds(void)
     HYD_TogglePreparedConfig preserved;
     HYD_TogglePreparedConfig before;
     HYD_ToggleValidation validation;
+    HYD_ToggleSolution solution;
+    HYD_ToggleSolution solution_before;
     HYD_ToggleError error = HYD_TOGGLE_ERROR_NONE;
+    HYD_REAL recovered_xm = 1234.0f;
     HYD_REAL chosen_handoff;
     HYD_UINT8 previous_refine_iteration;
 
@@ -203,6 +206,29 @@ static void test_automatic_and_explicit_handoff_bounds(void)
     config.xHandoff = chosen_handoff;
     assert(validate_with_limits(&config, &limits, &explicit_handoff, &error));
     assert_near(explicit_handoff.xHandoffEffective, chosen_handoff, 1e-5f);
+
+    memset(&solution, 0x5c, sizeof(solution));
+    solution_before = solution;
+    assert(!HYD_ToggleKinematics_SolveOnline(&explicit_handoff,
+                                             chosen_handoff - 0.25f,
+                                             1.0f,
+                                             &solution,
+                                             &error));
+    assert(error == HYD_TOGGLE_ERROR_POSITION_OUT_OF_RANGE);
+    assert(memcmp(&solution, &solution_before, sizeof(solution)) == 0);
+
+    assert(HYD_ToggleKinematics_SolveOnline(&explicit_handoff,
+                                            chosen_handoff,
+                                            0.0f,
+                                            &solution,
+                                            &error));
+    assert_near(explicit_handoff.xsMax, solution.xs, 2e-4f);
+    assert(!HYD_ToggleKinematics_InversePosition(&explicit_handoff,
+                                                 solution.xs + 1.0f,
+                                                 &recovered_xm,
+                                                 &error));
+    assert(error == HYD_TOGGLE_ERROR_POSITION_OUT_OF_RANGE);
+    assert_near(recovered_xm, 1234.0f, 0.0f);
 
     memset(&preserved, 0xa5, sizeof(preserved));
     before = preserved;
