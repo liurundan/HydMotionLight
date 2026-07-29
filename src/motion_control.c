@@ -1,4 +1,5 @@
 #include "motion_control.h"
+#include "toggle_mechanism_pool.h"
 #include "diagnostics.h"
 #include "motion_planner.h"
 #include "pressure_controller.h"
@@ -3024,6 +3025,8 @@ void HYD_MotionControlFB_Init(HYD_MotionControlFB* fb) {
     fb->_simulationCycleTime = (HYD_TIME)HYD_DEFAULT_SIM_CYCLE_TIME;
     fb->_useFixedCycleTime = false;
     fb->_lastActiveDirection = HYD_DIRECTION_POSITIVE;  /* 静止轴默认正向 */
+    fb->mechanismType = (HYD_UINT8)HYD_MECHANISM_DIRECT;
+    fb->mechanismSlot = HYD_TOGGLE_SLOT_NONE;
     fb->USE_RECIPE = false;
     fb->FB_STATE = HYD_FB_STATE_IDLE;
     fb->STATE.currentSegmentIndex = HYD_MAX_SEGMENTS;

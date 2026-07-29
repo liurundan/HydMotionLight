@@ -385,6 +385,8 @@ typedef struct {
 
     /* --- Identity & configuration --- */
     HYD_UINT8 _index;
+    HYD_UINT8 mechanismType;
+    HYD_UINT8 mechanismSlot;
     uint16_t _executionId;
     uint16_t _recipeBatchId;
     HYD_BOOL _useSimulation;

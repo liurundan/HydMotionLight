@@ -1,5 +1,6 @@
 #include "motion_interface.h"
 #include "segment_limits.h"
+#include "toggle_mechanism_pool.h"
 #include <string.h>
 #include <stdio.h>
 #include <math.h>
@@ -11,7 +12,14 @@ static HYD_REAL dfCycleTime = 0.001f;  /* 默认周期时间，单位秒；可�
 
 static HYD_MotionControlFB HYD_MotionControlFB_inst[HYD_MAX_AXIS_MOTION];
 
-static unsigned int nextAllocatedFB = 0;
+typedef enum {
+    HYD_AXIS_SLOT_FREE = 0,
+    HYD_AXIS_SLOT_RESERVED,
+    HYD_AXIS_SLOT_ACTIVE
+} HYD_AxisSlotState;
+
+static HYD_AxisSlotState HYD_AxisSlots[HYD_MAX_AXIS_MOTION];
+static HYD_UINT16 HYD_FrameworkGeneration;
 
 static const HYD_REAL HYD_CONTABS_DIRECTION_VELOCITY_THRESHOLD = 0.01f;
 
@@ -50,16 +58,21 @@ static HYD_REAL resolve_velocity_to_flow_gain(const HYD_MotionControlFB* fb,
 
 static int allocMotionControlFB(void)
 {
-    if (nextAllocatedFB < HYD_MAX_AXIS_MOTION) {
-        HYD_MotionControlFB_inst[nextAllocatedFB]._index = nextAllocatedFB;
-        return (int)nextAllocatedFB++;
+    int index;
+
+    for (index = 0; index < HYD_MAX_AXIS_MOTION; ++index) {
+        if (HYD_AxisSlots[index] == HYD_AXIS_SLOT_FREE) {
+            HYD_AxisSlots[index] = HYD_AXIS_SLOT_RESERVED;
+            return index;
+        }
     }
     return -1;
 }
 
 HYD_MotionControlFB* __MK_GetPublic_MotionControlFB(int index)
 {
-    if (index >= 0 && index < (int)nextAllocatedFB) {
+    if ((index >= 0) && (index < HYD_MAX_AXIS_MOTION) &&
+        (HYD_AxisSlots[index] == HYD_AXIS_SLOT_ACTIVE)) {
         return &HYD_MotionControlFB_inst[index];
     }
     return NULL;
@@ -518,7 +531,8 @@ static HYD_BOOL directStopCanCompleteImmediately(const HYD_MotionControlFB* fb)
 
 static HYD_BOOL axisIndexIsAllocated(IEC_SINT axisIndex)
 {
-    return axisIndex >= 0 && axisIndex < (IEC_SINT)nextAllocatedFB;
+    return (axisIndex >= 0) && (axisIndex < (IEC_SINT)HYD_MAX_AXIS_MOTION) &&
+           (HYD_AxisSlots[(int)axisIndex] == HYD_AXIS_SLOT_ACTIVE);
 }
 
 static IEC_WORD commandFailureErrorId(const HYD_MotionControlFB* fb)
@@ -778,10 +792,16 @@ static HYD_DirectStartResult startDirectSegmentExecutionWithKind(HYD_MotionContr
 
 int __HydMotion_framework_Init()
 {
+    ++HYD_FrameworkGeneration;
+    if (HYD_FrameworkGeneration == 0u) {
+        HYD_FrameworkGeneration = 1u;
+    }
+
     for (int i = 0; i < HYD_MAX_AXIS_MOTION; i++) {
         memset(&HYD_MotionControlFB_inst[i], 0, sizeof(HYD_MotionControlFB));
+        HYD_AxisSlots[i] = HYD_AXIS_SLOT_FREE;
     }
-    nextAllocatedFB = 0;
+    HYD_ToggleMechanismPool_Reset();
 
     return 0;
 }
@@ -803,13 +823,19 @@ void __HydMotion_framework_Retrieve()
 
 void __HydMotion_framework_Publish()
 {
-    for (int i = 0; i < (int)nextAllocatedFB; i++) {
+    for (int i = 0; i < HYD_MAX_AXIS_MOTION; i++) {
+        if (HYD_AxisSlots[i] != HYD_AXIS_SLOT_ACTIVE) {
+            continue;
+        }
         HYD_MotionControlFB* fb = &HYD_MotionControlFB_inst[i];
         fb->_simulationCycleTime = (HYD_TIME)dfCycleTime;
         fb->_useFixedCycleTime = true;
     }
 
-    for (int i = 0; i < (int)nextAllocatedFB; i++) {
+    for (int i = 0; i < HYD_MAX_AXIS_MOTION; i++) {
+        if (HYD_AxisSlots[i] != HYD_AXIS_SLOT_ACTIVE) {
+            continue;
+        }
         HYD_MotionControlFB* fb = &HYD_MotionControlFB_inst[i];
         if (fb->_useFixedCycleTime) {
             fb->_simTick++;
@@ -838,29 +864,214 @@ void __HydMotion_framework_Publish()
 
 }
 
+static void clearCreateTransaction(HYD_CREATEMOTION *data__)
+{
+    __SET_VAR(data__->, _RESERVED_AXIS, , (IEC_SINT)-1);
+    __SET_VAR(data__->, _RESERVED_SLOT, , (IEC_USINT)HYD_TOGGLE_SLOT_NONE);
+    __SET_VAR(data__->, _VALIDATION_TOKEN, ,
+              (IEC_USINT)HYD_TOGGLE_VALIDATION_NONE);
+    __SET_VAR(data__->, _CREATE_ACTIVE, , false);
+    __SET_VAR(data__->, _FRAMEWORK_GENERATION, , (IEC_WORD)0);
+}
+
+static void rollbackCreateTransaction(HYD_CREATEMOTION *data__,
+                                      HYD_DiagnosticCode diagnostic)
+{
+    if (__GET_VAR(data__->_CREATE_ACTIVE) &&
+        (__GET_VAR(data__->_FRAMEWORK_GENERATION) ==
+         (IEC_WORD)HYD_FrameworkGeneration)) {
+        IEC_SINT axis = __GET_VAR(data__->_RESERVED_AXIS);
+        IEC_USINT slot = __GET_VAR(data__->_RESERVED_SLOT);
+        IEC_USINT token = __GET_VAR(data__->_VALIDATION_TOKEN);
+
+        if (token != (IEC_USINT)HYD_TOGGLE_VALIDATION_NONE) {
+            HYD_ToggleMechanismPool_ReleaseValidation((HYD_UINT8)token);
+        }
+        if (slot != (IEC_USINT)HYD_TOGGLE_SLOT_NONE) {
+            HYD_ToggleMechanismPool_Release((HYD_UINT8)slot);
+        }
+        if ((axis >= 0) && (axis < (IEC_SINT)HYD_MAX_AXIS_MOTION) &&
+            (HYD_AxisSlots[(int)axis] == HYD_AXIS_SLOT_RESERVED)) {
+            memset(&HYD_MotionControlFB_inst[(int)axis], 0,
+                   sizeof(HYD_MotionControlFB_inst[(int)axis]));
+            HYD_AxisSlots[(int)axis] = HYD_AXIS_SLOT_FREE;
+        }
+    }
+
+    clearCreateTransaction(data__);
+    __SET_VAR(data__->, DONE, , false);
+    __SET_VAR(data__->, BUSY, , false);
+    __SET_VAR(data__->, ERROR, , true);
+    __SET_VAR(data__->, ERRORID, , (IEC_WORD)diagnostic);
+}
+
+static void initializeCreatedAxis(HYD_CREATEMOTION *data__, int axisIndex,
+                                  HYD_MechanismType mechanismType,
+                                  HYD_UINT8 mechanismSlot)
+{
+    HYD_MotionControlFB *fb = &HYD_MotionControlFB_inst[axisIndex];
+
+    HYD_MotionControlFB_Init(fb);
+    fb->_index = (HYD_UINT8)axisIndex;
+    fb->mechanismType = (HYD_UINT8)mechanismType;
+    fb->mechanismSlot = mechanismSlot;
+    fb->FB_STATE = HYD_FB_STATE_IDLE;
+    fb->USE_RECIPE = __GET_VAR(data__->USE_RECIPE);
+    fb->_configuredUseRecipe = fb->USE_RECIPE;
+    fb->FLOW_TO_PUMP_SPEED_GAIN = __GET_VAR(data__->FLOW_TO_PUMPSPEED);
+    fb->PUMP_SPEED_LIMIT = __GET_VAR(data__->PUMPSPEED_LIMIT);
+    fb->_useSimulation = __GET_VAR(data__->USE_SIMULATION);
+    fb->_useFixedCycleTime = true;
+}
+
+static void completeCreateTransaction(HYD_CREATEMOTION *data__, int axisIndex)
+{
+    HYD_AxisSlots[axisIndex] = HYD_AXIS_SLOT_ACTIVE;
+    clearCreateTransaction(data__);
+    __SET_VAR(data__->, AXISID, , (IEC_SINT)axisIndex);
+    __SET_VAR(data__->, DONE, , true);
+    __SET_VAR(data__->, BUSY, , false);
+    __SET_VAR(data__->, ERROR, , false);
+    __SET_VAR(data__->, ERRORID, , (IEC_WORD)HYD_DIAG_CODE_NONE);
+}
+
 void __mcl_cmd_CreateMotion(HYD_CREATEMOTION *data__)
 {
-	/* CreateMotion命令仅负责FB实例的创建与初始化, 不直接加载或启动配方 */
-	IEC_BOOL bDone = __GET_VAR(data__->DONE);
-	if ( !bDone )
-	{
-		int index = allocMotionControlFB();
-		if (index >= 0)
-		{
-			HYD_MotionControlFB* fb = &HYD_MotionControlFB_inst[index];
-			HYD_MotionControlFB_Init(fb);
-			fb->FB_STATE = HYD_FB_STATE_IDLE;
-			fb->USE_RECIPE = __GET_VAR(data__->USE_RECIPE);
-			fb->_configuredUseRecipe = fb->USE_RECIPE;
-			fb->FLOW_TO_PUMP_SPEED_GAIN = __GET_VAR(data__->FLOW_TO_PUMPSPEED);
-            fb->PUMP_SPEED_LIMIT = __GET_VAR(data__->PUMPSPEED_LIMIT);
-            fb->_useSimulation = __GET_VAR(data__->USE_SIMULATION);
-            fb->_useFixedCycleTime = true;
-			
-			__SET_VAR(data__->, DONE, , true);
-            __SET_VAR(data__->, AXISID,, index);
-		}
-	}
+    HYD_MechanismType mechanismType;
+    IEC_SINT axisIndex;
+    IEC_USINT slot;
+    IEC_USINT token;
+    HYD_ToggleValidation *validation;
+    HYD_ToggleError toggleError = HYD_TOGGLE_ERROR_NONE;
+
+    if (__GET_VAR(data__->DONE) || __GET_VAR(data__->ERROR)) {
+        return;
+    }
+
+    if (__GET_VAR(data__->_CREATE_ACTIVE) &&
+        (__GET_VAR(data__->_FRAMEWORK_GENERATION) !=
+         (IEC_WORD)HYD_FrameworkGeneration)) {
+        rollbackCreateTransaction(data__,
+                                  HYD_DIAG_CODE_MECHANISM_CONFIG_BUSY);
+        return;
+    }
+
+    mechanismType = (HYD_MechanismType)__GET_VAR(data__->MECHANISM_TYPE);
+    if (!__GET_VAR(data__->_CREATE_ACTIVE)) {
+        int reservedAxis;
+
+        if ((mechanismType != HYD_MECHANISM_DIRECT) &&
+            (mechanismType != HYD_MECHANISM_FIVE_POINT_TOGGLE)) {
+            rollbackCreateTransaction(data__,
+                                      HYD_DIAG_CODE_MECHANISM_TYPE_INVALID);
+            return;
+        }
+
+        reservedAxis = allocMotionControlFB();
+        if (reservedAxis < 0) {
+            rollbackCreateTransaction(data__, HYD_DIAG_CODE_INTERNAL_ERROR);
+            return;
+        }
+
+        __SET_VAR(data__->, _CREATE_ACTIVE, , true);
+        __SET_VAR(data__->, _FRAMEWORK_GENERATION, ,
+                  (IEC_WORD)HYD_FrameworkGeneration);
+        __SET_VAR(data__->, _RESERVED_AXIS, , (IEC_SINT)reservedAxis);
+        __SET_VAR(data__->, _RESERVED_SLOT, ,
+                  (IEC_USINT)HYD_TOGGLE_SLOT_NONE);
+        __SET_VAR(data__->, _VALIDATION_TOKEN, ,
+                  (IEC_USINT)HYD_TOGGLE_VALIDATION_NONE);
+
+        if (mechanismType == HYD_MECHANISM_DIRECT) {
+            initializeCreatedAxis(data__, reservedAxis, mechanismType,
+                                  HYD_TOGGLE_SLOT_NONE);
+            completeCreateTransaction(data__, reservedAxis);
+            return;
+        }
+
+        {
+            HYD_UINT8 reservedSlot;
+            HYD_UINT8 validationToken;
+            HYD_ToggleGeometryConfig config;
+            HYD_ToggleValidationLimits limits;
+
+            if (!HYD_ToggleMechanismPool_Reserve((HYD_UINT8)reservedAxis,
+                                                 &reservedSlot)) {
+                rollbackCreateTransaction(
+                    data__, HYD_DIAG_CODE_MECHANISM_POOL_EXHAUSTED);
+                return;
+            }
+            __SET_VAR(data__->, _RESERVED_SLOT, , (IEC_USINT)reservedSlot);
+
+            if (!HYD_ToggleMechanismPool_AcquireValidation(
+                    &validationToken)) {
+                rollbackCreateTransaction(
+                    data__, HYD_DIAG_CODE_MECHANISM_VALIDATION_BUSY);
+                return;
+            }
+            __SET_VAR(data__->, _VALIDATION_TOKEN, ,
+                      (IEC_USINT)validationToken);
+
+            validation = HYD_ToggleMechanismPool_GetValidation(
+                validationToken);
+            config = HYD_ToggleKinematics_DefaultConfig();
+            limits = HYD_ToggleKinematics_DefaultValidationLimits();
+            if ((validation == NULL) ||
+                !HYD_ToggleKinematics_BeginValidation(
+                    &config, &limits, validation, &toggleError)) {
+                rollbackCreateTransaction(
+                    data__, HYD_DIAG_CODE_MECHANISM_CONFIG_INVALID);
+                return;
+            }
+        }
+
+        __SET_VAR(data__->, BUSY, , true);
+        __SET_VAR(data__->, ERROR, , false);
+        __SET_VAR(data__->, ERRORID, , (IEC_WORD)HYD_DIAG_CODE_NONE);
+    }
+
+    axisIndex = __GET_VAR(data__->_RESERVED_AXIS);
+    slot = __GET_VAR(data__->_RESERVED_SLOT);
+    token = __GET_VAR(data__->_VALIDATION_TOKEN);
+    validation = HYD_ToggleMechanismPool_GetValidation((HYD_UINT8)token);
+    if ((axisIndex < 0) || (axisIndex >= (IEC_SINT)HYD_MAX_AXIS_MOTION) ||
+        (slot == (IEC_USINT)HYD_TOGGLE_SLOT_NONE) ||
+        (validation == NULL)) {
+        rollbackCreateTransaction(data__, HYD_DIAG_CODE_INTERNAL_ERROR);
+        return;
+    }
+
+    if (!HYD_ToggleKinematics_ValidationStep(validation, 4u,
+                                             &toggleError)) {
+        rollbackCreateTransaction(data__,
+                                  HYD_DIAG_CODE_MECHANISM_CONFIG_INVALID);
+        return;
+    }
+
+    if (!HYD_ToggleKinematics_ValidationDone(validation)) {
+        __SET_VAR(data__->, BUSY, , true);
+        return;
+    }
+
+    {
+        HYD_TogglePreparedConfig prepared;
+
+        if (!HYD_ToggleKinematics_FinishValidation(validation, &prepared,
+                                                   &toggleError) ||
+            !HYD_ToggleMechanismPool_Commit((HYD_UINT8)slot, &prepared,
+                                            true)) {
+            rollbackCreateTransaction(data__,
+                                      HYD_DIAG_CODE_MECHANISM_CONFIG_INVALID);
+            return;
+        }
+    }
+
+    HYD_ToggleMechanismPool_ReleaseValidation((HYD_UINT8)token);
+    __SET_VAR(data__->, _VALIDATION_TOKEN, ,
+              (IEC_USINT)HYD_TOGGLE_VALIDATION_NONE);
+    initializeCreatedAxis(data__, (int)axisIndex,
+                          HYD_MECHANISM_FIVE_POINT_TOGGLE, (HYD_UINT8)slot);
+    completeCreateTransaction(data__, (int)axisIndex);
 }
 
 /* ======================================================================
@@ -1084,7 +1295,7 @@ void __mcl_cmd_Stop(HYD_STOP *data__)
     IEC_BOOL execRising = execute && !__GET_VAR(data__->EXECUTE0);
     IEC_SINT axisIndex = __GET_VAR(data__->AXISID);
 
-    if (axisIndex < 0 || axisIndex >= (IEC_SINT)nextAllocatedFB)
+    if (!axisIndexIsAllocated(axisIndex))
     {
         __SET_VAR(data__->, ERROR, , true);
         __SET_VAR(data__->, ERRORID, , (IEC_WORD)HYD_DIAG_CODE_START_CONTEXT_INVALID);
@@ -1316,7 +1527,7 @@ void __mcl_cmd_MoveAbsolute(HYD_MOVEABSOLUTE *data__)
     IEC_BOOL execRising = execute && !__GET_VAR(data__->EXECUTE0);
     IEC_SINT axisIndex = __GET_VAR(data__->AXISID);
 
-    if (axisIndex < 0 || axisIndex >= (IEC_SINT)nextAllocatedFB)
+    if (!axisIndexIsAllocated(axisIndex))
     {
         __SET_VAR(data__->, ERROR, , true);
         __SET_VAR(data__->, ERRORID, , (IEC_WORD)HYD_DIAG_CODE_START_CONTEXT_INVALID);
@@ -1539,7 +1750,7 @@ void __mcl_cmd_MoveContinuousAbsolute(HYD_MOVECONTINUOUSABSOLUTE *data__)
     IEC_BOOL execRising = execute && !__GET_VAR(data__->EXECUTE0);
     IEC_SINT axisIndex = __GET_VAR(data__->AXISID);
 
-    if (axisIndex < 0 || axisIndex >= (IEC_SINT)nextAllocatedFB)
+    if (!axisIndexIsAllocated(axisIndex))
     {
         __SET_VAR(data__->, ERROR, , true);
         __SET_VAR(data__->, ERRORID, , (IEC_WORD)HYD_DIAG_CODE_START_CONTEXT_INVALID);
@@ -1734,7 +1945,7 @@ void __mcl_cmd_MoveVelocity(HYD_MOVEVELOCITY *data__)
     IEC_BOOL execRising = execute && !__GET_VAR(data__->EXECUTE0);
     IEC_SINT axisIndex = __GET_VAR(data__->AXISID);
 
-    if (axisIndex < 0 || axisIndex >= (IEC_SINT)nextAllocatedFB)
+    if (!axisIndexIsAllocated(axisIndex))
     {
         __SET_VAR(data__->, ERROR, , true);
         __SET_VAR(data__->, ERRORID, , (IEC_WORD)HYD_DIAG_CODE_START_CONTEXT_INVALID);
@@ -1924,7 +2135,7 @@ void __mcl_cmd_Reset(HYD_RESET *data__)
     IEC_BOOL execRising = execute && !__GET_VAR(data__->EXECUTE0);
     IEC_SINT axisIndex = __GET_VAR(data__->AXISID);
 
-    if (axisIndex < 0 || axisIndex >= (IEC_SINT)nextAllocatedFB)
+    if (!axisIndexIsAllocated(axisIndex))
     {
         __SET_VAR(data__->, ERROR, , true);
         __SET_VAR(data__->, ERRORID, , (IEC_WORD)HYD_DIAG_CODE_START_CONTEXT_INVALID);
@@ -1961,7 +2172,7 @@ void __mcl_cmd_PressureHandle(HYD_PRESSUREHANDLE *data__)
     IEC_BOOL execRising = execute && !__GET_VAR(data__->EXECUTE0);
     IEC_SINT axisIndex = __GET_VAR(data__->AXISID);
 
-    if (axisIndex < 0 || axisIndex >= (IEC_SINT)nextAllocatedFB)
+    if (!axisIndexIsAllocated(axisIndex))
     {
         __SET_VAR(data__->, ERROR, , true);
         __SET_VAR(data__->, ERRORID, , (IEC_WORD)HYD_DIAG_CODE_START_CONTEXT_INVALID);
@@ -2126,7 +2337,7 @@ void __mcl_cmd_SetAxisFeedback(HYD_SETAXISFEEDBACK *data__)
     IEC_BOOL enable = __GET_VAR(data__->ENABLE);
     IEC_SINT axisIndex = __GET_VAR(data__->AXISID);
 
-    if (axisIndex < 0 || axisIndex >= (IEC_SINT)nextAllocatedFB)
+    if (!axisIndexIsAllocated(axisIndex))
     {
         __SET_VAR(data__->, ERROR, , true);
         __SET_VAR(data__->, ERRORID, , (IEC_WORD)HYD_DIAG_CODE_START_CONTEXT_INVALID);
@@ -2173,7 +2384,10 @@ void __mcl_cmd_GetPumpRequest(HYD_GETPUMPREQUEST *data__)
     IEC_BOOL sawExtend = false;
     IEC_BOOL sawRetract = false;
 
-    for (int i = 0; i < (int)nextAllocatedFB; i++) {
+    for (int i = 0; i < HYD_MAX_AXIS_MOTION; i++) {
+        if (HYD_AxisSlots[i] != HYD_AXIS_SLOT_ACTIVE) {
+            continue;
+        }
         HYD_MotionControlFB* fb = &HYD_MotionControlFB_inst[i];
         if (!fb->STATE.active) {
             continue;
@@ -2230,7 +2444,7 @@ void __mcl_cmd_ReadStatus(HYD_READSTATUS* data__)
     IEC_BOOL enable = __GET_VAR(data__->ENABLE);
     IEC_SINT axisIndex = __GET_VAR(data__->AXISID);
 
-    if (axisIndex < 0 || axisIndex >= (IEC_SINT)nextAllocatedFB)
+    if (!axisIndexIsAllocated(axisIndex))
     {
         __SET_VAR(data__->, STATE,, 0);
         __SET_VAR(data__->, BUSY,, false);
@@ -2264,7 +2478,7 @@ void __mcl_cmd_ReadError(HYD_READERROR* data__)
     IEC_BOOL enable = __GET_VAR(data__->ENABLE);
     IEC_SINT axisIndex = __GET_VAR(data__->AXISID);
 
-    if (axisIndex < 0 || axisIndex >= (IEC_SINT)nextAllocatedFB)
+    if (!axisIndexIsAllocated(axisIndex))
     {
         __SET_VAR(data__->, ERROR,, false);
         __SET_VAR(data__->, ERRORID,, (IEC_WORD)0);
@@ -2295,7 +2509,7 @@ void __mcl_cmd_ReadSimFeedback(HYD_READSIMFEEDBACK* data__)
     IEC_BOOL enable = __GET_VAR(data__->ENABLE);
     IEC_SINT axisIndex = __GET_VAR(data__->AXISID);
 
-    if (axisIndex < 0 || axisIndex >= (IEC_SINT)nextAllocatedFB)
+    if (!axisIndexIsAllocated(axisIndex))
     {
         __SET_VAR(data__->, ERROR,, false);
         __SET_VAR(data__->, ERRORID,, (IEC_WORD)0);
@@ -2328,7 +2542,7 @@ void __mcl_cmd_ReadParameter(HYD_READPARAMETER *data__)
     IEC_BOOL enable = __GET_VAR(data__->ENABLE);
     IEC_SINT axisIndex = __GET_VAR(data__->AXISID);
 
-    if (axisIndex < 0 || axisIndex >= (IEC_SINT)nextAllocatedFB)
+    if (!axisIndexIsAllocated(axisIndex))
     {
         __SET_VAR(data__->, ERROR,, true);
         __SET_VAR(data__->, ERRORID,, (IEC_WORD)HYD_DIAG_CODE_START_CONTEXT_INVALID);
@@ -2373,7 +2587,7 @@ void __mcl_cmd_WriteParameter(HYD_WRITEPARAMETER *data__)
     IEC_BOOL execRising = execute && !__GET_VAR(data__->EXECUTE0);
     IEC_SINT axisIndex = __GET_VAR(data__->AXISID);
 
-    if (axisIndex < 0 || axisIndex >= (IEC_SINT)nextAllocatedFB)
+    if (!axisIndexIsAllocated(axisIndex))
     {
         __SET_VAR(data__->, ERROR,, true);
         __SET_VAR(data__->, ERRORID,, (IEC_WORD)HYD_DIAG_CODE_START_CONTEXT_INVALID);
@@ -2410,7 +2624,7 @@ void __mcl_cmd_ReadBoolParameter(HYD_READBOOLPARAMETER *data__)
     IEC_BOOL enable = __GET_VAR(data__->ENABLE);
     IEC_SINT axisIndex = __GET_VAR(data__->AXISID);
 
-    if (axisIndex < 0 || axisIndex >= (IEC_SINT)nextAllocatedFB)
+    if (!axisIndexIsAllocated(axisIndex))
     {
         __SET_VAR(data__->, ERROR,, true);
         __SET_VAR(data__->, ERRORID,, (IEC_WORD)HYD_DIAG_CODE_START_CONTEXT_INVALID);
@@ -2455,7 +2669,7 @@ void __mcl_cmd_WriteBoolParameter(HYD_WRITEBOOLPARAMETER *data__)
     IEC_BOOL execRising = execute && !__GET_VAR(data__->EXECUTE0);
     IEC_SINT axisIndex = __GET_VAR(data__->AXISID);
 
-    if (axisIndex < 0 || axisIndex >= (IEC_SINT)nextAllocatedFB)
+    if (!axisIndexIsAllocated(axisIndex))
     {
         __SET_VAR(data__->, ERROR,, true);
         __SET_VAR(data__->, ERRORID,, (IEC_WORD)HYD_DIAG_CODE_START_CONTEXT_INVALID);
