@@ -10,7 +10,12 @@
  * ====================================================================== */
 static HYD_REAL dfCycleTime = 0.001f;  /* 默认周期时间，单位秒；可通过外部接口调整以适配不同PLC扫描周期 */
 
-static HYD_MotionControlFB HYD_MotionControlFB_inst[HYD_MAX_AXIS_MOTION];
+// 全局静态运动控制数组，STM32指定专用内存段，Win32走默认内存,aligned(8)
+static
+#if defined(__GNUC__)
+__attribute__((section(".motionAlgoSection"), aligned(8)))
+#endif
+HYD_MotionControlFB HYD_MotionControlFB_inst[HYD_MAX_AXIS_MOTION];
 
 typedef enum {
     HYD_AXIS_SLOT_FREE = 0,
