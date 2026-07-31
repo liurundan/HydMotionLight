@@ -80,7 +80,7 @@ HYD_ToggleGeometryConfig HYD_ToggleKinematics_DefaultConfig(void)
     HYD_ToggleGeometryConfig config = {
         150.0f, 230.0f, 135.0f, 75.0f, 60.0f,
         130.0f, 100.0f, 378.0f, 202.0f,
-        0.0f, (int8_t)-1, (int8_t)-1, (int8_t)-1
+        0.0f, (int8_t)-1, (int8_t)-1, (int8_t)-1, (int8_t)-1
     };
 
     return config;
@@ -130,7 +130,8 @@ HYD_BOOL HYD_ToggleKinematics_Prepare(const HYD_ToggleGeometryConfig *config,
 
     if (!is_branch_selector_valid(config->sigmaK) ||
         !is_branch_selector_valid(config->signB) ||
-        !is_branch_selector_valid(config->tauS)) {
+        !is_branch_selector_valid(config->tauS) ||
+        !is_branch_selector_valid(config->sigmaC)) {
         set_error(error, HYD_TOGGLE_ERROR_INVALID_BRANCH);
         return 0;
     }
@@ -280,6 +281,9 @@ static HYD_BOOL solve_at(const HYD_TogglePreparedConfig *prepared,
     next.velocityRatio = pxPrime -
                          ((HYD_REAL)prepared->raw.tauS * py * pyPrime * invG);
     next.vs = next.velocityRatio * vm;
+    next.xs *= (HYD_REAL)prepared->raw.sigmaC;
+    next.velocityRatio *= (HYD_REAL)prepared->raw.sigmaC;
+    next.vs *= (HYD_REAL)prepared->raw.sigmaC;
 
     if (!isfinite(next.xs) || !isfinite(next.velocityRatio) ||
         !isfinite(next.vs) || !isfinite(next.radicandK) ||

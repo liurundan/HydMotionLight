@@ -193,6 +193,15 @@ static void test_read_status_reports_mechanism_state(void) {
     fb->STATE.mechanismType = HYD_MECHANISM_FIVE_POINT_TOGGLE;
     fb->STATE.actuatorDirection = HYD_DIRECTION_NEGATIVE;
     fb->STATE.mechanismConfigVersion = 7u;
+    fb->STATE.limitFlags = HYD_LIMIT_FLAG_FLOW | HYD_LIMIT_FLAG_PUMP_SPEED |
+                          HYD_LIMIT_FLAG_PRESSURE | HYD_LIMIT_FLAG_SOFT |
+                          HYD_LIMIT_FLAG_DERATE;
+#if HYD_ENABLE_FLOW_DIAGNOSTIC_TELEMETRY
+    fb->STATE.requestedFlow = 8.5f;
+    fb->STATE.maxFlow = 12.0f;
+    fb->STATE.maxTemplateVelocity = 42.0f;
+    fb->STATE.effectiveCylinderGain = 0.4f;
+#endif
 #if HYD_ENABLE_MECHANISM_TELEMETRY
     fb->STATE.actuatorPosition = 12.5f;
     fb->STATE.actuatorVelocityCommand = -3.25f;
@@ -210,6 +219,23 @@ static void test_read_status_reports_mechanism_state(void) {
                 "ReadStatus should expose actuator direction");
     ASSERT_TRUE(IEC_VAL(rs.MECHANISMCONFIGVERSION) == 7u,
                 "ReadStatus should expose mechanism config version");
+#if HYD_ENABLE_FLOW_DIAGNOSTIC_TELEMETRY
+    ASSERT_FLOAT_EQ(IEC_VAL(rs.REQUESTEDFLOW), 8.5f, 0.001f,
+                    "ReadStatus should expose requested flow before limiting");
+    ASSERT_FLOAT_EQ(IEC_VAL(rs.MAXFLOW), 12.0f, 0.001f,
+                    "ReadStatus should expose pump hardware flow capability");
+    ASSERT_FLOAT_EQ(IEC_VAL(rs.MAXTEMPLATEVELOCITY), 42.0f, 0.001f,
+                    "ReadStatus should expose flow-limited template speed");
+    ASSERT_FLOAT_EQ(IEC_VAL(rs.EFFECTIVECYLINDERGAIN), 0.4f, 0.001f,
+                    "ReadStatus should expose active chamber gain");
+#else
+    ASSERT_FLOAT_EQ(IEC_VAL(rs.REQUESTEDFLOW), 0.0f, 0.0f,
+                    "ReadStatus should omit detailed flow telemetry when disabled");
+#endif
+    ASSERT_TRUE(IEC_VAL(rs.FLOWLIMITACTIVE) && IEC_VAL(rs.PUMPSPEEDLIMITACTIVE) &&
+                IEC_VAL(rs.PRESSURELIMITACTIVE) && IEC_VAL(rs.SOFTLIMITACTIVE) &&
+                IEC_VAL(rs.DERATED),
+                "ReadStatus should expose active limit causes");
 #if HYD_ENABLE_MECHANISM_TELEMETRY
     ASSERT_FLOAT_EQ(IEC_VAL(rs.ACTUATORPOSITION), 12.5f, 0.001f,
                     "ReadStatus should expose actuator position");
@@ -233,6 +259,12 @@ static void test_read_status_reports_mechanism_state(void) {
                     "Disabled ReadStatus should clear actuator velocity");
     ASSERT_FLOAT_EQ(IEC_VAL(rs.VELOCITYRATIO), 0.0f, 0.0f,
                     "Disabled ReadStatus should clear velocity ratio");
+    ASSERT_FLOAT_EQ(IEC_VAL(rs.REQUESTEDFLOW), 0.0f, 0.0f,
+                    "Disabled ReadStatus should clear requested flow");
+    ASSERT_TRUE(!IEC_VAL(rs.FLOWLIMITACTIVE) && !IEC_VAL(rs.PUMPSPEEDLIMITACTIVE) &&
+                !IEC_VAL(rs.PRESSURELIMITACTIVE) && !IEC_VAL(rs.SOFTLIMITACTIVE) &&
+                !IEC_VAL(rs.DERATED),
+                "Disabled ReadStatus should clear limit causes");
 }
 
 static void test_pressure_handle_preserves_legacy_max_flow(void) {

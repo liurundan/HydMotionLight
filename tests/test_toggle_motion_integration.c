@@ -157,7 +157,7 @@ static void test_toggle_mapping_varies_with_position_in_actuator_space(void)
     assert_near(near_open.STATE.velocityRatio,
                 open_solution.velocityRatio, 0.0002f);
 #endif
-    assert(near_open.STATE.actuatorDirection == HYD_DIRECTION_RETRACT);
+    assert(near_open.STATE.actuatorDirection == HYD_DIRECTION_EXTEND);
     assert(near_open.STATE.mechanismConfigVersion == 1u);
 }
 

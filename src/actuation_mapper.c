@@ -163,7 +163,10 @@ HYD_BOOL HYD_ActuationMapper_MapVelocity(
     next.actuatorDirection = direction_from_velocity(next.actuatorVelocity);
     if (next.actuatorDirection == HYD_DIRECTION_HOLD) {
         next.effectiveCylinderGain = 0.0f;
+        next.unlimitedRequestedFlow = 0.0f;
         next.requestedFlow = 0.0f;
+        next.maxTemplateVelocity = 0.0f;
+        next.flowLimitActive = false;
         *output = next;
         set_error(error, HYD_TOGGLE_ERROR_NONE);
         return 1;
@@ -173,15 +176,21 @@ HYD_BOOL HYD_ActuationMapper_MapVelocity(
         return 0;
     }
 
-    next.requestedFlow = fabsf(next.actuatorVelocity) *
-                         next.effectiveCylinderGain;
-    if (!isfinite(next.requestedFlow)) {
+    next.unlimitedRequestedFlow = fabsf(next.actuatorVelocity) *
+                                  next.effectiveCylinderGain;
+    if (!isfinite(next.unlimitedRequestedFlow)) {
         set_error(error, HYD_TOGGLE_ERROR_NONFINITE_RESULT);
         return 0;
     }
+    next.requestedFlow = next.unlimitedRequestedFlow;
+    next.maxTemplateVelocity = 0.0f;
+    next.flowLimitActive = false;
     if ((input->maxFlow > 0.0f) &&
         (next.requestedFlow > input->maxFlow)) {
         next.requestedFlow = input->maxFlow;
+        next.maxTemplateVelocity = input->maxFlow /
+            (next.effectiveCylinderGain * fabsf(next.velocityRatio));
+        next.flowLimitActive = true;
     }
 
     *output = next;

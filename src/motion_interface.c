@@ -28,39 +28,6 @@ static HYD_UINT16 HYD_FrameworkGeneration;
 
 static const HYD_REAL HYD_CONTABS_DIRECTION_VELOCITY_THRESHOLD = 0.01f;
 
-static HYD_MotionDirection resolve_velocity_gain_direction(const HYD_MotionControlFB* fb,
-                                                           const HYD_MotionSegment* segment)
-{
-    if (segment == NULL) {
-        return HYD_DIRECTION_HOLD;
-    }
-
-    if (fb == NULL) {
-        return segment->direction;
-    }
-
-    return HYD_Segment_ResolveDirection(segment, &fb->AXIS_REF, fb->_lastActiveDirection);
-}
-
-static HYD_REAL resolve_velocity_to_flow_gain(const HYD_MotionControlFB* fb,
-                                              const HYD_MotionSegment* segment)
-{
-    HYD_REAL derivedGain;
-    HYD_MotionDirection direction;
-
-    if (fb == NULL || segment == NULL) {
-        return 0.0f;
-    }
-
-    direction = resolve_velocity_gain_direction(fb, segment);
-    derivedGain = HYD_CylinderConfig_GetVelocityToFlowGain(&fb->cylinderConfig, direction);
-    if (derivedGain > 0.0f) {
-        return derivedGain;
-    }
-
-    return segment->velocityToFlowGain;
-}
-
 static int allocMotionControlFB(void)
 {
     int index;
@@ -189,7 +156,6 @@ static HYD_MotionSegment buildPositionSegment(
     const HYD_MotionControlFB* fb)
 {
     HYD_MotionSegment seg;
-    HYD_REAL velocityToFlowGain;
     memset(&seg, 0, sizeof(seg));
 
     seg.segmentTag = HYD_SEGMENT_TYPE_OTHER;
@@ -208,8 +174,7 @@ static HYD_MotionSegment buildPositionSegment(
     seg.positionTolerance = fb->_params.positionTolerance;
     seg.timeoutLimit = fb->_params.timeoutLimit;
 
-    velocityToFlowGain = resolve_velocity_to_flow_gain(fb, &seg);
-    seg.maxFlow = (velocity > 0.0f) ? velocity * velocityToFlowGain : fb->_params.maxFlow;
+    seg.maxFlow = fb->_params.maxFlow;
 
     return seg;
 }
@@ -224,7 +189,6 @@ static HYD_MotionSegment buildVelocitySegment(
     const HYD_MotionControlFB* fb)
 {
     HYD_MotionSegment seg;
-    HYD_REAL velocityToFlowGain;
     memset(&seg, 0, sizeof(seg));
 
     seg.segmentTag = HYD_SEGMENT_TYPE_OTHER;
@@ -242,8 +206,7 @@ static HYD_MotionSegment buildVelocitySegment(
 
     seg.timeoutLimit = 0.0f;
 
-    velocityToFlowGain = resolve_velocity_to_flow_gain(fb, &seg);
-    seg.maxFlow = (velocity > 0.0f) ? velocity * velocityToFlowGain : fb->_params.maxFlow;
+    seg.maxFlow = fb->_params.maxFlow;
 
     return seg;
 }
@@ -1173,6 +1136,7 @@ static HYD_ToggleGeometryConfig toggleConfigurationInputs(
     raw.sigmaK = (int8_t)__GET_VAR(data__->SIGMA_K);
     raw.signB = (int8_t)__GET_VAR(data__->SIGN_B);
     raw.tauS = (int8_t)__GET_VAR(data__->TAU_S);
+    raw.sigmaC = (int8_t)__GET_VAR(data__->SIGMA_C);
     return raw;
 }
 
@@ -1379,6 +1343,7 @@ void __mcl_cmd_ReadToggleMechanism(HYD_READTOGGLEMECHANISM *data__)
     __SET_VAR(data__->, SIGMA_K, , (IEC_SINT)raw->sigmaK);
     __SET_VAR(data__->, SIGN_B, , (IEC_SINT)raw->signB);
     __SET_VAR(data__->, TAU_S, , (IEC_SINT)raw->tauS);
+    __SET_VAR(data__->, SIGMA_C, , (IEC_SINT)raw->sigmaC);
     __SET_VAR(data__->, CONFIG_VERSION, ,
               (IEC_WORD)HYD_ToggleMechanismPool_GetVersion(
                   fb->mechanismSlot));
@@ -2786,6 +2751,15 @@ void __mcl_cmd_ReadStatus(HYD_READSTATUS* data__)
         __SET_VAR(data__->, ACTUATORVELOCITYCOMMAND,, (IEC_REAL)0.0f);
         __SET_VAR(data__->, VELOCITYRATIO,, (IEC_REAL)0.0f);
         __SET_VAR(data__->, MECHANISMCONFIGVERSION,, (IEC_WORD)0u);
+        __SET_VAR(data__->, REQUESTEDFLOW,, (IEC_REAL)0.0f);
+        __SET_VAR(data__->, MAXFLOW,, (IEC_REAL)0.0f);
+        __SET_VAR(data__->, MAXTEMPLATEVELOCITY,, (IEC_REAL)0.0f);
+        __SET_VAR(data__->, EFFECTIVECYLINDERGAIN,, (IEC_REAL)0.0f);
+        __SET_VAR(data__->, FLOWLIMITACTIVE,, false);
+        __SET_VAR(data__->, PUMPSPEEDLIMITACTIVE,, false);
+        __SET_VAR(data__->, PRESSURELIMITACTIVE,, false);
+        __SET_VAR(data__->, SOFTLIMITACTIVE,, false);
+        __SET_VAR(data__->, DERATED,, false);
         return;
     }
 
@@ -2815,6 +2789,27 @@ void __mcl_cmd_ReadStatus(HYD_READSTATUS* data__)
         __SET_VAR(data__->, ACTUATORVELOCITYCOMMAND,, (IEC_REAL)0.0f);
         __SET_VAR(data__->, VELOCITYRATIO,, (IEC_REAL)0.0f);
 #endif
+#if HYD_ENABLE_FLOW_DIAGNOSTIC_TELEMETRY
+        __SET_VAR(data__->, REQUESTEDFLOW,, (IEC_REAL)fb->STATE.requestedFlow);
+        __SET_VAR(data__->, MAXFLOW,, (IEC_REAL)fb->STATE.maxFlow);
+        __SET_VAR(data__->, MAXTEMPLATEVELOCITY,, (IEC_REAL)fb->STATE.maxTemplateVelocity);
+        __SET_VAR(data__->, EFFECTIVECYLINDERGAIN,, (IEC_REAL)fb->STATE.effectiveCylinderGain);
+#else
+        __SET_VAR(data__->, REQUESTEDFLOW,, (IEC_REAL)0.0f);
+        __SET_VAR(data__->, MAXFLOW,, (IEC_REAL)0.0f);
+        __SET_VAR(data__->, MAXTEMPLATEVELOCITY,, (IEC_REAL)0.0f);
+        __SET_VAR(data__->, EFFECTIVECYLINDERGAIN,, (IEC_REAL)0.0f);
+#endif
+        __SET_VAR(data__->, FLOWLIMITACTIVE,,
+                  (fb->STATE.limitFlags & HYD_LIMIT_FLAG_FLOW) != 0u);
+        __SET_VAR(data__->, PUMPSPEEDLIMITACTIVE,,
+                  (fb->STATE.limitFlags & HYD_LIMIT_FLAG_PUMP_SPEED) != 0u);
+        __SET_VAR(data__->, PRESSURELIMITACTIVE,,
+                  (fb->STATE.limitFlags & HYD_LIMIT_FLAG_PRESSURE) != 0u);
+        __SET_VAR(data__->, SOFTLIMITACTIVE,,
+                  (fb->STATE.limitFlags & HYD_LIMIT_FLAG_SOFT) != 0u);
+        __SET_VAR(data__->, DERATED,,
+                  (fb->STATE.limitFlags & HYD_LIMIT_FLAG_DERATE) != 0u);
     }
     else
     {
@@ -2830,6 +2825,15 @@ void __mcl_cmd_ReadStatus(HYD_READSTATUS* data__)
         __SET_VAR(data__->, ACTUATORVELOCITYCOMMAND,, (IEC_REAL)0.0f);
         __SET_VAR(data__->, VELOCITYRATIO,, (IEC_REAL)0.0f);
         __SET_VAR(data__->, MECHANISMCONFIGVERSION,, (IEC_WORD)0u);
+        __SET_VAR(data__->, REQUESTEDFLOW,, (IEC_REAL)0.0f);
+        __SET_VAR(data__->, MAXFLOW,, (IEC_REAL)0.0f);
+        __SET_VAR(data__->, MAXTEMPLATEVELOCITY,, (IEC_REAL)0.0f);
+        __SET_VAR(data__->, EFFECTIVECYLINDERGAIN,, (IEC_REAL)0.0f);
+        __SET_VAR(data__->, FLOWLIMITACTIVE,, false);
+        __SET_VAR(data__->, PUMPSPEEDLIMITACTIVE,, false);
+        __SET_VAR(data__->, PRESSURELIMITACTIVE,, false);
+        __SET_VAR(data__->, SOFTLIMITACTIVE,, false);
+        __SET_VAR(data__->, DERATED,, false);
     }
 
 

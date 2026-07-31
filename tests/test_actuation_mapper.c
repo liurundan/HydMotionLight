@@ -58,21 +58,21 @@ static void test_toggle_mapping_uses_actuator_direction_area(void)
     HYD_ToggleError error = HYD_TOGGLE_ERROR_NONE;
 
     assert(HYD_ActuationMapper_MapVelocity(&input, &output, &error));
-    assert_near(output.actuatorPosition, -63.808094f, 2.0e-3f);
-    assert_near(output.velocityRatio, -0.8083796f, 2.0e-4f);
-    assert_near(output.actuatorVelocity, -8.083796f, 2.0e-3f);
-    assert(output.actuatorDirection == HYD_DIRECTION_RETRACT);
-    assert_near(output.effectiveCylinderGain, 0.06f, 1.0e-7f);
-    assert_near(output.requestedFlow, 0.485028f, 2.0e-4f);
-
-    input.templateVelocity = -10.0f;
-    assert(HYD_ActuationMapper_MapVelocity(&input, &output, &error));
+    assert_near(output.actuatorPosition, 63.808094f, 2.0e-3f);
+    assert_near(output.velocityRatio, 0.8083796f, 2.0e-4f);
+    assert_near(output.actuatorVelocity, 8.083796f, 2.0e-3f);
     assert(output.actuatorDirection == HYD_DIRECTION_EXTEND);
     assert_near(output.effectiveCylinderGain, 0.12f, 1.0e-7f);
     assert_near(output.requestedFlow, 0.9700555f, 3.0e-4f);
+
+    input.templateVelocity = -10.0f;
+    assert(HYD_ActuationMapper_MapVelocity(&input, &output, &error));
+    assert(output.actuatorDirection == HYD_DIRECTION_RETRACT);
+    assert_near(output.effectiveCylinderGain, 0.06f, 1.0e-7f);
+    assert_near(output.requestedFlow, 0.485028f, 2.0e-4f);
 }
 
-static void test_fallback_gain_and_flow_limit(void)
+static void test_fallback_gain_and_hardware_flow_limit(void)
 {
     HYD_TogglePreparedConfig prepared = validated_default();
     HYD_CylinderConfig cylinder = {2000.0f, 0.0f, 0.0f, 0.0f, 0.0f};
@@ -84,13 +84,19 @@ static void test_fallback_gain_and_flow_limit(void)
     HYD_ToggleError error = HYD_TOGGLE_ERROR_NONE;
 
     assert(HYD_ActuationMapper_MapVelocity(&input, &output, &error));
-    assert(output.actuatorDirection == HYD_DIRECTION_RETRACT);
-    assert_near(output.effectiveCylinderGain, 0.2f, 0.0f);
+    assert(output.actuatorDirection == HYD_DIRECTION_EXTEND);
+    assert_near(output.effectiveCylinderGain, 0.12f, 0.0f);
     assert_near(output.requestedFlow, 0.3f, 0.0f);
+    assert_near(output.unlimitedRequestedFlow, 0.9700555f, 4.0e-4f);
+    assert_near(output.maxTemplateVelocity, 3.092607f, 4.0e-4f);
+    assert(output.flowLimitActive);
 
     input.maxFlow = 0.0f;
     assert(HYD_ActuationMapper_MapVelocity(&input, &output, &error));
-    assert_near(output.requestedFlow, 1.6167592f, 4.0e-4f);
+    assert_near(output.requestedFlow, 0.9700555f, 4.0e-4f);
+    assert_near(output.unlimitedRequestedFlow, output.requestedFlow, 0.0f);
+    assert(output.maxTemplateVelocity == 0.0f);
+    assert(!output.flowLimitActive);
 }
 
 static void test_flow_to_template_velocity_uses_dynamic_gain(void)
@@ -105,11 +111,11 @@ static void test_flow_to_template_velocity_uses_dynamic_gain(void)
     HYD_REAL template_velocity = 1234.0f;
 
     assert(HYD_ActuationMapper_FlowToTemplateVelocity(
-        &input, 0.4850278f, &template_velocity, &error));
+        &input, 0.9700555f, &template_velocity, &error));
     assert_near(template_velocity, 10.0f, 3.0e-3f);
 
     assert(HYD_ActuationMapper_FlowToTemplateVelocity(
-        &input, -0.9700555f, &template_velocity, &error));
+        &input, -0.4850278f, &template_velocity, &error));
     assert_near(template_velocity, -10.0f, 3.0e-3f);
 
     input.mechanismType = HYD_MECHANISM_DIRECT;
@@ -128,7 +134,8 @@ static void test_mapping_failures_preserve_outputs(void)
         101.0f, 10.0f, NULL, 0.0f, 0.0f
     };
     HYD_ActuationMapperOutput output = {
-        1.0f, 2.0f, 3.0f, 4.0f, 5.0f, HYD_DIRECTION_HOLD
+        1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f,
+        HYD_DIRECTION_HOLD, true
     };
     HYD_ActuationMapperOutput before = output;
     HYD_ToggleError error = HYD_TOGGLE_ERROR_NONE;
@@ -190,7 +197,7 @@ int main(void)
 {
     test_mechanism_ordinals_and_direct_identity();
     test_toggle_mapping_uses_actuator_direction_area();
-    test_fallback_gain_and_flow_limit();
+    test_fallback_gain_and_hardware_flow_limit();
     test_flow_to_template_velocity_uses_dynamic_gain();
     test_mapping_failures_preserve_outputs();
     test_reverse_ignores_unused_fields_and_zero_needs_no_area();

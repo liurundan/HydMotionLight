@@ -1237,7 +1237,7 @@ static void test_movevelocity_nonpositive_pressure_limit_uses_axis_default(void)
     }
 }
 
-static void test_movevelocity_uses_cylinder_gain_for_flow_limit(void) {
+static void test_movevelocity_keeps_configured_flow_limit(void) {
     HYD_MOVEVELOCITY mv;
     HYD_MotionControlFB* fb;
 
@@ -1271,11 +1271,11 @@ static void test_movevelocity_uses_cylinder_gain_for_flow_limit(void) {
                "MoveVelocity cylinder-gain test should start an active segment");
     ASSERT_TRUE(fabsf(fb->_activeSegment.velocityToFlowGain - 0.6f) <= 0.001f,
                "MoveVelocity should use extend-side cylinder gain");
-    ASSERT_TRUE(fabsf(fb->_activeSegment.maxFlow - 60.0f) <= 0.001f,
-               "MoveVelocity maxFlow should use cylinder-derived velocity gain");
+    ASSERT_TRUE(fabsf(fb->_activeSegment.maxFlow - fb->_params.maxFlow) <= 0.001f,
+               "MoveVelocity maxFlow should remain the configured pump/process limit");
 }
 
-static void test_movecontinuousabsolute_sustain_uses_cylinder_gain(void) {
+static void test_movecontinuousabsolute_sustain_keeps_configured_flow_limit(void) {
     HYD_MOVECONTINUOUSABSOLUTE move;
     HYD_MotionControlFB* fb;
     int axisId;
@@ -1328,8 +1328,8 @@ static void test_movecontinuousabsolute_sustain_uses_cylinder_gain(void) {
                "MoveContinuousAbsolute sustain should use requested negative direction");
     ASSERT_TRUE(fabsf(fb->_activeSegment.velocityToFlowGain - 0.36f) <= 0.001f,
                "MoveContinuousAbsolute sustain should use retract-side cylinder gain");
-    ASSERT_TRUE(fabsf(fb->_activeSegment.maxFlow - 1.8f) <= 0.001f,
-               "MoveContinuousAbsolute sustain maxFlow should use cylinder-derived gain");
+    ASSERT_TRUE(fabsf(fb->_activeSegment.maxFlow - fb->_params.maxFlow) <= 0.001f,
+               "MoveContinuousAbsolute sustain maxFlow should remain the configured pump/process limit");
 }
 
 static void test_movevelocity_rejects_nonfinite_pressure_limit(void) {
@@ -2758,12 +2758,12 @@ static void test_movevelocity_live_update_direction_flip(void) {
     printf("  PASS: MoveVelocity LiveUpdate direction flip\n");
 }
 
-static void test_movevelocity_live_update_direction_flip_updates_flow_limit(void) {
+static void test_movevelocity_live_update_direction_flip_keeps_flow_limit(void) {
     HYD_MotionControlFB fb;
     HYD_MotionSegment segment;
     HYD_LiveUpdateRequest req;
 
-    printf("--- Test: MoveVelocity LiveUpdate direction flip updates flow limit ---\n");
+    printf("--- Test: MoveVelocity LiveUpdate direction flip keeps flow limit ---\n");
 
     memset(&fb, 0, sizeof(fb));
     fb.USE_RECIPE = false;
@@ -2810,14 +2810,14 @@ static void test_movevelocity_live_update_direction_flip_updates_flow_limit(void
 
     ASSERT_TRUE(fabs(fb._activeSegment.velocityToFlowGain - 0.36) < 0.001,
         "Direction flip should recompute gain from retract-side cylinder area");
-    ASSERT_TRUE(fabs(fb._activeSegment.maxFlow - 36.0) < 0.001,
-        "Direction flip should update maxFlow using the recomputed cylinder gain");
+    ASSERT_TRUE(fabs(fb._activeSegment.maxFlow - 60.0) < 0.001,
+        "Direction flip should preserve the configured flow limit");
     ASSERT_TRUE(fabs(fb.DIRECT_SEGMENT.velocityToFlowGain - 0.6) < 0.001,
         "Direction flip should preserve DIRECT_SEGMENT explicit gain as the source fallback");
     ASSERT_TRUE(fabs(fb.DIRECT_SEGMENT.maxFlow - 60.0) < 0.001,
         "Direction flip should preserve DIRECT_SEGMENT flow limit as the source segment value");
 
-    printf("  PASS: MoveVelocity LiveUpdate direction flip updates flow limit\n");
+    printf("  PASS: MoveVelocity LiveUpdate direction flip keeps flow limit\n");
 }
 
 /* Test: MoveAbsolute (POSITION mode) direction flip is rejected when
@@ -3310,8 +3310,8 @@ int main(void) {
     test_movevelocity_maps_deceleration_independently();
     test_movevelocity_maps_explicit_pressure_limit_to_direct_segment();
     test_movevelocity_nonpositive_pressure_limit_uses_axis_default();
-    test_movevelocity_uses_cylinder_gain_for_flow_limit();
-    test_movecontinuousabsolute_sustain_uses_cylinder_gain();
+    test_movevelocity_keeps_configured_flow_limit();
+    test_movecontinuousabsolute_sustain_keeps_configured_flow_limit();
     test_movevelocity_rejects_nonfinite_pressure_limit();
     test_stop_on_idle_axis_immediate_done();
     test_stop_rejects_invalid_axis_index();
@@ -3343,7 +3343,7 @@ int main(void) {
     test_live_update_request_carries_flags_and_direction();
     test_live_update_continuous_suppresses_diagnostic();
     test_movevelocity_live_update_direction_flip();
-    test_movevelocity_live_update_direction_flip_updates_flow_limit();
+    test_movevelocity_live_update_direction_flip_keeps_flow_limit();
     test_moveabsolute_live_update_direction_rejected();
     test_pressurehandle_live_update_direction_rejected();
     test_movevelocity_live_update_negative_velocity_flips_direction();

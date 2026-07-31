@@ -599,6 +599,7 @@ void HYD_CONFIGURETOGGLEMECHANISM_init__(HYD_CONFIGURETOGGLEMECHANISM *data__, B
   __INIT_VAR(data__->SIGMA_K,0,retain)
   __INIT_VAR(data__->SIGN_B,0,retain)
   __INIT_VAR(data__->TAU_S,0,retain)
+  __INIT_VAR(data__->SIGMA_C,-1,retain)
   __INIT_VAR(data__->DONE,__BOOL_LITERAL(FALSE),retain)
   __INIT_VAR(data__->BUSY,__BOOL_LITERAL(FALSE),retain)
   __INIT_VAR(data__->ERROR,__BOOL_LITERAL(FALSE),retain)
@@ -643,6 +644,7 @@ void HYD_READTOGGLEMECHANISM_init__(HYD_READTOGGLEMECHANISM *data__, BOOL retain
   __INIT_VAR(data__->SIGMA_K,0,retain)
   __INIT_VAR(data__->SIGN_B,0,retain)
   __INIT_VAR(data__->TAU_S,0,retain)
+  __INIT_VAR(data__->SIGMA_C,0,retain)
   __INIT_VAR(data__->CONFIG_VERSION,0,retain)
   __INIT_VAR(data__->X_GEOMETRY_MIN,0,retain)
   __INIT_VAR(data__->X_HANDOFF_EFFECTIVE,0,retain)
@@ -777,6 +779,15 @@ void HYD_READSTATUS_init__(HYD_READSTATUS *data__, BOOL retain) {
   __INIT_VAR(data__->ACTUATORVELOCITYCOMMAND,0,retain)
   __INIT_VAR(data__->VELOCITYRATIO,0,retain)
   __INIT_VAR(data__->MECHANISMCONFIGVERSION,0,retain)
+  __INIT_VAR(data__->REQUESTEDFLOW,0,retain)
+  __INIT_VAR(data__->MAXFLOW,0,retain)
+  __INIT_VAR(data__->MAXTEMPLATEVELOCITY,0,retain)
+  __INIT_VAR(data__->EFFECTIVECYLINDERGAIN,0,retain)
+  __INIT_VAR(data__->FLOWLIMITACTIVE,__BOOL_LITERAL(FALSE),retain)
+  __INIT_VAR(data__->PUMPSPEEDLIMITACTIVE,__BOOL_LITERAL(FALSE),retain)
+  __INIT_VAR(data__->PRESSURELIMITACTIVE,__BOOL_LITERAL(FALSE),retain)
+  __INIT_VAR(data__->SOFTLIMITACTIVE,__BOOL_LITERAL(FALSE),retain)
+  __INIT_VAR(data__->DERATED,__BOOL_LITERAL(FALSE),retain)
 }
 
 // Code part
@@ -2772,5 +2783,3 @@ void TESTPRESSURECTRL_body__(TESTPRESSURECTRL *data__) {
 __end:
   return;
 } // TESTPRESSURECTRL_body__() 
-
-

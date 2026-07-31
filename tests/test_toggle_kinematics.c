@@ -26,7 +26,8 @@ static void test_default_prepare(void)
     HYD_ToggleError error = HYD_TOGGLE_ERROR_NONE;
 
     assert_near(config.dc, 378.0f, 1e-5f);
-    assert(HYD_ToggleKinematics_Prepare(&config, &prepared, &error));
+    assert(config.sigmaC == (int8_t)-1);
+    assert(HYD_ToggleKinematics_ValidateBlocking(&config, &prepared, &error));
     assert(error == HYD_TOGGLE_ERROR_NONE);
     assert_near(prepared.aP, 117.0f, 1e-5f);
     assert_near(prepared.bP, -67.349833f, 1e-4f);
@@ -75,13 +76,13 @@ static void test_online_golden_points(void)
     HYD_TogglePreparedConfig prepared;
     HYD_ToggleError error = HYD_TOGGLE_ERROR_NONE;
 
-    assert(HYD_ToggleKinematics_Prepare(&config, &prepared, &error));
+    assert(HYD_ToggleKinematics_ValidateBlocking(&config, &prepared, &error));
     assert(error == HYD_TOGGLE_ERROR_NONE);
 
-    assert_solution_at(&prepared, 0.0f, 64.910771f, -10.150074f);
-    assert_solution_at(&prepared, 50.0f, -20.397682f, -0.935184f);
-    assert_solution_at(&prepared, 101.0f, -63.808094f, -0.808380f);
-    assert_solution_at(&prepared, 202.0f, -138.295657f, -0.520517f);
+    assert_solution_at(&prepared, 0.0f, -64.910771f, 10.150074f);
+    assert_solution_at(&prepared, 50.0f, 20.397682f, 0.935184f);
+    assert_solution_at(&prepared, 101.0f, 63.808094f, 0.808380f);
+    assert_solution_at(&prepared, 202.0f, 138.295657f, 0.520517f);
 }
 
 static void test_default_validation_and_inverse_round_trip(void)
@@ -128,10 +129,10 @@ static void test_default_validation_and_inverse_round_trip(void)
     assert(error == HYD_TOGGLE_ERROR_NONE);
     assert_near(prepared.xGeometryMin, 0.0f, 1e-6f);
     assert_near(prepared.xHandoffEffective, prepared.xGeometryMin, 1e-6f);
-    assert(prepared.xsMin <= -63.808094f);
-    assert(prepared.xsMax >= -63.808094f);
+    assert(prepared.xsMin <= 63.808094f);
+    assert(prepared.xsMax >= 63.808094f);
 
-    assert(HYD_ToggleKinematics_InversePosition(&prepared, -63.808094f, &xm, &error));
+    assert(HYD_ToggleKinematics_InversePosition(&prepared, 63.808094f, &xm, &error));
     assert(error == HYD_TOGGLE_ERROR_NONE);
     assert_near(xm, 101.0f, 2e-4f);
 }
@@ -178,6 +179,40 @@ static void test_analytic_ratio_matches_centered_difference(void)
 
     centered_difference = (upper.xs - lower.xs) / 0.02f;
     assert_near(center.velocityRatio, centered_difference, 0.002f);
+}
+
+static void test_sigma_c_controls_published_actuator_coordinate(void)
+{
+    HYD_ToggleGeometryConfig config = HYD_ToggleKinematics_DefaultConfig();
+    HYD_TogglePreparedConfig prepared;
+    HYD_TogglePreparedConfig default_prepared;
+    HYD_ToggleSolution default_solution;
+    HYD_ToggleSolution geometric_solution;
+    HYD_REAL inverse_xm = 0.0f;
+    HYD_ToggleError error = HYD_TOGGLE_ERROR_NONE;
+
+    assert(HYD_ToggleKinematics_ValidateBlocking(&config, &prepared, &error));
+    default_prepared = prepared;
+    assert(HYD_ToggleKinematics_SolveOnline(&prepared, 101.0f, 10.0f,
+                                            &default_solution, &error));
+    assert(default_solution.velocityRatio > 0.0f);
+    assert(default_solution.vs > 0.0f);
+
+    config.sigmaC = (int8_t)1;
+    assert(HYD_ToggleKinematics_ValidateBlocking(&config, &prepared, &error));
+    assert(HYD_ToggleKinematics_SolveOnline(&prepared, 101.0f, 10.0f,
+                                            &geometric_solution, &error));
+    assert_near(default_solution.xs, -geometric_solution.xs, 2.0e-3f);
+    assert_near(default_solution.velocityRatio,
+                -geometric_solution.velocityRatio, 2.0e-4f);
+    assert_near(default_solution.vs, -geometric_solution.vs, 2.0e-3f);
+    assert_near(prepared.xsMin, -default_prepared.xsMax, 2.0e-3f);
+    assert_near(prepared.xsMax, -default_prepared.xsMin, 2.0e-3f);
+    assert_near(prepared.kMin, -default_prepared.kMax, 2.0e-3f);
+    assert_near(prepared.kMax, -default_prepared.kMin, 2.0e-3f);
+    assert(HYD_ToggleKinematics_InversePosition(
+        &prepared, geometric_solution.xs, &inverse_xm, &error));
+    assert_near(inverse_xm, 101.0f, 2.0e-4f);
 }
 
 static void test_automatic_and_explicit_handoff_bounds(void)
@@ -273,6 +308,17 @@ static void test_nonmonotonic_and_unsafe_validation_protections(void)
     assert(memcmp(&prepared, &before, sizeof(prepared)) == 0);
 }
 
+static void test_invalid_sigma_c_is_rejected(void)
+{
+    HYD_ToggleGeometryConfig config = HYD_ToggleKinematics_DefaultConfig();
+    HYD_TogglePreparedConfig prepared;
+    HYD_ToggleError error = HYD_TOGGLE_ERROR_NONE;
+
+    config.sigmaC = 0;
+    assert(!HYD_ToggleKinematics_Prepare(&config, &prepared, &error));
+    assert(error == HYD_TOGGLE_ERROR_INVALID_BRANCH);
+}
+
 static void test_inverse_rejects_outside_envelope_without_output_change(void)
 {
     HYD_ToggleGeometryConfig config = HYD_ToggleKinematics_DefaultConfig();
@@ -303,7 +349,7 @@ static void test_inverse_uses_validated_increasing_direction(void)
     assert(validate_with_limits(&config, &limits, &prepared, &error));
     assert(HYD_ToggleKinematics_SolveOnline(&prepared, 101.0f, 0.0f,
                                             &solution, &error));
-    assert(solution.velocityRatio > 0.0f);
+    assert(solution.velocityRatio < 0.0f);
     assert(HYD_ToggleKinematics_InversePosition(&prepared, solution.xs,
                                                 &xm, &error));
     assert_near(xm, 101.0f, 2e-4f);
@@ -332,7 +378,8 @@ static void test_explicit_handoff_is_exactly_validated_within_budget(void)
         0x1.50dd3p+7f, 0x1.470496p+7f, 0x1.575054p+6f,
         0x1.acd65cp+6f, 0x1.e883f2p+7f, 0x1.5b9af2p+6f,
         0x1.10a604p+6f, 0x1.6a408p+7f, 0x1.d0c9aap+7f,
-        0x1.663c6ep+7f, (int8_t)-1, (int8_t)1, (int8_t)1
+        0x1.663c6ep+7f, (int8_t)-1, (int8_t)1, (int8_t)1,
+        (int8_t)1
     };
     HYD_ToggleValidationLimits limits = HYD_ToggleKinematics_DefaultValidationLimits();
     HYD_ToggleValidation validation;
@@ -370,8 +417,10 @@ int main(void)
     test_default_validation_and_inverse_round_trip();
     test_full_stroke_unreachable_and_failure_output_preservation();
     test_analytic_ratio_matches_centered_difference();
+    test_sigma_c_controls_published_actuator_coordinate();
     test_automatic_and_explicit_handoff_bounds();
     test_nonmonotonic_and_unsafe_validation_protections();
+    test_invalid_sigma_c_is_rejected();
     test_inverse_rejects_outside_envelope_without_output_change();
     test_inverse_uses_validated_increasing_direction();
     test_inverse_accepts_single_point_handoff_interval();

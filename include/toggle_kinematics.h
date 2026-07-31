@@ -29,7 +29,7 @@ typedef struct {
     HYD_REAL lr, lf, lpf, lpk, ld;
     HYD_REAL hf, hm, dc, sm;
     HYD_REAL xHandoff;
-    int8_t sigmaK, signB, tauS;
+    int8_t sigmaK, signB, tauS, sigmaC;
 } HYD_ToggleGeometryConfig;
 
 typedef struct {

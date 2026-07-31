@@ -153,6 +153,24 @@ static HYD_DiagnosticCode HYD_ToggleErrorToRuntimeDiagnostic(
         : HYD_DIAG_CODE_KINEMATICS_RUNTIME_INVALID;
 }
 
+static HYD_REAL HYD_GetPumpFlowLimit(const HYD_MotionControlFB *fb)
+{
+    HYD_REAL gain;
+    HYD_REAL speed_limit;
+
+    if (fb == NULL) {
+        return 0.0f;
+    }
+    if (HYD_PumpConfig_IsValid(&fb->pumpConfig)) {
+        gain = HYD_PumpConfig_GetFlowToSpeedGain(&fb->pumpConfig);
+        speed_limit = HYD_PumpConfig_GetSpeedLimit(&fb->pumpConfig);
+    } else {
+        gain = fb->FLOW_TO_PUMP_SPEED_GAIN;
+        speed_limit = fb->PUMP_SPEED_LIMIT;
+    }
+    return (gain > 0.0f && speed_limit >= 0.0f) ? speed_limit / gain : 0.0f;
+}
+
 static void HYD_ReportKinematicsRuntimeFault(
     HYD_MotionControlFB *fb,
     HYD_DiagnosticCode code,
@@ -287,13 +305,9 @@ HYD_BOOL HYD_MotionControlFB_MapTemplateVelocity(
 }
 
 static void HYD_RecalculateVelocityFlowLimit(HYD_MotionSegment* segment) {
-    if (segment == NULL ||
-        segment->maxVelocity <= 0.0f ||
-        segment->velocityToFlowGain <= 0.0f) {
-        return;
-    }
-
-    segment->maxFlow = segment->maxVelocity * segment->velocityToFlowGain;
+    (void)segment;
+    /* maxFlow is a configured pump/process capability, never a template
+     * velocity conversion. Toggle kinematics resolve the dynamic request. */
 }
 
 static HYD_TIME HYD_GetSegmentElapsedTime(const HYD_MotionControlFB* fb) {
@@ -962,9 +976,7 @@ static HYD_MotionSegment HYD_BuildContinuousAbsoluteSustainSegment(
     seg.maxVelocity = fabs(ctx->sustainVelocity);
     seg.velocityToFlowGain = fb->_params.velocityToFlowGain;
     HYD_ApplyVelocityToFlowGainResolution(fb, &seg);
-    seg.maxFlow = (seg.maxVelocity > 0.0f)
-        ? seg.maxVelocity * seg.velocityToFlowGain
-        : fb->_params.maxFlow;
+    seg.maxFlow = fb->_params.maxFlow;
     seg.maxPressure = ctx->effectivePressureLimit;
     return seg;
 }
@@ -1214,12 +1226,6 @@ static HYD_BOOL HYD_ApplyLiveUpdateOverrides(const HYD_LiveUpdateRequest* reques
             return false;
         }
         seg->maxVelocity = request->maxVelocity;
-        if (request->maxVelocity > 0.0f) {
-            HYD_REAL derivedFlow = request->maxVelocity * seg->velocityToFlowGain;
-            if (derivedFlow > seg->maxFlow) {
-                seg->maxFlow = derivedFlow;
-            }
-        }
     }
 
     if ((request->flags & HYD_LIVE_UPDATE_ACCELERATION) != 0U) {
@@ -2094,6 +2100,7 @@ static HYD_BOOL HYD_ExecuteActiveSegmentControl(HYD_MotionControlFB* fb,
     memset(pressureOutput, 0, sizeof(*pressureOutput));
     memset(pumpOutput, 0, sizeof(*pumpOutput));
     memset(executionReference, 0, sizeof(*executionReference));
+    fb->STATE.limitFlags = 0u;
 
     {
         HYD_TIME controllerTime = HYD_GetCurrentSegmentTime(fb);
@@ -2164,15 +2171,32 @@ static HYD_BOOL HYD_ExecuteActiveSegmentControl(HYD_MotionControlFB* fb,
 
         {
             HYD_REAL velocityFlowLimit = segment->maxFlow;
+            HYD_REAL pumpFlowLimit = HYD_GetPumpFlowLimit(fb);
             if (segment->targetFlow > 0.0f &&
                 segment->targetFlow < velocityFlowLimit) {
                 velocityFlowLimit = segment->targetFlow;
+            }
+            if (pumpFlowLimit > 0.0f &&
+                (velocityFlowLimit <= 0.0f || pumpFlowLimit < velocityFlowLimit)) {
+                velocityFlowLimit = pumpFlowLimit;
             }
             if (HYD_MotionControlFB_MapTemplateVelocity(
                     fb, segment, plannerOutput->targetVelocity,
                     velocityFlowLimit, &mapped, &mappingCode)) {
                 plannerOutput->targetFlow = mapped.requestedFlow;
                 fb->_plannerState.lastTargetFlow = mapped.requestedFlow;
+#if HYD_ENABLE_FLOW_DIAGNOSTIC_TELEMETRY
+                fb->STATE.requestedFlow = mapped.unlimitedRequestedFlow;
+                fb->STATE.effectiveCylinderGain = mapped.effectiveCylinderGain;
+                fb->STATE.maxTemplateVelocity = mapped.maxTemplateVelocity;
+#endif
+                if (mapped.flowLimitActive) {
+                    fb->STATE.limitFlags |= HYD_LIMIT_FLAG_FLOW;
+                }
+                if ((pumpFlowLimit > 0.0f) &&
+                    (mapped.unlimitedRequestedFlow > pumpFlowLimit)) {
+                    fb->STATE.limitFlags |= HYD_LIMIT_FLAG_PUMP_SPEED;
+                }
             } else {
                 plannerOutput->targetFlow = 0.0f;
                 fb->_plannerState.lastTargetFlow = 0.0f;
@@ -2212,6 +2236,12 @@ static HYD_BOOL HYD_ExecuteActiveSegmentControl(HYD_MotionControlFB* fb,
     }
     pumpInput.direction = plannerOutput->direction;
     HYD_PumpConverter_Execute(&pumpInput, pumpOutput);
+#if HYD_ENABLE_FLOW_DIAGNOSTIC_TELEMETRY
+    fb->STATE.maxFlow = pumpOutput->maxFlow;
+#endif
+    if (pumpOutput->speedLimitActive) {
+        fb->STATE.limitFlags |= HYD_LIMIT_FLAG_PUMP_SPEED;
+    }
 
     executionReference->elapsedTime = elapsed;
     executionReference->pressureReference = (segment->mode == HYD_MODE_PRESSURE_CLOSED_LOOP)
@@ -2801,6 +2831,15 @@ static void HYD_MotionControlFB_RunRunningState(HYD_MotionControlFB* fb) {
 
     plannerOutput.targetFlow = limiterOutput.commandFlow;
     executionReference.flowReference = limiterOutput.commandFlow;
+    if (limiterOutput.pressureLimitActive) {
+        fb->STATE.limitFlags |= HYD_LIMIT_FLAG_PRESSURE;
+    }
+    if (limiterOutput.softLimitActive) {
+        fb->STATE.limitFlags |= HYD_LIMIT_FLAG_SOFT;
+    }
+    if (limiterOutput.derated) {
+        fb->STATE.limitFlags |= HYD_LIMIT_FLAG_DERATE;
+    }
 
     /* 如果 limiter 报告了 FAULT 级诊断，升级 protectionAction 为 STOP */
     if (limiterOutput.diagnosticCode == HYD_DIAG_CODE_OVER_PRESSURE_LIMIT_FAULT ||
@@ -2924,16 +2963,23 @@ static HYD_BOOL HYD_RunRunningStateStopping(HYD_MotionControlFB* fb,
     }
 
     plannerOutput->targetVelocity = decelMag * stopSign;
-    if (!HYD_MotionControlFB_MapTemplateVelocity(
-            fb, segment, plannerOutput->targetVelocity,
-            segment->maxFlow, &mapped, &mappingCode)) {
-        plannerOutput->targetFlow = 0.0f;
-        memset(pumpOutput, 0, sizeof(*pumpOutput));
-        executionReference->flowReference = 0.0f;
-        executionReference->velocityReference = plannerOutput->targetVelocity;
-        HYD_ReportKinematicsRuntimeFault(fb, mappingCode, segment,
-                                         executionReference);
-        return false;
+    {
+        HYD_REAL flow_limit = segment->maxFlow;
+        HYD_REAL pump_flow_limit = HYD_GetPumpFlowLimit(fb);
+        if (pump_flow_limit > 0.0f && pump_flow_limit < flow_limit) {
+            flow_limit = pump_flow_limit;
+        }
+        if (!HYD_MotionControlFB_MapTemplateVelocity(
+                fb, segment, plannerOutput->targetVelocity,
+                flow_limit, &mapped, &mappingCode)) {
+            plannerOutput->targetFlow = 0.0f;
+            memset(pumpOutput, 0, sizeof(*pumpOutput));
+            executionReference->flowReference = 0.0f;
+            executionReference->velocityReference = plannerOutput->targetVelocity;
+            HYD_ReportKinematicsRuntimeFault(fb, mappingCode, segment,
+                                             executionReference);
+            return false;
+        }
     }
     plannerOutput->targetFlow = mapped.requestedFlow;
     fb->_plannerState.lastTargetFlow = mapped.requestedFlow;

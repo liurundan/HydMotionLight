@@ -447,6 +447,14 @@ typedef enum {
     HYD_MECHANISM_FIVE_POINT_TOGGLE = 1
 } HYD_MechanismType;
 
+typedef enum {
+    HYD_LIMIT_FLAG_FLOW = 1u << 0,
+    HYD_LIMIT_FLAG_PUMP_SPEED = 1u << 1,
+    HYD_LIMIT_FLAG_PRESSURE = 1u << 2,
+    HYD_LIMIT_FLAG_SOFT = 1u << 3,
+    HYD_LIMIT_FLAG_DERATE = 1u << 4
+} HYD_LimitFlags;
+
 typedef struct {
     HYD_UINT currentSegmentIndex;
     HYD_BOOL active;
@@ -455,6 +463,13 @@ typedef struct {
     HYD_REAL plannedVelocity;             /* mm/s, signed */
     HYD_REAL plannedFlow;                 /* L/min, nonnegative pump-side magnitude */
     HYD_REAL commandedPumpSpeed;          /* rpm, nonnegative */
+#if HYD_ENABLE_FLOW_DIAGNOSTIC_TELEMETRY
+    HYD_REAL requestedFlow;               /* L/min before hardware/protection clipping */
+    HYD_REAL maxFlow;                     /* L/min pump hardware capability */
+    HYD_REAL maxTemplateVelocity;         /* mm/s at current toggle ratio and active chamber */
+    HYD_REAL effectiveCylinderGain;       /* L/min per actuator mm/s */
+#endif
+    HYD_UINT8 limitFlags;
 #if HYD_ENABLE_EXECUTION_REFERENCE
     HYD_ExecutionReference references;    /* Current runtime reference bundle shared by diagnostics/completion/HMI */
 #endif

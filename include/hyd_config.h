@@ -97,6 +97,13 @@
  */
 #define HYD_ENABLE_EXECUTION_REFERENCE 1
 
+/* Detailed flow/kinematics diagnostics are useful for commissioning, but can
+ * be compiled out on constrained embedded targets. Core final command flow,
+ * pump RPM and limit flags remain available in all builds. */
+#ifndef HYD_ENABLE_FLOW_DIAGNOSTIC_TELEMETRY
+#define HYD_ENABLE_FLOW_DIAGNOSTIC_TELEMETRY 0
+#endif
+
 /* ============================================================================
  * 4. 验证与保护
  * ============================================================================ */

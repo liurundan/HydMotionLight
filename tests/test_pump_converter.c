@@ -22,6 +22,8 @@ static void test_basic_conversion(void) {
 
     assert(fabs(output.commandFlow - 12.5) < 0.001);
     assert(fabs(output.pumpSpeed - 1000.0) < 0.001);
+    assert(fabs(output.maxFlow - 25.0) < 0.001);
+    assert(!output.speedLimitActive);
     printf("✓ Basic pump conversion test passed\n");
 }
 
@@ -39,6 +41,8 @@ static void test_pump_limit_back_projects_flow(void) {
 
     assert(fabs(output.commandFlow - 25.0) < 0.001);
     assert(fabs(output.pumpSpeed - 2500.0) < 0.001);
+    assert(fabs(output.maxFlow - 25.0) < 0.001);
+    assert(output.speedLimitActive);
     printf("✓ Pump speed limit back-projection test passed\n");
 }
 

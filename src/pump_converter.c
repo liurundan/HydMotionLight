@@ -16,6 +16,8 @@ void HYD_PumpConverter_Execute(const HYD_PumpConverterInput* input,
 
     output->commandFlow = 0.0;
     output->pumpSpeed = 0.0;
+    output->maxFlow = 0.0;
+    output->speedLimitActive = false;
 
     if (input == NULL) {
         return;
@@ -38,11 +40,13 @@ void HYD_PumpConverter_Execute(const HYD_PumpConverterInput* input,
      * 方向信息由 input->direction 字段和调用方维护。
      * 负流量下限 = -pumpSpeedLimit * RATIO / gain = -maxFlow * RATIO */
     maxFlowFromPumpLimit = input->pumpSpeedLimit / input->flowToPumpSpeedGain;
+    output->maxFlow = maxFlowFromPumpLimit;
     output->commandFlow = HYD_ClampReal(requestedFlow,
         -maxFlowFromPumpLimit * HYD_PUMP_NEGATIVE_SPEED_RATIO,
         maxFlowFromPumpLimit);
 
     output->pumpSpeed = output->commandFlow * input->flowToPumpSpeedGain;
+    output->speedLimitActive = output->commandFlow != requestedFlow;
 
 }
 

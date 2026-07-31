@@ -1028,6 +1028,7 @@
 						<variable name="SIGMA_K"><type><SINT /></type></variable>
 						<variable name="SIGN_B"><type><SINT /></type></variable>
 						<variable name="TAU_S"><type><SINT /></type></variable>
+						<variable name="SIGMA_C"><type><SINT /></type><initialValue><simpleValue value="-1" /></initialValue></variable>
 					</inputVars>
 					<outputVars>
 						<variable name="DONE"><type><BOOL /></type></variable>
@@ -1069,6 +1070,7 @@
 						<variable name="SIGMA_K"><type><SINT /></type></variable>
 						<variable name="SIGN_B"><type><SINT /></type></variable>
 						<variable name="TAU_S"><type><SINT /></type></variable>
+						<variable name="SIGMA_C"><type><SINT /></type></variable>
 						<variable name="CONFIG_VERSION"><type><WORD /></type></variable>
 						<variable name="X_GEOMETRY_MIN"><type><LREAL /></type></variable>
 						<variable name="X_HANDOFF_EFFECTIVE"><type><LREAL /></type></variable>
@@ -1276,6 +1278,15 @@
 						<variable name="ACTUATORVELOCITYCOMMAND"><type><REAL /></type></variable>
 						<variable name="VELOCITYRATIO"><type><REAL /></type></variable>
 						<variable name="MECHANISMCONFIGVERSION"><type><WORD /></type></variable>
+						<variable name="REQUESTEDFLOW"><type><REAL /></type></variable>
+						<variable name="MAXFLOW"><type><REAL /></type></variable>
+						<variable name="MAXTEMPLATEVELOCITY"><type><REAL /></type></variable>
+						<variable name="EFFECTIVECYLINDERGAIN"><type><REAL /></type></variable>
+						<variable name="FLOWLIMITACTIVE"><type><BOOL /></type></variable>
+						<variable name="PUMPSPEEDLIMITACTIVE"><type><BOOL /></type></variable>
+						<variable name="PRESSURELIMITACTIVE"><type><BOOL /></type></variable>
+						<variable name="SOFTLIMITACTIVE"><type><BOOL /></type></variable>
+						<variable name="DERATED"><type><BOOL /></type></variable>
 					</outputVars>
 				</interface>
 				<body>

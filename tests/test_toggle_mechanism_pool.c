@@ -172,7 +172,13 @@ static void test_resource_budget(void)
            slot_bytes, validation_bytes, motion_fb_bytes);
     assert(slot_bytes <= 112U);
     assert(validation_bytes <= 160U);
-    assert(motion_fb_bytes <= HYD_BASELINE_MOTION_FB_BYTES + 32U);
+    assert(motion_fb_bytes <= HYD_BASELINE_MOTION_FB_BYTES +
+#if HYD_ENABLE_FLOW_DIAGNOSTIC_TELEMETRY
+           56U
+#else
+           32U
+#endif
+    );
 }
 
 int main(void)

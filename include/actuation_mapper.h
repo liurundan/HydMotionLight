@@ -18,8 +18,11 @@ typedef struct {
     HYD_REAL velocityRatio;
     HYD_REAL actuatorVelocity;
     HYD_REAL effectiveCylinderGain;
+    HYD_REAL unlimitedRequestedFlow;
     HYD_REAL requestedFlow;
+    HYD_REAL maxTemplateVelocity;
     HYD_MotionDirection actuatorDirection;
+    HYD_BOOL flowLimitActive;
 } HYD_ActuationMapperOutput;
 
 HYD_BOOL HYD_ActuationMapper_MapVelocity(

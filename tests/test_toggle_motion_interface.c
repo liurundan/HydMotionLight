@@ -51,6 +51,7 @@ static void set_config_inputs(HYD_CONFIGURETOGGLEMECHANISM *configure,
     IEC_VAL(configure->SIGMA_K) = raw->sigmaK;
     IEC_VAL(configure->SIGN_B) = raw->signB;
     IEC_VAL(configure->TAU_S) = raw->tauS;
+    IEC_VAL(configure->SIGMA_C) = raw->sigmaC;
 }
 
 static void configure_until_terminal(HYD_CONFIGURETOGGLEMECHANISM *configure)
@@ -127,6 +128,7 @@ static void test_toggle_create_validates_before_activation(void)
     raw = HYD_ToggleMechanismPool_GetRaw(axis->mechanismSlot);
     assert(raw != NULL);
     assert(fabsf(raw->dc - 378.0f) < 1e-5f);
+    assert(raw->sigmaC == (int8_t)-1);
     assert(HYD_ToggleMechanismPool_UsingDefaults(axis->mechanismSlot));
     assert(HYD_ToggleMechanismPool_GetVersion(axis->mechanismSlot) == 1u);
 }
@@ -256,6 +258,7 @@ static void test_configure_latches_inputs_and_reads_committed_state(void)
     __HydMotion_framework_Init();
     axis = create_toggle_axis();
     raw.dc = 377.5f;
+    raw.sigmaC = (int8_t)1;
     set_config_inputs(&configure, axis, &raw);
 
     __mcl_cmd_ConfigureToggleMechanism(&configure);
@@ -265,6 +268,7 @@ static void test_configure_latches_inputs_and_reads_committed_state(void)
 
     read = read_toggle(axis);
     assert(fabs(IEC_VAL(read.DC) - 378.0) < 1e-9);
+    assert(IEC_VAL(read.SIGMA_C) == -1);
     assert(IEC_VAL(read.CONFIG_VERSION) == 1u);
 
     IEC_VAL(configure.DC) = 400.0;
@@ -275,6 +279,7 @@ static void test_configure_latches_inputs_and_reads_committed_state(void)
 
     read = read_toggle(axis);
     assert(fabs(IEC_VAL(read.DC) - 377.5) < 1e-9);
+    assert(IEC_VAL(read.SIGMA_C) == 1);
     assert(IEC_VAL(read.CONFIG_VERSION) == 2u);
     assert(!IEC_VAL(read.USING_DEFAULTS));
 }
