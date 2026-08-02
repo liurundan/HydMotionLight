@@ -4,6 +4,24 @@ project(HydroMotionLib C)
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
+# 跨平台数学库处理：
+# - Linux / 类Unix：数学函数（sqrt/sin...）需显式链接 libm
+# - MinGW-w64 (Windows)：数学函数已包含在 C 运行时中，不存在独立的 libm，
+#   故 Windows 下不链接 m，否则链接阶段报 "cannot find -lm"。
+if(MINGW)
+    set(HYD_MATH_LIB "")
+else()
+    find_library(HYD_MATH_LIB NAMES m)
+endif()
+
+# MinGW-w64 下部分示例/测试用到 nanosleep、clock_gettime 等 POSIX 函数，
+# 其实现位于 winpthread，需显式链接；Linux 下这些函数已在 libc 中，无需额外链接。
+if(MINGW)
+    set(HYD_THREAD_LIB winpthread)
+else()
+    set(HYD_THREAD_LIB "")
+endif()
+
 set(HYDRO_INCLUDE_DIRS
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/include/matiec/lib/C
@@ -22,7 +40,7 @@ list(FILTER HYDRO_CORE_SRCS EXCLUDE REGEX ".*/sim/.*\\.c$")
 
 add_library(HydroMotionLib STATIC ${HYDRO_CORE_SRCS})
 target_include_directories(HydroMotionLib PUBLIC ${HYDRO_INCLUDE_DIRS})
-target_link_libraries(HydroMotionLib PUBLIC m)
+target_link_libraries(HydroMotionLib PUBLIC ${HYD_MATH_LIB})
 
 # ==================================================================
 # 独立仿真器库 (HydroSimLib) - 仅用于集成测试
@@ -33,7 +51,7 @@ file(GLOB HYDRO_SIM_SRCS
 )
 add_library(HydroSimLib STATIC ${HYDRO_SIM_SRCS})
 target_include_directories(HydroSimLib PUBLIC ${HYDRO_INCLUDE_DIRS})
-target_link_libraries(HydroSimLib PUBLIC m)
+target_link_libraries(HydroSimLib PUBLIC ${HYD_MATH_LIB})
 
 add_executable(test_motion_planner tests/test_motion_planner.c)
 target_link_libraries(test_motion_planner PRIVATE HydroMotionLib)
@@ -106,6 +124,16 @@ target_link_libraries(test_pressure_model PRIVATE HydroMotionLib HydroSimLib)
 add_executable(test_pressure_hold_diagnosis tests/test_pressure_hold_diagnosis.c)
 target_link_libraries(test_pressure_hold_diagnosis PRIVATE HydroMotionLib HydroSimLib)
 
+# 齿轮泵脉动补偿模块单元测试（相位分箱 LUT，STM32 友好热路径）
+add_executable(test_pressure_ripple_comp tests/test_pressure_ripple_comp.c)
+target_link_libraries(test_pressure_ripple_comp PRIVATE HydroMotionLib)
+add_test(NAME test_pressure_ripple_comp COMMAND test_pressure_ripple_comp)
+
+# 压力闭环控制算法仿真 harness（伺服泵控：K=4.5/τ=0.1s，齿轮泵脉动+噪声，PI/RBF-PI/RBF-PID 对比，电机位置前馈补偿）
+add_executable(sim_pressure_control tests/sim_pressure_control.c)
+target_link_libraries(sim_pressure_control PRIVATE HydroMotionLib HydroSimLib)
+add_test(NAME sim_pressure_control COMMAND sim_pressure_control)
+
 # ==================================================================
 # IEC FB接口层测试
 # ==================================================================
@@ -177,33 +205,33 @@ add_executable(test_vp_bumpless_reverse tests/test_vp_bumpless_reverse.c)
 target_link_libraries(test_vp_bumpless_reverse PRIVATE HydroMotionLib)
 
 add_executable(test_pump_cylinder_config tests/test_pump_cylinder_config.c)
-target_link_libraries(test_pump_cylinder_config PRIVATE HydroMotionLib m)
+target_link_libraries(test_pump_cylinder_config PRIVATE HydroMotionLib ${HYD_MATH_LIB})
 add_test(NAME test_pump_cylinder_config COMMAND test_pump_cylinder_config)
 
 add_executable(test_toggle_kinematics tests/test_toggle_kinematics.c)
-target_link_libraries(test_toggle_kinematics PRIVATE HydroMotionLib m)
+target_link_libraries(test_toggle_kinematics PRIVATE HydroMotionLib ${HYD_MATH_LIB})
 
 add_executable(test_toggle_mechanism_pool tests/test_toggle_mechanism_pool.c)
-target_link_libraries(test_toggle_mechanism_pool PRIVATE HydroMotionLib m)
+target_link_libraries(test_toggle_mechanism_pool PRIVATE HydroMotionLib ${HYD_MATH_LIB})
 
 add_executable(test_actuation_mapper tests/test_actuation_mapper.c)
-target_link_libraries(test_actuation_mapper PRIVATE HydroMotionLib m)
+target_link_libraries(test_actuation_mapper PRIVATE HydroMotionLib ${HYD_MATH_LIB})
 
 add_executable(test_toggle_motion_interface tests/test_toggle_motion_interface.c)
-target_link_libraries(test_toggle_motion_interface PRIVATE HydroMotionLib m)
+target_link_libraries(test_toggle_motion_interface PRIVATE HydroMotionLib ${HYD_MATH_LIB})
 
 add_executable(test_toggle_motion_integration tests/test_toggle_motion_integration.c)
-target_link_libraries(test_toggle_motion_integration PRIVATE HydroMotionLib m)
+target_link_libraries(test_toggle_motion_integration PRIVATE HydroMotionLib ${HYD_MATH_LIB})
 
 add_executable(test_toggle_hydraulic_sim tests/test_toggle_hydraulic_sim.c)
-target_link_libraries(test_toggle_hydraulic_sim PRIVATE HydroMotionLib HydroSimLib m)
+target_link_libraries(test_toggle_hydraulic_sim PRIVATE HydroMotionLib HydroSimLib ${HYD_MATH_LIB})
 
 add_executable(main tests/main.c)
-target_link_libraries(main PRIVATE HydroMotionLib)
+target_link_libraries(main PRIVATE HydroMotionLib ${HYD_THREAD_LIB})
 
 # Performance benchmark executable
 add_executable(benchmark_performance tests/benchmark_performance.c)
-target_link_libraries(benchmark_performance PRIVATE HydroMotionLib)
+target_link_libraries(benchmark_performance PRIVATE HydroMotionLib ${HYD_THREAD_LIB})
 # benchmark_performance intentionally NOT registered with add_test():
 # performance benchmarks should be run in a separate, non-blocking CI job
 # to avoid flakiness in the main test suite.

@@ -2121,7 +2121,29 @@ static HYD_BOOL HYD_ExecuteActiveSegmentControl(HYD_MotionControlFB* fb,
     if (segment->mode == HYD_MODE_PRESSURE_CLOSED_LOOP) {
         pressureInput.targetPressure = rampOutput->rampedPressure;
         pressureInput.measuredPressure = fb->AXIS_REF.pressure;
-        pressureInput.feedforwardFlow = segment->targetFlow;
+        {
+            HYD_REAL ffBase = (segment->systemGain > 1.0e-4f)
+                            ? (rampOutput->rampedPressure / segment->systemGain)
+                            : segment->targetFlow;
+            HYD_REAL rippleFF = 0.0f;
+            HYD_BOOL rippleEn = fb->ENABLE_RIPPLE_COMP
+                             && (segment->rippleCompEnable != 0)
+                             && (fb->_params.rippleCompEnable != 0);
+            if (rippleEn) {
+                HYD_REAL eP = fb->AXIS_REF.pressure - rampOutput->rampedPressure;
+                HYD_UINT8 rippleSteady = HYD_PressureSteadyGate_Update(&fb->_rippleGate, eP);
+                if (segment->systemGain > 1.0e-4f) {
+                    HYD_PressureRippleComp_SetGain(&fb->_rippleComp, 1.0f / segment->systemGain);
+                }
+                HYD_PressureRippleComp_Update(&fb->_rippleComp, eP,
+                                              fb->AXIS_REF.motorAngleRev,
+                                              fb->PUMP_SPEED, deltaTime, 1u, rippleSteady);
+                rippleFF = HYD_PressureRippleComp_GetFF(&fb->_rippleComp,
+                                                        fb->AXIS_REF.motorAngleRev,
+                                                        fb->PUMP_SPEED, deltaTime, 1u);
+            }
+            pressureInput.feedforwardFlow = ffBase + rippleFF;
+        }
         pressureInput.outputMin = -5.0;
 
         pressureInput.outputMax = segment->maxFlow;
@@ -3291,6 +3313,10 @@ void HYD_MotionControlFB_Init(HYD_MotionControlFB* fb) {
     HYD_RampController_Init(&fb->_rampController, 0.0, 0.0);
     memset(&fb->_plannerState, 0, sizeof(fb->_plannerState));
     HYD_PressureController_ClearState(&fb->_pressureController);
+    HYD_PressureRippleComp_Reset(&fb->_rippleComp);
+    HYD_PressureRippleComp_SetEnabled(&fb->_rippleComp, 1u);
+    HYD_PressureRippleComp_SetGain(&fb->_rippleComp, 1.0f / 4.5f);
+    HYD_PressureSteadyGate_Reset(&fb->_rippleGate, 64u, 10.0f);
     HYD_ClearPendingCommand(fb);
     HYD_ClearDirectPendingSlot(fb);
     HYD_StateReporter_RefreshStandardOutputs(fb);
@@ -3351,6 +3377,7 @@ void HYD_MotionControlFB_Init(HYD_MotionControlFB* fb) {
     fb->_params.pressureControllerType = (HYD_REAL)HYD_PRESSURE_CONTROLLER_PI;
     fb->_params.defaultTargetFlow = 5.0f;
     fb->_params.useSimulation = false;
+    fb->_params.rippleCompEnable = true;
 
     /* Legacy defaults — used when pumpConfig/cylinderConfig are not configured.
      * pumpConfig and cylinderConfig are zero after memset — inactive by default. */
@@ -3490,6 +3517,10 @@ void HYD_MotionControlFB_SoftReset(HYD_MotionControlFB* fb) {
     HYD_RampController_Init(&fb->_rampController, 0.0, 0.0);
     memset(&fb->_plannerState, 0, sizeof(fb->_plannerState));
     HYD_PressureController_ClearState(&fb->_pressureController);
+    HYD_PressureRippleComp_Reset(&fb->_rippleComp);
+    HYD_PressureRippleComp_SetEnabled(&fb->_rippleComp, 1u);
+    HYD_PressureRippleComp_SetGain(&fb->_rippleComp, 1.0f / 4.5f);
+    HYD_PressureSteadyGate_Reset(&fb->_rippleGate, 64u, 10.0f);
     HYD_ClearPendingCommand(fb);
     HYD_ClearDirectPendingSlot(fb);
 
@@ -4355,6 +4386,10 @@ HYD_BOOL HYD_MotionControlFB_ApplyLiveUpdate(HYD_MotionControlFB* fb,
 HYD_BOOL HYD_MotionControlFB_ReadBoolParameter(const HYD_MotionControlFB* fb, int paramNumber, HYD_BOOL* value)
 {
     if (fb == NULL || value == NULL) return false;
+    if (paramNumber == HYD_PARAM_RIPPLE_COMP_ENABLE) {
+        *value = fb->_params.rippleCompEnable;
+        return true;
+    }
     if (paramNumber != HYD_PARAM_USE_SIMULATION) return false;
 
     *value = fb->_params.useSimulation;
@@ -4364,6 +4399,10 @@ HYD_BOOL HYD_MotionControlFB_ReadBoolParameter(const HYD_MotionControlFB* fb, in
 HYD_BOOL HYD_MotionControlFB_WriteBoolParameter(HYD_MotionControlFB* fb, int paramNumber, HYD_BOOL value)
 {
     if (fb == NULL) return false;
+    if (paramNumber == HYD_PARAM_RIPPLE_COMP_ENABLE) {
+        fb->_params.rippleCompEnable = value;
+        return true;
+    }
     if (paramNumber != HYD_PARAM_USE_SIMULATION) return false;
 
     fb->_params.useSimulation = value;

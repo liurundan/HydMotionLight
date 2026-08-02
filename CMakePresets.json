@@ -7,13 +7,29 @@
             "description": "Sets Unix Makefiles generator, build and install directory",
             "generator": "Unix Makefiles",
             "binaryDir": "${sourceDir}/out/build/${presetName}",
-            "environment": {"PATH": "/usr/bin/"},
+            "environment": {
+                "PATH": "/usr/bin/"
+            },
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Debug",
                 "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/cmake/unixgcc_toolchain.cmake",
                 "CMAKE_INSTALL_PREFIX": "${sourceDir}/out/install/${presetName}"
             }
-
+        },
+        {
+            "name": "mingw",
+            "displayName": "MinGW (Windows) build",
+            "description": "Configure using MinGW-w64 gcc from D:/mingw64/bin",
+            "generator": "MinGW Makefiles",
+            "binaryDir": "${sourceDir}/out/build/${presetName}",
+            "environment": {
+                "PATH": "D:/mingw64/bin/"
+            },
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/cmake/mingw_toolchain.cmake",
+                "CMAKE_INSTALL_PREFIX": "${sourceDir}/out/install/${presetName}"
+            }
         },
         {
             "name": "coverage",
@@ -21,7 +37,9 @@
             "description": "Same as unixgcc but with --coverage -O0 -g and linker --coverage",
             "generator": "Unix Makefiles",
             "binaryDir": "${sourceDir}/out/build/${presetName}",
-            "environment": {"PATH": "/usr/bin/"},
+            "environment": {
+                "PATH": "/usr/bin/"
+            },
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Debug",
                 "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/cmake/coverage_toolchain.cmake",
@@ -34,15 +52,27 @@
             "name": "unixgcc",
             "displayName": "unixgcc Debug",
             "configurePreset": "unixgcc",
-            "targets": ["all"],
+            "targets": [
+                "all"
+            ],
             "configuration": "Debug"
-
+        },
+        {
+            "name": "mingw",
+            "displayName": "mingw Debug",
+            "configurePreset": "mingw",
+            "targets": [
+                "all"
+            ],
+            "configuration": "Debug"
         },
         {
             "name": "coverage",
             "displayName": "Coverage build",
             "configurePreset": "coverage",
-            "targets": ["all"],
+            "targets": [
+                "all"
+            ],
             "configuration": "Debug"
         }
     ]

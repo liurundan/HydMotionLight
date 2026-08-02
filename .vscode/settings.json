@@ -1,4 +1,11 @@
 {
-    //"cmake.sourceDirectory": "/home/dan/project/hdy-motion-light",
-    "cmake.useCMakePresets": "always"
+    // 强制使用 CMakePresets.json（其中包含 mingw preset）
+    "cmake.useCMakePresets": "always",
+    // 打开文件夹时自动用 mingw preset 配置，进入 IDE 即可直接编译/调试
+    "cmake.configureOnOpen": true,
+    // 默认配置/构建均使用 mingw preset（Windows + MinGW-w64）
+    "cmake.configurePreset": "mingw",
+    "cmake.buildPreset": "mingw",
+    // 按 F5 调试前自动构建当前目标，免去手动编译
+    "cmake.buildBeforeDebug": true
 }

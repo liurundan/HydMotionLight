@@ -2,29 +2,29 @@
     "version": "2.0.0",
     "tasks": [
         {
-            "label": "CMake: Clean Rebuild",
-            "dependsOn": [
-                "CMake: Clean",
-                "CMake: Build"
-            ],
-            "problemMatcher": []
-        },
-        {
-            "label": "CMake: Clean",
+            "label": "CMake: Configure (mingw)",
             "type": "shell",
-            "command": "cmake --build ${cmake.buildDirectory} --target clean",
-            "problemMatcher": []
+            "command": "cmake --preset mingw",
+            "problemMatcher": [],
+            "detail": "使用 mingw preset 生成构建系统（D:/mingw64/bin/gcc）"
         },
         {
-            "label": "CMake: Build", 
-            "type": "cmake",
-            "command": "build",
-            "preset": "unixgcc",
+            "label": "CMake: Build (mingw)",
+            "type": "shell",
+            "command": "cmake --build --preset mingw",
             "group": {
                 "kind": "build",
                 "isDefault": true
             },
-            "problemMatcher": []
+            "problemMatcher": [ "$gcc" ],
+            "detail": "用 mingw preset 编译全部库与测试用例"
+        },
+        {
+            "label": "CMake: Clean (mingw)",
+            "type": "shell",
+            "command": "cmake --build out/build/mingw --target clean",
+            "problemMatcher": [],
+            "detail": "清理 mingw 构建产物"
         }
     ]
 }

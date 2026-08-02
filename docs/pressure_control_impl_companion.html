@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>压力闭环控制工程实施方案 · 设计伴侣</title>
+<style>
+  :root{
+    --bg:#ffffff; --panel:#f6f8fa; --ink:#1f2328; --muted:#57606a;
+    --line:#d0d7de; --accent:#0969da; --green:#1a7f37; --amber:#9a6700;
+    --red:#cf222e; --purple:#8250df;
+  }
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+    background:var(--bg);color:var(--ink);margin:0;padding:24px;line-height:1.6;}
+  h1{font-size:22px;margin:0 0 4px}
+  h2{font-size:17px;margin:28px 0 8px;border-left:4px solid var(--accent);padding-left:8px}
+  p{margin:6px 0;color:var(--ink)}
+  .sub{color:var(--muted);font-size:13px;margin-top:0}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin:12px 0}
+  svg{width:100%;height:auto;display:block}
+  .legend{font-size:12px;color:var(--muted);margin-top:6px}
+  .tag{display:inline-block;font-size:12px;padding:1px 8px;border-radius:10px;margin:2px 4px 2px 0}
+  .t-base{background:#ddf4ff;color:#0969da}
+  .t-adapt{background:#fbefff;color:#8250df}
+  .t-ripple{background:#dafbe1;color:#1a7f37}
+  .t-fb{background:#fff8c5;color:#9a6700}
+  table{border-collapse:collapse;width:100%;font-size:13px;margin:8px 0}
+  th,td{border:1px solid var(--line);padding:6px 8px;text-align:left;vertical-align:top}
+  th{background:#eaeef2}
+  code{background:#eaeef2;padding:1px 5px;border-radius:4px;font-size:12px}
+  .note{font-size:12.5px;color:var(--muted)}
+  .pill{font-weight:600}
+</style>
+</head>
+<body>
+
+<h1>压力闭环控制 · 工程实施方案设计伴侣</h1>
+<p class="sub">PI+FF 基线 + RBF 自适应增强层 + 电机位置前馈在线标定（齿轮泵脉动抵消）。当前讨论稿，数据待回填。</p>
+
+<h2>① 总体架构（建议）</h2>
+<div class="card">
+<svg viewBox="0 0 680 360" role="img" aria-label="总体架构">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#57606a"/>
+    </marker>
+  </defs>
+
+  <!-- Recipe / Segment -->
+  <rect x="10" y="150" width="96" height="56" rx="8" fill="#eaeef2" stroke="#d0d7de"/>
+  <text x="58" y="172" text-anchor="middle" font-size="12" font-weight="600">段配方</text>
+  <text x="58" y="190" text-anchor="middle" font-size="11" fill="#57606a">targetPressure</text>
+  <text x="58" y="204" text-anchor="middle" font-size="11" fill="#57606a">targetFlow/systemGain</text>
+
+  <!-- PI+FF base -->
+  <rect x="140" y="120" width="120" height="60" rx="8" fill="#ddf4ff" stroke="#0969da"/>
+  <text x="200" y="146" text-anchor="middle" font-size="13" font-weight="700" fill="#0969da">PI + FF 基线</text>
+  <text x="200" y="164" text-anchor="middle" font-size="11" fill="#57606a">确定性 / 无超调</text>
+
+  <!-- RBF adaptive overlay -->
+  <rect x="140" y="200" width="120" height="60" rx="8" fill="#fbefff" stroke="#8250df"/>
+  <text x="200" y="222" text-anchor="middle" font-size="13" font-weight="700" fill="#8250df">RBF 自适应层</text>
+  <text x="200" y="240" text-anchor="middle" font-size="11" fill="#57606a">增益/K在线整定</text>
+
+  <!-- Ripple comp -->
+  <rect x="140" y="280" width="120" height="56" rx="8" fill="#dafbe1" stroke="#1a7f37"/>
+  <text x="200" y="302" text-anchor="middle" font-size="12.5" font-weight="700" fill="#1a7f37">脉动补偿器</text>
+  <text x="200" y="320" text-anchor="middle" font-size="11" fill="#57606a">相位在线标定</text>
+
+  <!-- Sum node -->
+  <circle cx="300" cy="150" r="16" fill="#fff" stroke="#57606a"/>
+  <text x="300" y="154" text-anchor="middle" font-size="14">Σ</text>
+
+  <!-- Pump converter -->
+  <rect x="340" y="120" width="110" height="56" rx="8" fill="#fff8c5" stroke="#9a6700"/>
+  <text x="395" y="144" text-anchor="middle" font-size="12.5" font-weight="700" fill="#9a6700">PumpConverter</text>
+  <text x="395" y="162" text-anchor="middle" font-size="11" fill="#57606a">flow→rpm</text>
+
+  <!-- Pump+cyl -->
+  <rect x="478" y="120" width="110" height="56" rx="8" fill="#eaeef2" stroke="#d0d7de"/>
+  <text x="533" y="142" text-anchor="middle" font-size="12">伺服泵+油缸</text>
+  <text x="533" y="160" text-anchor="middle" font-size="11" fill="#57606a">电→液→机</text>
+
+  <!-- Sensor -->
+  <rect x="478" y="200" width="110" height="48" rx="8" fill="#eaeef2" stroke="#d0d7de"/>
+  <text x="533" y="220" text-anchor="middle" font-size="12">数字压力传感器</text>
+  <text x="533" y="238" text-anchor="middle" font-size="11" fill="#57606a">油泵出口</text>
+
+  <!-- Motor angle into ripple -->
+  <rect x="478" y="270" width="110" height="48" rx="8" fill="#eaeef2" stroke="#d0d7de"/>
+  <text x="533" y="290" text-anchor="middle" font-size="12">电机/泵角度</text>
+  <text x="533" y="308" text-anchor="middle" font-size="11" fill="#57606a">编码器</text>
+
+  <!-- Arrows -->
+  <line x1="106" y1="178" x2="138" y2="150" stroke="#57606a" marker-end="url(#arrow)"/>
+  <line x1="260" y1="150" x2="284" y2="150" stroke="#57606a" marker-end="url(#arrow)"/>
+  <line x1="316" y1="150" x2="338" y2="150" stroke="#57606a" marker-end="url(#arrow)"/>
+  <line x1="450" y1="148" x2="476" y2="148" stroke="#57606a" marker-end="url(#arrow)"/>
+  <line x1="533" y1="176" x2="533" y2="198" stroke="#57606a" marker-end="url(#arrow)"/>
+
+  <!-- Feedback -->
+  <path d="M478,224 C400,300 320,300 256,262" fill="none" stroke="#9a6700" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="360" y="300" font-size="11" fill="#9a6700">测量反馈 P_meas</text>
+
+  <!-- Ripple feed path -->
+  <path d="M588,294 C600,330 200,344 200,340" fill="none" stroke="#1a7f37" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="430" y="350" font-size="11" fill="#1a7f37">泵角度→脉动提取→补偿FF</text>
+
+  <!-- RBF influence on PI -->
+  <path d="M260,200 C280,180 280,172 250,172" fill="none" stroke="#8250df" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="262" y="190" font-size="10.5" fill="#8250df">增益/FF整定</text>
+</svg>
+<div class="legend">三层解耦：① <span class="tag t-base">PI+FF 基线</span> 负责确定性跟踪；② <span class="tag t-adapt">RBF 自适应层</span> 在扰动/模型失配时整定增益与系统增益；③ <span class="tag t-ripple">脉动补偿器</span> 用泵角度标定齿落相位、抵消出口纹波。三者可独立开关。</div>
+</div>
+
+<h2>② 脉动信号提取流水线（需求③的数据分析模块）</h2>
+<div class="card">
+<svg viewBox="0 0 680 200" role="img" aria-label="脉动提取流水线">
+  <defs>
+    <marker id="ar2" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#1a7f37"/>
+    </marker>
+  </defs>
+  <g font-size="11.5" text-anchor="middle">
+    <rect x="6" y="80" width="92" height="46" rx="7" fill="#eaeef2" stroke="#d0d7de"/><text x="52" y="103">泵角度 θk</text><text x="52" y="119" fill="#57606a" font-size="10">编码器/相位累加</text>
+    <rect x="116" y="80" width="100" height="46" rx="7" fill="#dafbe1" stroke="#1a7f37"/><text x="166" y="103">同步缓冲</text><text x="166" y="119" fill="#57606a" font-size="10">(θk, eP) 环形缓存</text>
+    <rect x="234" y="80" width="110" height="46" rx="7" fill="#dafbe1" stroke="#1a7f37"/><text x="289" y="103">齿相位分箱</text><text x="289" y="119" fill="#57606a" font-size="10">bin = frac(Z·θ)</text>
+    <rect x="362" y="80" width="110" height="46" rx="7" fill="#dafbe1" stroke="#1a7f37"/><text x="417" y="103">纹波图谱</text><text x="417" y="119" fill="#57606a" font-size="10">每齿相位均值/LUT</text>
+    <rect x="490" y="80" width="100" height="46" rx="7" fill="#dafbe1" stroke="#1a7f37"/><text x="540" y="103">幅相提取</text><text x="540" y="119" fill="#57606a" font-size="10">A, φ (Goertzel)</text>
+    <rect x="606" y="80" width="68" height="46" rx="7" fill="#dafbe1" stroke="#1a7f37"/><text x="640" y="103">K_ff 整定</text><text x="640" y="119" fill="#57606a" font-size="10">在线更新</text>
+  </g>
+  <line x1="98" y1="103" x2="114" y2="103" stroke="#1a7f37" marker-end="url(#ar2)"/>
+  <line x1="216" y1="103" x2="232" y2="103" stroke="#1a7f37" marker-end="url(#ar2)"/>
+  <line x1="344" y1="103" x2="360" y2="103" stroke="#1a7f37" marker-end="url(#ar2)"/>
+  <line x1="472" y1="103" x2="488" y2="103" stroke="#1a7f37" marker-end="url(#ar2)"/>
+  <line x1="590" y1="103" x2="604" y2="103" stroke="#1a7f37" marker-end="url(#ar2)"/>
+  <text x="340" y="155" font-size="11" fill="#1a7f37">输出补偿：rippleFF(θ)= −A·sin(2π·Z·θ + φ) 或 LUT 查表，叠加到 feedforwardFlow</text>
+  <text x="340" y="175" font-size="11" fill="#57606a">仅在“稳态保压且 eP 方差小”时更新 K_ff / LUT；其余时刻冻结，保证安全</text>
+</svg>
+<div class="legend">相位来源两方案：<b>A</b> 用编码器真实角度（最准，需新字段喂入）；<b>B</b> 用本控指令转速做相位累加 <code>θ += Z·rpm·dt/60</code>（自包含、无需新字段，假设无滑差）。见需求③澄清。</div>
+</div>
+
+<h2>③ 三类核心动作的控制器映射（需求②）</h2>
+<div class="card">
+<table>
+  <tr><th>动作</th><th>主要控制模式</th><th>建议基线 → 增强层</th><th>脉动补偿</th><th>关键诉求</th></tr>
+  <tr><td>合模 / 开模</td><td>位置→保压（吨位）</td><td>PI+FF 定吨位；RBF 适应模具差异/油温</td><td>低速合模段开启</td><td>确定性、无过冲、锁模力稳</td></tr>
+  <tr><td>射胶（注射）</td><td>速度段→保压段（V/P 切换）</td><td>PI+FF 保压；RBF 适应熔体压缩性/粘度</td><td>保压段开启</td><td>V/P 平稳切换、重量重复精度</td></tr>
+  <tr><td>顶针</td><td>位置为主 + 压力上限</td><td>PI+FF；RBF 轻量</td><td>通常关闭</td><td>低力、避免顶伤、快速回退</td></tr>
+</table>
+<p class="note">每段的 <code>pressureController</code> 字段已支持 PI / RBF_PI / RBF_PID 选择；融合方案建议新增“PI+FF 基线 + RBF 监督整定”模式，由 RBF 在线修正 PI 增益与 systemGain，而非完全替换 PI。</p>
+</div>
+
+<h2>④ FF 稳态保持流量标定（需求①）</h2>
+<div class="card">
+<p>稳态关系（一阶模型）：<code>P* = K_bar_per_rpm · flow* · flow2speed</code> ⇒ 理想保持流量
+<code>flow* = targetPressure / (K · flow2speed)</code>。</p>
+<p>当前 <code>feedforwardFlow = segment->targetFlow</code> 为配方人工设定，常与实际 <code>flow*</code> 偏差 → 产生稳态误差，需积分缓慢补偿。建议：</p>
+<table>
+  <tr><th>方案</th><th>做法</th><th>优点 / 风险</th></tr>
+  <tr><td>物理推导</td><td>用 <code>segment->systemGain</code> 计算 flow*</td><td>快；但 systemGain 需按机台/油温标定</td></tr>
+  <tr><td>在线标定</td><td>稳态期测实际保持流量，缓更新 FF</td><td>自适应；需“稳态判定”闸门防抖</td></tr>
+  <tr><td>两者结合（推荐）</td><td>物理推导作初值，在线标定作微调</td><td>兼顾收敛速度与自适应</td></tr>
+</table>
+</div>
+
+<p class="note">本页为设计讨论稿。最终方案、参数与代码落点以 <code>docs/superpowers/specs/2026-08-02-pressure-impl-design.md</code> 为准。</p>
+
+</body>
+</html>

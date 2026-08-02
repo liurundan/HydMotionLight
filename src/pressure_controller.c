@@ -1,4 +1,5 @@
 #include "pressure_controller.h"
+#include "pressure_ripple_comp.h"
 #include <math.h>
 #include <string.h>
 
@@ -53,7 +54,8 @@ static const HYD_PressureStrategySpec HYD_PRESSURE_STRATEGY_SPECS[] = {
     {HYD_PRESSURE_CONTROLLER_PI, true, false, false},
     {HYD_PRESSURE_CONTROLLER_PID, true, true, false},
     {HYD_PRESSURE_CONTROLLER_RBF_PID, true, true, true},
-    {HYD_PRESSURE_CONTROLLER_RBF_PI, true, false, true}
+    {HYD_PRESSURE_CONTROLLER_RBF_PI, true, false, true},
+    {HYD_PRESSURE_CONTROLLER_PI_RBF, true, false, true}
 };
 
 static const HYD_PressureStrategySpec* HYD_FindPressureStrategySpec(HYD_PressureControllerType strategy) {
@@ -429,6 +431,7 @@ void HYD_PressureController_ClearState(HYD_PressureControllerState* state) {
     }
 
     memset(state, 0, sizeof(*state));
+    HYD_PressureSteadyGate_Reset(&state->ffSteadyGate, 64u, 5.0f);
     state->activeStrategy = HYD_PRESSURE_CONTROLLER_NONE;
 }
 
@@ -514,6 +517,8 @@ void HYD_PressureController_Execute(const HYD_MotionSegment* segment,
         error = 0.0;
     }
 
+    HYD_REAL effectiveFF = input->feedforwardFlow + state->ffTrim;
+
     trackingRequested = state->trackingRequested ||
         ((state->activeStrategy != HYD_PRESSURE_CONTROLLER_NONE) &&
          (state->activeStrategy != config.strategy));
@@ -524,16 +529,14 @@ void HYD_PressureController_Execute(const HYD_MotionSegment* segment,
     output->filteredPressure = filteredPressure;
     output->filteredPressureRate = filteredPressureRate;
     output->controlError = error;
-    output->feedforwardFlow = input->feedforwardFlow;
+    output->feedforwardFlow = effectiveFF;
     output->samplingPeriod = config.dt;
     output->adaptiveActive = config.strategySpec->adaptive;
 
     if (config.strategy == HYD_PRESSURE_CONTROLLER_RBF_PID ||
-        config.strategy == HYD_PRESSURE_CONTROLLER_RBF_PI) {
-        HYD_REAL effectiveTargetPressure;
-        HYD_REAL rawOutputFlow;
+        config.strategy == HYD_PRESSURE_CONTROLLER_RBF_PI ||
+        config.strategy == HYD_PRESSURE_CONTROLLER_PI_RBF) {
         HYD_BOOL needsAdaptiveReset;
-        HYD_BOOL internalSaturated;
 
         needsAdaptiveReset = trackingRequested ||
             !state->rbfInitialized ||
@@ -553,11 +556,22 @@ void HYD_PressureController_Execute(const HYD_MotionSegment* segment,
                                        input->pumpSpeedLimit);
         }
 
-        effectiveTargetPressure = input->targetPressure; //(error == 0.0) ? filteredPressure :
-        rawOutputFlow = (HYD_REAL)RBF_PID_Update(&state->rbfPid,
+        if (config.strategy == HYD_PRESSURE_CONTROLLER_PI_RBF) {
+            /* supervisor mode: drive PI law with RBF-adapted KP/KI (keep FF); do not use RBF flow output */
+            (void)RBF_PID_Update(&state->rbfPid, (float)input->targetPressure, (float)filteredPressure);
+            output->adaptiveKp = (HYD_REAL)state->rbfPid.KP;
+            output->adaptiveKi = (HYD_REAL)state->rbfPid.KI;
+            output->adaptiveActive = true;
+            state->activeStrategy = config.strategy;
+            config.kp = HYD_ClampReal((HYD_REAL)state->rbfPid.KP, config.rbf.minKp, config.rbf.maxKp);
+            config.ki = HYD_ClampReal((HYD_REAL)state->rbfPid.KI, config.rbf.minKi, config.rbf.maxKi);
+            /* no return: fall through to PI/PID path below (already includes feedforwardFlow) */
+        } else {
+        HYD_REAL effectiveTargetPressure = input->targetPressure; //(error == 0.0) ? filteredPressure :
+        HYD_REAL rawOutputFlow = (HYD_REAL)RBF_PID_Update(&state->rbfPid,
                                                  (float)effectiveTargetPressure,
                                                  (float)filteredPressure);
-        internalSaturated = state->rbfPid.output_saturated;
+        HYD_BOOL internalSaturated = state->rbfPid.output_saturated;
 
         outputFlow = HYD_ClampReal(rawOutputFlow, config.outputMin, config.outputMax);
 
@@ -594,6 +608,23 @@ void HYD_PressureController_Execute(const HYD_MotionSegment* segment,
         state->previousTimestamp = input->timestamp;
         state->activeStrategy = config.strategy;
         return;
+        }
+    }
+
+    /* FF online trim: PI / PI_RBF only (pure RBF adapts on its own, drops FF).
+     * 积分式前馈微调：稳态闸门开启后，将稳态误差按比例折算为流量偏置并累积，
+     * 由前馈（而非控制器积分）持有直流偏置，从而快速消除增益失配 / 前馈误差引起的
+     * 稳态余差。限幅防止积分饱和。闸门阈值 5.0 bar 已排除大幅暂态（如 [1] PI 无前馈
+     * 的 ~10 bar 余差、[4] 负载阶跃），仅在回路基本稳定后修正残余偏置。 */
+    if (config.strategy == HYD_PRESSURE_CONTROLLER_PI ||
+        config.strategy == HYD_PRESSURE_CONTROLLER_PI_RBF) {
+        HYD_UINT8 steady = HYD_PressureSteadyGate_Update(&state->ffSteadyGate, error);
+        if (steady && segment != NULL && segment->systemGain > 1e-4f) {
+            HYD_REAL step = HYD_ClampReal(0.002f * (HYD_REAL)error / (HYD_REAL)segment->systemGain,
+                                          -0.01f, 0.01f);
+            state->ffTrim += step;
+            state->ffTrim = HYD_ClampReal(state->ffTrim, -0.5f, 0.5f);
+        }
     }
 
     proportionalTerm = config.kp * error;
@@ -622,7 +653,7 @@ void HYD_PressureController_Execute(const HYD_MotionSegment* segment,
                                                             derivativeTerm,
                                                             trackedOutputFlow);
         } else {
-            trackingTerm = trackedOutputFlow - input->feedforwardFlow - proportionalTerm - derivativeTerm;
+            trackingTerm = trackedOutputFlow - effectiveFF - proportionalTerm - derivativeTerm;
         }
     }
 
@@ -634,7 +665,7 @@ void HYD_PressureController_Execute(const HYD_MotionSegment* segment,
                                               config.integralLimit);
         }
 
-        unsaturatedOutput = input->feedforwardFlow + proportionalTerm + integralCandidate + derivativeTerm + trackingTerm;
+        unsaturatedOutput = effectiveFF + proportionalTerm + integralCandidate + derivativeTerm + trackingTerm;
         if ((unsaturatedOutput >= config.outputMin && unsaturatedOutput <= config.outputMax) ||
             (unsaturatedOutput > config.outputMax && error < 0.0) ||
             (unsaturatedOutput < config.outputMin && error > 0.0)) {
@@ -642,7 +673,7 @@ void HYD_PressureController_Execute(const HYD_MotionSegment* segment,
         }
     }
 
-    unsaturatedOutput = input->feedforwardFlow + proportionalTerm + integralTerm + derivativeTerm + trackingTerm;
+    unsaturatedOutput = effectiveFF + proportionalTerm + integralTerm + derivativeTerm + trackingTerm;
     outputFlow = HYD_ClampReal(unsaturatedOutput, config.outputMin, config.outputMax);
 
     /* 负流量死区：仅当压力偏差 <= -2.0 bar（超压 >= 2 bar）时才允许负流量 */

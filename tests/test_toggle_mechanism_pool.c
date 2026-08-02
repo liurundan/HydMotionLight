@@ -4,7 +4,7 @@
 #include "motion_control.h"
 #include "toggle_mechanism_pool.h"
 
-#define HYD_BASELINE_MOTION_FB_BYTES 3176U /* host ABI at commit f8bc1b9 */
+#define HYD_BASELINE_MOTION_FB_BYTES 3304U /* @after-ripple-comp: +128B vs 3176 — ENABLE_RIPPLE_COMP + _rippleComp(40B, analytic EMA demod, no LUT) + _rippleGate + params.rippleCompEnable. Intentional feature growth; +32 slack retained for minor edits. */
 
 static HYD_TogglePreparedConfig validated_default(void)
 {

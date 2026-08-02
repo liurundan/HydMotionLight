@@ -201,7 +201,8 @@ typedef enum {
     HYD_PRESSURE_CONTROLLER_PID,
     HYD_PRESSURE_CONTROLLER_RBF_PID,
     /* Appended to preserve the numeric values used by existing PLC recipes. */
-    HYD_PRESSURE_CONTROLLER_RBF_PI
+    HYD_PRESSURE_CONTROLLER_RBF_PI,
+    HYD_PRESSURE_CONTROLLER_PI_RBF   /* PI 基线 + RBF 监督整定增益，输出保留前馈 FF */
 } HYD_PressureControllerType;
 
 /* BufferMode values follow Beckhoff / PLCopen MC2 ordering.
@@ -262,6 +263,7 @@ typedef struct {
     HYD_REAL flow;       /* L/min, magnitude at the pump side */
     HYD_REAL pressure;   /* bar */
     HYD_TIME timestamp;  /* s */
+    HYD_REAL motorAngleRev; /* 泵轴整圈数（编码器/推算），默认 0；脉动补偿相位源 */
 } HYD_AxisRef;
 
 /*
@@ -363,6 +365,7 @@ typedef struct {
      * 典型值: 注塑机保压段 1-10 bar/(L/min)，取决于油缸面积和负载刚度。
      * 0 表示不启用增益补偿（由 PID 自适应完全承担）。 */
     HYD_REAL systemGain;
+    HYD_BOOL rippleCompEnable; /* 段级齿轮泵脉动补偿开关，1=启用（默认），0=关闭 */
 } HYD_MotionSegment;
 
 typedef struct {
@@ -549,6 +552,7 @@ typedef enum {
     HYD_PARAM_PRESSURE_CONTROLLER_TYPE,
     HYD_PARAM_DEFAULT_TARGET_FLOW,
     HYD_PARAM_USE_SIMULATION,
+    HYD_PARAM_RIPPLE_COMP_ENABLE,    /* BOOL：齿轮泵脉动补偿全局 HMI 开关，默认 1 */
     HYD_PARAM_PUMP_DISPLACEMENT,        /* mL/rev */
     HYD_PARAM_PUMP_VOLUMETRIC_EFF,      /* 0~1 */
     HYD_PARAM_PUMP_MAX_SPEED,           /* rpm */
@@ -587,6 +591,7 @@ typedef struct {
     HYD_REAL pressureControllerType;
     HYD_REAL defaultTargetFlow;
     HYD_BOOL useSimulation;
+    HYD_BOOL rippleCompEnable;   /* 齿轮泵脉动补偿 HMI 全局开关（与 FB.ENABLE_RIPPLE_COMP、segment.rippleCompEnable 构成三级使能） */
 } HYD_MotionFBParams;
 
 /* ============================================================================

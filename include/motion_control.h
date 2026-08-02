@@ -282,6 +282,10 @@ typedef struct {
     HYD_REAL FLOW_TO_PUMP_SPEED_GAIN;
     HYD_REAL PUMP_SPEED_LIMIT;
 
+    /* 齿轮泵脉动补偿 PLC 级使能（一级）。需与 segment.rippleCompEnable、
+     * HMI 参数 HYD_PARAM_RIPPLE_COMP_ENABLE(_params.rippleCompEnable) 同时为真才生效。 */
+    HYD_BOOL ENABLE_RIPPLE_COMP;
+
     /* ═══════════════════════════════════════════════════════════════════════
      * OUTPUT — Runtime-owned fields. The caller reads but should not write.
      * ═══════════════════════════════════════════════════════════════════════ */
@@ -357,6 +361,10 @@ typedef struct {
     HYD_RampController _rampController;
     HYD_MotionPlannerState _plannerState;
     HYD_PressureControllerState _pressureController;
+
+    /* --- 齿轮泵脉动补偿（三级使能后运行） --- */
+    HYD_PressureRippleCompState _rippleComp;
+    HYD_PressureSteadyGateState _rippleGate;  /* 脉动学习稳态闸门（|误差|<阈值 连续 N 采样才开放学习） */
 
     /* --- Completion detection --- */
     HYD_TIME _completionCandidateStartTime;

@@ -3,6 +3,7 @@
 
 #include "common_types.h"
 #include "rbf_pid.h"
+#include "pressure_ripple_comp.h"   /* HYD_PressureSteadyGateState */
 
 typedef struct {
     HYD_REAL targetPressure;
@@ -13,6 +14,7 @@ typedef struct {
     HYD_REAL flowToPumpSpeedGain;  /* rpm per L/min, > 0 — used by RBF PID for fMaxFlow derivation */
     HYD_REAL pumpSpeedLimit;       /* rpm, >= 0 — pump speed upper bound */
     HYD_TIME timestamp;
+    HYD_REAL pumpAngleRev;   /* 泵轴整圈数相位源（编码器喂入），默认 0 */
 } HYD_PressureControllerInput;
 
 typedef struct {
@@ -26,6 +28,8 @@ typedef struct {
     HYD_REAL previousOutput;
     HYD_TIME previousTimestamp;
     HYD_PressureControllerType activeStrategy;
+    HYD_REAL ffTrim;                          /* FF 在线微调偏置 [L/min]，学 systemGain 外残差 */
+    HYD_PressureSteadyGateState ffSteadyGate;/* FF-trim 稳态闸门 */
     RBF_PID_Handle rbfPid;
 } HYD_PressureControllerState;
 
