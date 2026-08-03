@@ -3332,7 +3332,7 @@ void HYD_MotionControlFB_Init(HYD_MotionControlFB* fb) {
     fb->_params.maxVelocity = 100.0f;
     fb->_params.maxAcceleration = 500.0f;
     fb->_params.maxDeceleration = 500.0f;
-    fb->_params.maxFlow = 50.0f;
+    fb->_params.maxFlow = 90.0f; // 1800/20=90L/min
     fb->_params.pressureRampRate = 10.0f;
     fb->_params.pressureKp = 0.5f;
     fb->_params.pressureKpHigh = 0.0f;
