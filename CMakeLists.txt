@@ -4,6 +4,14 @@ project(HydroMotionLib C)
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
+find_package(Python3 QUIET COMPONENTS Interpreter)
+if(Python3_Interpreter_FOUND)
+    set(HYD_PYTHON_EXECUTABLE ${Python3_EXECUTABLE})
+else()
+    find_package(PythonInterp REQUIRED)
+    set(HYD_PYTHON_EXECUTABLE ${PYTHON_EXECUTABLE})
+endif()
+
 # 跨平台数学库处理：
 # - Linux / 类Unix：数学函数（sqrt/sin...）需显式链接 libm
 # - MinGW-w64 (Windows)：数学函数已包含在 C 运行时中，不存在独立的 libm，
@@ -133,6 +141,12 @@ add_test(NAME test_pressure_ripple_comp COMMAND test_pressure_ripple_comp)
 add_executable(sim_pressure_control tests/sim_pressure_control.c)
 target_link_libraries(sim_pressure_control PRIVATE HydroMotionLib HydroSimLib)
 add_test(NAME sim_pressure_control COMMAND sim_pressure_control)
+
+# Nonlinear physical pressure-loop comparison.  This remains a standalone
+# simulation regression so it cannot alter the production motion path.
+add_executable(test_pressure_control_physical tests/test_pressure_control_physical.c)
+target_link_libraries(test_pressure_control_physical PRIVATE HydroMotionLib HydroSimLib)
+add_test(NAME test_pressure_control_physical COMMAND test_pressure_control_physical)
 
 # ==================================================================
 # IEC FB接口层测试
@@ -308,7 +322,7 @@ add_test(NAME test_vp_bumpless_reverse
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 add_test(NAME test_interface_layout_consistency
          COMMAND ${CMAKE_COMMAND} -E env PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}
-                 python3 ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_interface_layout_consistency.py)
+                 ${HYD_PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_interface_layout_consistency.py)
 
 add_test(NAME test_negative_flow COMMAND test_negative_flow)
 add_test(NAME test_toggle_kinematics COMMAND test_toggle_kinematics)

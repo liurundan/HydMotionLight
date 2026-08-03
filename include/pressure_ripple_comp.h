@@ -16,6 +16,7 @@
 /* EMA 收敛所需最少稳态样本数（不足则 GetFF 返回 0，避免未学习就补偿） */
 #define HYD_RIPPLE_MIN_SAMPLES 200u
 #define HYD_RIPPLE_TWO_PI 6.2831853f
+#define HYD_RIPPLE_MAX_FF_FLOW 5.0f
 
 /* 通用稳态闸门状态（FF 微调与脉动校准共用，零 RAM 窗口） */
 typedef struct {
@@ -36,6 +37,10 @@ typedef struct {
     HYD_REAL i2, q2;                         /* 2 次谐波 2Z */
     HYD_REAL a1;                             /* 学习到的基波幅值 [bar] */
     HYD_REAL phi1;                           /* 学习到的基波相位 [rad] */
+    HYD_REAL a2;                             /* 学习到的二次谐波幅值 [bar] */
+    HYD_REAL phi2;                           /* 学习到的二次谐波相位 [rad] */
+    HYD_REAL dcEstimate;                     /* slow pressure-error baseline */
+    HYD_BOOL dcInitialized;
     HYD_UINT16 sampleCount;                  /* 当前累计样本数 */
     HYD_REAL ffGain;                         /* = 1/systemGain，压力->流量换算 */
     HYD_UINT16 refreshTick;                  /* 刷新节拍计数（>255，须 uint16） */

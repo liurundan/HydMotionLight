@@ -310,6 +310,118 @@ static void test_rbf_pid_strategy_executes_within_limits_and_adapts(void) {
     printf("✓ Adaptive RBF-PID pressure strategy integration test passed\n");
 }
 
+static void test_pi_rbf_supervisor_tracks_actual_pi_output(void) {
+    HYD_MotionSegment segment;
+    HYD_PressureControllerState state;
+    HYD_PressureControllerInput input;
+    HYD_PressureControllerOutput output;
+    HYD_REAL previousOutput;
+
+    printf("Testing PI-RBF supervisor actual-output synchronization...\n");
+    segment = make_pressure_segment();
+    segment.pressureController = HYD_PRESSURE_CONTROLLER_PI_RBF;
+    segment.targetFlow = 0.0;
+    segment.maxFlow = 30.0;
+    segment.pressureRbfConfig.minKp = 1.0;
+    segment.pressureRbfConfig.maxKp = 1.0;
+    segment.pressureRbfConfig.minKi = 0.1;
+    segment.pressureRbfConfig.maxKi = 0.1;
+    segment.pressureRbfConfig.minKd = 0.1;
+    segment.pressureRbfConfig.maxKd = 0.1;
+
+    HYD_PressureController_InitState(&state, 0.0, 0.0, 0.0);
+    previousOutput = state.previousOutput;
+    memset(&input, 0, sizeof(input));
+    input.targetPressure = 10.0;
+    input.measuredPressure = 0.0;
+    input.feedforwardFlow = 5.0;
+    input.outputMin = 0.0;
+    input.outputMax = segment.maxFlow;
+    input.flowToPumpSpeedGain = 20.0;
+    input.pumpSpeedLimit = 1800.0;
+    input.timestamp = 0.01;
+
+    HYD_PressureController_Execute(&segment, &state, &input, &output);
+
+    assert(output.appliedStrategy == HYD_PRESSURE_CONTROLLER_PI_RBF);
+    assert(output.outputFlow > 10.0);
+    assert(fabs((double)state.rbfPid.Output - (double)output.outputFlow) < 1e-6);
+    assert(fabs((double)state.rbfPid.u_prev - (double)output.outputFlow) < 1e-6);
+    assert(fabs((double)state.rbfPid.n_out - (double)output.outputFlow) < 1e-6);
+    assert(fabs((double)state.rbfPid.du_prev -
+                (double)(output.outputFlow - previousOutput)) < 1e-6);
+    assert(state.rbfPid.control_mode == RBF_PID_CONTROL_MODE_PI);
+    assert(fabsf(state.rbfPid.KD) < 1e-6f);
+    assert(!state.rbfPid.pressure_accel_ff_enabled);
+    printf("PI-RBF supervisor actual-output synchronization test passed\n");
+}
+
+static void test_pressure_dt_and_rbf_config_sanitization(void) {
+    HYD_MotionSegment segment;
+    HYD_PressureControllerState state;
+    HYD_PressureControllerInput input;
+    HYD_PressureControllerOutput output;
+
+    printf("Testing pressure dt and RBF configuration sanitization...\n");
+    segment = make_pressure_segment();
+    segment.pressureController = HYD_PRESSURE_CONTROLLER_PI_RBF;
+    segment.maxFlow = 20.0;
+    segment.pressureRbfConfig.minKp = INFINITY;
+    segment.pressureRbfConfig.maxKp = NAN;
+    segment.pressureRbfConfig.minKi = 3.0;
+    segment.pressureRbfConfig.maxKi = 1.0;
+
+    HYD_PressureController_InitState(&state, 0.0, 0.0, 0.0);
+    memset(&input, 0, sizeof(input));
+    input.targetPressure = 10.0;
+    input.measuredPressure = 0.0;
+    input.outputMin = 0.0;
+    input.outputMax = segment.maxFlow;
+    input.flowToPumpSpeedGain = 20.0;
+    input.pumpSpeedLimit = 1800.0;
+    input.timestamp = NAN;
+    HYD_PressureController_Execute(&segment, &state, &input, &output);
+
+    assert(isfinite((double)output.samplingPeriod));
+    assert(isfinite((double)output.outputFlow));
+    assert(isfinite((double)output.unsaturatedOutputFlow));
+    assert(isfinite((double)state.rbfPid.KP));
+    assert(isfinite((double)state.rbfPid.KI));
+
+    input.timestamp = 10.0;
+    HYD_PressureController_Execute(&segment, &state, &input, &output);
+    assert(output.samplingPeriod <= 1.0 + 1e-6);
+    printf("Pressure dt and RBF configuration sanitization test passed\n");
+}
+
+static void test_rbf_negative_flow_is_blocked_when_underpressure(void) {
+    HYD_MotionSegment segment;
+    HYD_PressureControllerState state;
+    HYD_PressureControllerInput input;
+    HYD_PressureControllerOutput output;
+
+    printf("Testing RBF negative-flow guard under underpressure...\n");
+    segment = make_pressure_segment();
+    segment.pressureController = HYD_PRESSURE_CONTROLLER_RBF_PID;
+    segment.maxFlow = 10.0;
+
+    HYD_PressureController_InitState(&state, 0.0, -2.0, 0.0);
+    memset(&input, 0, sizeof(input));
+    input.targetPressure = 10.0;
+    input.measuredPressure = 0.0;
+    input.outputMin = -5.0;
+    input.outputMax = segment.maxFlow;
+    input.flowToPumpSpeedGain = 20.0;
+    input.pumpSpeedLimit = 1800.0;
+    input.timestamp = 0.01;
+
+    HYD_PressureController_Execute(&segment, &state, &input, &output);
+
+    assert(output.controlError > 0.0);
+    assert(output.outputFlow >= -1e-6);
+    printf("RBF negative-flow guard under underpressure test passed\n");
+}
+
 static void test_rbf_pid_strategy_uses_library_default_tuning_profile(void) {
     HYD_MotionSegment segment;
     HYD_PressureControllerState state;
@@ -1387,6 +1499,9 @@ int main(void) {
     test_pid_derivative_uses_measurement_rate_and_filter();
     test_strategy_switch_uses_descriptor_based_tracking();
     test_rbf_pid_strategy_executes_within_limits_and_adapts();
+    test_pi_rbf_supervisor_tracks_actual_pi_output();
+    test_pressure_dt_and_rbf_config_sanitization();
+    test_rbf_negative_flow_is_blocked_when_underpressure();
     test_rbf_pid_strategy_uses_library_default_tuning_profile();
     test_rbf_pid_strategy_uses_segment_level_tuning_profile();
     test_rbf_pid_strategy_switch_tracks_previous_output_bumplessly();

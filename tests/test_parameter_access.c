@@ -127,6 +127,16 @@ static void test_pressure_controller_type_validation(void) {
               "RBF-PI controller type should round-trip");
 
     ok = HYD_MotionControlFB_WriteParameter(
+        &fb, HYD_PARAM_PRESSURE_CONTROLLER_TYPE,
+        (HYD_REAL)HYD_PRESSURE_CONTROLLER_PI_RBF);
+    ASSERT_TRUE(ok, "PI-RBF controller type should be accepted");
+    ok = HYD_MotionControlFB_ReadParameter(
+        &fb, HYD_PARAM_PRESSURE_CONTROLLER_TYPE, &val);
+    ASSERT_TRUE(ok, "PI-RBF controller type should be readable");
+    ASSERT_EQ((int)val, (int)HYD_PRESSURE_CONTROLLER_PI_RBF,
+              "PI-RBF controller type should round-trip");
+
+    ok = HYD_MotionControlFB_WriteParameter(
         &fb, HYD_PARAM_PRESSURE_CONTROLLER_TYPE, 5.5f);
     ASSERT_TRUE(!ok, "Non-integer controller type should be rejected");
 

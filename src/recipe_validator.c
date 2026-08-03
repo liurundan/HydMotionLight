@@ -44,7 +44,8 @@ static HYD_BOOL HYD_IsValidPressureControllerType(HYD_PressureControllerType str
            (strategy == HYD_PRESSURE_CONTROLLER_PI) ||
            (strategy == HYD_PRESSURE_CONTROLLER_PID) ||
            (strategy == HYD_PRESSURE_CONTROLLER_RBF_PID) ||
-           (strategy == HYD_PRESSURE_CONTROLLER_RBF_PI);
+           (strategy == HYD_PRESSURE_CONTROLLER_RBF_PI) ||
+           (strategy == HYD_PRESSURE_CONTROLLER_PI_RBF);
 }
 
 static HYD_BOOL HYD_IsSupportedPressureControllerType(HYD_PressureControllerType strategy) {
@@ -53,7 +54,8 @@ static HYD_BOOL HYD_IsSupportedPressureControllerType(HYD_PressureControllerType
            (strategy == HYD_PRESSURE_CONTROLLER_PI) ||
            (strategy == HYD_PRESSURE_CONTROLLER_PID) ||
            (strategy == HYD_PRESSURE_CONTROLLER_RBF_PID) ||
-           (strategy == HYD_PRESSURE_CONTROLLER_RBF_PI);
+           (strategy == HYD_PRESSURE_CONTROLLER_RBF_PI) ||
+           (strategy == HYD_PRESSURE_CONTROLLER_PI_RBF);
 }
 
 static HYD_BOOL HYD_RecipeValidator_Fail(HYD_DiagnosticCode* code,
@@ -244,6 +246,7 @@ HYD_BOOL HYD_RecipeValidator_ValidateSegment(const HYD_MotionSegment* segment,
     if ((segment->mode == HYD_MODE_PRESSURE_CLOSED_LOOP) &&
         (segment->pressureController == HYD_PRESSURE_CONTROLLER_RBF_PID ||
          segment->pressureController == HYD_PRESSURE_CONTROLLER_RBF_PI ||
+         segment->pressureController == HYD_PRESSURE_CONTROLLER_PI_RBF ||
          HYD_RecipeValidator_HasCustomRbfConfig(segment))) {
         HYD_REAL resolvedMinKp;
         HYD_REAL resolvedMaxKp;
@@ -274,7 +277,8 @@ HYD_BOOL HYD_RecipeValidator_ValidateSegment(const HYD_MotionSegment* segment,
 
     if ((segment->mode == HYD_MODE_PRESSURE_CLOSED_LOOP) &&
         (segment->pressureController == HYD_PRESSURE_CONTROLLER_PI ||
-         segment->pressureController == HYD_PRESSURE_CONTROLLER_PID) &&
+         segment->pressureController == HYD_PRESSURE_CONTROLLER_PID ||
+         segment->pressureController == HYD_PRESSURE_CONTROLLER_PI_RBF) &&
         (segment->pressureKi <= 0.0)) {
         return HYD_RecipeValidator_Fail(code, HYD_DIAG_CODE_SEGMENT_INVALID);
     }
@@ -288,7 +292,8 @@ HYD_BOOL HYD_RecipeValidator_ValidateSegment(const HYD_MotionSegment* segment,
     if ((segment->mode == HYD_MODE_PRESSURE_CLOSED_LOOP) &&
         (segment->pressureController == HYD_PRESSURE_CONTROLLER_P ||
          segment->pressureController == HYD_PRESSURE_CONTROLLER_PI ||
-         segment->pressureController == HYD_PRESSURE_CONTROLLER_PID) &&
+         segment->pressureController == HYD_PRESSURE_CONTROLLER_PID ||
+         segment->pressureController == HYD_PRESSURE_CONTROLLER_PI_RBF) &&
         (segment->pressureKp <= 0.0)) {
         return HYD_RecipeValidator_Fail(code, HYD_DIAG_CODE_SEGMENT_INVALID);
     }

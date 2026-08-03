@@ -91,6 +91,45 @@ static void test_write_then_read_iec(void) {
     ASSERT_FLOAT_EQ((HYD_REAL)IEC_VAL(rp.VALUE), 2.5f, 0.001f, "pressureKp should be 2.5 after write");
 }
 
+/* Test: PI-RBF strategy is selectable through the IEC parameter FB. */
+static void test_write_pi_rbf_controller_through_iec(void) {
+    __HydMotion_framework_Init();
+    ensure_axis_allocated();
+
+    HYD_WRITEPARAMETER wp;
+    memset(&wp, 0, sizeof(wp));
+    IEC_VAL(wp.EN) = true;
+    IEC_VAL(wp.AXISID) = 0;
+    IEC_VAL(wp.PARAMETERNUMBER) = HYD_PARAM_PRESSURE_CONTROLLER_TYPE;
+    IEC_VAL(wp.VALUE) = (IEC_LREAL)HYD_PRESSURE_CONTROLLER_PI_RBF;
+    IEC_VAL(wp.EXECUTE) = true;
+
+    __mcl_cmd_WriteParameter(&wp);
+
+    ASSERT_TRUE(IEC_VAL(wp.DONE) == true,
+                "IEC WriteParameter should accept PI-RBF controller type");
+    ASSERT_TRUE(IEC_VAL(wp.ERROR) == false,
+                "IEC WriteParameter should not reject PI-RBF controller type");
+
+    IEC_VAL(wp.EXECUTE) = false;
+    __mcl_cmd_WriteParameter(&wp);
+
+    HYD_READPARAMETER rp;
+    memset(&rp, 0, sizeof(rp));
+    IEC_VAL(rp.EN) = true;
+    IEC_VAL(rp.AXISID) = 0;
+    IEC_VAL(rp.ENABLE) = true;
+    IEC_VAL(rp.PARAMETERNUMBER) = HYD_PARAM_PRESSURE_CONTROLLER_TYPE;
+    __mcl_cmd_ReadParameter(&rp);
+
+    ASSERT_TRUE(IEC_VAL(rp.VALID) == true,
+                "IEC ReadParameter should report PI-RBF as valid");
+    ASSERT_FLOAT_EQ((HYD_REAL)IEC_VAL(rp.VALUE),
+                    (HYD_REAL)HYD_PRESSURE_CONTROLLER_PI_RBF,
+                    0.001f,
+                    "IEC ReadParameter should return PI-RBF controller type");
+}
+
 /* Test: WriteBoolParameter then ReadBoolParameter through IEC FBs */
 static void test_write_read_bool_iec(void) {
     __HydMotion_framework_Init();
@@ -292,6 +331,7 @@ static void test_pressure_handle_preserves_legacy_max_flow(void) {
 int main(void) {
     test_read_parameter_iec();
     test_write_then_read_iec();
+    test_write_pi_rbf_controller_through_iec();
     test_write_read_bool_iec();
     test_invalid_axisid_iec();
     test_segment_builder_uses_fb_params();

@@ -1542,6 +1542,12 @@ static HYD_BOOL HYD_BeginSegment(HYD_MotionControlFB* fb,
     fb->_activeSegmentValid = true;
     fb->_activeSegmentSource = resolvedSource;
 
+    /* Ripple estimates belong to one pressure segment.  Clear learned
+     * amplitude/phase and the steady gate at every segment transition so a
+     * stale pump phase or system gain cannot be injected into the next action. */
+    HYD_PressureRippleComp_Reset(&fb->_rippleComp);
+    HYD_PressureSteadyGate_Reset(&fb->_rippleGate, 64u, 10.0f);
+
     /* Resolve velocityToFlowGain: cylinderConfig > segment explicit > existing fallback */
     HYD_ApplyVelocityToFlowGainResolution(fb, &fb->_activeSegment);
     fb->STATE.currentSegmentIndex = resolvedSegmentIndex;
@@ -2132,15 +2138,20 @@ static HYD_BOOL HYD_ExecuteActiveSegmentControl(HYD_MotionControlFB* fb,
             if (rippleEn) {
                 HYD_REAL eP = fb->AXIS_REF.pressure - rampOutput->rampedPressure;
                 HYD_UINT8 rippleSteady = HYD_PressureSteadyGate_Update(&fb->_rippleGate, eP);
-                if (segment->systemGain > 1.0e-4f) {
+                HYD_UINT8 useEncoder =
+                    (isfinite((float)fb->AXIS_REF.motorAngleRev) &&
+                     fabs((double)fb->AXIS_REF.motorAngleRev) > 1.0e-9) ? 1u : 0u;
+                if (isfinite((float)segment->systemGain) && segment->systemGain > 1.0e-4f) {
                     HYD_PressureRippleComp_SetGain(&fb->_rippleComp, 1.0f / segment->systemGain);
+                } else {
+                    HYD_PressureRippleComp_SetGain(&fb->_rippleComp, 0.0f);
                 }
                 HYD_PressureRippleComp_Update(&fb->_rippleComp, eP,
                                               fb->AXIS_REF.motorAngleRev,
-                                              fb->PUMP_SPEED, deltaTime, 1u, rippleSteady);
+                                              fb->PUMP_SPEED, deltaTime, useEncoder, rippleSteady);
                 rippleFF = HYD_PressureRippleComp_GetFF(&fb->_rippleComp,
                                                         fb->AXIS_REF.motorAngleRev,
-                                                        fb->PUMP_SPEED, deltaTime, 1u);
+                                                        fb->PUMP_SPEED, deltaTime, useEncoder);
             }
             pressureInput.feedforwardFlow = ffBase + rippleFF;
         }
@@ -4015,7 +4026,7 @@ static HYD_BOOL HYD_IsValidPressureControllerParameter(HYD_REAL value)
 
     if (!isfinite(value) ||
         value < (HYD_REAL)HYD_PRESSURE_CONTROLLER_NONE ||
-        value > (HYD_REAL)HYD_PRESSURE_CONTROLLER_RBF_PI) {
+        value > (HYD_REAL)HYD_PRESSURE_CONTROLLER_PI_RBF) {
         return false;
     }
     strategy = (int)value;
@@ -4028,6 +4039,7 @@ static HYD_BOOL HYD_IsValidPressureControllerParameter(HYD_REAL value)
         case HYD_PRESSURE_CONTROLLER_PID:
         case HYD_PRESSURE_CONTROLLER_RBF_PID:
         case HYD_PRESSURE_CONTROLLER_RBF_PI:
+        case HYD_PRESSURE_CONTROLLER_PI_RBF:
             return true;
         default:
             return false;

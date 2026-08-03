@@ -1,7 +1,7 @@
 # Pressure Control Review and Conservative PI-RBF Design
 
 - Date: 2026-08-03
-- Status: Approved design, implementation not started
+- Status: Implemented with regression coverage; nonlinear physical evidence recorded below
 - Scope: `src/pressure_controller.c`, `src/rbf_pid.c`, pressure ripple integration, and pressure-specific tests
 
 ## 1. Goal and Constraints
@@ -14,6 +14,8 @@ The pressure loop must respond quickly and keep steady process-pressure ripple b
 - Steady process-pressure peak-to-peak <= 1 bar
 
 The controller runs at a nominal 1 kHz / 1 ms cycle. The design keeps the existing position-form PI architecture and limits changes to pressure-control behavior. It does not redesign the velocity planner, motion state machine, pump converter, or public enum numbering.
+
+`HYD_PRESSURE_CONTROLLER_PI_RBF` is a C enum constant in `HYD_PressureControllerType`, not a `#define` compile-time feature switch. The selected strategy is a runtime value: the PLC `HYD_WRITEPARAMETER` FB writes `HYD_PARAM_PRESSURE_CONTROLLER_TYPE`, the motion interface copies that value into `HYD_MotionSegment.pressureController`, and `HYD_PressureController_Execute()` dispatches the strategy for the active segment. `HYD_READPARAMETER` can read the configured value and `HYD_READSTATUS.PRESSURECONTROLLERAPPLIED` reports the strategy actually applied. The enum value is appended so existing PLC numeric values remain unchanged.
 
 Raw sensor pressure, filtered pressure, and simulated real process pressure are reported separately. A raw sensor signal with noise larger than 1% of a low pressure target cannot satisfy a process ripple requirement by definition; the hard process criterion is evaluated on real/filtered pressure and the raw signal is reported as a sensor-noise diagnostic.
 
@@ -29,6 +31,14 @@ The current branch was built in an isolated MinGW directory and the existing pre
 - `sim_pressure_control`
 
 The tests passing is not sufficient evidence for the new acceptance criteria because most tests use deterministic or simplified plants.
+
+The branch now also includes `tests/test_pressure_control_physical.c`.  It drives the
+existing physical `PressureModel` with a 60 ms motor lag, leakage/relief, speed
+dependent volume and leak, 8% pump-flow ripple, 16% tooth-drop visibility, sensor
+noise/bias, motor noise, process noise, a +30% pump-gain mismatch, a load demand
+step, encoder loss, and pressure-segment transitions.  The executable reports real
+process pressure, controller-filtered pressure, and raw sensor peak-to-peak values
+separately; it does not turn an unmet performance criterion into a passing test.
 
 The current 1 ms simulation uses a first-order pressure plant, 1.5 bar synthetic pump ripple, 0.30 bar sensor noise, gain mismatch, and an 8 bar load step. Its measured baseline is:
 
@@ -95,6 +105,13 @@ The ripple module is independent of the PI/RBF decision and is treated as a reve
 
 The existing hard-coded `useEncoder=1` behavior and stale `ffGain` carry-over when `systemGain <= 0` are correctness defects to remove.
 
+The implementation additionally removes the slow pressure-error baseline before
+synchronous demodulation, estimates a bounded second harmonic for the non-sinusoidal
+tooth waveform, and keeps the second-harmonic command at 50% weight under the same
+5 L/min total compensation limit.  PI-RBF configures the RBF supervisor in PI mode
+so its discarded D/acceleration terms cannot learn a command that the outer PI never
+applies.
+
 ## 5. Motion-Scenario Contract
 
 | Motion action | Primary control | Pressure-loop role |
@@ -113,7 +130,7 @@ All mode transitions use output tracking. Pressure ceiling enforcement stays in 
 The implementation plan must address these bounded issues:
 
 1. Synchronize PI-RBF state with the real outer-loop output and saturation.
-2. Accept `HYD_PRESSURE_CONTROLLER_PI_RBF` in parameter validation without changing enum values.
+2. Accept `HYD_PRESSURE_CONTROLLER_PI_RBF` in both parameter and recipe validation without changing enum values. The current runtime execution table already recognizes the enum, but `src/motion_control.c` and `src/recipe_validator.c` still use `HYD_PRESSURE_CONTROLLER_RBF_PI` as the upper/last supported value; this makes the IEC write and recipe path reject the otherwise implemented strategy.
 3. Validate and clamp `dt`; preserve the 1 ms tuning at nominal rate and normalize RBF incremental terms for valid timing jitter.
 4. Normalize/sort RBF parameter windows before clamping runtime gains and reject non-finite configuration values.
 5. Make RBF external saturation detection use the configured segment output bounds, not only the internal hard pump bound.
@@ -143,6 +160,14 @@ Regression tests must cover:
 - low-pressure negative-flow suppression and allowed relief;
 - ripple compensation encoder fallback, invalid gain, phase jump, convergence gate, harmonic input, amplitude limit, and disable behavior;
 - motion-layer mold-protect and lock-pressure transitions.
+
+The new physical simulation regression confirms all nominal and gain-mismatch runs
+remain finite and all controller transitions are bumpless.  With the current generic
+gains and the intentionally harsh fitted physical ripple, the hard 100 bar target
+(rise <=100 ms, settle <=300 ms, overshoot <=5%, real p2p <=1 bar) is not met by any
+strategy; this is an explicit tuning/calibration result, not a test waiver.  The
+first-order endpoint harness remains useful for fast relative comparisons, but its
+idealized model must not be used as proof of the 1% process-ripple requirement.
 
 The simulation target is registered in CTest and emits a summary with rise, settling, overshoot, real/filtered/raw steady error, p2p, disturbance recovery, controller execution time, and pass/fail status.
 

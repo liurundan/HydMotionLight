@@ -87,6 +87,76 @@ static int test_ripple_speed_accumulator_fallback(void) {
     return 1;
 }
 
+static int test_ripple_second_harmonic_is_compensated(void) {
+    HYD_PressureRippleCompState s;
+    float theta = 0.0f;
+    float max_residual = 0.0f;
+    int i;
+
+    HYD_PressureRippleComp_Reset(&s);
+    HYD_PressureRippleComp_SetEnabled(&s, 1u);
+    HYD_PressureRippleComp_SetGain(&s, 1.0f / 4.5f);
+
+    for (i = 0; i < 8000; ++i) {
+        float phase = TWO_PI * (float)Z * theta;
+        float eP = 1.0f * sinf(phase + 0.2f) +
+                   0.8f * sinf(2.0f * phase - 0.4f);
+        HYD_PressureRippleComp_Update(&s, eP, theta, 0.0f, DT, 1u, 1u);
+        theta += 0.0007f;
+        if (theta >= 1.0f) theta -= 1.0f;
+    }
+
+    for (i = 0; i < 300; ++i) {
+        float phase = TWO_PI * (float)Z * theta;
+        float eP = 1.0f * sinf(phase + 0.2f) +
+                   0.8f * sinf(2.0f * phase - 0.4f);
+        HYD_PressureRippleComp_Update(&s, 0.0f, theta, 0.0f, DT, 1u, 0u);
+        {
+            float ff = (float)HYD_PressureRippleComp_GetFF(&s, theta, 0.0f, DT, 1u);
+            float residual = eP + ff * 4.5f;
+            if (fabsf(residual) > max_residual) max_residual = fabsf(residual);
+        }
+        theta += 0.0007f;
+        if (theta >= 1.0f) theta -= 1.0f;
+    }
+
+    return max_residual < 0.8f && s.a2 > 0.2f;
+}
+
+static int test_ripple_invalid_inputs_are_safely_ignored(void) {
+    HYD_PressureRippleCompState s;
+    HYD_PressureRippleComp_Reset(&s);
+    s.sampleCount = HYD_RIPPLE_MIN_SAMPLES;
+    s.a1 = 100.0f;
+    s.phi1 = 0.5f;
+
+    HYD_PressureRippleComp_SetGain(&s, NAN);
+    if (s.ffGain != 0.0f) return 0;
+
+    HYD_PressureRippleComp_SetGain(&s, 1.0f);
+    HYD_PressureRippleComp_Update(&s, 1.0f, NAN, NAN, NAN, 1u, 1u);
+    if (!isfinite((double)s.theta) || !isfinite((double)s.a1) ||
+        !isfinite((double)s.phi1) || !isfinite((double)s.a2) ||
+        !isfinite((double)s.phi2) || !isfinite((double)s.dcEstimate)) return 0;
+
+    return isfinite((double)HYD_PressureRippleComp_GetFF(&s, NAN, NAN, NAN, 1u));
+}
+
+static int test_ripple_feedforward_is_bounded(void) {
+    HYD_PressureRippleCompState s;
+    HYD_REAL ff;
+
+    HYD_PressureRippleComp_Reset(&s);
+    s.sampleCount = HYD_RIPPLE_MIN_SAMPLES;
+    s.a1 = 100.0f;
+    s.phi1 = 0.0f;
+    s.theta = 0.25f;
+    HYD_PressureRippleComp_SetGain(&s, 1.0f);
+    ff = HYD_PressureRippleComp_GetFF(&s, 0.0f, 0.0f, DT, 1u);
+
+    return fabsf((float)ff) <= 5.0f + 1e-6f;
+}
+
 /* PI/PI_RBF 在 systemGain 已知、FF 基值=target/systemGain 时，稳态误差应≈0
  * （FF-trim 仅补偿 systemGain 之外的残差，本例基值已正确，故稳态误差<1bar）。 */
 static int test_ff_trim_removes_steady_error(void) {
@@ -146,10 +216,16 @@ int main(void) {
     int failed = 0;
     if (!test_ripple_lut_cancels_synthetic_ripple()) { printf("FAIL test_ripple_lut_cancels_synthetic_ripple\n"); ++failed; }
     else printf("PASS test_ripple_lut_cancels_synthetic_ripple\n");
+    if (!test_ripple_second_harmonic_is_compensated()) { printf("FAIL test_ripple_second_harmonic_is_compensated\n"); ++failed; }
+    else printf("PASS test_ripple_second_harmonic_is_compensated\n");
     if (!test_ripple_disabled_outputs_zero()) { printf("FAIL test_ripple_disabled_outputs_zero\n"); ++failed; }
     else printf("PASS test_ripple_disabled_outputs_zero\n");
     if (!test_ripple_speed_accumulator_fallback()) { printf("FAIL test_ripple_speed_accumulator_fallback\n"); ++failed; }
     else printf("PASS test_ripple_speed_accumulator_fallback\n");
+    if (!test_ripple_invalid_inputs_are_safely_ignored()) { printf("FAIL test_ripple_invalid_inputs_are_safely_ignored\n"); ++failed; }
+    else printf("PASS test_ripple_invalid_inputs_are_safely_ignored\n");
+    if (!test_ripple_feedforward_is_bounded()) { printf("FAIL test_ripple_feedforward_is_bounded\n"); ++failed; }
+    else printf("PASS test_ripple_feedforward_is_bounded\n");
     if (!test_ff_trim_removes_steady_error()) { printf("FAIL test_ff_trim_removes_steady_error\n"); ++failed; }
     else printf("PASS test_ff_trim_removes_steady_error\n");
     if (!test_pi_rbf_keeps_feedforward()) { printf("FAIL test_pi_rbf_keeps_feedforward\n"); ++failed; }

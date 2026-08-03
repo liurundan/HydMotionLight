@@ -123,6 +123,25 @@ static void test_validate_rbf_pi_pressure_controller(void) {
     printf("✓ RBF-PI pressure controller validation test passed\n");
 }
 
+static void test_validate_pi_rbf_pressure_controller(void) {
+    HYD_MotionSegment segment = make_valid_segment();
+    HYD_DiagnosticCode code = HYD_DIAG_CODE_NONE;
+
+    segment.mode = HYD_MODE_PRESSURE_CLOSED_LOOP;
+    segment.planner = HYD_PLANNER_TIME_BASED;
+    segment.endCondition = HYD_END_MANUAL;
+    segment.direction = HYD_DIRECTION_HOLD;
+    segment.targetPressure = 40.0;
+    segment.maxFlow = 20.0;
+    segment.pressureController = HYD_PRESSURE_CONTROLLER_PI_RBF;
+    segment.pressureKp = 0.5;
+    segment.pressureKi = 0.1;
+
+    assert(HYD_RecipeValidator_ValidateSegment(&segment, 0, &code, NULL));
+    assert(code == HYD_DIAG_CODE_NONE);
+    printf("PI-RBF pressure controller validation test passed\n");
+}
+
 static void test_validate_start_context_direction_conflict(void) {
     HYD_MotionSegment segment;
     HYD_AxisRef axisRef = {0};
@@ -382,6 +401,7 @@ int main(void) {
     test_validate_runtime_config();
     test_validate_pressure_derivative_filter_alpha();
     test_validate_rbf_pi_pressure_controller();
+    test_validate_pi_rbf_pressure_controller();
     test_validate_start_context_direction_conflict();
     test_invalid_ceiling_tolerance_rejected();
     test_invalid_ceiling_value_rejected();

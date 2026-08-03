@@ -6,6 +6,7 @@
 #define HYD_LEGACY_PRESSURE_FLOW_KP 1.5
 #define HYD_DEFAULT_PRESSURE_FILTER_ALPHA 0.1
 #define HYD_DEFAULT_PRESSURE_DERIVATIVE_FILTER_ALPHA 0.05
+#define HYD_MAX_PRESSURE_DT 1.0
 
 typedef struct {
     HYD_PressureControllerType strategy;
@@ -84,10 +85,26 @@ static const HYD_PressureStrategySpec* HYD_ResolvePressureStrategySpec(const HYD
 }
 
 static HYD_REAL HYD_ResolvePositiveOrDefault(HYD_REAL configuredValue, HYD_REAL defaultValue) {
-    if (configuredValue > 0.0) {
+    if (isfinite(configuredValue) && configuredValue > 0.0) {
         return configuredValue;
     }
     return defaultValue;
+}
+
+static void HYD_SortRealPair(HYD_REAL* low, HYD_REAL* high) {
+    HYD_REAL temp;
+
+    if (low == NULL || high == NULL || *low <= *high) {
+        return;
+    }
+
+    temp = *low;
+    *low = *high;
+    *high = temp;
+}
+
+static HYD_TIME HYD_ResolveTimestamp(HYD_TIME timestamp, HYD_TIME fallback) {
+    return isfinite(timestamp) ? timestamp : fallback;
 }
 
 static HYD_REAL HYD_ResolveGain(HYD_REAL configuredGain, HYD_REAL fallbackGain) {
@@ -213,6 +230,10 @@ static void HYD_ResolveRbfPidConfig(const HYD_MotionSegment* segment,
     config->etaD = HYD_ResolvePositiveOrDefault(segment->pressureRbfConfig.etaD, config->etaD);
     config->disablePressureAccelFeedforward =
         segment->pressureRbfConfig.disablePressureAccelFeedforward > 0.0 ? true : false;
+
+    HYD_SortRealPair(&config->minKp, &config->maxKp);
+    HYD_SortRealPair(&config->minKi, &config->maxKi);
+    HYD_SortRealPair(&config->minKd, &config->maxKd);
 }
 
 static void HYD_ResolvePressureControllerConfig(const HYD_MotionSegment* segment,
@@ -259,9 +280,9 @@ static void HYD_ResolvePressureControllerConfig(const HYD_MotionSegment* segment
     }
 
     if (input != NULL && state != NULL) {
-        config->dt = input->timestamp - state->previousTimestamp;
-        if (config->dt < 0.0) {
-            config->dt = 0.0;
+        HYD_REAL rawDt = input->timestamp - state->previousTimestamp;
+        if (isfinite(rawDt) && rawDt > 0.0) {
+            config->dt = (rawDt > HYD_MAX_PRESSURE_DT) ? HYD_MAX_PRESSURE_DT : rawDt;
         }
     }
     config->samplingPeriod = HYD_ResolveAdaptiveSamplingPeriod(state, config->dt);
@@ -339,12 +360,14 @@ static void HYD_ApplyRbfPidConfig(HYD_PressureControllerState* state,
                              (float)config->rbf.etaD);
     RBF_PID_SetControlMode(
         &state->rbfPid,
-        config->strategy == HYD_PRESSURE_CONTROLLER_RBF_PI
+        (config->strategy == HYD_PRESSURE_CONTROLLER_RBF_PI ||
+         config->strategy == HYD_PRESSURE_CONTROLLER_PI_RBF)
             ? RBF_PID_CONTROL_MODE_PI
             : RBF_PID_CONTROL_MODE_PID);
     RBF_PID_SetPressureAccelFeedforwardEnabled(
         &state->rbfPid,
         config->strategy == HYD_PRESSURE_CONTROLLER_RBF_PI ||
+            config->strategy == HYD_PRESSURE_CONTROLLER_PI_RBF ||
             config->rbf.disablePressureAccelFeedforward ? false : true);
     RBF_PID_SetFlowNormalization(
         &state->rbfPid,
@@ -360,7 +383,8 @@ static void HYD_ApplyRbfPidConfig(HYD_PressureControllerState* state,
                                             config->rbf.minKd,
                                             config->rbf.maxKd);
     state->rbfPid.pid_mode_kd = state->rbfPid.KD;
-    if (config->strategy == HYD_PRESSURE_CONTROLLER_RBF_PI) {
+    if (config->strategy == HYD_PRESSURE_CONTROLLER_RBF_PI ||
+        config->strategy == HYD_PRESSURE_CONTROLLER_PI_RBF) {
         state->rbfPid.KD = 0.0f;
     }
 
@@ -449,7 +473,7 @@ void HYD_PressureController_InitState(HYD_PressureControllerState* state,
     state->previousFilteredPressure = initialPressure;
     state->previousFilteredPressureRate = 0.0;
     state->previousOutput = initialOutputFlow;
-    state->previousTimestamp = timestamp;
+    state->previousTimestamp = HYD_ResolveTimestamp(timestamp, 0.0);
 }
 
 void HYD_PressureController_RequestTracking(HYD_PressureControllerState* state,
@@ -576,7 +600,7 @@ void HYD_PressureController_Execute(const HYD_MotionSegment* segment,
         outputFlow = HYD_ClampReal(rawOutputFlow, config.outputMin, config.outputMax);
 
         /* 负流量死区：仅当压力偏差 <= -2.0 bar（超压 >= 2 bar）时才允许负流量 */
-        if (config.outputMin < 0.0 && outputFlow < 0.0 && fabs(error) < 5.0) {
+        if (config.outputMin < 0.0 && outputFlow < 0.0 && error > -2.0) {
             outputFlow = 0.0; /* 小偏差时不使用负流量，防止0附近震荡 */
         }
 
@@ -605,7 +629,8 @@ void HYD_PressureController_Execute(const HYD_MotionSegment* segment,
         state->previousFilteredPressure = filteredPressure;
         state->previousFilteredPressureRate = filteredPressureRate;
         state->previousOutput = outputFlow;
-        state->previousTimestamp = input->timestamp;
+        state->previousTimestamp = HYD_ResolveTimestamp(input->timestamp,
+                                                         state->previousTimestamp);
         state->activeStrategy = config.strategy;
         return;
         }
@@ -690,6 +715,19 @@ void HYD_PressureController_Execute(const HYD_MotionSegment* segment,
     output->outputFlow = outputFlow;
     output->saturated = (outputFlow != unsaturatedOutput);
 
+    if (config.strategy == HYD_PRESSURE_CONTROLLER_PI_RBF && state->rbfInitialized) {
+        /* PI-RBF uses the RBF only as a gain supervisor.  The command that
+         * actually drives the pump is the outer PI result after its limits
+         * and low-pressure negative-flow guard, so feed that command back to
+         * the RBF history instead of retaining its discarded virtual output. */
+        state->rbfPid.du = (float)(outputFlow - state->previousOutput);
+        state->rbfPid.du_prev = state->rbfPid.du;
+        state->rbfPid.Output = (float)outputFlow;
+        state->rbfPid.u_prev = (float)outputFlow;
+        state->rbfPid.n_out = (float)outputFlow;
+        state->rbfPid.output_saturated = output->saturated ? true : false;
+    }
+
     state->initialized = true;
     state->trackingRequested = false;
     state->integralOutput = integralTerm;
@@ -697,6 +735,7 @@ void HYD_PressureController_Execute(const HYD_MotionSegment* segment,
     state->previousFilteredPressure = filteredPressure;
     state->previousFilteredPressureRate = filteredPressureRate;
     state->previousOutput = outputFlow;
-    state->previousTimestamp = input->timestamp;
+    state->previousTimestamp = HYD_ResolveTimestamp(input->timestamp,
+                                                     state->previousTimestamp);
     state->activeStrategy = config.strategy;
 }

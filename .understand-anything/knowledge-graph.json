@@ -1,0 +1,3052 @@
+{
+  "version": "1.0.0",
+  "project": {
+    "name": "hdy-motion-light",
+    "languages": [
+      "c",
+      "python",
+      "cmake"
+    ],
+    "frameworks": [
+      "cmake",
+      "plcopen"
+    ],
+    "description": "HDY Motion Control Library - C99液压注塑机运动控制库",
+    "analyzedAt": "2026-05-28T00:38:15.375Z",
+    "gitCommitHash": "09bd6b0c4275ca175f9d44f7d619228a411e072b"
+  },
+  "nodes": [
+    {
+      "id": "document:README.md",
+      "type": "document",
+      "name": "README.md",
+      "filePath": "README.md",
+      "summary": "Project overview and quick start guide for HDY Motion Control Library, covering architecture, build commands, test execution, and embedded deployment.",
+      "tags": [
+        "documentation",
+        "entry-point",
+        "overview",
+        "getting-started"
+      ],
+      "complexity": "moderate",
+      "languageNotes": "Chinese documentation with English technical terms. Contains build commands, test execution instructions, and architecture diagrams."
+    },
+    {
+      "id": "document:CLAUDE.md",
+      "type": "document",
+      "name": "CLAUDE.md",
+      "filePath": "CLAUDE.md",
+      "summary": "Guidance document for Claude Code working with this repository, defining coding behavior, commands, architecture boundaries, and repository constraints.",
+      "tags": [
+        "documentation",
+        "guidance",
+        "architecture",
+        "coding-conventions"
+      ],
+      "complexity": "moderate",
+      "languageNotes": "English documentation with Chinese code examples. Contains detailed architecture diagrams and constraints."
+    },
+    {
+      "id": "document:AGENTS.md",
+      "type": "document",
+      "name": "AGENTS.md",
+      "filePath": "AGENTS.md",
+      "summary": "AI Agent programming protocol for hdy-motion-light project, defining skills, commands, and development workflow.",
+      "tags": [
+        "documentation",
+        "guidance",
+        "workflow",
+        "ai-protocol"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:CODEBUDDY.md",
+      "type": "document",
+      "name": "CODEBUDDY.md",
+      "filePath": "CODEBUDDY.md",
+      "summary": "CodeBuddy guidance for working with code in this repository, including commands, high-level architecture, IEC/PLCopen interface, and simulator architecture.",
+      "tags": [
+        "documentation",
+        "guidance",
+        "architecture",
+        "iec-plcopen"
+      ],
+      "complexity": "moderate",
+      "languageNotes": "English documentation with Chinese technical explanations. Details PLCopen function blocks and simulator layers."
+    },
+    {
+      "id": "document:HMI诊断对照表.md",
+      "type": "document",
+      "name": "HMI诊断对照表.md",
+      "filePath": "HMI诊断对照表.md",
+      "summary": "HMI/上位机 Chinese diagnostic mapping table, mapping DIAGNOSTIC.code to display titles, severity levels, recovery actions, and fault escalation mechanisms.",
+      "tags": [
+        "documentation",
+        "diagnostics",
+        "hmi",
+        "troubleshooting"
+      ],
+      "complexity": "moderate",
+      "languageNotes": "Chinese documentation with English code values. Details diagnostic code-to-HMI mapping and fault escalation timing."
+    },
+    {
+      "id": "document:项目需求文档-v1.0.md",
+      "type": "document",
+      "name": "项目需求文档-v1.0.md",
+      "filePath": "项目需求文档-v1.0.md",
+      "summary": "HDY injection-molding motion control library requirements specification v1.0, defining functional requirements, non-functional requirements, interface specifications, and acceptance criteria.",
+      "tags": [
+        "documentation",
+        "requirements",
+        "specification"
+      ],
+      "complexity": "complex",
+      "languageNotes": "Chinese documentation with English technical terms. Contains complete requirements breakdown and data model definitions."
+    },
+    {
+      "id": "document:开发计划文档-v1.0.md",
+      "type": "document",
+      "name": "开发计划文档-v1.0.md",
+      "filePath": "开发计划文档-v1.0.md",
+      "summary": "Development plan v1.0 for 6-sprint roadmap (April-May 2026), tracking sprint goals, task completion, and current status.",
+      "tags": [
+        "documentation",
+        "planning",
+        "roadmap",
+        "tracking"
+      ],
+      "complexity": "complex",
+      "languageNotes": "Chinese documentation with Chinese technical terms. Contains sprint breakdown, task tracking, and risk assessment."
+    },
+    {
+      "id": "document:正式发布说明模板.md",
+      "type": "document",
+      "name": "正式发布说明模板.md",
+      "filePath": "正式发布说明模板.md",
+      "summary": "Release notes template for HDY Motion Control Library, providing structured format for version announcements, change logs, and delivery documentation.",
+      "tags": [
+        "documentation",
+        "release-notes",
+        "template"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "config:CMakeLists.txt",
+      "type": "config",
+      "name": "CMakeLists.txt",
+      "filePath": "CMakeLists.txt",
+      "summary": "CMake build configuration defining targets (HydroMotionLib, HydroSimLib, tests), source file globbing, and test registration.",
+      "tags": [
+        "configuration",
+        "build-system",
+        "cmake"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "config:CMakePresets.json",
+      "type": "config",
+      "name": "CMakePresets.json",
+      "filePath": "CMakePresets.json",
+      "summary": "CMake preset configuration for project builds, defining build targets and compiler toolchains.",
+      "tags": [
+        "configuration",
+        "cmake",
+        "toolchain"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "config:pousHydMotion.xml",
+      "type": "config",
+      "name": "pousHydMotion.xml",
+      "filePath": "pousHydMotion.xml",
+      "summary": "PLCopen TC6 IEC61131-3 project definition for HydMotion Functions library, defining function blocks (MoveProfile, LoadProfile, Stop, Hold, Resume, MoveAbsolute, MoveVelocity, Reset, PressureHandle, CreateMotion, SetAxisFeedback, GetPumpRequest, etc.)",
+      "tags": [
+        "configuration",
+        "plcopen",
+        "iec61131-3",
+        "function-blocks"
+      ],
+      "complexity": "complex",
+      "languageNotes": "PLCopen TC6 XML schema. Defines IEC function blocks with input/output variables and ST code bindings."
+    },
+    {
+      "id": "config:pousHydSimulator.xml",
+      "type": "config",
+      "name": "pousHydSimulator.xml",
+      "filePath": "pousHydSimulator.xml",
+      "summary": "PLCopen TC6 IEC61131-3 project definition for Hydraulic Simulator Functions library, defining CreateSimAxis, MoveSimAxis, ReadSimAxis function blocks.",
+      "tags": [
+        "configuration",
+        "plcopen",
+        "iec61131-3",
+        "simulation"
+      ],
+      "complexity": "simple",
+      "languageNotes": "PLCopen TC6 XML schema for simulator function blocks."
+    },
+    {
+      "id": "document:docs/architecture/control-layer-boundary.md",
+      "type": "document",
+      "name": "control-layer-boundary.md",
+      "filePath": "docs/architecture/control-layer-boundary.md",
+      "summary": "Defines the responsibility boundary between the HydroMotionLib motion-control library and the PLC process layer, establishing ownership of motion-execution semantics, diagnostics, and pump-side outputs versus machine workflow, valve control, and process decisions.",
+      "tags": [
+        "documentation",
+        "architecture",
+        "boundary",
+        "contract",
+        "responsibility"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "document:docs/architecture/implementation-contract-gap-list.md",
+      "type": "document",
+      "name": "implementation-contract-gap-list.md",
+      "filePath": "docs/architecture/implementation-contract-gap-list.md",
+      "summary": "Records discrepancies between the intended motion-control-layer contract and current implementation, tracking completed Sprint 0 fixes, Sprint 1 low-pressure mold-protect additions, and remaining gaps across IEC FB surface, buffer modes, and documentation alignment.",
+      "tags": [
+        "documentation",
+        "gap-analysis",
+        "contract",
+        "implementation",
+        "tracking"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "document:docs/architecture/motion-profile-archetypes.md",
+      "type": "document",
+      "name": "motion-profile-archetypes.md",
+      "filePath": "docs/architecture/motion-profile-archetypes.md",
+      "summary": "Defines reusable motion profile archetypes for different machine axis roles and segment types, standardizing control parameters and control-mode mappings for clamp, injection, hold-pressure, ejector, and carriage operations while staying compatible with the runtime contract.",
+      "tags": [
+        "documentation",
+        "architecture",
+        "archetypes",
+        "templates",
+        "standardization"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "document:docs/architecture/motion-runtime-contract.md",
+      "type": "document",
+      "name": "motion-runtime-contract.md",
+      "filePath": "docs/architecture/motion-runtime-contract.md",
+      "summary": "Defines the formal runtime contract of the motion-execution layer, specifying runtime state semantics, execution ownership, command semantics, output signals, completion semantics, error handling, and the PLC-visible fields that upper layers may safely depend on.",
+      "tags": [
+        "documentation",
+        "contract",
+        "runtime",
+        "semantics",
+        "state-machine"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "document:docs/superpowers/plans/2026-04-29-gen-removal-unified-validation.md",
+      "type": "document",
+      "name": "2026-04-29-gen-removal-unified-validation.md",
+      "filePath": "docs/superpowers/plans/2026-04-29-gen-removal-unified-validation.md",
+      "summary": "Product planning document defining the removal strategy for generic type parameters with unified validation approach.",
+      "tags": [
+        "documentation",
+        "planning",
+        "refactoring",
+        "generic-types",
+        "validation"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:docs/superpowers/plans/2026-04-30-hdy-to-hyd-rename.md",
+      "type": "document",
+      "name": "2026-04-30-hdy-to-hyd-rename.md",
+      "filePath": "docs/superpowers/plans/2026-04-30-hdy-to-hyd-rename.md",
+      "summary": "Product planning document for renaming project components from HDY to HYD to reflect corporate rebranding.",
+      "tags": [
+        "documentation",
+        "planning",
+        "renaming",
+        "rebranding"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:docs/superpowers/plans/2026-05-09-iec-parameter-fbs.md",
+      "type": "document",
+      "name": "2026-05-09-iec-parameter-fbs.md",
+      "filePath": "docs/superpowers/plans/2026-05-09-iec-parameter-fbs.md",
+      "summary": "Product planning document defining IEC parameter function block specifications for PLCopen compliance.",
+      "tags": [
+        "documentation",
+        "planning",
+        "iec",
+        "parameter-fbs",
+        "plcopen"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:docs/superpowers/plans/2026-05-12-moveabsolute-stop-integration.md",
+      "type": "document",
+      "name": "2026-05-12-moveabsolute-stop-integration.md",
+      "filePath": "docs/superpowers/plans/2026-05-12-moveabsolute-stop-integration.md",
+      "summary": "Product planning document for integrating MoveAbsolute with Stop functionality in the motion control layer.",
+      "tags": [
+        "documentation",
+        "planning",
+        "integration",
+        "moveabsolute",
+        "stop"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:docs/superpowers/plans/2026-05-13-movevelocity-pressurehandle-direct-session.md",
+      "type": "document",
+      "name": "2026-05-13-movevelocity-pressurehandle-direct-session.md",
+      "filePath": "docs/superpowers/plans/2026-05-13-movevelocity-pressurehandle-direct-session.md",
+      "summary": "Product planning document defining MoveVelocity and PressureHandle direct session behavior in recipe mode.",
+      "tags": [
+        "documentation",
+        "planning",
+        "direct-session",
+        "movevelocity",
+        "pressurehandle"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:docs/superpowers/plans/2026-05-13-reset-recipe-direct-boundary.md",
+      "type": "document",
+      "name": "2026-05-13-reset-recipe-direct-boundary.md",
+      "filePath": "docs/superpowers/plans/2026-05-13-reset-recipe-direct-boundary.md",
+      "summary": "Product planning document clarifying Reset behavior boundaries between recipe mode and direct mode execution.",
+      "tags": [
+        "documentation",
+        "planning",
+        "reset",
+        "recipe-boundary",
+        "direct-mode"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:docs/superpowers/plans/2026-05-14-hold-resume-iec-surface.md",
+      "type": "document",
+      "name": "2026-05-14-hold-resume-iec-surface.md",
+      "filePath": "docs/superpowers/plans/2026-05-14-hold-resume-iec-surface.md",
+      "summary": "Product planning document defining Hold and Resume IEC surface contract for motion control state management.",
+      "tags": [
+        "documentation",
+        "planning",
+        "hold-resume",
+        "iec-surface",
+        "state-management"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:docs/superpowers/plans/2026-05-14-iec-surface-contract-alignment.md",
+      "type": "document",
+      "name": "2026-05-14-iec-surface-contract-alignment.md",
+      "filePath": "docs/superpowers/plans/2026-05-14-iec-surface-contract-alignment.md",
+      "summary": "Product planning document documenting IEC surface contract alignment between motion control library and PLC interface layer.",
+      "tags": [
+        "documentation",
+        "planning",
+        "iec-surface",
+        "contract",
+        "alignment"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:docs/superpowers/plans/2026-05-14-motion-runtime-contract-doc.md",
+      "type": "document",
+      "name": "2026-05-14-motion-runtime-contract-doc.md",
+      "filePath": "docs/superpowers/plans/2026-05-14-motion-runtime-contract-doc.md",
+      "summary": "Product planning document defining runtime contract specifications for motion control library execution model.",
+      "tags": [
+        "documentation",
+        "planning",
+        "runtime-contract",
+        "execution-model"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:docs/superpowers/plans/2026-05-14-recipe-direct-lifecycle-alignment.md",
+      "type": "document",
+      "name": "2026-05-14-recipe-direct-lifecycle-alignment.md",
+      "filePath": "docs/superpowers/plans/2026-05-14-recipe-direct-lifecycle-alignment.md",
+      "summary": "Product planning document aligning recipe mode and direct mode lifecycle behaviors in the motion control system.",
+      "tags": [
+        "documentation",
+        "planning",
+        "lifecycle",
+        "recipe-mode",
+        "direct-mode"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:docs/superpowers/plans/2026-05-15-hydraulic-motion-algorithm-development.md",
+      "type": "document",
+      "name": "2026-05-15-hydraulic-motion-algorithm-development.md",
+      "filePath": "docs/superpowers/plans/2026-05-15-hydraulic-motion-algorithm-development.md",
+      "summary": "Product planning document defining hydraulic motion algorithm development requirements for injection-molding machine control.",
+      "tags": [
+        "documentation",
+        "planning",
+        "hydraulic",
+        "motion-algorithm",
+        "development"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:docs/superpowers/plans/2026-05-15-iec-deceleration-contract-alignment.md",
+      "type": "document",
+      "name": "2026-05-15-iec-deceleration-contract-alignment.md",
+      "filePath": "docs/superpowers/plans/2026-05-15-iec-deceleration-contract-alignment.md",
+      "summary": "Product planning document documenting IEC deceleration contract alignment for smooth motion stops.",
+      "tags": [
+        "documentation",
+        "planning",
+        "iec-surface",
+        "deceleration",
+        "contract"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:docs/superpowers/plans/2026-05-15-online-trapezoid-position-planner.md",
+      "type": "document",
+      "name": "2026-05-15-online-trapezoid-position-planner.md",
+      "filePath": "docs/superpowers/plans/2026-05-15-online-trapezoid-position-planner.md",
+      "summary": "Product planning document defining online trapezoid position planner specifications for dynamic trajectory adjustment.",
+      "tags": [
+        "documentation",
+        "planning",
+        "online-planner",
+        "trapezoid",
+        "position-control"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:docs/superpowers/plans/2026-05-16-strict-position-completion-with-online-planner.md",
+      "type": "document",
+      "name": "2026-05-16-strict-position-completion-with-online-planner.md",
+      "filePath": "docs/superpowers/plans/2026-05-16-strict-position-completion-with-online-planner.md",
+      "summary": "Product planning document defining strict position completion criteria with online planner integration.",
+      "tags": [
+        "documentation",
+        "planning",
+        "position-completion",
+        "online-planner",
+        "strict"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:docs/superpowers/plans/2026-05-20-beckhoff-blending-curves.md",
+      "type": "document",
+      "name": "2026-05-20-beckhoff-blending-curves.md",
+      "filePath": "docs/superpowers/plans/2026-05-20-beckhoff-blending-curves.md",
+      "summary": "Product planning document defining Beckhoff interface blending curves for smooth transition between motion segments.",
+      "tags": [
+        "documentation",
+        "planning",
+        "beckhoff",
+        "blending",
+        "curves"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:docs/superpowers/plans/2026-05-20-beckhoff-buffer-live-update.md",
+      "type": "document",
+      "name": "2026-05-20-beckhoff-buffer-live-update.md",
+      "filePath": "docs/superpowers/plans/2026-05-20-beckhoff-buffer-live-update.md",
+      "summary": "Product planning document defining Beckhoff buffer live update mechanism for real-time motion data synchronization.",
+      "tags": [
+        "documentation",
+        "planning",
+        "beckhoff",
+        "buffer",
+        "live-update"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:docs/superpowers/plans/2026-05-21-beckhoff-blending-followup-fixes.md",
+      "type": "document",
+      "name": "2026-05-21-beckhoff-blending-followup-fixes.md",
+      "filePath": "docs/superpowers/plans/2026-05-21-beckhoff-blending-followup-fixes.md",
+      "summary": "Product planning document documenting follow-up fixes for Beckhoff blending curve implementation issues.",
+      "tags": [
+        "documentation",
+        "planning",
+        "beckhoff",
+        "blending",
+        "followup"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:docs/superpowers/plans/2026-05-21-sprint0-critical-fixes.md",
+      "type": "document",
+      "name": "2026-05-21-sprint0-critical-fixes.md",
+      "filePath": "docs/superpowers/plans/2026-05-21-sprint0-critical-fixes.md",
+      "summary": "Product planning document defining Sprint 0 critical fixes for production-readiness of motion control library.",
+      "tags": [
+        "documentation",
+        "planning",
+        "sprint0",
+        "critical-fixes",
+        "production-readiness"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:docs/superpowers/plans/2026-05-21-sprint1-low-pressure-mold-protect.md",
+      "type": "document",
+      "name": "2026-05-21-sprint1-low-pressure-mold-protect.md",
+      "filePath": "docs/superpowers/plans/2026-05-21-sprint1-low-pressure-mold-protect.md",
+      "summary": "Product planning document defining Sprint 1 low-pressure mold protection feature for injection-molding safety.",
+      "tags": [
+        "documentation",
+        "planning",
+        "sprint1",
+        "low-pressure",
+        "mold-protect"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:docs/superpowers/plans/2026-05-22-sprint2-vp-transfer-and-blending.md",
+      "type": "document",
+      "name": "2026-05-22-sprint2-vp-transfer-and-blending.md",
+      "filePath": "docs/superpowers/plans/2026-05-22-sprint2-vp-transfer-and-blending.md",
+      "summary": "Product planning document defining Sprint 2 V/P transfer and blending feature for position/velocity transitions.",
+      "tags": [
+        "documentation",
+        "planning",
+        "sprint2",
+        "vp-transfer",
+        "blending"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:docs/superpowers/plans/2026-05-22-sprint3-architecture-cleanup-and-rbf-pid.md",
+      "type": "document",
+      "name": "2026-05-22-sprint3-architecture-cleanup-and-rbf-pid.md",
+      "filePath": "docs/superpowers/plans/2026-05-22-sprint3-architecture-cleanup-and-rbf-pid.md",
+      "summary": "Product planning document defining Sprint 3 architecture cleanup and RBF PID implementation for advanced pressure control.",
+      "tags": [
+        "documentation",
+        "planning",
+        "sprint3",
+        "architecture",
+        "rbf-pid"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:docs/superpowers/plans/2026-05-23-moveabsolute-continuous-update-fix.md",
+      "type": "document",
+      "name": "2026-05-23-moveabsolute-continuous-update-fix.md",
+      "filePath": "docs/superpowers/plans/2026-05-23-moveabsolute-continuous-update-fix.md",
+      "summary": "Product planning document documenting continuous update fix for MoveAbsolute function block implementation.",
+      "tags": [
+        "documentation",
+        "planning",
+        "moveabsolute",
+        "continuous-update",
+        "fix"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:docs/superpowers/plans/2026-05-25-pump-cylinder-config-and-struct-reorg.md",
+      "type": "document",
+      "name": "2026-05-25-pump-cylinder-config-and-struct-reorg.md",
+      "filePath": "docs/superpowers/plans/2026-05-25-pump-cylinder-config-and-struct-reorg.md",
+      "summary": "Product planning document defining pump and cylinder configuration restructuring for improved maintainability.",
+      "tags": [
+        "documentation",
+        "planning",
+        "reorg",
+        "pump-cylinder",
+        "configuration"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:docs/superpowers/plans/2026-05-26-pressure-limit-soft-position-limit.md",
+      "type": "document",
+      "name": "2026-05-26-pressure-limit-soft-position-limit.md",
+      "filePath": "docs/superpowers/plans/2026-05-26-pressure-limit-soft-position-limit.md",
+      "summary": "Product planning document defining pressure limit and soft position limit protection features for safety-critical operation.",
+      "tags": [
+        "documentation",
+        "planning",
+        "pressure-limit",
+        "soft-position-limit",
+        "safety"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:docs/superpowers/specs/2026-04-29-gen-removal-unified-validation-design.md",
+      "type": "document",
+      "name": "2026-04-29-gen-removal-unified-validation-design.md",
+      "filePath": "docs/superpowers/specs/2026-04-29-gen-removal-unified-validation-design.md",
+      "summary": "Technical specification document detailing generic type removal implementation with unified validation approach.",
+      "tags": [
+        "documentation",
+        "specification",
+        "refactoring",
+        "generic-types",
+        "validation"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:docs/superpowers/specs/2026-05-09-iec-parameter-fbs-design.md",
+      "type": "document",
+      "name": "2026-05-09-iec-parameter-fbs-design.md",
+      "filePath": "docs/superpowers/specs/2026-05-09-iec-parameter-fbs-design.md",
+      "summary": "Technical specification document defining IEC parameter function block design for PLCopen compliance.",
+      "tags": [
+        "documentation",
+        "specification",
+        "iec",
+        "parameter-fbs",
+        "plcopen"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:docs/superpowers/specs/2026-05-12-moveabsolute-stop-integration-design.md",
+      "type": "document",
+      "name": "2026-05-12-moveabsolute-stop-integration-design.md",
+      "filePath": "docs/superpowers/specs/2026-05-12-moveabsolute-stop-integration-design.md",
+      "summary": "Technical specification document detailing MoveAbsolute with Stop functionality integration design.",
+      "tags": [
+        "documentation",
+        "specification",
+        "integration",
+        "moveabsolute",
+        "stop"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:docs/superpowers/specs/2026-05-13-movevelocity-pressurehandle-direct-session-design.md",
+      "type": "document",
+      "name": "2026-05-13-movevelocity-pressurehandle-direct-session-design.md",
+      "filePath": "docs/superpowers/specs/2026-05-13-movevelocity-pressurehandle-direct-session-design.md",
+      "summary": "Technical specification document defining MoveVelocity and PressureHandle direct session behavior design.",
+      "tags": [
+        "documentation",
+        "specification",
+        "direct-session",
+        "movevelocity",
+        "pressurehandle"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:docs/superpowers/specs/2026-05-13-reset-recipe-direct-boundary-design.md",
+      "type": "document",
+      "name": "2026-05-13-reset-recipe-direct-boundary-design.md",
+      "filePath": "docs/superpowers/specs/2026-05-13-reset-recipe-direct-boundary-design.md",
+      "summary": "Technical specification document clarifying Reset behavior boundaries between recipe mode and direct mode execution.",
+      "tags": [
+        "documentation",
+        "specification",
+        "reset",
+        "recipe-boundary",
+        "direct-mode"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:docs/superpowers/specs/2026-05-14-motion-control-layer-docs-design.md",
+      "type": "document",
+      "name": "2026-05-14-motion-control-layer-docs-design.md",
+      "filePath": "docs/superpowers/specs/2026-05-14-motion-control-layer-docs-design.md",
+      "summary": "Technical specification document defining motion control layer documentation structure and component contracts.",
+      "tags": [
+        "documentation",
+        "specification",
+        "documentation",
+        "motion-control-layer"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:docs/superpowers/specs/2026-05-15-online-trapezoid-position-planner-design.md",
+      "type": "document",
+      "name": "2026-05-15-online-trapezoid-position-planner-design.md",
+      "filePath": "docs/superpowers/specs/2026-05-15-online-trapezoid-position-planner-design.md",
+      "summary": "Technical specification document defining online trapezoid position planner design for dynamic trajectory adjustment.",
+      "tags": [
+        "documentation",
+        "specification",
+        "online-planner",
+        "trapezoid",
+        "position-control"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:docs/superpowers/specs/2026-05-16-motion-control-continuous-command-roadmap-design.md",
+      "type": "document",
+      "name": "2026-05-16-motion-control-continuous-command-roadmap-design.md",
+      "filePath": "docs/superpowers/specs/2026-05-16-motion-control-continuous-command-roadmap-design.md",
+      "summary": "Technical specification document defining motion control continuous command roadmap for future enhancements.",
+      "tags": [
+        "documentation",
+        "specification",
+        "roadmap",
+        "continuous-command",
+        "enhancement"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:docs/superpowers/specs/2026-05-16-strict-position-completion-with-online-planner-design.md",
+      "type": "document",
+      "name": "2026-05-16-strict-position-completion-with-online-planner-design.md",
+      "filePath": "docs/superpowers/specs/2026-05-16-strict-position-completion-with-online-planner-design.md",
+      "summary": "Technical specification document defining strict position completion criteria with online planner integration design.",
+      "tags": [
+        "documentation",
+        "specification",
+        "position-completion",
+        "online-planner",
+        "strict"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:docs/superpowers/specs/2026-05-20-beckhoff-blending-curves-design.md",
+      "type": "document",
+      "name": "2026-05-20-beckhoff-blending-curves-design.md",
+      "filePath": "docs/superpowers/specs/2026-05-20-beckhoff-blending-curves-design.md",
+      "summary": "Technical specification document defining Beckhoff interface blending curves design for smooth motion transitions.",
+      "tags": [
+        "documentation",
+        "specification",
+        "beckhoff",
+        "blending",
+        "curves"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:docs/superpowers/specs/2026-05-21-code-review-and-roadmap-design.md",
+      "type": "document",
+      "name": "2026-05-21-code-review-and-roadmap-design.md",
+      "filePath": "docs/superpowers/specs/2026-05-21-code-review-and-roadmap-design.md",
+      "summary": "Technical specification document defining code review process and roadmap for next phase of development.",
+      "tags": [
+        "documentation",
+        "specification",
+        "code-review",
+        "roadmap",
+        "development"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:docs/superpowers/specs/2026-05-26-pressure-limit-soft-position-limit-design.md",
+      "type": "document",
+      "name": "2026-05-26-pressure-limit-soft-position-limit-design.md",
+      "filePath": "docs/superpowers/specs/2026-05-26-pressure-limit-soft-position-limit-design.md",
+      "summary": "Technical specification document defining pressure limit and soft position limit protection design for safety-critical operation.",
+      "tags": [
+        "documentation",
+        "specification",
+        "pressure-limit",
+        "soft-position-limit",
+        "safety"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:docs/superpowers/specs/debug.md",
+      "type": "document",
+      "name": "debug.md",
+      "filePath": "docs/superpowers/specs/debug.md",
+      "summary": "Technical specification document for debugging motion control library components and system behaviors.",
+      "tags": [
+        "documentation",
+        "specification",
+        "debugging",
+        "troubleshooting"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:scripts/check_interface_layout_consistency.py",
+      "type": "file",
+      "name": "check_interface_layout_consistency.py",
+      "filePath": "scripts/check_interface_layout_consistency.py",
+      "summary": "Python validation tool that verifies XML type definitions match C struct declarations in matiec-generated code, ensuring interface layout consistency for IEC61131-3 PLCopen function blocks.",
+      "tags": [
+        "validation",
+        "interface",
+        "plc",
+        "xml",
+        "python"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:scripts/coverage.sh",
+      "type": "file",
+      "name": "coverage.sh",
+      "filePath": "scripts/coverage.sh",
+      "summary": "Shell script that runs tests under gcov coverage instrumentation, generates gcovr text and optionally HTML reports, and excludes test and simulator code from coverage analysis.",
+      "tags": [
+        "testing",
+        "coverage",
+        "ci-cd",
+        "build-system",
+        "gcov"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:scripts/deploy_embedded_prod.sh",
+      "type": "file",
+      "name": "deploy_embedded_prod.sh",
+      "filePath": "scripts/deploy_embedded_prod.sh",
+      "summary": "Shell deployment script that builds HydroMotionLib without simulator components, copies library files and core headers to installation directory, and validates deployment including symbol analysis and header compilation checks.",
+      "tags": [
+        "deployment",
+        "build",
+        "infrastructure",
+        "embedded"
+      ],
+      "complexity": "moderate",
+      "languageNotes": "Includes colored output formatting, multi-step build/install/verify process, and post-deployment validation."
+    },
+    {
+      "id": "config:cmake/coverage_toolchain.cmake",
+      "type": "config",
+      "name": "coverage_toolchain.cmake",
+      "filePath": "cmake/coverage_toolchain.cmake",
+      "summary": "CMake coverage toolchain configuration identical to unixgcc but adds --coverage flags for gcov instrumentation and -O0 -g compile flags required for accurate coverage data.",
+      "tags": [
+        "coverage",
+        "build-system",
+        "cmake",
+        "configuration"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "config:cmake/unixgcc_toolchain.cmake",
+      "type": "config",
+      "name": "unixgcc_toolchain.cmake",
+      "filePath": "cmake/unixgcc_toolchain.cmake",
+      "summary": "CMake Unix GCC toolchain configuration defining Linux target system, compiler paths (/usr/bin/gcc), debug build flags (-g -O0 -Wall), and target include directories for cross-compilation scenarios.",
+      "tags": [
+        "toolchain",
+        "build-system",
+        "configuration",
+        "unix"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:docs/液压库参数读写接口设计文档.md",
+      "type": "document",
+      "name": "液压库参数读写接口设计文档.md",
+      "filePath": "docs/液压库参数读写接口设计文档.md",
+      "summary": "Comprehensive design document detailing parameter read/write APIs for HYD_MotionControlFB, including 34 indexed parameters across motion tolerances, pressure control, velocity feedback, pump/ cylinder physics, and usage examples with PLC code snippets.",
+      "tags": [
+        "documentation",
+        "api",
+        "parameter-management",
+        "plc",
+        "design"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "document:docs/integration/plc-process-layer-integration-guide.md",
+      "type": "document",
+      "name": "plc-process-layer-integration-guide.md",
+      "filePath": "docs/integration/plc-process-layer-integration-guide.md",
+      "summary": "Integration guide explaining the split between PLC process layer and HydroMotionLib runtime, detailing scan-cycle patterns, EXECUTE usage rules per FB, signal consumption semantics, and recommended abstractions for multi-FB deployments.",
+      "tags": [
+        "documentation",
+        "integration",
+        "plc",
+        "architecture",
+        "guidance"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "document:docs/review-motion-algorithm-20260518.md",
+      "type": "document",
+      "name": "review-motion-algorithm-20260518.md",
+      "filePath": "docs/review-motion-algorithm-20260518.md",
+      "summary": "Detailed code review report evaluating motion_control.c/planner/pressure_controller/velocity_controller/vp_transfer modules with 47 findings across architecture, algorithm completeness, injection-molding machine adaptation, and test coverage.",
+      "tags": [
+        "documentation",
+        "code-review",
+        "architecture",
+        "testing",
+        "algorithm"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:include/recipe_validator.h",
+      "type": "file",
+      "name": "recipe_validator.h",
+      "filePath": "include/recipe_validator.h",
+      "summary": "Recipe validation API providing runtime segment validation against physical constraints, recipe-level consistency checks, global configuration validation, and start-context validation with diagnostic code returns.",
+      "tags": [
+        "validation",
+        "recipe",
+        "constraints",
+        "api",
+        "diagnostics"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:include/safety_state_manager.h",
+      "type": "file",
+      "name": "safety_state_manager.h",
+      "filePath": "include/safety_state_manager.h",
+      "summary": "Safety state management API for preserving/restoring runtime safety state during ResetRuntimeActuation, ApplyIdleState, ApplyDisabledState, ApplyFaultHold, and EnterFaultStop transitions.",
+      "tags": [
+        "safety",
+        "state-management",
+        "runtime",
+        "api",
+        "fault-handling"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:include/segment_completion.h",
+      "type": "file",
+      "name": "segment_completion.h",
+      "filePath": "include/segment_completion.h",
+      "summary": "Segment end-condition evaluation API implementing single source of truth for position/time/pressure/flow/manual completion detection with context-based execution checking.",
+      "tags": [
+        "completion",
+        "end-detection",
+        "condition-evaluation",
+        "api",
+        "plc"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:include/segment_limits.h",
+      "type": "file",
+      "name": "segment_limits.h",
+      "filePath": "include/segment_limits.h",
+      "summary": "Segment tolerance and limit accessors providing position/velocity/flow/pressure tolerances, timeout limits, pressure ceiling helper functions, and direction resolution logic consolidating motion_planner and segment_completion duplication.",
+      "tags": [
+        "tolerance",
+        "limits",
+        "direction",
+        "api",
+        "configuration"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:include/state_reporter.h",
+      "type": "file",
+      "name": "state_reporter.h",
+      "filePath": "include/state_reporter.h",
+      "summary": "State reporting and diagnostics API for execution reporting, FB state transitions, diagnostic event recording, standard output refreshing, and safe output application with fault reporting integration.",
+      "tags": [
+        "reporting",
+        "diagnostics",
+        "state",
+        "api",
+        "execution"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:include/velocity_controller.h",
+      "type": "file",
+      "name": "velocity_controller.h",
+      "filePath": "include/velocity_controller.h",
+      "summary": "Velocity correction controller API implementing P-only velocity feedback correction with deadband filtering and output limiting, providing velocity error correction and flow adjustment for position mode execution.",
+      "tags": [
+        "controller",
+        "velocity",
+        "correction",
+        "api",
+        "feedback"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:include/vp_transfer.h",
+      "type": "file",
+      "name": "vp_transfer.h",
+      "filePath": "include/vp_transfer.h",
+      "summary": "V/P transfer evaluation API providing ready signal and reason code for position/pressure/time/velocity-drop completion criteria, supporting injection fill transition decision making.",
+      "tags": [
+        "transfer",
+        "evaluation",
+        "switching",
+        "api",
+        "injection"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:include/action_profile.h",
+      "type": "file",
+      "name": "action_profile.h",
+      "filePath": "include/action_profile.h",
+      "summary": "Action profile builders for hydraulic molding machine segments (clamp, injection, ejection, carriage). Provides high-level segment construction functions with optional mold-protect envelope.",
+      "tags": [
+        "api-handler",
+        "segment-builder",
+        "profile",
+        "clamp",
+        "injection"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:include/common_types.h",
+      "type": "file",
+      "name": "common_types.h",
+      "filePath": "include/common_types.h",
+      "summary": "Core type definitions and data structures for the motion control library including enums, structs for motion segments, diagnostic info, axis references, and configuration structures.",
+      "tags": [
+        "type-definition",
+        "shared",
+        "data-model",
+        "core",
+        "structure"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:include/diagnostics_criteria.h",
+      "type": "file",
+      "name": "diagnostics_criteria.h",
+      "filePath": "include/diagnostics_criteria.h",
+      "summary": "Diagnostic criteria module implementing decision logic for error detection with debounce, hysteresis, and suppression (startup/switch/loop build). Provides per-channel check functions.",
+      "tags": [
+        "diagnostics",
+        "decision",
+        "threshold",
+        "criteria",
+        "decision-layer"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:include/diagnostics_monitor.h",
+      "type": "file",
+      "name": "diagnostics_monitor.h",
+      "filePath": "include/diagnostics_monitor.h",
+      "summary": "Diagnostic error monitor that samples position/velocity/flow/pressure errors and maintains statistical tracking (max/min/avg/stddev) for downstream criteria evaluation.",
+      "tags": [
+        "diagnostics",
+        "monitor",
+        "sampling",
+        "statistics",
+        "monitoring-layer"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:include/diagnostics.h",
+      "type": "file",
+      "name": "diagnostics.h",
+      "filePath": "include/diagnostics.h",
+      "summary": "Diagnostic utilities for clearing snapshots, capturing events, history management, and code/severity/source string conversions for diagnostic reporting.",
+      "tags": [
+        "diagnostics",
+        "utilities",
+        "conversion",
+        "reporting",
+        "diagnostic-api"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "config:include/hyd_config.h",
+      "type": "config",
+      "name": "hyd_config.h",
+      "filePath": "include/hyd_config.h",
+      "summary": "Platform configuration header defining precision, limits, feature flags, and internal tuning thresholds for embedded motion control deployment.",
+      "tags": [
+        "configuration",
+        "build-system",
+        "platform-config",
+        "compile-time"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:include/hydro_hardware.h",
+      "type": "file",
+      "name": "hydro_hardware.h",
+      "filePath": "include/hydro_hardware.h",
+      "summary": "Hardware entity models for valves, pumps, and cylinders used in both real system and simulation contexts.",
+      "tags": [
+        "hardware-model",
+        "data-structure",
+        "entity",
+        "model"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:include/hydro_interfaces.h",
+      "type": "file",
+      "name": "hydro_interfaces.h",
+      "filePath": "include/hydro_interfaces.h",
+      "summary": "Sensor backend abstraction layer using dependency injection to isolate hardware-specific feedback from motion control logic.",
+      "tags": [
+        "abstraction",
+        "backend",
+        "interface",
+        "dependency-injection",
+        "sensor"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:include/hydro_sim_fb.h",
+      "type": "file",
+      "name": "hydro_sim_fb.h",
+      "filePath": "include/hydro_sim_fb.h",
+      "summary": "PLC adapter for hydraulic simulator providing CreateSimAxis/MoveSimAxis/ReadSimAxis FBs and shared environment stepping.",
+      "tags": [
+        "simulator",
+        "adapter",
+        "iec-fb",
+        "plc-bridge",
+        "simulation"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:include/hydro_sim.h",
+      "type": "file",
+      "name": "hydro_sim.h",
+      "filePath": "include/hydro_sim.h",
+      "summary": "Hydraulic simulation kernel with single-pump scheduling, CLAMP/INJECT cylinder models, fault injection, and ISensorBackend abstraction.",
+      "tags": [
+        "simulation",
+        "physics-kernel",
+        "model",
+        "simulation-engine",
+        "pump-model"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:include/motion_control.h",
+      "type": "file",
+      "name": "motion_control.h",
+      "filePath": "include/motion_control.h",
+      "summary": "Main orchestrator function block implementing PLCopen lifecycle (Init/LoadRecipe/StartSegment/Cycle/Complete/Abort) with state machine, command arbitration, and integration of planner/pressure/limit/diagnostics.",
+      "tags": [
+        "orchestrator",
+        "state-machine",
+        "core",
+        "function-block",
+        "fb"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:include/motion_interface.h",
+      "type": "file",
+      "name": "motion_interface.h",
+      "filePath": "include/motion_interface.h",
+      "summary": "IEC61131-3 PLCopen adapter providing 6 FBs (MoveProfile/MoveAbsolute/MoveVelocity/PressureHandle/Stop/Reset) and command wrappers with bidirectional MOTION channel and command arbitration.",
+      "tags": [
+        "iec-adapter",
+        "plcopen",
+        "fb",
+        "adapter",
+        "command-layer"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:include/motion_planner.h",
+      "type": "file",
+      "name": "motion_planner.h",
+      "filePath": "include/motion_planner.h",
+      "summary": "Velocity/flow planning module implementing position-mode braking (sqrt(2*a*s)) and time-ramp buildup with trapezoidal profile evaluation.",
+      "tags": [
+        "planner",
+        "velocity",
+        "flow",
+        "planning",
+        "trajectory"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:include/motion_utils.h",
+      "type": "file",
+      "name": "motion_utils.h",
+      "filePath": "include/motion_utils.h",
+      "summary": "General utility functions including min/max/abs, axis ref validation, finite checks, and configuration info retrieval for cross-module reuse.",
+      "tags": [
+        "utility",
+        "helper",
+        "math",
+        "validation",
+        "utils"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:include/motion_validator.h",
+      "type": "file",
+      "name": "motion_validator.h",
+      "filePath": "include/motion_validator.h",
+      "summary": "Validation module for motion control requests including start/next validation, recipe source checks, and segment resolution with EN-aware state resolution.",
+      "tags": [
+        "validation",
+        "validator",
+        "request-validation",
+        "sanity-check"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:include/output_limiter.h",
+      "type": "file",
+      "name": "output_limiter.h",
+      "filePath": "include/output_limiter.h",
+      "summary": "Pressure limit and soft limit protection with debounce/fault escalation, DERATE vs STOP actions, and integrated diagnostic code assignment.",
+      "tags": [
+        "protection",
+        "limiter",
+        "pressure-limit",
+        "soft-limit",
+        "protection-layer"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:include/pressure_controller.h",
+      "type": "file",
+      "name": "pressure_controller.h",
+      "filePath": "include/pressure_controller.h",
+      "summary": "Pressure control layer supporting P/PI/PID strategies with adaptive RBF-PID, tracking, anti-windup, and closed-loop telemetry for diagnostic visibility.",
+      "tags": [
+        "controller",
+        "pressure",
+        "pid",
+        "adaptive",
+        "closed-loop"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:include/pump_converter.h",
+      "type": "file",
+      "name": "pump_converter.h",
+      "filePath": "include/pump_converter.h",
+      "summary": "Flow-to-pump-speed conversion with finite validation and clamp to nonnegative speed output.",
+      "tags": [
+        "converter",
+        "flow",
+        "pump",
+        "conversion",
+        "unit-conversion"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:include/ramp_controller.h",
+      "type": "file",
+      "name": "ramp_controller.h",
+      "filePath": "include/ramp_controller.h",
+      "summary": "Smooth pressure target transitions with configurable ramp rate using deltaTime-based clamping.",
+      "tags": [
+        "controller",
+        "ramp",
+        "smoothing",
+        "transition",
+        "interpolation"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:include/rbf_pid.h",
+      "type": "file",
+      "name": "rbf_pid.h",
+      "filePath": "include/rbf_pid.h",
+      "summary": "RBF neural network adaptive PID controller with feedforward acceleration compensation, momentum updates, and configurable gain bounds for embedded deployment.",
+      "tags": [
+        "controller",
+        "adaptive",
+        "neural-network",
+        "rbf",
+        "adaptive-pid"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:include/common_types.h:HYD_ClampReal",
+      "type": "function",
+      "name": "HYD_ClampReal",
+      "filePath": "include/common_types.h",
+      "lineRange": [
+        458,
+        466
+      ],
+      "summary": "Clamps a value to [minimum, maximum] range.",
+      "tags": [
+        "utility",
+        "clamp",
+        "math",
+        "inline"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:include/common_types.h:HYD_PumpConfig_GetFlowToSpeedGain",
+      "type": "function",
+      "name": "HYD_PumpConfig_GetFlowToSpeedGain",
+      "filePath": "include/common_types.h",
+      "lineRange": [
+        570,
+        575
+      ],
+      "summary": "Derives flow-to-speed gain from pump physical parameters.",
+      "tags": [
+        "utility",
+        "pump-config",
+        "gain-calculation",
+        "inline"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:include/common_types.h:HYD_PumpConfig_GetSpeedLimit",
+      "type": "function",
+      "name": "HYD_PumpConfig_GetSpeedLimit",
+      "filePath": "include/common_types.h",
+      "lineRange": [
+        578,
+        583
+      ],
+      "summary": "Gets maximum pump speed from pump configuration.",
+      "tags": [
+        "utility",
+        "pump-config",
+        "speed",
+        "inline"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:include/common_types.h:HYD_PumpConfig_IsValid",
+      "type": "function",
+      "name": "HYD_PumpConfig_IsValid",
+      "filePath": "include/common_types.h",
+      "lineRange": [
+        586,
+        588
+      ],
+      "summary": "Validates pump configuration (displacement > 0 and efficiency > 0).",
+      "tags": [
+        "utility",
+        "validation",
+        "inline"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:include/common_types.h:HYD_CylinderConfig_GetVelocityToFlowGain",
+      "type": "function",
+      "name": "HYD_CylinderConfig_GetVelocityToFlowGain",
+      "filePath": "include/common_types.h",
+      "lineRange": [
+        595,
+        606
+      ],
+      "summary": "Derives velocity-to-flow gain from cylinder area and direction.",
+      "tags": [
+        "utility",
+        "cylinder-config",
+        "gain-calculation",
+        "inline"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:include/common_types.h:HYD_CylinderConfig_IsValid",
+      "type": "function",
+      "name": "HYD_CylinderConfig_IsValid",
+      "filePath": "include/common_types.h",
+      "lineRange": [
+        609,
+        611
+      ],
+      "summary": "Validates cylinder configuration (at least one side area > 0).",
+      "tags": [
+        "utility",
+        "validation",
+        "inline"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:include/motion_control.h:HYD_MotionControlFB_IsBusy",
+      "type": "function",
+      "name": "HYD_MotionControlFB_IsBusy",
+      "filePath": "include/motion_control.h",
+      "lineRange": [
+        354,
+        365
+      ],
+      "summary": "Returns true if FB is in STARTING/RUNNING/HOLD/SEGMENT_COMPLETE state.",
+      "tags": [
+        "utility",
+        "state-query",
+        "inline"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:include/motion_control.h:HYD_MotionControlFB_IsDone",
+      "type": "function",
+      "name": "HYD_MotionControlFB_IsDone",
+      "filePath": "include/motion_control.h",
+      "lineRange": [
+        367,
+        369
+      ],
+      "summary": "Returns true if FB state is DONE.",
+      "tags": [
+        "utility",
+        "state-query",
+        "inline"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:include/motion_control.h:HYD_MotionControlFB_IsError",
+      "type": "function",
+      "name": "HYD_MotionControlFB_IsError",
+      "filePath": "include/motion_control.h",
+      "lineRange": [
+        371,
+        376
+      ],
+      "summary": "Returns true if fault active, FB state is FAULT, or diagnostic severity is FAULT.",
+      "tags": [
+        "utility",
+        "error-query",
+        "inline"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/action_profile.c",
+      "type": "file",
+      "name": "action_profile.c",
+      "filePath": "src/action_profile.c",
+      "summary": "Factory functions for building motion segments from action profiles, including clamp, injection, and holding pressure segments with mold protect features.",
+      "tags": [
+        "factory",
+        "motion-segment",
+        "clamp",
+        "injection",
+        "pressure-holding"
+      ],
+      "complexity": "moderate",
+      "languageNotes": "Contains 10 segment builder functions with common parameter application through ApplyCommon helper."
+    },
+    {
+      "id": "file:src/diagnostics_criteria.c",
+      "type": "file",
+      "name": "diagnostics_criteria.c",
+      "filePath": "src/diagnostics_criteria.c",
+      "summary": "Threshold-based diagnostic evaluation with debounce, hysteresis, and fault escalation, supporting pressure/flow/velocity/position/timeout monitoring.",
+      "tags": [
+        "diagnostics",
+        "threshold",
+        "debounce",
+        "fault-escalation",
+        "state-machine"
+      ],
+      "complexity": "complex",
+      "languageNotes": "Implements diagnostic suppression windows for startup/switch phases with loop-build factor for sensitivity reduction."
+    },
+    {
+      "id": "file:src/diagnostics_monitor.c",
+      "type": "file",
+      "name": "diagnostics_monitor.c",
+      "filePath": "src/diagnostics_monitor.c",
+      "summary": "Real-time error monitoring tracking position/velocity/flow/pressure errors with statistical sampling (min/max/avg) and activation state tracking.",
+      "tags": [
+        "monitor",
+        "error-tracking",
+        "statistics",
+        "realtime"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/diagnostics.c",
+      "type": "file",
+      "name": "diagnostics.c",
+      "filePath": "src/diagnostics.c",
+      "summary": "Diagnostic code table with severity classification, recovery actions, and protection actions for 23+ error conditions.",
+      "tags": [
+        "diagnostics",
+        "error-codes",
+        "severity",
+        "recovery",
+        "alarm-system"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/motion_control.c",
+      "type": "file",
+      "name": "motion_control.c",
+      "filePath": "src/motion_control.c",
+      "summary": "Core state machine orchestrator executing motion segments through ramp controller, motion planner, pressure controller, and pump converter with full lifecycle management.",
+      "tags": [
+        "orchestrator",
+        "state-machine",
+        "motion-control",
+        "fb",
+        "lifecycle"
+      ],
+      "complexity": "complex",
+      "languageNotes": "2100+ lines, manages recipe vs direct mode, blend transitions, stop-timeout safety net, and direct session ownership."
+    },
+    {
+      "id": "file:src/motion_interface.c",
+      "type": "file",
+      "name": "motion_interface.c",
+      "filePath": "src/motion_interface.c",
+      "summary": "IEC61131-3 PLCopen function block adapter with command arbitration, ownership tracking via epoch (executionId/recipeBatchId), and feedback publishing.",
+      "tags": [
+        "iec-interface",
+        "fb-pool",
+        "arbitration",
+        "ownership",
+        "plc"
+      ],
+      "complexity": "complex",
+      "languageNotes": "Implements two-phase ownership model (pending/execution-id) to distinguish external takeover from recipe NextSegment."
+    },
+    {
+      "id": "file:src/motion_planner.c",
+      "type": "file",
+      "name": "motion_planner.c",
+      "filePath": "src/motion_planner.c",
+      "summary": "Trapezoidal velocity profile generation with position-based and time-based planners, blend velocity selection, and braking distance computation.",
+      "tags": [
+        "planner",
+        "velocity-profile",
+        "trapezoid",
+        "braking",
+        "blend"
+      ],
+      "complexity": "moderate",
+      "languageNotes": "Sprint 2 bumpless transitions carry velocity state from P->V and S->S segments."
+    },
+    {
+      "id": "file:src/motion_utils.c",
+      "type": "file",
+      "name": "motion_utils.c",
+      "filePath": "src/motion_utils.c",
+      "summary": "Utility functions for math operations, coordinate conversion, axis validation, and command/string conversion used across the motion stack.",
+      "tags": [
+        "utility",
+        "math",
+        "conversion",
+        "helper"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/motion_validator.c",
+      "type": "file",
+      "name": "motion_validator.c",
+      "filePath": "src/motion_validator.c",
+      "summary": "State validation and command authorization logic including effective FB state resolution, recipe source validation, and direct segment ownership checking.",
+      "tags": [
+        "validator",
+        "state-validation",
+        "authorization",
+        "recipe",
+        "direct"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/output_limiter.c",
+      "type": "file",
+      "name": "output_limiter.c",
+      "filePath": "src/output_limiter.c",
+      "summary": "Runtime flow/pump speed limiting with pressure limit, soft position limit, debounce, and fault escalation protection.",
+      "tags": [
+        "limiter",
+        "protection",
+        "pressure-limit",
+        "soft-limit",
+        "derate"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:src/pressure_controller.c",
+      "type": "file",
+      "name": "pressure_controller.c",
+      "filePath": "src/pressure_controller.c",
+      "summary": "P/PI/PID/RBF_PID pressure control with anti-windup, bumpless tracking, measurement filtering, and adaptive RBF learning for nonlinearity compensation.",
+      "tags": [
+        "pressure-control",
+        "pid",
+        "rbf",
+        "filtering",
+        "adaptive"
+      ],
+      "complexity": "complex",
+      "languageNotes": "Supports 4 pressure strategies (P/PI/PID/RBF) with adaptive gain adjustment and bumpless transfer."
+    },
+    {
+      "id": "file:src/pump_converter.c",
+      "type": "file",
+      "name": "pump_converter.c",
+      "filePath": "src/pump_converter.c",
+      "summary": "Flow-to-pump RPM conversion with configurable gain, direction handling, and safety clamping to pump speed limit.",
+      "tags": [
+        "pump-conversion",
+        "flow-rpm",
+        "gain",
+        "direction",
+        "clamp"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/ramp_controller.c",
+      "type": "file",
+      "name": "ramp_controller.c",
+      "filePath": "src/ramp_controller.c",
+      "summary": "Smooth pressure target ramping with configurable ramp rate and derivative-rate filtering to prevent pressure transients.",
+      "tags": [
+        "ramp-controller",
+        "smoothing",
+        "pressure",
+        "filtering",
+        "transient"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/rbf_pid.c",
+      "type": "file",
+      "name": "rbf_pid.c",
+      "filePath": "src/rbf_pid.c",
+      "summary": "Radial Basis Function PID with adaptive learning rates for online pressure nonlinearity compensation during closed-loop operation.",
+      "tags": [
+        "rbf",
+        "adaptive-pid",
+        "neural",
+        "pressure",
+        "nonlinear"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:src/recipe_validator.c",
+      "type": "file",
+      "name": "recipe_validator.c",
+      "filePath": "src/recipe_validator.c",
+      "summary": "Recipe and segment validation ensuring physical feasibility, including position target verification and targetPosition/strokeMm consistency.",
+      "tags": [
+        "validator",
+        "recipe",
+        "validation",
+        "consistency",
+        "feasibility"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/safety_state_manager.c",
+      "type": "file",
+      "name": "safety_state_manager.c",
+      "filePath": "src/safety_state_manager.c",
+      "summary": "Runtime safety state persistence (ResetRuntimeActuation, ApplyIdleState, ApplyDisabledState, ApplyFaultHold, EnterFaultStop) across soft reset.",
+      "tags": [
+        "safety",
+        "state-persistence",
+        "fault-handling",
+        "reset",
+        "runtime"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/segment_completion.c",
+      "type": "file",
+      "name": "segment_completion.c",
+      "filePath": "src/segment_completion.c",
+      "summary": "Single source of truth for end-condition evaluation supporting position/time/pressure/flow/manual completion detection.",
+      "tags": [
+        "completion",
+        "end-condition",
+        "position",
+        "time",
+        "monitoring"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/segment_limits.c",
+      "type": "file",
+      "name": "segment_limits.c",
+      "filePath": "src/segment_limits.c",
+      "summary": "Soft position limit checking with configurable bands and derate/retract behaviors for cylinder travel limits.",
+      "tags": [
+        "soft-limit",
+        "position-limit",
+        "derate",
+        "retract",
+        "boundary"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/sim/hydro_sim_fb.c",
+      "type": "file",
+      "name": "hydro_sim_fb.c",
+      "filePath": "src/sim/hydro_sim_fb.c",
+      "summary": "Simulator PLC adapter creating and managing simulated axes with coordinate transformation between PLCopen FBs and hydraulic simulator backend.",
+      "tags": [
+        "simulator",
+        "adapter",
+        "plc-fb",
+        "mock",
+        "test"
+      ],
+      "complexity": "moderate",
+      "languageNotes": "Single-pump model only supports one axis per pump owner ID; multiple FBs share the same physics update."
+    },
+    {
+      "id": "file:src/sim/hydro_sim.c",
+      "type": "file",
+      "name": "hydro_sim.c",
+      "filePath": "src/sim/hydro_sim.c",
+      "summary": "Physics simulation kernel with single-pump scheduling, CLAMP/INJECT cylinder models (tie-bar stiffness, mold obstacle force, melt resistance), and ISensorBackend abstraction.",
+      "tags": [
+        "simulation",
+        "physics",
+        "pump-scheduling",
+        "cylinder-model",
+        "sensor-backend"
+      ],
+      "complexity": "complex",
+      "languageNotes": "HydraulicSimEnv stepped exactly once per __HydSimulator_framework_Publish call; CLAMP includes tie-bar stiffness at close position."
+    },
+    {
+      "id": "file:src/state_reporter.c",
+      "type": "file",
+      "name": "state_reporter.c",
+      "filePath": "src/state_reporter.c",
+      "summary": "Centralized execution reporting and state transition tracking with diagnostic event recording, live diagnostic management, and state machine output generation.",
+      "tags": [
+        "reporter",
+        "state-tracking",
+        "diagnostic-event",
+        "transition",
+        "output"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:src/velocity_controller.c",
+      "type": "file",
+      "name": "velocity_controller.c",
+      "filePath": "src/velocity_controller.c",
+      "summary": "Velocity error correction with PD control, deadband filtering, and velocity-to-flow feedforward for speed-ramp mode targeting.",
+      "tags": [
+        "velocity-control",
+        "pd-controller",
+        "deadband",
+        "feedforward",
+        "correction"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/vp_transfer.c",
+      "type": "file",
+      "name": "vp_transfer.c",
+      "filePath": "src/vp_transfer.c",
+      "summary": "V/P transfer logic evaluating position/pressure/time/velocity-drop criteria with configurable priority and optional latching for automatic segment switching.",
+      "tags": [
+        "transfer",
+        "vp-transfer",
+        "automatic-switch",
+        "priority",
+        "criterion"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:tests/benchmark_performance.c",
+      "type": "file",
+      "name": "benchmark_performance.c",
+      "filePath": "tests/benchmark_performance.c",
+      "summary": "Performance benchmark harness measuring motion control library execution times and throughput.",
+      "tags": [
+        "benchmark",
+        "performance",
+        "test",
+        "measure"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "config:tests/fixtures/pous_layout_bad.xml",
+      "type": "config",
+      "name": "pous_layout_bad.xml",
+      "filePath": "tests/fixtures/pous_layout_bad.xml",
+      "summary": "Malformed POUS layout XML for testing PLCopen code generator error handling and validation.",
+      "tags": [
+        "test-data",
+        "xml",
+        "malformed",
+        "validation"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:tests/main.c",
+      "type": "file",
+      "name": "main.c",
+      "filePath": "tests/main.c",
+      "summary": "Multi-segment recipe end-to-end test harness demonstrating full motion control lifecycle from load to completion.",
+      "tags": [
+        "integration-test",
+        "benchmark",
+        "recipe",
+        "lifecycle",
+        "main"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:tests/rbf_pid_test.c",
+      "type": "file",
+      "name": "rbf_pid_test.c",
+      "filePath": "tests/rbf_pid_test.c",
+      "summary": "RBF PID adaptive pressure controller unit tests verifying learning rate convergence and internal limit constraints.",
+      "tags": [
+        "unit-test",
+        "rbf",
+        "adaptive",
+        "pressure",
+        "learning-convergence"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:tests/segment_completion_test.c",
+      "type": "file",
+      "name": "segment_completion_test.c",
+      "filePath": "tests/segment_completion_test.c",
+      "summary": "Segment completion detection test suite validating all end-condition types (position/time/pressure/flow/manual) with tolerance scenarios.",
+      "tags": [
+        "unit-test",
+        "completion",
+        "end-condition",
+        "tolerance",
+        "validation"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:tests/test_action_profile.c",
+      "type": "file",
+      "name": "test_action_profile.c",
+      "filePath": "tests/test_action_profile.c",
+      "summary": "Action profile segment builder unit tests verifying clamp/injection/holding pressure and eject segment creation parameters.",
+      "tags": [
+        "unit-test",
+        "factory",
+        "segment-builder",
+        "action-profile",
+        "parameter"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:tests/test_axismotion_setpoint_isolation.c",
+      "type": "file",
+      "name": "test_axismotion_setpoint_isolation.c",
+      "filePath": "tests/test_axismotion_setpoint_isolation.c",
+      "summary": "Tests verifying HYD_AXISMOTION setpoint half-isolation from motion_control feedback to prevent data races in multi-FB scenarios.",
+      "tags": [
+        "unit-test",
+        "race-condition",
+        "ownership",
+        "setpoint-isolation",
+        "multi-fb"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:tests/test_diagnostic_criteria.c",
+      "type": "file",
+      "name": "test_diagnostic_criteria.c",
+      "filePath": "tests/test_diagnostic_criteria.c",
+      "summary": "Diagnostic criteria unit tests validating debounce, hysteresis, fault escalation, and suppression window behavior.",
+      "tags": [
+        "unit-test",
+        "diagnostics",
+        "debounce",
+        "hysteresis",
+        "escalation"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:tests/test_diagnostic_monitor.c",
+      "type": "file",
+      "name": "test_diagnostic_monitor.c",
+      "filePath": "tests/test_diagnostic_monitor.c",
+      "summary": "Error monitor unit tests verifying error activation tracking, statistical sampling, and error value calculation.",
+      "tags": [
+        "unit-test",
+        "monitor",
+        "error-tracking",
+        "statistics",
+        "activation"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:tests/test_diagnostics.c",
+      "type": "file",
+      "name": "test_diagnostics.c",
+      "filePath": "tests/test_diagnostics.c",
+      "summary": "Diagnostics code table unit tests validating code-to-string conversions, severity classifications, and flag mask generation.",
+      "tags": [
+        "unit-test",
+        "diagnostics",
+        "code-table",
+        "string-conversion",
+        "flags"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:tests/test_direct_mode_simple.c",
+      "type": "file",
+      "name": "test_direct_mode_simple.c",
+      "filePath": "tests/test_direct_mode_simple.c",
+      "summary": "Direct mode unit test verifying single-shot segment execution without recipe multi-segment progression.",
+      "tags": [
+        "unit-test",
+        "direct-mode",
+        "single-shot",
+        "recipe",
+        "validation"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:tests/test_direct_mode.c",
+      "type": "file",
+      "name": "test_direct_mode.c",
+      "filePath": "tests/test_direct_mode.c",
+      "summary": "Direct mode integration test validating direct segment takeover, buffer modes, and ownership tracking between direct and recipe sources.",
+      "tags": [
+        "integration-test",
+        "direct-mode",
+        "takeover",
+        "buffer-mode",
+        "ownership"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:tests/test_fault_recovery.c",
+      "type": "file",
+      "name": "test_fault_recovery.c",
+      "filePath": "tests/test_fault_recovery.c",
+      "summary": "Fault recovery test suite verifying fault state persistence, retention clearing, and reset behavior across fault transitions.",
+      "tags": [
+        "integration-test",
+        "fault-recovery",
+        "state-persistence",
+        "reset",
+        "retention"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:tests/test_hydro_sim_fb.c",
+      "type": "file",
+      "name": "test_hydro_sim_fb.c",
+      "filePath": "tests/test_hydro_sim_fb.c",
+      "summary": "Simulator PLC adapter unit tests validating axis creation, feedback transformation, and error injection scenarios.",
+      "tags": [
+        "unit-test",
+        "simulator",
+        "adapter",
+        "mock",
+        "feedback"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:tests/test_interface_layout_consistency.py",
+      "type": "file",
+      "name": "test_interface_layout_consistency.py",
+      "filePath": "tests/test_interface_layout_consistency.py",
+      "summary": "Python script validating consistency between IEC interface layout and motion control function block parameter definitions.",
+      "tags": [
+        "validation",
+        "python",
+        "interface-consistency",
+        "layout",
+        "schema"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:tests/test_mold_protect.c",
+      "type": "file",
+      "name": "test_mold_protect.c",
+      "filePath": "tests/test_mold_protect.c",
+      "summary": "Mold protection feature tests verifying obstacle force generation and pressure ceiling violation detection during clamp closing.",
+      "tags": [
+        "integration-test",
+        "mold-protect",
+        "obstacle-force",
+        "pressure-ceiling",
+        "clamping"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:tests/test_motion_interface_arbitration.c",
+      "type": "file",
+      "name": "test_motion_interface_arbitration.c",
+      "filePath": "tests/test_motion_interface_arbitration.c",
+      "summary": "Command arbitration unit tests validating recipe vs direct ownership, abort preemption, and batch-id ownership tracking.",
+      "tags": [
+        "unit-test",
+        "arbitration",
+        "ownership",
+        "preemption",
+        "batch-id"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:tests/test_motion_interface_done_signals.c",
+      "type": "file",
+      "name": "test_motion_interface_done_signals.c",
+      "filePath": "tests/test_motion_interface_done_signals.c",
+      "summary": "Done signal tests verifying completion propagation, recipe multi-segment finish detection, and direct session termination.",
+      "tags": [
+        "unit-test",
+        "done-signals",
+        "completion",
+        "recipe",
+        "termination"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:tests/test_motion_interface_unit.c",
+      "type": "file",
+      "name": "test_motion_interface_unit.c",
+      "filePath": "tests/test_motion_interface_unit.c",
+      "summary": "Motion interface unit tests validating FB pool allocation, command validity checking, and command queue management.",
+      "tags": [
+        "unit-test",
+        "fb-pool",
+        "allocation",
+        "validation",
+        "queue"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:tests/test_motion_planner.c",
+      "type": "file",
+      "name": "test_motion_planner.c",
+      "filePath": "tests/test_motion_planner.c",
+      "summary": "Motion planner unit tests validating trapezoidal profile generation, blend velocity selection, and braking distance computation.",
+      "tags": [
+        "unit-test",
+        "planner",
+        "trapezoid",
+        "blend",
+        "braking"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:tests/test_moveabsolute_stop_integration.c",
+      "type": "file",
+      "name": "test_moveabsolute_stop_integration.c",
+      "filePath": "tests/test_moveabsolute_stop_integration.c",
+      "summary": "MoveAbsolute STOP integration test validating deceleration, stop-timeout safety net, and completion detection.",
+      "tags": [
+        "integration-test",
+        "moveabsolute",
+        "stop",
+        "deceleration",
+        "timeout-safety"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:tests/test_output_limiter.c",
+      "type": "file",
+      "name": "test_output_limiter.c",
+      "filePath": "tests/test_output_limiter.c",
+      "summary": "Output limiter unit tests verifying pressure limit derate, soft position limit, debounce, and fault escalation behaviors.",
+      "tags": [
+        "unit-test",
+        "limiter",
+        "pressure-limit",
+        "soft-limit",
+        "derate"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:tests/test_parameter_access.c",
+      "type": "file",
+      "name": "test_parameter_access.c",
+      "filePath": "tests/test_parameter_access.c",
+      "summary": "Parameter access unit tests validating read/write operations for all motion control parameters including pump and cylinder config.",
+      "tags": [
+        "unit-test",
+        "parameter",
+        "read-write",
+        "access",
+        "validation"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:tests/test_parameter_iec.c",
+      "type": "file",
+      "name": "test_parameter_iec.c",
+      "filePath": "tests/test_parameter_iec.c",
+      "summary": "IEC parameter access tests verifying IEC-style read/write parameter interface compatibility.",
+      "tags": [
+        "unit-test",
+        "parameter",
+        "iec",
+        "interface",
+        "compatibility"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:tests/test_pressure_controller.c",
+      "type": "file",
+      "name": "test_pressure_controller.c",
+      "filePath": "tests/test_pressure_controller.c",
+      "summary": "Pressure controller integration test validating P/PI/PID strategies, anti-windup, tracking, and deadband filtering.",
+      "tags": [
+        "integration-test",
+        "pressure-control",
+        "pid",
+        "anti-windup",
+        "tracking"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:tests/test_pump_converter.c",
+      "type": "file",
+      "name": "test_pump_converter.c",
+      "filePath": "tests/test_pump_converter.c",
+      "summary": "Pump converter unit tests validating flow-to-rpm conversion, direction handling, and speed limit clamping.",
+      "tags": [
+        "unit-test",
+        "pump-converter",
+        "flow-rpm",
+        "direction",
+        "clamping"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:tests/test_pump_cylinder_config.c",
+      "type": "file",
+      "name": "test_pump_cylinder_config.c",
+      "filePath": "tests/test_pump_cylinder_config.c",
+      "summary": "Pump and cylinder configuration tests verifying valid gain calculations, area ratios, and displacement consistency.",
+      "tags": [
+        "unit-test",
+        "config",
+        "pump",
+        "cylinder",
+        "gain"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:tests/test_pump_direction_conflict.c",
+      "type": "file",
+      "name": "test_pump_direction_conflict.c",
+      "filePath": "tests/test_pump_direction_conflict.c",
+      "summary": "Pump direction conflict tests validating error detection and handling of opposing planned directions on active axes.",
+      "tags": [
+        "unit-test",
+        "direction-conflict",
+        "error-detection",
+        "validation",
+        "safety"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:tests/test_ramp_controller.c",
+      "type": "file",
+      "name": "test_ramp_controller.c",
+      "filePath": "tests/test_ramp_controller.c",
+      "summary": "Ramp controller unit tests validating pressure ramp smoothing, derivative-rate filtering, and target smoothing.",
+      "tags": [
+        "unit-test",
+        "ramp-controller",
+        "smoothing",
+        "filtering",
+        "transient"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:tests/test_rbf_pid_hil.c",
+      "type": "file",
+      "name": "test_rbf_pid_hil.c",
+      "filePath": "tests/test_rbf_pid_hil.c",
+      "summary": "RBF PID high-integration test verifying adaptive learning convergence and pressure nonlinearity compensation.",
+      "tags": [
+        "integration-test",
+        "rbf",
+        "adaptive-pid",
+        "hilm",
+        "convergence"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:tests/test_recipe_multi_segment_ownership.c",
+      "type": "file",
+      "name": "test_recipe_multi_segment_ownership.c",
+      "filePath": "tests/test_recipe_multi_segment_ownership.c",
+      "summary": "Recipe multi-segment ownership test verifying segment progression, recipe batch-id consistency, and NextSegment behavior.",
+      "tags": [
+        "integration-test",
+        "recipe",
+        "multi-segment",
+        "ownership",
+        "progression"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:tests/test_recipe_validator.c",
+      "type": "file",
+      "name": "test_recipe_validator.c",
+      "filePath": "tests/test_recipe_validator.c",
+      "summary": "Recipe validator unit tests validating segment feasibility, position target constraints, and strokeMm consistency checks.",
+      "tags": [
+        "unit-test",
+        "recipe-validator",
+        "validation",
+        "feasibility",
+        "constraints"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:tests/test_safety_state_manager.c",
+      "type": "file",
+      "name": "test_safety_state_manager.c",
+      "filePath": "tests/test_safety_state_manager.c",
+      "summary": "Safety state manager unit tests verifying runtime state persistence, fault hold state application, and reset consistency.",
+      "tags": [
+        "unit-test",
+        "safety-state-manager",
+        "persistence",
+        "fault-hold",
+        "reset"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:tests/test_sprint_b_integration.c",
+      "type": "file",
+      "name": "test_sprint_b_integration.c",
+      "filePath": "tests/test_sprint_b_integration.c",
+      "summary": "Sprint B integration test validating feedback interaction with the process layer and simulation vs hardware integration.",
+      "tags": [
+        "integration-test",
+        "sprint-b",
+        "feedback",
+        "process-layer",
+        "integration"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:tests/test_sprint3_integration.c",
+      "type": "file",
+      "name": "test_sprint3_integration.c",
+      "filePath": "tests/test_sprint3_integration.c",
+      "summary": "Sprint 3 integration test validating RBF PID pressure controller and automatic segment switching via V/P transfer.",
+      "tags": [
+        "integration-test",
+        "sprint3",
+        "rbf",
+        "automatic-switch",
+        "vp-transfer"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:tests/test_state_reporter.c",
+      "type": "file",
+      "name": "test_state_reporter.c",
+      "filePath": "tests/test_state_reporter.c",
+      "summary": "State reporter unit tests validating state transition generation, output publishing, and diagnostic event recording.",
+      "tags": [
+        "unit-test",
+        "state-reporter",
+        "transition",
+        "output",
+        "diagnostic-event"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:tests/test_stop_diagnostics_retained.c",
+      "type": "file",
+      "name": "test_stop_diagnostics_retained.c",
+      "filePath": "tests/test_stop_diagnostics_retained.c",
+      "summary": "STOP diagnostic retention test verifying fault and diagnostic state preservation across STOP/HOLD/ABORT transitions.",
+      "tags": [
+        "integration-test",
+        "diagnostic-retention",
+        "stop",
+        "fault",
+        "preservation"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:tests/test_stop_immediate_done.c",
+      "type": "file",
+      "name": "test_stop_immediate_done.c",
+      "filePath": "tests/test_stop_immediate_done.c",
+      "summary": "STOP immediate done test validating completion detection when stopping from low velocity or zero velocity.",
+      "tags": [
+        "integration-test",
+        "stop",
+        "completion",
+        "velocity",
+        "detection"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:tests/test_velocity_controller.c",
+      "type": "file",
+      "name": "test_velocity_controller.c",
+      "filePath": "tests/test_velocity_controller.c",
+      "summary": "Velocity controller unit tests validating PD correction, deadband filtering, and velocity-to-flow feedforward.",
+      "tags": [
+        "unit-test",
+        "velocity-controller",
+        "pd",
+        "deadband",
+        "feedforward"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:tests/test_vp_bumpless_reverse.c",
+      "type": "file",
+      "name": "test_vp_bumpless_reverse.c",
+      "filePath": "tests/test_vp_bumpless_reverse.c",
+      "summary": "V/P bumpless reverse test validating smooth transition between velocity and pressure control modes.",
+      "tags": [
+        "integration-test",
+        "vp-transfer",
+        "bumpless",
+        "reverse",
+        "smooth-transition"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:tests/test_vp_transfer.c",
+      "type": "file",
+      "name": "test_vp_transfer.c",
+      "filePath": "tests/test_vp_transfer.c",
+      "summary": "V/P transfer unit tests validating all transfer criteria (position/pressure/time/velocity-drop) with priority and latching options.",
+      "tags": [
+        "unit-test",
+        "vp-transfer",
+        "automatic-switch",
+        "criteria",
+        "priority"
+      ],
+      "complexity": "simple"
+    }
+  ],
+  "edges": [
+    {
+      "source": "document:README.md",
+      "target": "document:CLAUDE.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:README.md",
+      "target": "document:CODEBUDDY.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:README.md",
+      "target": "document:项目需求文档-v1.0.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:README.md",
+      "target": "document:开发计划文档-v1.0.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:CLAUDE.md",
+      "target": "document:AGENTS.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:CODEBUDDY.md",
+      "target": "document:项目需求文档-v1.0.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:CODEBUDDY.md",
+      "target": "document:开发计划文档-v1.0.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:HMI诊断对照表.md",
+      "target": "document:项目需求文档-v1.0.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:HMI诊断对照表.md",
+      "target": "document:正式发布说明模板.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:项目需求文档-v1.0.md",
+      "target": "document:开发计划文档-v1.0.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "config:CMakeLists.txt",
+      "target": "config:CMakePresets.json",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "config:pousHydMotion.xml",
+      "target": "config:pousHydSimulator.xml",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "file:scripts/check_interface_layout_consistency.py",
+      "target": "config:cmake/coverage_toolchain.cmake",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "file:scripts/deploy_embedded_prod.sh",
+      "target": "config:cmake/unixgcc_toolchain.cmake",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "document:docs/液压库参数读写接口设计文档.md",
+      "target": "file:scripts/check_interface_layout_consistency.py",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:docs/integration/plc-process-layer-integration-guide.md",
+      "target": "document:docs/review-motion-algorithm-20260518.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "config:cmake/coverage_toolchain.cmake",
+      "target": "file:scripts/coverage.sh",
+      "type": "configures",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "config:cmake/unixgcc_toolchain.cmake",
+      "target": "file:scripts/deploy_embedded_prod.sh",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "config:cmake/unixgcc_toolchain.cmake",
+      "target": "file:scripts/coverage.sh",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:include/recipe_validator.h",
+      "target": "file:include/segment_limits.h",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "file:include/safety_state_manager.h",
+      "target": "file:include/state_reporter.h",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "file:include/segment_completion.h",
+      "target": "file:include/segment_limits.h",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "file:include/state_reporter.h",
+      "target": "file:include/recipe_validator.h",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "file:include/velocity_controller.h",
+      "target": "file:include/segment_limits.h",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "file:include/vp_transfer.h",
+      "target": "file:include/segment_completion.h",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "config:include/hyd_config.h",
+      "target": "file:include/common_types.h",
+      "type": "configures",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:include/common_types.h",
+      "target": "function:include/common_types.h:HYD_ClampReal",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:include/common_types.h",
+      "target": "function:include/common_types.h:HYD_PumpConfig_GetFlowToSpeedGain",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:include/common_types.h",
+      "target": "function:include/common_types.h:HYD_PumpConfig_GetSpeedLimit",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:include/common_types.h",
+      "target": "function:include/common_types.h:HYD_PumpConfig_IsValid",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:include/common_types.h",
+      "target": "function:include/common_types.h:HYD_CylinderConfig_GetVelocityToFlowGain",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:include/common_types.h",
+      "target": "function:include/common_types.h:HYD_CylinderConfig_IsValid",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:include/motion_control.h",
+      "target": "function:include/motion_control.h:HYD_MotionControlFB_IsBusy",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:include/motion_control.h",
+      "target": "function:include/motion_control.h:HYD_MotionControlFB_IsDone",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:include/motion_control.h",
+      "target": "function:include/motion_control.h:HYD_MotionControlFB_IsError",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    }
+  ],
+  "layers": [
+    {
+      "id": "layer:api",
+      "name": "API Layer",
+      "description": "PLCopen function block interface and IEC61131-3 external contract for motion control",
+      "nodeIds": [
+        "file:include/motion_control.h",
+        "file:include/motion_interface.h",
+        "file:include/action_profile.h",
+        "file:include/hydro_hardware.h",
+        "file:include/hydro_interfaces.h",
+        "file:include/pump_converter.h"
+      ]
+    },
+    {
+      "id": "layer:core",
+      "name": "Core Layer",
+      "description": "Orchestrated motion control state machine and business logic implementation",
+      "nodeIds": [
+        "file:src/motion_control.c",
+        "file:src/motion_interface.c",
+        "file:src/action_profile.c",
+        "file:src/pump_converter.c"
+      ]
+    },
+    {
+      "id": "layer:planning",
+      "name": "Planning Layer",
+      "description": "Motion math, velocity planning, and flow calculations",
+      "nodeIds": [
+        "file:include/motion_planner.h",
+        "file:src/motion_planner.c"
+      ]
+    },
+    {
+      "id": "layer:control",
+      "name": "Control Layer",
+      "description": "Pressure and velocity control implementations (PID, RBF-PID, ramping)",
+      "nodeIds": [
+        "file:include/pressure_controller.h",
+        "file:include/rbf_pid.h",
+        "file:src/pressure_controller.c",
+        "file:src/rbf_pid.c",
+        "file:include/ramp_controller.h",
+        "file:src/ramp_controller.c",
+        "file:include/velocity_controller.h",
+        "file:src/velocity_controller.c"
+      ]
+    },
+    {
+      "id": "layer:validation",
+      "name": "Validation Layer",
+      "description": "Parameter validation, recipe validation, and motion constraints",
+      "nodeIds": [
+        "file:include/motion_validator.h",
+        "file:include/recipe_validator.h",
+        "file:include/output_limiter.h",
+        "file:include/segment_limits.h",
+        "file:src/motion_validator.c",
+        "file:src/recipe_validator.c",
+        "file:src/output_limiter.c",
+        "file:src/segment_limits.c"
+      ]
+    },
+    {
+      "id": "layer:diagnostics",
+      "name": "Diagnostics Layer",
+      "description": "Fault detection, alarm system, and diagnostic reporting",
+      "nodeIds": [
+        "file:include/diagnostics.h",
+        "file:include/diagnostics_criteria.h",
+        "file:include/diagnostics_monitor.h",
+        "file:src/diagnostics.c",
+        "file:src/diagnostics_criteria.c",
+        "file:src/diagnostics_monitor.c",
+        "file:include/state_reporter.h",
+        "file:src/state_reporter.c"
+      ]
+    },
+    {
+      "id": "layer:safety",
+      "name": "Safety Layer",
+      "description": "Safety state management and critical runtime state preservation",
+      "nodeIds": [
+        "file:include/safety_state_manager.h",
+        "file:src/safety_state_manager.c"
+      ]
+    },
+    {
+      "id": "layer:utility",
+      "name": "Utility Layer",
+      "description": "Cross-cutting utilities, helper functions, and common types",
+      "nodeIds": [
+        "file:include/common_types.h",
+        "file:include/motion_utils.h",
+        "file:src/motion_utils.c"
+      ]
+    },
+    {
+      "id": "layer:simulation",
+      "name": "Simulation Layer",
+      "description": "Hydraulic simulation kernel and simulator PLC adapter for testing",
+      "nodeIds": [
+        "file:include/hydro_sim.h",
+        "file:include/hydro_sim_fb.h",
+        "file:src/sim/hydro_sim.c",
+        "file:src/sim/hydro_sim_fb.c"
+      ]
+    },
+    {
+      "id": "layer:vp-transfer",
+      "name": "VP Transfer Layer",
+      "description": "Velocity-to-pressure transfer logic and blending",
+      "nodeIds": [
+        "file:include/vp_transfer.h",
+        "file:src/vp_transfer.c"
+      ]
+    },
+    {
+      "id": "layer:segments",
+      "name": "Segments Layer",
+      "description": "Segment completion detection and end-condition evaluation",
+      "nodeIds": [
+        "file:include/segment_completion.h",
+        "file:src/segment_completion.c"
+      ]
+    },
+    {
+      "id": "layer:infrastructure",
+      "name": "Infrastructure",
+      "description": "Build system, configuration, and deployment artifacts",
+      "nodeIds": [
+        "config:CMakeLists.txt",
+        "config:CMakePresets.json",
+        "file:scripts/coverage.sh",
+        "file:scripts/deploy_embedded_prod.sh",
+        "file:scripts/check_interface_layout_consistency.py",
+        "config:cmake/unixgcc_toolchain.cmake",
+        "config:cmake/coverage_toolchain.cmake",
+        "config:pousHydMotion.xml",
+        "config:pousHydSimulator.xml",
+        "config:include/hyd_config.h",
+        "config:tests/fixtures/pous_layout_bad.xml"
+      ]
+    },
+    {
+      "id": "layer:documentation",
+      "name": "Documentation",
+      "description": "Project documentation and development guides",
+      "nodeIds": [
+        "document:README.md",
+        "document:CLAUDE.md",
+        "document:CODEBUDDY.md",
+        "document:项目需求文档-v1.0.md",
+        "document:开发计划文档-v1.0.md",
+        "document:HMI诊断对照表.md",
+        "document:docs/architecture/control-layer-boundary.md",
+        "document:docs/architecture/implementation-contract-gap-list.md",
+        "document:docs/architecture/motion-profile-archetypes.md",
+        "document:docs/architecture/motion-runtime-contract.md",
+        "document:docs/integration/plc-process-layer-integration-guide.md",
+        "document:docs/superpowers/specs/2026-04-29-gen-removal-unified-validation-design.md",
+        "document:docs/superpowers/specs/2026-05-09-iec-parameter-fbs-design.md",
+        "document:docs/superpowers/specs/2026-05-12-moveabsolute-stop-integration-design.md",
+        "document:docs/superpowers/specs/2026-05-13-movevelocity-pressurehandle-direct-session-design.md",
+        "document:docs/superpowers/specs/2026-05-13-reset-recipe-direct-boundary-design.md",
+        "document:docs/superpowers/specs/2026-05-14-motion-control-layer-docs-design.md",
+        "document:docs/superpowers/specs/2026-05-15-online-trapezoid-position-planner-design.md",
+        "document:docs/superpowers/specs/2026-05-16-motion-control-continuous-command-roadmap-design.md",
+        "document:docs/superpowers/specs/2026-05-16-strict-position-completion-with-online-planner-design.md",
+        "document:docs/superpowers/specs/2026-05-20-beckhoff-blending-curves-design.md",
+        "document:docs/superpowers/specs/2026-05-21-code-review-and-roadmap-design.md",
+        "document:docs/superpowers/specs/2026-05-26-pressure-limit-soft-position-limit-design.md",
+        "document:docs/superpowers/specs/debug.md",
+        "document:docs/superpowers/plans/2026-04-29-gen-removal-unified-validation.md",
+        "document:docs/superpowers/plans/2026-04-30-hdy-to-hyd-rename.md",
+        "document:docs/superpowers/plans/2026-05-09-iec-parameter-fbs.md",
+        "document:docs/superpowers/plans/2026-05-12-moveabsolute-stop-integration.md",
+        "document:docs/superpowers/plans/2026-05-13-movevelocity-pressurehandle-direct-session.md",
+        "document:docs/superpowers/plans/2026-05-13-reset-recipe-direct-boundary.md",
+        "document:docs/superpowers/plans/2026-05-14-hold-resume-iec-surface.md",
+        "document:docs/superpowers/plans/2026-05-14-iec-surface-contract-alignment.md",
+        "document:docs/superpowers/plans/2026-05-14-motion-runtime-contract-doc.md",
+        "document:docs/superpowers/plans/2026-05-14-recipe-direct-lifecycle-alignment.md",
+        "document:docs/superpowers/plans/2026-05-15-hydraulic-motion-algorithm-development.md",
+        "document:docs/superpowers/plans/2026-05-15-iec-deceleration-contract-alignment.md",
+        "document:docs/superpowers/plans/2026-05-15-online-trapezoid-position-planner.md",
+        "document:docs/superpowers/plans/2026-05-16-strict-position-completion-with-online-planner.md",
+        "document:docs/superpowers/plans/2026-05-20-beckhoff-blending-curves.md",
+        "document:docs/superpowers/plans/2026-05-20-beckhoff-buffer-live-update.md",
+        "document:docs/superpowers/plans/2026-05-21-beckhoff-blending-followup-fixes.md",
+        "document:docs/superpowers/plans/2026-05-21-sprint0-critical-fixes.md",
+        "document:docs/superpowers/plans/2026-05-21-sprint1-low-pressure-mold-protect.md",
+        "document:docs/superpowers/plans/2026-05-22-sprint2-vp-transfer-and-blending.md",
+        "document:docs/superpowers/plans/2026-05-22-sprint3-architecture-cleanup-and-rbf-pid.md",
+        "document:docs/superpowers/plans/2026-05-23-moveabsolute-continuous-update-fix.md",
+        "document:docs/superpowers/plans/2026-05-25-pump-cylinder-config-and-struct-reorg.md",
+        "document:docs/superpowers/plans/2026-05-26-pressure-limit-soft-position-limit.md",
+        "document:AGENTS.md",
+        "document:正式发布说明模板.md",
+        "document:docs/液压库参数读写接口设计文档.md",
+        "document:docs/review-motion-algorithm-20260518.md"
+      ]
+    },
+    {
+      "id": "layer:testing",
+      "name": "测试与验证层",
+      "description": "单元测试、集成测试和性能基准测试文件，覆盖所有核心模块的验证场景",
+      "nodeIds": [
+        "file:tests/benchmark_performance.c",
+        "file:tests/main.c",
+        "file:tests/rbf_pid_test.c",
+        "file:tests/segment_completion_test.c",
+        "file:tests/test_action_profile.c",
+        "file:tests/test_axismotion_setpoint_isolation.c",
+        "file:tests/test_diagnostic_criteria.c",
+        "file:tests/test_diagnostic_monitor.c",
+        "file:tests/test_diagnostics.c",
+        "file:tests/test_direct_mode_simple.c",
+        "file:tests/test_direct_mode.c",
+        "file:tests/test_fault_recovery.c",
+        "file:tests/test_hydro_sim_fb.c",
+        "file:tests/test_interface_layout_consistency.py",
+        "file:tests/test_mold_protect.c",
+        "file:tests/test_motion_interface_arbitration.c",
+        "file:tests/test_motion_interface_done_signals.c",
+        "file:tests/test_motion_interface_unit.c",
+        "file:tests/test_motion_planner.c",
+        "file:tests/test_moveabsolute_stop_integration.c",
+        "file:tests/test_output_limiter.c",
+        "file:tests/test_parameter_access.c",
+        "file:tests/test_parameter_iec.c",
+        "file:tests/test_pressure_controller.c",
+        "file:tests/test_pump_converter.c",
+        "file:tests/test_pump_cylinder_config.c",
+        "file:tests/test_pump_direction_conflict.c",
+        "file:tests/test_ramp_controller.c",
+        "file:tests/test_rbf_pid_hil.c",
+        "file:tests/test_recipe_multi_segment_ownership.c",
+        "file:tests/test_recipe_validator.c",
+        "file:tests/test_safety_state_manager.c",
+        "file:tests/test_sprint_b_integration.c",
+        "file:tests/test_sprint3_integration.c",
+        "file:tests/test_state_reporter.c",
+        "file:tests/test_stop_diagnostics_retained.c",
+        "file:tests/test_stop_immediate_done.c",
+        "file:tests/test_velocity_controller.c",
+        "file:tests/test_vp_bumpless_reverse.c",
+        "file:tests/test_vp_transfer.c"
+      ]
+    }
+  ],
+  "tour": [
+    {
+      "order": 1,
+      "title": "Project Overview",
+      "description": "The README.md provides a comprehensive overview of the HDY Motion Control Library, a pure C99 motion-control library for hydraulic injection-molding machines. It explains the design boundary that separates the process layer (valve logic, sequencing) from the motion control layer (velocity/pressure planning, pump speed conversion), and guides you through building, testing, and deploying the library.",
+      "nodeIds": [
+        "document:README.md"
+      ]
+    },
+    {
+      "order": 2,
+      "title": "Core API Contract",
+      "description": "The motion_control.h header defines the PLCopen-style HYD_MotionControlFB function block interface. This is the core API that the process layer calls to execute multi-segment recipes with position, speed-ramp, or pressure-closed-loop modes. It includes the full lifecycle semantics (Init -> LoadRecipe -> StartSegment -> Execute -> NextSegment/Done) and output structures for state, pump speed, diagnostics, and segment completion flags.",
+      "nodeIds": [
+        "file:include/motion_control.h"
+      ],
+      "languageLesson": "PLCopen function blocks follow a lifecycle pattern: Init for setup, Execute for the periodic scan cycle, and dedicated functions like StartSegment/NextSegment for segment transitions. The EN/ENO gate is handled at the IEC interface layer, not in the core implementation."
+    },
+    {
+      "order": 3,
+      "title": "Type System Foundation",
+      "description": "common_types.h contains all shared data structures, enums, and type definitions used throughout the codebase. This includes HYD_MotionSegment for recipe parameters, HYD_AXISMOTION for axis feedback, HYD_STATE for execution states, and various control mode enums. Understanding these types is essential because they define the vocabulary shared between the planner, controller, and IEC interface layers.",
+      "nodeIds": [
+        "file:include/common_types.h"
+      ],
+      "languageLesson": "In C, forward declarations of structs are used extensively when multiple files depend on each other. Include guards (#ifndef ... #endif) prevent multiple inclusion errors, which is critical in large header files like common_types.h."
+    },
+    {
+      "order": 4,
+      "title": "Motion Planning Core",
+      "description": "motion_planner.c implements velocity and flow reference calculation using time-based velocity ramps with braking protection. It computes the planned velocity and flow based on the segment's target parameters, max acceleration, and velocity limits. segment_completion.c acts as the single source of truth for evaluating when a segment should end, checking position, time, pressure, flow, or manual completion conditions.",
+      "nodeIds": [
+        "file:src/motion_planner.c",
+        "file:src/segment_completion.c"
+      ]
+    },
+    {
+      "order": 5,
+      "title": "Pressure Control Implementation",
+      "description": "pressure_controller.c provides P/PI/PID control strategies for closed-loop pressure mode, with anti-windup, bumpless tracking, and derivative-rate filtering. This module smooths the target pressure using ramp_controller.c, then applies the selected control algorithm to minimize error between measured and target pressure. The controller integrates seamlessly with the planner's flow reference for feedforward control.",
+      "nodeIds": [
+        "file:src/pressure_controller.c",
+        "file:include/ramp_controller.h",
+        "file:src/ramp_controller.c"
+      ],
+      "languageLesson": "PID control with anti-windup prevents the integral term from accumulating unbounded error when the control signal saturates. Bumpless tracking ensures smooth transitions between control modes without sudden pressure spikes."
+    },
+    {
+      "order": 6,
+      "title": "Execution Example",
+      "description": "The tests/main.c file demonstrates a complete multi-segment recipe execution cycle. It shows how to initialize the function block, load a 5-segment recipe with different control modes (speed-ramp and pressure-closed-loop), execute it in a simulation loop, and handle segment completion events. This is the best entry point to understand the runtime behavior and diagnostic output format.",
+      "nodeIds": [
+        "file:tests/main.c"
+      ]
+    },
+    {
+      "order": 7,
+      "title": "Physics Simulation Layer",
+      "description": "The simulation layer (src/sim/hydro_sim.c + hydro_sim_fb.c) provides a physics kernel for development and testing. hydro_sim_fb.c is the PLC adapter layer that translates create/move/read commands into the simulator's internal representation, while hydro_sim.c implements the hydraulic physics model including single-pump scheduling, CLAMP/INJECT cylinder models, and fault injection for testing.",
+      "nodeIds": [
+        "file:src/sim/hydro_sim_fb.c",
+        "file:src/sim/hydro_sim.c"
+      ],
+      "languageLesson": "The simulator uses a shared HydraulicSimEnv structure that is stepped exactly once per __HydSimulator_framework_Publish() call. This ensures that multiple function blocks in the same PLC scan cycle only advance physics by one tick, matching real PLC behavior."
+    },
+    {
+      "order": 8,
+      "title": "IEC61131-3 Interface Adapter",
+      "description": "motion_interface.c implements the IEC61131-3 PLCopen function block interface. It provides a pool of up to 20 function block instances, handles command arbitration between multiple instances competing for the same axis, and exposes 6 standard PLCopen FBs (MoveProfile, MoveAbsolute, MoveVelocity, PressureHandle, Stop, Reset). This layer translates between the process layer's IEC-style calls and the core library's internal execution flow.",
+      "nodeIds": [
+        "file:include/motion_interface.h",
+        "file:src/motion_interface.c"
+      ],
+      "languageLesson": "IEC61131-3 function blocks follow a specific lifecycle: Init for setup, then Execute() called in each PLC scan cycle. The EN (enable) gate is checked at this interface layer before invoking the core execution, and ENO (enable output) is propagated back to the PLC program."
+    },
+    {
+      "order": 9,
+      "title": "Diagnostic System",
+      "description": "The diagnostics module (diagnostics.c) manages the complete diagnostic system including code-to-string conversion, severity classification (NONE/WARNING/FAULT), and snapshot history for troubleshooting. It integrates with state_reporter.c to track execution events and provides real-time diagnostic output (DIAGNOSTIC struct) with recovery suggestions and protection actions (DERATE/STOP). The HMI diagnosis table maps these codes to user-friendly Chinese text.",
+      "nodeIds": [
+        "file:include/diagnostics.h",
+        "file:src/diagnostics.c",
+        "document:HMI诊断对照表.md"
+      ]
+    },
+    {
+      "order": 10,
+      "title": "Build Configuration",
+      "description": "CMakeLists.txt defines the build system for both HydroMotionLib (core library without simulation) and HydroSimLib (simulation library). It includes all source files, sets up static library targets, and integrates with CTest for test execution. The coverage.sh script uses gcovr to generate test coverage reports, while deploy_embedded_prod.sh creates production builds that exclude the simulation code for smaller footprint deployment.",
+      "nodeIds": [
+        "config:CMakeLists.txt",
+        "file:scripts/deploy_embedded_prod.sh",
+        "file:scripts/coverage.sh"
+      ],
+      "languageLesson": "CMake's file(GLOB_RECURSE ...) directive automatically discovers new source files, which is why cmake --preset unixgcc needs to be re-run when adding new src/*.c files. This keeps the build configuration declarative and maintainable."
+    },
+    {
+      "order": 11,
+      "title": "Testing Infrastructure",
+      "description": "The testing layer includes unit tests for every core module (motion_planner, pressure_controller, segment_completion, etc.) plus integration tests like test_scenario_matrix that cover typical injection-molding scenarios. The benchmark_performance.c program measures execution time for each module, helping validate real-time feasibility. This comprehensive test suite ensures the library works correctly across different operating modes and edge cases.",
+      "nodeIds": [
+        "file:tests/test_motion_planner.c",
+        "file:tests/test_pressure_controller.c",
+        "file:tests/segment_completion_test.c",
+        "file:tests/benchmark_performance.c",
+        "document:项目需求文档-v1.0.md"
+      ]
+    }
+  ]
+}
