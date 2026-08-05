@@ -55,7 +55,9 @@ static void HYD_PressureRippleComp_AdvanceTheta(HYD_PressureRippleCompState* s,
     } else {
         HYD_REAL safeRpm = isfinite((float)commandedRpm) ? commandedRpm : 0.0f;
         HYD_REAL safeDt = (isfinite((float)dt) && dt > 0.0f) ? dt : 0.0f;
-        s->theta += (HYD_REAL)HYD_PUMP_TEETH * safeRpm * safeDt / 60.0f;
+        /* theta is the mechanical shaft revolution fraction. The tooth
+         * count is applied once below when constructing the tooth phase. */
+        s->theta += safeRpm * safeDt / 60.0f;
     }
     if (!isfinite((float)s->theta)) s->theta = 0.0f;
     s->theta = (HYD_REAL)fmod((double)s->theta, 1.0);

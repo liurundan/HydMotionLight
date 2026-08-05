@@ -2139,8 +2139,8 @@ static HYD_BOOL HYD_ExecuteActiveSegmentControl(HYD_MotionControlFB* fb,
                 HYD_REAL eP = fb->AXIS_REF.pressure - rampOutput->rampedPressure;
                 HYD_UINT8 rippleSteady = HYD_PressureSteadyGate_Update(&fb->_rippleGate, eP);
                 HYD_UINT8 useEncoder =
-                    (isfinite((float)fb->AXIS_REF.motorAngleRev) &&
-                     fabs((double)fb->AXIS_REF.motorAngleRev) > 1.0e-9) ? 1u : 0u;
+                    (fb->AXIS_REF.motorAngleValid &&
+                     isfinite((double)fb->AXIS_REF.motorAngleRev)) ? 1u : 0u;
                 if (isfinite((float)segment->systemGain) && segment->systemGain > 1.0e-4f) {
                     HYD_PressureRippleComp_SetGain(&fb->_rippleComp, 1.0f / segment->systemGain);
                 } else {

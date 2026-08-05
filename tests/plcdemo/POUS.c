@@ -82,7 +82,7 @@ void HYD_MOVEPROFILE_init__(HYD_MOVEPROFILE *data__, BOOL retain) {
   __INIT_VAR(data__->AXISID,0,retain)
   __INIT_VAR(data__->EXECUTE,__BOOL_LITERAL(FALSE),retain)
   {
-    static const HYD_AXISMOTION temp = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
+    static const HYD_AXISMOTION temp = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
     __SET_VAR(data__->,MOTION,,temp);
   }
   __INIT_VAR(data__->BUFFERMODE,0,retain)
@@ -136,7 +136,7 @@ void HYD_LOADPROFILE_init__(HYD_LOADPROFILE *data__, BOOL retain) {
   __INIT_VAR(data__->AXISID,0,retain)
   __INIT_VAR(data__->EXECUTE,__BOOL_LITERAL(FALSE),retain)
   {
-    static const HYD_AXISMOTION temp = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
+    static const HYD_AXISMOTION temp = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
     __SET_VAR(data__->,MOTION,,temp);
   }
   __INIT_VAR(data__->DONE,__BOOL_LITERAL(FALSE),retain)
@@ -678,6 +678,8 @@ void HYD_SETAXISFEEDBACK_init__(HYD_SETAXISFEEDBACK *data__, BOOL retain) {
   __INIT_VAR(data__->ACT_FLOW,0,retain)
   __INIT_VAR(data__->ACT_PRESSURE,0,retain)
   __INIT_VAR(data__->TIMESTAMP,0,retain)
+  __INIT_VAR(data__->ACT_MOTOR_ANGLE_DEG,0,retain)
+  __INIT_VAR(data__->ACT_MOTOR_ANGLE_VALID,__BOOL_LITERAL(FALSE),retain)
   __INIT_VAR(data__->DONE,__BOOL_LITERAL(FALSE),retain)
   __INIT_VAR(data__->BUSY,__BOOL_LITERAL(FALSE),retain)
   __INIT_VAR(data__->ERROR,__BOOL_LITERAL(FALSE),retain)
