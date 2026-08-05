@@ -298,7 +298,7 @@ static HYD_MotionSegment buildPressureSegment(
     seg.duration = duration;
     seg.pressureRampRate = rampRate;
     seg.pressureCeiling  = MAX_PRESSURE;
-
+    seg.systemGain = 30.f; // 80.5 bar/L/min, 2028-08-04 测试数据，后续可通过配置表调整
     seg.pressureController = (HYD_PressureControllerType)(int)fb->_params.pressureControllerType;
     seg.pressureKp = fb->_params.pressureKp;
     seg.pressureKi = fb->_params.pressureKi;

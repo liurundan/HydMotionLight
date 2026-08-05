@@ -20,8 +20,8 @@
  * RBF_PID_SetParamLimits() 覆盖。 */
 #define PID_MIN_KP          0.4f
 #define PID_MAX_KP          0.6f
-#define PID_MIN_KI          0.0018f // 0.0008
-#define PID_MAX_KI          0.0056f
+#define PID_MIN_KI          0.5f//0.0018f // 0.0008
+#define PID_MAX_KI          0.8f////0.0056f
 #define PID_MIN_KD          0.015f
 #define PID_MAX_KD          0.035f
 
