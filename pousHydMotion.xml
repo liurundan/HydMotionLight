@@ -126,6 +126,16 @@
 								<REAL />
 							</type>
 						</variable>
+						<variable name="ACT_MOTOR_ANGLE_DEG">
+							<type>
+								<REAL />
+							</type>
+						</variable>
+						<variable name="ACT_MOTOR_ANGLE_VALID">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
 					</struct>
 				</baseType>
 			</dataType>
@@ -1121,6 +1131,16 @@
 						<variable name="TIMESTAMP">
 							<type>
 								<REAL />
+							</type>
+						</variable>
+						<variable name="ACT_MOTOR_ANGLE_DEG">
+							<type>
+								<REAL />
+							</type>
+						</variable>
+						<variable name="ACT_MOTOR_ANGLE_VALID">
+							<type>
+								<BOOL />
 							</type>
 						</variable>
 					</inputVars>

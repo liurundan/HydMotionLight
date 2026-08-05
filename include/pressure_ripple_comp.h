@@ -54,7 +54,8 @@ void HYD_PressureRippleComp_Reset(HYD_PressureRippleCompState* s);
 void HYD_PressureRippleComp_SetEnabled(HYD_PressureRippleCompState* s, HYD_UINT8 enabled);
 void HYD_PressureRippleComp_SetGain(HYD_PressureRippleCompState* s, HYD_REAL gain);
 /* 每周期调用：推进相位、稳态期复解调累加脉动、低频刷新基波幅相(a1,phi1)。
-   eP: 压力误差 [bar]；pumpAngleRev: 编码器角度[rev]（useEncoder=1 时使用）；
+   eP: 压力误差 [bar]；pumpAngleRev: 编码器机械轴圈数 [rev]（编码器角度应先由
+   0..360 度换算，useEncoder=1 时使用；模块内部归一化到 [0,1)）；
    commandedRpm: 上周期泵转速[rpm]（回退累加用）；dt: 采样周期[s]；
    useEncoder: 1=用编码器角度，0=转速累加；steadyGate: 1=稳态可学习 */
 void HYD_PressureRippleComp_Update(HYD_PressureRippleCompState* s,

@@ -1,29 +1,66 @@
 {
+    "version": 4,
     "configurations": [
         {
+            // ★ Windows 下默认选这个（右下角状态栏可切换）
             "name": "MinGW",
             "compilerPath": "D:/mingw64/bin/gcc.exe",
+            "compilerArgs": [
+                "-std=c99"
+            ],
             "cStandard": "c99",
             "cppStandard": "c++17",
             "intelliSenseMode": "windows-gcc-x64",
+
+            // 优先级：CMake Tools 提供的实时配置 > compile_commands.json > includePath
+            // 三层兜底，保证扩展没装或构建树还没生成时也能正常跳转补全
+            "configurationProvider": "ms-vscode.cmake-tools",
+            "compileCommands": "${workspaceFolder}/out/build/mingw/compile_commands.json",
+
             "includePath": [
                 "${workspaceFolder}/include",
-                "${workspaceFolder}/include/matiec/lib/C"
+                "${workspaceFolder}/include/matiec/lib/C",
+                "${workspaceFolder}/src",
+                "${workspaceFolder}/tests"
             ],
-            "defines": [ "MINGW", "_DEBUG" ]
+            // 不再手写 MINGW / __MINGW64__ 之类的宏：
+            // compilerPath 已让扩展直接向 gcc 查询真实的内置宏与系统头路径
+            "defines": [],
+            "browse": {
+                "path": [
+                    "${workspaceFolder}/include",
+                    "${workspaceFolder}/src",
+                    "${workspaceFolder}/tests"
+                ],
+                "limitSymbolsToIncludedHeaders": true
+            }
         },
         {
+            // WSL / Linux 侧用 unixgcc preset 时切到这个
             "name": "Linux",
             "compilerPath": "/usr/bin/gcc",
+            "compilerArgs": [
+                "-std=c99"
+            ],
             "cStandard": "c99",
             "cppStandard": "gnu++17",
             "intelliSenseMode": "linux-gcc-x64",
+            "compileCommands": "${workspaceFolder}/out/build/unixgcc/compile_commands.json",
             "includePath": [
                 "${workspaceFolder}/include",
-                "${workspaceFolder}/include/matiec/lib/C"
+                "${workspaceFolder}/include/matiec/lib/C",
+                "${workspaceFolder}/src",
+                "${workspaceFolder}/tests"
             ],
-            "defines": []
+            "defines": [],
+            "browse": {
+                "path": [
+                    "${workspaceFolder}/include",
+                    "${workspaceFolder}/src",
+                    "${workspaceFolder}/tests"
+                ],
+                "limitSymbolsToIncludedHeaders": true
+            }
         }
-    ],
-    "version": 4
+    ]
 }

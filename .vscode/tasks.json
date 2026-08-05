@@ -1,30 +1,130 @@
 {
     "version": "2.0.0",
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // 所有任务统一在 cmd.exe 里执行，并只在任务进程内注入 MinGW。
+    // D:\mingw64\bin 排在 PATH 最前，因此机器上其它 gcc（MSYS2 / Cygwin /
+    // Git 自带）不会被误用；同时不写系统环境变量，不影响其它项目。
+    //
+    // 构建逻辑放在 scripts\build-mingw.cmd 里，而不是内联在这里，原因：
+    //   1. VS Code 对 shell 任务里的 & | ( ) 会自动加引号，行为不稳定；
+    //   2. 脚本可以在终端直接运行，出问题时便于单独排查。
+    // ─────────────────────────────────────────────────────────────────────────
+    "options": {
+        "cwd": "${workspaceFolder}",
+        "shell": {
+            "executable": "cmd.exe",
+            "args": [
+                "/d",
+                "/c"
+            ]
+        },
+        "env": {
+            "PATH": "D:\\mingw64\\bin;${env:PATH}"
+        }
+    },
+
+    "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared",
+        "showReuseMessage": false,
+        "clear": true
+    },
+
     "tasks": [
         {
-            "label": "CMake: Configure (mingw)",
+            "label": "CMake: Build (MinGW)",
             "type": "shell",
-            "command": "cmake --preset mingw",
-            "problemMatcher": [],
-            "detail": "使用 mingw preset 生成构建系统（D:/mingw64/bin/gcc）"
-        },
-        {
-            "label": "CMake: Build (mingw)",
-            "type": "shell",
-            "command": "cmake --build --preset mingw",
+            "command": "scripts\\build-mingw.cmd",
             "group": {
                 "kind": "build",
                 "isDefault": true
             },
-            "problemMatcher": [ "$gcc" ],
-            "detail": "用 mingw preset 编译全部库与测试用例"
+            "problemMatcher": [
+                {
+                    "base": "$gcc",
+                    "fileLocation": "absolute"
+                }
+            ],
+            "detail": "编译 CMakeLists 中的全部目标（56 个 exe + 2 个库），必要时自动配置构建树"
         },
         {
-            "label": "CMake: Clean (mingw)",
+            "label": "CMake: Rebuild All (MinGW)",
             "type": "shell",
-            "command": "cmake --build out/build/mingw --target clean",
+            "command": "scripts\\build-mingw.cmd all rebuild",
+            "problemMatcher": [
+                {
+                    "base": "$gcc",
+                    "fileLocation": "absolute"
+                }
+            ],
+            "detail": "先 clean 再全量重编（改了编译选项或工具链后使用）",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
+        },
+        {
+            "label": "CMake: Build 单个目标 (MinGW)",
+            "type": "shell",
+            "command": "scripts\\build-mingw.cmd ${input:buildTarget}",
+            "problemMatcher": [
+                {
+                    "base": "$gcc",
+                    "fileLocation": "absolute"
+                }
+            ],
+            "detail": "只编译指定的一个目标，迭代单个测试时更快"
+        },
+        {
+            "label": "CMake: Configure (MinGW)",
+            "type": "shell",
+            "command": "cmake --preset mingw",
             "problemMatcher": [],
-            "detail": "清理 mingw 构建产物"
+            "detail": "手动重新生成构建树。新增 src/*.c 后需要执行一次（CMakeLists 用 GLOB）"
+        },
+        {
+            "label": "CMake: Clean (MinGW)",
+            "type": "shell",
+            "command": "cmake --build --preset mingw --target clean",
+            "problemMatcher": [],
+            "detail": "清理 out/build/mingw 下的目标文件与可执行文件"
+        },
+        {
+            "label": "CTest: Run All (MinGW)",
+            "type": "shell",
+            "command": "scripts\\build-mingw.cmd && ctest --test-dir out/build/mingw --output-on-failure",
+            "group": {
+                "kind": "test",
+                "isDefault": true
+            },
+            "problemMatcher": [],
+            "detail": "先构建再运行全部 55 个注册测试"
+        },
+        {
+            "label": "Run: main.exe (MinGW)",
+            "type": "shell",
+            "command": "scripts\\build-mingw.cmd main && out\\build\\mingw\\main.exe",
+            "problemMatcher": [],
+            "detail": "构建并直接运行端到端示例（tests/main.c），不进调试器"
+        },
+        {
+            "label": "Check: MinGW 工具链定位",
+            "type": "shell",
+            "command": "where cmake ctest gcc g++ gdb mingw32-make",
+            "problemMatcher": [],
+            "detail": "排查多套 gcc 冲突：确认命中的确实是 D:\\mingw64\\bin 下的工具"
+        }
+    ],
+
+    "inputs": [
+        {
+            "id": "buildTarget",
+            "type": "promptString",
+            "description": "要编译的 CMake 目标名（如 main、test_motion_planner）",
+            "default": "main"
         }
     ]
 }

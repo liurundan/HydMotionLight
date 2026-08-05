@@ -394,7 +394,8 @@ setpoint via `MOTION` between scans without disturbing the current run.
 
 ### Actual half -- owned by runtime / sensors
 
-`ACTPOSITION`, `ACTVELOCITY`, `ACTFLOW`, `ACTPRESSURE`, `TIMESTAMP`.
+`ACTPOSITION`, `ACTVELOCITY`, `ACTFLOW`, `ACTPRESSURE`, `TIMESTAMP`,
+`ACT_MOTOR_ANGLE_DEG`, `ACT_MOTOR_ANGLE_VALID`.
 
 In non-simulation deployments the PLC writes these fields from sensor
 I/O each scan before invoking any `MoveProfile` / `MoveAbsolute` /

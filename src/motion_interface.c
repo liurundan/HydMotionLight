@@ -28,6 +28,48 @@ static HYD_UINT16 HYD_FrameworkGeneration;
 
 static const HYD_REAL HYD_CONTABS_DIRECTION_VELOCITY_THRESHOLD = 0.01f;
 
+/* Convert the PLC-facing one-turn angle into the internal revolution domain.
+ * The validity bit is independent from the numeric value because 0 degrees
+ * is a valid encoder position. Invalid feedback falls back to speed phase
+ * accumulation in the ripple compensator. */
+static void applyMotorAngleFeedback(HYD_AxisRef* axisRef,
+                                    IEC_REAL angleDeg,
+                                    IEC_BOOL angleValid)
+{
+    if (axisRef == NULL) {
+        return;
+    }
+
+    axisRef->motorAngleRev = 0.0f;
+    axisRef->motorAngleValid = false;
+
+    if (!angleValid || !isfinite((double)angleDeg) ||
+        angleDeg < (IEC_REAL)0.0 || angleDeg > (IEC_REAL)360.0) {
+        return;
+    }
+
+    /* 360 degrees is the same phase as 0 degrees, but remains valid. */
+    if (angleDeg >= (IEC_REAL)360.0) {
+        angleDeg = (IEC_REAL)0.0;
+    }
+    axisRef->motorAngleRev = (HYD_REAL)((double)angleDeg / 360.0);
+    axisRef->motorAngleValid = true;
+}
+
+static void publishMotorAngleFeedback(const HYD_AxisRef* axisRef,
+                                      IEC_REAL* angleDeg,
+                                      IEC_BOOL* angleValid)
+{
+    if (axisRef == NULL || angleDeg == NULL || angleValid == NULL) {
+        return;
+    }
+
+    *angleValid = axisRef->motorAngleValid;
+    *angleDeg = axisRef->motorAngleValid
+              ? (IEC_REAL)((double)axisRef->motorAngleRev * 360.0)
+              : (IEC_REAL)0.0;
+}
+
 static int allocMotionControlFB(void)
 {
     int index;
@@ -1438,12 +1480,18 @@ void __mcl_cmd_MoveProfile(HYD_MOVEPROFILE *data__)
         fb->AXIS_REF.velocity = motionData.ACTVELOCITY;
         fb->AXIS_REF.flow = motionData.ACTFLOW;
         fb->AXIS_REF.pressure = motionData.ACTPRESSURE;
+        applyMotorAngleFeedback(&fb->AXIS_REF,
+                                motionData.ACT_MOTOR_ANGLE_DEG,
+                                motionData.ACT_MOTOR_ANGLE_VALID);
     } else {
         motionData.ACTPOSITION = (IEC_REAL)fb->AXIS_REF.position;
         motionData.ACTVELOCITY = (IEC_REAL)fb->AXIS_REF.velocity;
         motionData.ACTFLOW = (IEC_REAL)fb->AXIS_REF.flow;
         motionData.ACTPRESSURE = (IEC_REAL)fb->AXIS_REF.pressure;
         motionData.TIMESTAMP = (IEC_REAL)fb->AXIS_REF.timestamp;
+        publishMotorAngleFeedback(&fb->AXIS_REF,
+                                  &motionData.ACT_MOTOR_ANGLE_DEG,
+                                  &motionData.ACT_MOTOR_ANGLE_VALID);
         __SET_VAR(data__->, MOTION,, motionData);
     }
 
@@ -2639,6 +2687,9 @@ void __mcl_cmd_SetAxisFeedback(HYD_SETAXISFEEDBACK *data__)
         fb->AXIS_REF.flow     = __GET_VAR(data__->ACT_FLOW);
         fb->AXIS_REF.pressure = __GET_VAR(data__->ACT_PRESSURE);
         fb->AXIS_REF.velocity = __GET_VAR(data__->ACT_VELOCITY);
+        applyMotorAngleFeedback(&fb->AXIS_REF,
+                                __GET_VAR(data__->ACT_MOTOR_ANGLE_DEG),
+                                __GET_VAR(data__->ACT_MOTOR_ANGLE_VALID));
     }
 
     __SET_VAR(data__->, DONE, , true);

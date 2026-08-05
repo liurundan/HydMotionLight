@@ -264,6 +264,7 @@ typedef struct {
     HYD_REAL pressure;   /* bar */
     HYD_TIME timestamp;  /* s */
     HYD_REAL motorAngleRev; /* 泵轴整圈数（编码器/推算），默认 0；脉动补偿相位源 */
+    HYD_BOOL motorAngleValid; /* motorAngleRev 是否来自有效编码器反馈 */
 } HYD_AxisRef;
 
 /*

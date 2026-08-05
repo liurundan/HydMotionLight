@@ -47,6 +47,8 @@ IEC 接口层位于 PLC 运行时与核心控制引擎之间，负责：
 | `ACTVELOCITY` | REAL | OUT | 实际速度反馈 → AXIS_REF |
 | `ACTFLOW` | REAL | OUT | 实际流量反馈 → AXIS_REF |
 | `ACTPRESSURE` | REAL | OUT | 实际压力反馈 → AXIS_REF |
+| `ACT_MOTOR_ANGLE_DEG` | REAL | OUT | 电机单圈角度反馈，范围 `0..360` 度 |
+| `ACT_MOTOR_ANGLE_VALID` | BOOL | OUT | 电机角度有效标志；0 度也必须为 TRUE |
 | `TIMESTAMP` | REAL | OUT | 时间戳 |
 
 > 枚举值定义参见 [common_types.h](include/common_types.h#L29-L69)
@@ -180,6 +182,8 @@ END_IF
 | `ACT_VELOCITY` | REAL | IN | 实际速度 |
 | `ACT_FLOW` | REAL | IN | 实际流量 |
 | `ACT_PRESSURE` | REAL | IN | 实际压力 |
+| `ACT_MOTOR_ANGLE_DEG` | REAL | IN | 电机单圈角度，范围 `0..360` 度 |
+| `ACT_MOTOR_ANGLE_VALID` | BOOL | IN | 电机角度有效标志；FALSE 时使用转速积分相位 |
 | `TIMESTAMP` | REAL | IN | 时间戳 |
 | `BUSY` | BOOL | OUT | 处理中 |
 | `DONE` | BOOL | OUT | 写入完成 |
@@ -196,6 +200,8 @@ fbSetFeedback(EN := TRUE,
               ACT_VELOCITY := encoder_vel,
               ACT_FLOW := flow_sensor,
               ACT_PRESSURE := pressure_transducer,
+              ACT_MOTOR_ANGLE_DEG := motor_angle_deg,
+              ACT_MOTOR_ANGLE_VALID := motor_angle_valid,
               TIMESTAMP := system_time);
 ```
 
@@ -284,6 +290,8 @@ fbMoveProfile(EN := TRUE,
                          ACTVELOCITY := encoder_vel,
                          ACTFLOW := flow_val,
                          ACTPRESSURE := press_val,
+                         ACT_MOTOR_ANGLE_DEG := motor_angle_deg,
+                         ACT_MOTOR_ANGLE_VALID := motor_angle_valid,
                          TIMESTAMP := sys_time));
 
 IF fbMoveProfile.DONE THEN
@@ -762,7 +770,10 @@ __HydMotion_framework_Retrieve();
 
 fbSetFeedback(EN := TRUE, ENABLE := TRUE, AXISID := axisId,
               ACT_POSITION := ..., ACT_VELOCITY := ...,
-              ACT_FLOW := ..., ACT_PRESSURE := ..., TIMESTAMP := ...);
+              ACT_FLOW := ..., ACT_PRESSURE := ...,
+              ACT_MOTOR_ANGLE_DEG := motor_angle_deg,
+              ACT_MOTOR_ANGLE_VALID := motor_angle_valid,
+              TIMESTAMP := ...);
 
 // ═══════════════════════════════════════
 // 阶段2: 工艺控制（状态机）

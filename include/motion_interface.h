@@ -56,11 +56,12 @@
  * to the same physical HYD_AXISMOTION.
  *
  * Actual half -- runtime -> PLC, PLC MUST NOT write back:
- *   ACTPOSITION, ACTVELOCITY, ACTFLOW, ACTPRESSURE, TIMESTAMP.
+ *   ACTPOSITION, ACTVELOCITY, ACTFLOW, ACTPRESSURE, TIMESTAMP,
+ *   ACT_MOTOR_ANGLE_DEG, ACT_MOTOR_ANGLE_VALID.
  *
- * In simulation deployments the runtime publishes ACT* + TIMESTAMP from
+ * In simulation deployments the runtime publishes ACT* + TIMESTAMP + motor-angle fields from
  * fb->AXIS_REF every cycle. In non-simulation deployments the PLC writes
- * ACT* + TIMESTAMP from sensor I/O before invoking any FB, and the
+ * ACT* + TIMESTAMP + motor-angle fields from sensor I/O before invoking any FB, and the
  * runtime treats them as input.
  *
  * Multi-FB safety: PLC programs are responsible for ensuring at most
@@ -91,6 +92,8 @@ __DECLARE_STRUCT_TYPE(HYD_AXISMOTION,
     REAL ACTFLOW;
     REAL ACTPRESSURE;
     REAL TIMESTAMP;
+    REAL ACT_MOTOR_ANGLE_DEG;
+    BOOL ACT_MOTOR_ANGLE_VALID;
   )
 
 // FUNCTION_BLOCK HYD_MOVEPROFILE
@@ -476,6 +479,8 @@ typedef struct {
   __DECLARE_VAR(REAL,ACT_FLOW)
   __DECLARE_VAR(REAL,ACT_PRESSURE)
   __DECLARE_VAR(REAL,TIMESTAMP)
+  __DECLARE_VAR(REAL,ACT_MOTOR_ANGLE_DEG)
+  __DECLARE_VAR(BOOL,ACT_MOTOR_ANGLE_VALID)
   __DECLARE_VAR(BOOL,DONE)
   __DECLARE_VAR(BOOL,BUSY)
   __DECLARE_VAR(BOOL,ERROR)

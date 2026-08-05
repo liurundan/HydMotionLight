@@ -76,15 +76,31 @@ static int test_ripple_speed_accumulator_fallback(void) {
         /* 编码器路径：角度直接用 theta_enc */
         HYD_PressureRippleComp_Update(&s, 0.0f, theta_enc, 0.0f, DT, 1u, 0u); /* gate=0 不学，只推进相位 */
         /* 累加倍增：注意 Update 内部已用 rpm 推进 s.theta；这里单独模拟累加器 */
-        theta_acc += (float)Z * rpm * DT / 60.0f;
+        HYD_PressureRippleComp_Update(&s, 0.0f, 0.0f,
+                                      rpm, DT, 0u, 0u);
+        theta_acc += rpm * DT / 60.0f;
         theta_acc -= (float)(int)theta_acc;
-        theta_enc += (float)Z * rpm * DT / 60.0f;
+        theta_enc += rpm * DT / 60.0f;
         theta_enc -= (float)(int)theta_enc;
-        float d = fabsf(theta_acc - theta_enc);
+        float d = fabsf((float)s.theta - theta_acc);
         if (d > max_diff) max_diff = d;
     }
     if (max_diff > 1e-3f) { fprintf(stderr, "accumulator drift %f\n", (double)max_diff); return 0; }
     return 1;
+}
+
+static int test_ripple_encoder_theta_normalizes_revolutions(void) {
+    HYD_PressureRippleCompState s;
+
+    HYD_PressureRippleComp_Reset(&s);
+    HYD_PressureRippleComp_Update(&s, 0.0f, 0.25f, 0.0f, DT, 1u, 0u);
+    if (fabsf((float)s.theta - 0.25f) > 1e-6f) return 0;
+
+    HYD_PressureRippleComp_Update(&s, 0.0f, 1.0f, 0.0f, DT, 1u, 0u);
+    if (fabsf((float)s.theta) > 1e-6f) return 0;
+
+    HYD_PressureRippleComp_Update(&s, 0.0f, -0.25f, 0.0f, DT, 1u, 0u);
+    return fabsf((float)s.theta - 0.75f) <= 1e-6f;
 }
 
 static int test_ripple_second_harmonic_is_compensated(void) {
@@ -222,6 +238,8 @@ int main(void) {
     else printf("PASS test_ripple_disabled_outputs_zero\n");
     if (!test_ripple_speed_accumulator_fallback()) { printf("FAIL test_ripple_speed_accumulator_fallback\n"); ++failed; }
     else printf("PASS test_ripple_speed_accumulator_fallback\n");
+    if (!test_ripple_encoder_theta_normalizes_revolutions()) { printf("FAIL test_ripple_encoder_theta_normalizes_revolutions\n"); ++failed; }
+    else printf("PASS test_ripple_encoder_theta_normalizes_revolutions\n");
     if (!test_ripple_invalid_inputs_are_safely_ignored()) { printf("FAIL test_ripple_invalid_inputs_are_safely_ignored\n"); ++failed; }
     else printf("PASS test_ripple_invalid_inputs_are_safely_ignored\n");
     if (!test_ripple_feedforward_is_bounded()) { printf("FAIL test_ripple_feedforward_is_bounded\n"); ++failed; }

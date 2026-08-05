@@ -1,44 +1,125 @@
 {
     "version": "0.2.0",
+
+    // 说明：全部使用 cppdbg + D:/mingw64/bin/gdb.exe。
+    // 每个配置都通过 environment.PATH 把 D:\mingw64\bin 顶到最前，
+    // 保证被调试进程加载的是这套 MinGW 的 libgcc_s_seh-1.dll / libwinpthread-1.dll，
+    // 且不需要把 MinGW 写进系统环境变量。
     "configurations": [
         {
-            "name": "Debug (MinGW) - CMake Target",
-            "type": "cppdbg",
-            "request": "launch",
-            "program": "${command:cmake.launchTargetPath}",
-            "args": [],
-            "stopAtEntry": false,
-            "cwd": "${workspaceFolder}/out/build/mingw",
-            "environment": [
-                { "name": "PATH", "value": "D:/mingw64/bin;${env:PATH}" }
-            ],
-            "externalConsole": false,
-            "MIMode": "gdb",
-            "miDebuggerPath": "D:/mingw64/bin/gdb.exe",
-            "setupCommands": [
-                { "description": "Enable pretty-printing for gdb", "text": "-enable-pretty-printing", "ignoreFailures": true },
-                { "description": "Set Disassembly Flavor to Intel", "text": "-gdb-set disassembly-flavor intel", "ignoreFailures": true }
-            ]
-        },
-        {
+            // ★ F5 默认配置
             "name": "Debug (MinGW) - main.exe",
             "type": "cppdbg",
             "request": "launch",
             "program": "${workspaceFolder}/out/build/mingw/main.exe",
             "args": [],
             "stopAtEntry": false,
-            "cwd": "${workspaceFolder}/out/build/mingw",
+            "cwd": "${workspaceFolder}",
             "environment": [
-                { "name": "PATH", "value": "D:/mingw64/bin;${env:PATH}" }
+                {
+                    "name": "PATH",
+                    "value": "D:\\mingw64\\bin;${env:PATH}"
+                }
             ],
             "externalConsole": false,
+            "console": "integratedTerminal",
             "MIMode": "gdb",
             "miDebuggerPath": "D:/mingw64/bin/gdb.exe",
             "setupCommands": [
-                { "description": "Enable pretty-printing for gdb", "text": "-enable-pretty-printing", "ignoreFailures": true },
-                { "description": "Set Disassembly Flavor to Intel", "text": "-gdb-set disassembly-flavor intel", "ignoreFailures": true }
+                {
+                    "description": "启用 gdb 结构体美化输出",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                },
+                {
+                    "description": "反汇编使用 Intel 语法",
+                    "text": "-gdb-set disassembly-flavor intel",
+                    "ignoreFailures": true
+                },
+                {
+                    "description": "遇到未处理异常时中断",
+                    "text": "-gdb-set breakpoint pending on",
+                    "ignoreFailures": true
+                }
             ],
-            "preLaunchTask": "CMake: Build (mingw)"
+            "preLaunchTask": "CMake: Build (MinGW)",
+            "internalConsoleOptions": "neverOpen"
+        },
+        {
+            // 调试任意一个测试可执行文件，启动时输入文件名即可
+            "name": "Debug (MinGW) - 指定测试 exe",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/out/build/mingw/${input:mingwTestExe}",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [
+                {
+                    "name": "PATH",
+                    "value": "D:\\mingw64\\bin;${env:PATH}"
+                }
+            ],
+            "externalConsole": false,
+            "console": "integratedTerminal",
+            "MIMode": "gdb",
+            "miDebuggerPath": "D:/mingw64/bin/gdb.exe",
+            "setupCommands": [
+                {
+                    "description": "启用 gdb 结构体美化输出",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                },
+                {
+                    "description": "反汇编使用 Intel 语法",
+                    "text": "-gdb-set disassembly-flavor intel",
+                    "ignoreFailures": true
+                }
+            ],
+            "preLaunchTask": "CMake: Build (MinGW)",
+            "internalConsoleOptions": "neverOpen"
+        },
+        {
+            // 跟随 CMake Tools 状态栏上选中的 Launch Target（需要 CMake Tools 扩展）
+            "name": "Debug (MinGW) - CMake Launch Target",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${command:cmake.launchTargetPath}",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [
+                {
+                    "name": "PATH",
+                    "value": "${command:cmake.launchTargetDirectory};D:\\mingw64\\bin;${env:PATH}"
+                }
+            ],
+            "externalConsole": false,
+            "console": "integratedTerminal",
+            "MIMode": "gdb",
+            "miDebuggerPath": "D:/mingw64/bin/gdb.exe",
+            "setupCommands": [
+                {
+                    "description": "启用 gdb 结构体美化输出",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                },
+                {
+                    "description": "反汇编使用 Intel 语法",
+                    "text": "-gdb-set disassembly-flavor intel",
+                    "ignoreFailures": true
+                }
+            ],
+            "internalConsoleOptions": "neverOpen"
+        }
+    ],
+
+    "inputs": [
+        {
+            "id": "mingwTestExe",
+            "type": "promptString",
+            "description": "要调试的可执行文件名（位于 out/build/mingw/）",
+            "default": "test_motion_control.exe"
         }
     ]
 }

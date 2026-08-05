@@ -79,6 +79,58 @@ static int create_sim_axis(void) {
     return (int)IEC_VAL(cm.AXISID);
 }
 
+static void test_setaxisfeedback_motor_angle_conversion(void) {
+    HYD_SETAXISFEEDBACK feedback;
+    HYD_AXISMOTION motion;
+    HYD_MOVEPROFILE mp;
+    HYD_MotionControlFB* fb;
+
+    __HydMotion_framework_Init();
+    ensure_axes_allocated(1);
+    fb = __MK_GetPublic_MotionControlFB(0);
+
+    memset(&feedback, 0, sizeof(feedback));
+    IEC_VAL(feedback.EN) = true;
+    IEC_VAL(feedback.ENABLE) = true;
+    IEC_VAL(feedback.AXISID) = 0;
+
+    IEC_VAL(feedback.ACT_MOTOR_ANGLE_DEG) = 0.0f;
+    IEC_VAL(feedback.ACT_MOTOR_ANGLE_VALID) = true;
+    __mcl_cmd_SetAxisFeedback(&feedback);
+    ASSERT_TRUE(fb != NULL && fb->AXIS_REF.motorAngleValid &&
+                fabs((double)fb->AXIS_REF.motorAngleRev) < 1e-9,
+                "0 degrees should be a valid zero phase");
+
+    IEC_VAL(feedback.ACT_MOTOR_ANGLE_DEG) = 90.0f;
+    __mcl_cmd_SetAxisFeedback(&feedback);
+    ASSERT_TRUE(fabs((double)fb->AXIS_REF.motorAngleRev - 0.25) < 1e-9,
+                "90 degrees should convert to one quarter revolution");
+
+    IEC_VAL(feedback.ACT_MOTOR_ANGLE_DEG) = 360.0f;
+    __mcl_cmd_SetAxisFeedback(&feedback);
+    ASSERT_TRUE(fb->AXIS_REF.motorAngleValid &&
+                fabs((double)fb->AXIS_REF.motorAngleRev) < 1e-9,
+                "360 degrees should wrap to valid zero phase");
+
+    IEC_VAL(feedback.ACT_MOTOR_ANGLE_DEG) = -1.0f;
+    __mcl_cmd_SetAxisFeedback(&feedback);
+    ASSERT_TRUE(!fb->AXIS_REF.motorAngleValid,
+                "negative motor angle should select the fallback phase");
+
+    memset(&mp, 0, sizeof(mp));
+    memset(&motion, 0, sizeof(motion));
+    IEC_VAL(mp.EN) = true;
+    IEC_VAL(mp.AXISID) = 0;
+    IEC_VAL(mp.EXECUTE) = false;
+    motion.ACT_MOTOR_ANGLE_DEG = 90.0f;
+    motion.ACT_MOTOR_ANGLE_VALID = true;
+    __SET_VAR(mp., MOTION, , motion);
+    __mcl_cmd_MoveProfile(&mp);
+    ASSERT_TRUE(fb->AXIS_REF.motorAngleValid &&
+                fabs((double)fb->AXIS_REF.motorAngleRev - 0.25) < 1e-9,
+                "MoveProfile actual feedback should carry motor angle");
+}
+
 /* ==================================================================
  * Test 1: Framework Init 归零FB池与分配器
  * ================================================================== */
@@ -3282,6 +3334,7 @@ int main(void) {
     printf("=== Motion Interface Unit Tests ===\n\n");
 
     test_framework_init_resets_pool();
+    test_setaxisfeedback_motor_angle_conversion();
     test_publish_advances_simulation_feedback_time();
     test_simulation_velocity_ramp_uses_fixed_step_after_large_timestamp();
     test_real_axis_velocity_ramp_uses_fixed_step_after_large_timestamp();
