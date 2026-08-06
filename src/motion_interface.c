@@ -822,6 +822,9 @@ void __HydMotion_framework_Publish()
 
             if (simDeltaTime > 0.0) {
                 fb->AXIS_REF.position += fb->_simFeedback.targetVelocity * simDeltaTime;
+                if(fb->AXIS_REF.position < 0.0f) {
+					fb->AXIS_REF.position = 0.0f;
+				}
             }
             fb->AXIS_REF.velocity  = fb->_simFeedback.targetVelocity;
             fb->AXIS_REF.flow      = fb->_simFeedback.targetFlow;
