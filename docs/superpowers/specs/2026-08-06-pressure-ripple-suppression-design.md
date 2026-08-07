@@ -165,8 +165,10 @@ IEC/HAL -> HYD_PumpFeedback -> AxisFeedback/HydroPump/PressureModelOutput
 Every stack instance of `HYD_PressureControllerInput` must be zero-initialized before its
 fields are filled. Each simulator, IEC adapter, test fixture, and hardware adapter must
 populate the same transport contract. If torque cannot drive the specified learning gate
-in the first core consumer, it remains observable only and is not copied into unused
-core state.
+in the first core consumer, it remains invalid rather than copied into unused core state.
+Until Task 2 implements the calibrated physical torque equation, PressureModel packets
+set torque to zero and clear `HYD_PUMP_FEEDBACK_VALID_TORQUE`; the legacy
+`estimated_torque_trend` remains a compatibility diagnostic only.
 
 No runtime temperature field is added in this plan because there is no confirmed sensor
 chain. Temperature remains an offline calibration parameter until that chain exists.

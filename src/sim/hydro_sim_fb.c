@@ -307,6 +307,7 @@ void __mcl_cmd_updatePressureModel(HYD_PRESSUREMODEL *data__)
             int slot = Hyd_GetSlotByAxisId(g_shared_env.axes[i].axis_id);
 
             g_shared_env.axes[i].pump_feedback = g_pressure_model_feedback;
+            g_shared_env.axes[i].pump_feedback_from_pressure_model = true;
             g_shared_env.axes[i].last_feedback.pumpFeedback = g_pressure_model_feedback;
             if (slot >= 0) {
                 Hyd_CopyAxisFeedbackToHandle(&_sim_fb[slot]);

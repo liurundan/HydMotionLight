@@ -297,10 +297,12 @@ pressure, delayed sensor pressure, an angle phase in motor revolutions, and `tim
 the 1 ms model clock. Preserve the
 legacy first-order fields and delay buffer unchanged for the old profile.
 
-Extend `PressureModelOutput` with one `HYD_PumpFeedback pumpFeedback` packet; keep
-`estimated_torque_trend` as a compatibility diagnostic only. The model fills the packet's
-RPM, modulo-360 angle, 0.1% torque, timestamp, and validity bits together so simulator
-and controller consumers cannot receive partially duplicated feedback fields.
+Retain and complete the `PressureModelOutput.pumpFeedback` packet introduced by Task 1;
+keep `estimated_torque_trend` as a compatibility diagnostic only. Legacy and first-order
+profiles keep torque at zero with `HYD_PUMP_FEEDBACK_VALID_TORQUE` clear. The calibrated
+physical profile adds the rated-torque conversion and is the first profile whose
+regression test asserts the torque valid bit, together with RPM, modulo-360 angle, and
+timestamp.
 
 - [ ] **Step 3: Implement the bounded nonlinear equations**
 

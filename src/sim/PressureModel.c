@@ -102,11 +102,10 @@ static void pressure_model_fill_feedback(const PressureModelState *state,
     memset(&out->pumpFeedback, 0, sizeof(out->pumpFeedback));
     out->pumpFeedback.rpm = out->actual_motor_rpm;
     out->pumpFeedback.angleDeg = angle;
-    out->pumpFeedback.torquePermille = out->estimated_torque_trend;
+    out->pumpFeedback.torquePermille = 0.0f;
     out->pumpFeedback.timestamp = state->timestamp_s;
     out->pumpFeedback.validFlags = HYD_PUMP_FEEDBACK_VALID_RPM |
                                    HYD_PUMP_FEEDBACK_VALID_ANGLE |
-                                   HYD_PUMP_FEEDBACK_VALID_TORQUE |
                                    HYD_PUMP_FEEDBACK_VALID_TIMESTAMP;
 }
 

@@ -43,11 +43,21 @@ static void test_simulator_outputs_pump_feedback(void) {
                                      HYD_PUMP_FEEDBACK_VALID_TIMESTAMP));
     assert(feedback.pumpFeedback.rpm == 120.0f);
     assert(feedback.pumpFeedback.timestamp == 0.01f);
+    assert(HydraulicSim_SetAxisCommand(&env, 0, true, 60.0f, 1) == 1);
+    HydraulicSim_Step(&env, 0.01f);
+    assert(HydraulicSim_ReadAxis(&env, 0, &feedback) == 1);
+    assert(feedback.pumpFeedback.rpm == 60.0f);
+    assert(feedback.pumpFeedback.timestamp > 0.01f);
+    assert(HydraulicSim_SetAxisCommand(&env, 0, false, 0.0f, 0) == 1);
+    HydraulicSim_Step(&env, 0.01f);
+    assert(HydraulicSim_ReadAxis(&env, 0, &feedback) == 1);
+    assert(feedback.pumpFeedback.rpm == 0.0f);
+    assert(feedback.pumpFeedback.timestamp > 0.02f);
 
     memset(&pump, 0, sizeof(pump));
     env.axes[0].backend.write_pump(env.axes[0].backend.ctx, &pump);
-    assert(pump.feedback_rpm == 120.0f);
-    assert(pump.feedback.rpm == 120.0f);
+    assert(pump.feedback_rpm == 0.0f);
+    assert(pump.feedback.rpm == 0.0f);
 
     {
         HYD_CREATESIMAXIS create_cmd;
@@ -101,8 +111,9 @@ static void test_pressure_model_packet_survives_simulator_refresh(void) {
     assert(HYD_PumpFeedback_HasValid(handle->pumpFeedback.validFlags,
                                      HYD_PUMP_FEEDBACK_VALID_RPM |
                                      HYD_PUMP_FEEDBACK_VALID_ANGLE |
-                                     HYD_PUMP_FEEDBACK_VALID_TORQUE |
                                      HYD_PUMP_FEEDBACK_VALID_TIMESTAMP));
+    assert(!HYD_PumpFeedback_HasValid(handle->pumpFeedback.validFlags,
+                                      HYD_PUMP_FEEDBACK_VALID_TORQUE));
     model_feedback = handle->pumpFeedback;
     __HydSimulator_framework_Publish();
     HYD_HydraulicSimFB_Cycle(handle);
