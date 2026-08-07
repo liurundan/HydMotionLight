@@ -6,10 +6,19 @@ import os
 import sys
 from pathlib import Path
 import hashlib
+import re
 
 def fail(message):
     print("model not calibrated: " + message, file=sys.stderr)
     return 1
+HEX64 = re.compile(r"^[0-9a-f]{64}$")
+def valid_digest(value):
+    return isinstance(value, str) and HEX64.fullmatch(value) is not None
+def c_float(value):
+    text = format(value, ".9g")
+    if "e" not in text and "." not in text:
+        text += ".0"
+    return text + "f"
 
 def canonical_lines(parameters, status, source_hash, manifest_hash):
     return ("schema_version=1\ncalibration_status=%s\nsource_sha256=%s\n"
@@ -58,10 +67,16 @@ def main(argv):
         if len(ids) != 1 or None in ids or any(item.get("schema_version") != 1
             for item in (summary, params, manifest, validation)):
             return fail("schema or calibration ID mismatch")
+        if not all(valid_digest(value) for value in
+                   (params.get("calibration_id"), summary.get("source_sha256"),
+                    summary.get("summary_sha256"), manifest.get("manifest_provenance_sha256"),
+                    validation.get("source_sha256"), validation.get("manifest_provenance_sha256"))):
+            return fail("malformed digest identity")
         if kv["calibration_id"] != params["calibration_id"] or \
            kv["calibration_status"] != params["calibration_status"] or \
            kv["source_sha256"] != params["source_sha256"] or \
            kv["manifest_provenance_sha256"] != manifest_digest or \
+           manifest.get("manifest_provenance_sha256") != manifest_digest or \
            params.get("manifest_provenance_sha256") != manifest_digest or \
            params.get("summary_sha256") != summary_digest or summary.get("summary_sha256") != summary_digest or \
            set(kv_params) != set(params.get("parameters", {})) or \
@@ -116,7 +131,8 @@ def main(argv):
                  "#define PRESSURE_RIPPLE_TABLE_H", "#define PRESSURE_RIPPLE_TABLE_COUNT %d" % len(rows),
                  "typedef struct { float rpm; float amp13_rpm; float phase13_rad; float amp26_rpm; float phase26_rad; } HYD_PressureRippleEntry;",
                  "static const HYD_PressureRippleEntry HYD_PRESSURE_RIPPLE_TABLE[] = {"]
-        lines.extend("    {%.9gF, %.9gF, %.9gF, %.9gF, %.9gF}," % row for row in rows)
+        lines.extend("    {%s, %s, %s, %s, %s}," % tuple(c_float(value) for value in row)
+                     for row in rows)
         lines.extend(["};", "#endif /* PRESSURE_RIPPLE_TABLE_H */", ""])
         output = Path(argv[3]); output.parent.mkdir(parents=True, exist_ok=True)
         temporary = output.with_name(output.name + ".tmp")

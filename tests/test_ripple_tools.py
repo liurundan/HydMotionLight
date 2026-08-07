@@ -9,6 +9,7 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.dont_write_bytecode = True
 sys.path.insert(0, str(ROOT / "scripts" / "ripple"))
 from fit_physical_model import DEFAULTS, PARAM_BOUNDS, canonical_json, canonical_lines
 
@@ -100,6 +101,12 @@ with tempfile.TemporaryDirectory() as name:
     table = directory / "table.h"
     result = export(directory, table)
     assert result.returncode == 0 and "PRESSURE_RIPPLE_TABLE_COUNT 1" in table.read_text(), result.stderr
+    tu = directory / "table.c"
+    tu.write_text('#include "table.h"\nint main(void) { return 0; }\n')
+    compile_result = subprocess.run(["gcc", "-std=c99", "-Wall", "-Wextra", "-Werror",
+                                     "-I", str(directory), "-c", str(tu), "-o", str(directory / "table.o")],
+                                    text=True, capture_output=True)
+    assert compile_result.returncode == 0, compile_result.stderr
 
 assert_rejected_after_mutation(lambda d: (d / "params.kv").write_text(
     (d / "params.kv").read_text().replace("calibration_status=calibrated",
@@ -109,6 +116,9 @@ assert_rejected_after_mutation(lambda d: (d / "params.kv").write_text(
 assert_rejected_after_mutation(lambda d: (d / "physical_parameter_manifest.json").write_text(
     (d / "physical_parameter_manifest.json").read_text().replace("\"source\":\"fixture\"",
                                                                    "\"source\":\"mutated\"")))
+assert_rejected_after_mutation(lambda d: (d / "physical_parameter_manifest.json").write_text(
+    (d / "physical_parameter_manifest.json").read_text().replace("\"manifest_provenance_sha256\":\"",
+                                                                   "\"manifest_provenance_sha256\":\"bad")))
 assert_rejected_after_mutation(lambda d: (d / "params.json").write_text(
     (d / "params.json").read_text().replace("\"gas_fraction\":0.002", "\"gas_fraction\":0.003")))
 assert_rejected_after_mutation(lambda d: (d / "model_validation.json").write_text(
