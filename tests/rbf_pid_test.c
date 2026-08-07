@@ -460,9 +460,10 @@ static void test_continuous_pi_integrates_at_measured_sampling_period(void) {
 
     assert(fabsf(output_1ms - 0.010f) < 1e-6f);
     assert(fabsf(output_2ms - 0.020f) < 1e-6f);
-    assert(fabsf(pid_1ms.integral_state - 0.010f) < 1e-6f);
-    assert(fabsf(pid_2ms.integral_state - 0.020f) < 1e-6f);
-    assert(fabsf(pid_2ms.integral_state - 2.0f * pid_1ms.integral_state) < 1e-6f);
+    assert(fabsf(pid_1ms.mode_state.pi.integral_state - 0.010f) < 1e-6f);
+    assert(fabsf(pid_2ms.mode_state.pi.integral_state - 0.020f) < 1e-6f);
+    assert(fabsf(pid_2ms.mode_state.pi.integral_state -
+                 2.0f * pid_1ms.mode_state.pi.integral_state) < 1e-6f);
     printf("PASS continuous RBF-PI sampling-period integration test\n");
 }
 
@@ -481,7 +482,7 @@ static void test_continuous_pi_uses_feedforward_once_and_disables_legacy_terms(v
     output = RBF_PID_Update(&pid, 5.0f, 4.0f);
 
     assert(fabsf(output - 5.0f) < 1e-6f);
-    assert(fabsf(pid.feedforward_flow - 3.0f) < 1e-6f);
+    assert(fabsf(pid.mode_gain.feedforward_flow - 3.0f) < 1e-6f);
     assert(fabsf(pid.KD) < 1e-6f);
     assert(fabsf(pid.eta_d) < 1e-6f);
     assert(!pid.pressure_accel_ff_enabled);
@@ -508,11 +509,11 @@ static void test_continuous_pi_limits_integrator_tracks_applied_output_and_slews
     assert(fabsf(pid.du - 0.10f) < 1e-6f);
     assert(fabsf(pid.u_prev - output) < 1e-6f);
     assert(fabsf(pid.last_rbf_input[0] - 0.004f) < 1e-6f);
-    assert(fabsf(pid.integral_state) <= 0.250001f);
+    assert(fabsf(pid.mode_state.pi.integral_state) <= 0.250001f);
 
     RBF_PID_TrackAppliedFlow(&pid, 0.20f);
     assert(fabsf(pid.u_prev - 0.20f) < 1e-6f);
-    assert(fabsf(pid.integral_state) <= 0.250001f);
+    assert(fabsf(pid.mode_state.pi.integral_state) <= 0.250001f);
     printf("PASS continuous RBF-PI anti-windup/tracking/slew test\n");
 }
 

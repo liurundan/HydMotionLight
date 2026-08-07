@@ -579,7 +579,7 @@ static void test_rbf_pi_feedforward_and_outer_applied_flow_tracking(void) {
     assert(output0.appliedStrategy == HYD_PRESSURE_CONTROLLER_RBF_PI);
     assert(fabs(output0.outputFlow - 3.0) < 1e-6);
     assert(fabs(output0.feedbackFlow + output0.feedforwardFlow - output0.outputFlow) < 1e-6);
-    assert(fabsf(state.rbfPid.feedforward_flow - 3.0f) < 1e-6f);
+    assert(fabsf(state.rbfPid.mode_gain.feedforward_flow - 3.0f) < 1e-6f);
     assert(fabsf(state.rbfPid.KD) < 1e-6f);
     assert(fabsf(state.rbfPid.eta_d) < 1e-6f);
 
@@ -600,6 +600,55 @@ static void test_rbf_pi_state_stays_within_motion_fb_budget(void) {
     printf("Testing RBF-PI state memory budget...\n");
     assert(sizeof(HYD_MotionControlFB) <= 3208U);
     printf("PASS RBF-PI state memory budget test\n");
+}
+
+static void test_rbf_pi_sync_preserves_limited_tracking_configuration(void) {
+    HYD_MotionSegment segment;
+    HYD_PressureControllerState state;
+    HYD_PressureControllerInput input;
+    HYD_PressureControllerOutput output;
+
+    printf("Testing RBF-PI synchronization preserves bounded tracking configuration...\n");
+    segment = make_pressure_segment();
+    segment.pressureController = HYD_PRESSURE_CONTROLLER_RBF_PI;
+    segment.pressureRbfConfig.minKp = 10.0;
+    segment.pressureRbfConfig.maxKp = 10.0;
+    segment.pressureRbfConfig.minKi = 1.0;
+    segment.pressureRbfConfig.maxKi = 1.0;
+    segment.pressureIntegralLimit = 0.25;
+    segment.maxFlow = 20.0;
+
+    HYD_PressureController_InitState(&state, 0.0, 0.20, 0.0);
+    memset(&input, 0, sizeof(input));
+    input.targetPressure = 0.0;
+    input.measuredPressure = 0.0;
+    input.feedforwardFlow = 0.20;
+    input.outputMin = 0.0;
+    input.outputMax = segment.maxFlow;
+    input.flowToPumpSpeedGain = 20.0;
+    input.pumpSpeedLimit = 1800.0;
+    input.timestamp = 0.001;
+    HYD_PressureController_Execute(&segment, &state, &input, &output);
+
+    RBF_PID_SetOutputSlew(&state.rbfPid, 0.10f);
+    HYD_PressureController_RequestTracking(&state, 0.20);
+    input.targetPressure = 10.0;
+    input.measuredPressure = 0.0;
+    input.feedforwardFlow = 0.20;
+    input.timestamp = 0.002;
+    HYD_PressureController_Execute(&segment, &state, &input, &output);
+
+    assert(fabsf(state.rbfPid.mode_state.pi.max_delta_flow - 0.10f) < 1e-6f);
+    assert(fabsf(state.rbfPid.mode_state.pi.integral_limit - 0.25f) < 1e-6f);
+    assert(fabsf(state.rbfPid.mode_state.pi.antiwindup_gain - 1.0f) < 1e-6f);
+    assert(output.outputFlow <= 0.30 + 1e-6);
+    assert(fabsf(state.rbfPid.mode_state.pi.integral_state) <= 0.250001f);
+
+    input.timestamp = 0.003;
+    HYD_PressureController_Execute(&segment, &state, &input, &output);
+    assert(output.outputFlow <= 0.40 + 1e-6);
+    assert(fabsf(state.rbfPid.mode_state.pi.integral_state) <= 0.250001f);
+    printf("PASS RBF-PI synchronization tracking configuration test\n");
 }
 
 static void test_rbf_pid_deadzone_clamp_marks_internal_saturation(void) {
@@ -1454,6 +1503,7 @@ int main(void) {
     test_rbf_pi_strategy_switch_tracks_previous_output_bumplessly();
     test_rbf_pi_feedforward_and_outer_applied_flow_tracking();
     test_rbf_pi_state_stays_within_motion_fb_budget();
+    test_rbf_pi_sync_preserves_limited_tracking_configuration();
     test_rbf_pid_deadzone_clamp_marks_internal_saturation();
     test_rbf_pi_output_clamp_saturation_survives_outer_wrapper();
     test_rbf_pid_soft_cap_preserves_legacy_wrapper_state();

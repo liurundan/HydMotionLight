@@ -393,15 +393,23 @@ static void HYD_SynchronizeRbfPidState(HYD_PressureControllerState* state,
                                        HYD_REAL pumpSpeedLimit) {
     HYD_REAL seededFlow;
     HYD_REAL error;
+    float preservedMaxDeltaFlow = 0.0f;
 
     if (state == NULL || config == NULL) {
         return;
+    }
+
+    if (state->rbfPid.control_mode == RBF_PID_CONTROL_MODE_PI) {
+        preservedMaxDeltaFlow = state->rbfPid.mode_state.pi.max_delta_flow;
     }
 
     RBF_PID_Reset(&state->rbfPid);
     HYD_ApplyRbfPidConfig(state, config, segment,
                           flowToPumpSpeedGain, pumpSpeedLimit);
     RBF_PID_SetFeedforwardFlow(&state->rbfPid, (float)feedforwardFlow);
+    if (state->rbfPid.control_mode == RBF_PID_CONTROL_MODE_PI) {
+        RBF_PID_SetOutputSlew(&state->rbfPid, preservedMaxDeltaFlow);
+    }
     seededFlow = HYD_ClampReal(trackedOutputFlow, config->outputMin, config->outputMax);
 
     error = targetPressure - measuredPressure;
@@ -421,21 +429,27 @@ static void HYD_SynchronizeRbfPidState(HYD_PressureControllerState* state,
     state->rbfPid.e_prev2 = (float)error;
     state->rbfPid.y_prev1 = (float)measuredPressure;
     state->rbfPid.y_prev2 = (float)measuredPressure;
-    state->rbfPid.fLastActPress = (float)measuredPressure;
-    state->rbfPid.fLastActPress2 = (float)measuredPressure;
-    state->rbfPid.last_ref = (float)targetPressure;
     state->rbfPid.output_saturated = false;
     state->rbfPid.Status = 1;
     state->rbfPid.TuneResult = 0;
     if (state->rbfPid.control_mode == RBF_PID_CONTROL_MODE_PI) {
-        state->rbfPid.integral_state = (float)(seededFlow - feedforwardFlow -
-                                               (HYD_REAL)state->rbfPid.KP * error);
-        if (state->rbfPid.integral_limit > 0.0f) {
-            state->rbfPid.integral_state = HYD_ClampReal(
-                state->rbfPid.integral_state,
-                -(HYD_REAL)state->rbfPid.integral_limit,
-                (HYD_REAL)state->rbfPid.integral_limit);
+        RBF_PID_PiState *pi = &state->rbfPid.mode_state.pi;
+
+        pi->integral_state = (float)(seededFlow - feedforwardFlow -
+                                     (HYD_REAL)state->rbfPid.KP * error);
+        if (pi->integral_limit > 0.0f) {
+            pi->integral_state = HYD_ClampReal(
+                pi->integral_state,
+                -(HYD_REAL)pi->integral_limit,
+                (HYD_REAL)pi->integral_limit);
         }
+    } else {
+        RBF_PID_PidHistory *history = &state->rbfPid.mode_state.pid;
+
+        history->fLastActPress = (float)measuredPressure;
+        history->fLastActPress2 = (float)measuredPressure;
+        history->last_ref = (float)targetPressure;
+        history->prev_d_term = 0.0f;
     }
 }
 
@@ -601,7 +615,7 @@ void HYD_PressureController_Execute(const HYD_MotionSegment* segment,
             output->controlError = (HYD_REAL)state->rbfPid.Error;
             output->proportionalTerm =
                 (HYD_REAL)state->rbfPid.KP * output->controlError;
-            output->integralTerm = (HYD_REAL)state->rbfPid.integral_state;
+            output->integralTerm = (HYD_REAL)state->rbfPid.mode_state.pi.integral_state;
             output->derivativeTerm = 0.0;
         }
         output->feedbackFlow = outputFlow - input->feedforwardFlow;
