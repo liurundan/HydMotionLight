@@ -13,6 +13,18 @@ extern "C" {
 #define PRESSURE_MODEL_PHYSICAL_MAX_DELAY_STEPS 64
 #define PRESSURE_MODEL_PHYSICAL_DELAY_SLOTS (PRESSURE_MODEL_PHYSICAL_MAX_DELAY_STEPS + 1)
 
+/*
+ * Physical/HIL admission bounds for the fixed 1 ms plant step. The configured
+ * pump envelope is 50 cm^3/rev at 2000 rpm, or 1.666667e-3 m^3/s. The 50 Hz
+ * motor limit keeps 2*pi*f*dt below 0.315 for the explicit second-order step.
+ */
+#define PRESSURE_MODEL_PHYSICAL_MAX_ABS_RPM 2000.0f
+#define PRESSURE_MODEL_PHYSICAL_MAX_PUMP_DISPLACEMENT_M3_REV 50.0e-6f
+#define PRESSURE_MODEL_PHYSICAL_MAX_FLOW_M3_S 1.666667e-3f
+#define PRESSURE_MODEL_PHYSICAL_MAX_MOTOR_NATURAL_FREQ_HZ 50.0f
+#define PRESSURE_MODEL_PHYSICAL_MAX_MOTOR_DAMPING 2.0f
+#define PRESSURE_MODEL_PHYSICAL_MAX_MOTOR_ACCEL_RPM_S 100000.0f
+
 enum {
     PRESSURE_MODEL_ORDER_13_ACTIVE = 1u << 0,
     PRESSURE_MODEL_ORDER_26_ACTIVE = 1u << 1,

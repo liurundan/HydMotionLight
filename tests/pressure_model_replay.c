@@ -1,4 +1,5 @@
 #include <errno.h>
+#include <inttypes.h>
 #include <limits.h>
 #include <math.h>
 #include <stdio.h>
@@ -72,7 +73,7 @@ int main(int argc, char **argv) {
          "torque_permille,timestamp_s,valid_flags,active_order_mask");
     for (i = 0; i < samples; ++i) {
         PressureModel_Step(&params, &state, rpm, 0.001f, &out);
-        printf("%d,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%u,%u\n",
+        printf("%d,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%" PRIu32 ",%u\n",
                i,
                out.actual_motor_rpm,
                out.real_pressure_bar,
@@ -80,8 +81,8 @@ int main(int argc, char **argv) {
                out.pumpFeedback.angleDeg,
                out.pumpFeedback.torquePermille,
                out.pumpFeedback.timestamp,
-               out.pumpFeedback.validFlags,
-               out.active_order_mask);
+               (uint32_t)out.pumpFeedback.validFlags,
+               (unsigned int)out.active_order_mask);
     }
     return 0;
 }
