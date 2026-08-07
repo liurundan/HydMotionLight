@@ -150,9 +150,10 @@ per-cycle ingress. A stack `HYD_PressureControllerInput` may borrow the packet o
 that scan; it must never become its persistent owner.
 
 `HYD_RippleCompState` is caller/adapter-owned, one state per real control-axis ingress.
-It is not embedded in the size-capped `HYD_MotionControlFB`, copied into snapshots, or
-shared through static storage. The owner survives calls only to validate adjacent phase
-samples; the table and the current feedback packet are borrowed on each call.
+It is not embedded in the size-capped `HYD_MotionControlFB` or copied into snapshots.
+The IEC adapter may retain those states in a private per-axis array, but never shares a
+state between axes. The owner survives calls only to validate adjacent phase samples;
+the table and the current feedback packet are borrowed on each call.
 
 The fields and their first consumer are fixed here:
 

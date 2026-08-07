@@ -434,6 +434,8 @@ static inline HYD_BOOL HYD_MotionControlFB_IsError(const HYD_MotionControlFB* fb
 
 /* Full reset of configuration, recipe, runtime state, and internal helpers. */
 void HYD_MotionControlFB_Init(HYD_MotionControlFB* fb);
+/* Returns the exact control-clock value used by pressure-loop inputs. */
+HYD_TIME HYD_MotionControlFB_GetCurrentControlTime(const HYD_MotionControlFB* fb);
 void HYD_MotionControlFB_SetSimulationPosition(HYD_MotionControlFB* fb,
                                                HYD_REAL position);
 

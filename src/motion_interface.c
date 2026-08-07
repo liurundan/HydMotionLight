@@ -25,6 +25,9 @@ typedef enum {
 
 static HYD_AxisSlotState HYD_AxisSlots[HYD_MAX_AXIS_MOTION];
 static HYD_UINT16 HYD_FrameworkGeneration;
+static HYD_PumpFeedback hyd_pending_pump_feedback;
+static HYD_BOOL hyd_pending_pump_feedback_valid;
+static HYD_RippleCompState hyd_ripple_comp_states[HYD_MAX_AXIS_MOTION];
 
 static const HYD_REAL HYD_CONTABS_DIRECTION_VELOCITY_THRESHOLD = 0.01f;
 
@@ -768,7 +771,10 @@ int __HydMotion_framework_Init()
     for (int i = 0; i < HYD_MAX_AXIS_MOTION; i++) {
         memset(&HYD_MotionControlFB_inst[i], 0, sizeof(HYD_MotionControlFB));
         HYD_AxisSlots[i] = HYD_AXIS_SLOT_FREE;
+        HYD_RippleComp_Reset(&hyd_ripple_comp_states[i]);
     }
+    memset(&hyd_pending_pump_feedback, 0, sizeof(hyd_pending_pump_feedback));
+    hyd_pending_pump_feedback_valid = false;
     HYD_ToggleMechanismPool_Reset();
 
     return 0;
@@ -791,6 +797,15 @@ void __HydMotion_framework_Retrieve()
 
 void __HydMotion_framework_Publish()
 {
+    HYD_PumpFeedback pump_feedback_snapshot;
+    HYD_BOOL pump_feedback_snapshot_valid = hyd_pending_pump_feedback_valid;
+
+    memset(&pump_feedback_snapshot, 0, sizeof(pump_feedback_snapshot));
+    if (pump_feedback_snapshot_valid) {
+        pump_feedback_snapshot = hyd_pending_pump_feedback;
+        hyd_pending_pump_feedback_valid = false;
+    }
+
     for (int i = 0; i < HYD_MAX_AXIS_MOTION; i++) {
         if (HYD_AxisSlots[i] != HYD_AXIS_SLOT_ACTIVE) {
             continue;
@@ -812,7 +827,19 @@ void __HydMotion_framework_Publish()
             fb->AXIS_REF.timestamp = (HYD_TIME)((double)fb->_simTick *
                                                 (double)fb->_simulationCycleTime);
         }
-        HYD_MotionControlFB_Scan(fb);
+        if (pump_feedback_snapshot_valid && !fb->_useSimulation) {
+            HYD_PumpFeedback pump_feedback_for_scan = pump_feedback_snapshot;
+
+            pump_feedback_for_scan.timestamp =
+                HYD_MotionControlFB_GetCurrentControlTime(fb);
+            pump_feedback_for_scan.validFlags |=
+                HYD_PUMP_FEEDBACK_VALID_TIMESTAMP;
+            HYD_MotionControlFB_ScanWithPumpFeedback(
+                fb, &pump_feedback_for_scan, &hyd_ripple_comp_states[i]);
+        } else {
+            HYD_MotionControlFB_ScanWithPumpFeedback(
+                fb, NULL, &hyd_ripple_comp_states[i]);
+        }
 
         /* Simulation: close the feedback loop with planner outputs */
         if (fb->_useSimulation && fb->_simFeedback.valid) {
@@ -2646,6 +2673,65 @@ void __mcl_cmd_SetAxisFeedback(HYD_SETAXISFEEDBACK *data__)
 
     __SET_VAR(data__->, DONE, , true);
 
+}
+
+static HYD_PumpFeedback sanitizeIecPumpFeedback(const HYD_SETPUMPFEEDBACK *data__)
+{
+    HYD_PumpFeedback feedback;
+    uint32_t validFlags;
+
+    memset(&feedback, 0, sizeof(feedback));
+    if (data__ == NULL) {
+        return feedback;
+    }
+
+    feedback.rpm = (HYD_REAL)__GET_VAR(data__->ACT_RPM);
+    feedback.angleDeg = (HYD_REAL)__GET_VAR(data__->ACT_ANGLE_DEG);
+    feedback.torquePermille = (HYD_REAL)__GET_VAR(data__->ACT_TORQUE_PERMILLE);
+    validFlags = (uint32_t)__GET_VAR(data__->VALID_FLAGS) &
+        (HYD_PUMP_FEEDBACK_VALID_RPM |
+         HYD_PUMP_FEEDBACK_VALID_ANGLE |
+         HYD_PUMP_FEEDBACK_VALID_TORQUE);
+
+    if (!isfinite((double)feedback.rpm)) {
+        feedback.rpm = 0.0;
+        validFlags &= ~HYD_PUMP_FEEDBACK_VALID_RPM;
+    }
+    if (!isfinite((double)feedback.angleDeg)) {
+        feedback.angleDeg = 0.0;
+        validFlags &= ~HYD_PUMP_FEEDBACK_VALID_ANGLE;
+    }
+    if (!isfinite((double)feedback.torquePermille)) {
+        feedback.torquePermille = 0.0;
+        validFlags &= ~HYD_PUMP_FEEDBACK_VALID_TORQUE;
+    }
+
+    feedback.validFlags = validFlags;
+    return feedback;
+}
+
+void __mcl_cmd_SetPumpFeedback(HYD_SETPUMPFEEDBACK *data__)
+{
+    if (data__ == NULL) {
+        return;
+    }
+
+    __SET_VAR(data__->, ENO, , true);
+    __SET_VAR(data__->, DONE, , false);
+    __SET_VAR(data__->, BUSY, , false);
+    __SET_VAR(data__->, ERROR, , false);
+    __SET_VAR(data__->, ERRORID, , (IEC_WORD)HYD_DIAG_CODE_NONE);
+
+    if (!__GET_VAR(data__->ENABLE)) {
+        memset(&hyd_pending_pump_feedback, 0, sizeof(hyd_pending_pump_feedback));
+        hyd_pending_pump_feedback_valid = false;
+        __SET_VAR(data__->, DONE, , true);
+        return;
+    }
+
+    hyd_pending_pump_feedback = sanitizeIecPumpFeedback(data__);
+    hyd_pending_pump_feedback_valid = true;
+    __SET_VAR(data__->, DONE, , true);
 }
 
 void __mcl_cmd_GetPumpRequest(HYD_GETPUMPREQUEST *data__)

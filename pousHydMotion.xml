@@ -1161,6 +1161,72 @@
 				</body>
 				<documentation><![CDATA[set feedback to motion.]]></documentation>
 			</pou>
+			<pou name="HYD_SetPumpFeedback" pouType="functionBlock">
+				<interface>
+					<inputVars>
+						<variable name="ENABLE">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="ACT_RPM">
+							<type>
+								<REAL />
+							</type>
+						</variable>
+						<variable name="ACT_ANGLE_DEG">
+							<type>
+								<REAL />
+							</type>
+						</variable>
+						<variable name="ACT_TORQUE_PERMILLE">
+							<type>
+								<REAL />
+							</type>
+						</variable>
+						<variable name="VALID_FLAGS">
+							<type>
+								<DWORD />
+							</type>
+						</variable>
+					</inputVars>
+					<outputVars>
+						<variable name="DONE">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="BUSY">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="ERROR">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="ERRORID">
+							<type>
+								<WORD />
+							</type>
+						</variable>
+					</outputVars>
+					<localVars>
+						<variable name="DONE0">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+					</localVars>
+				</interface>
+				<body>
+					<ST>
+						<xhtml:p><![CDATA[{{ extern void __mcl_cmd_SetPumpFeedback(HYD_SETPUMPFEEDBACK*); __mcl_cmd_SetPumpFeedback(data__); }} ]]></xhtml:p>
+					</ST>
+				</body>
+				<documentation><![CDATA[Sets the single shared pump feedback sample for the next motion publish cycle. The adapter owns the control timestamp.]]></documentation>
+			</pou>
 			<pou name="HYD_GetPumpRequest" pouType="functionBlock">
 				<interface>
 					<inputVars>

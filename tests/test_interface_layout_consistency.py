@@ -59,6 +59,7 @@ def main() -> int:
     required_pous = {
         "HYD_ConfigureToggleMechanism": "HYD_CONFIGURETOGGLEMECHANISM",
         "HYD_ReadToggleMechanism": "HYD_READTOGGLEMECHANISM",
+        "HYD_SetPumpFeedback": "HYD_SETPUMPFEEDBACK",
     }
     for pou_name, c_name in required_pous.items():
         if f'<pou name="{pou_name}"' not in xml_source:
@@ -67,6 +68,14 @@ def main() -> int:
         if c_name not in c_header or c_name not in plc_header:
             print(f"expected C and generated-equivalent layouts for {c_name}")
             return 1
+
+    pump_feedback_body = "void HYD_SETPUMPFEEDBACK_body__"
+    if pump_feedback_body not in plc_source:
+        print("expected generated HYD_SETPUMPFEEDBACK body")
+        return 1
+    if "__mcl_cmd_SetPumpFeedback" not in plc_source:
+        print("expected generated HYD_SETPUMPFEEDBACK command call")
+        return 1
 
     create_start = plc_source.find("void HYD_CREATEMOTION_init__")
     create_end = plc_source.find("// Code part", create_start)

@@ -486,6 +486,27 @@ typedef struct {
 
 } HYD_SETAXISFEEDBACK;
 
+// FUNCTION_BLOCK HYD_SETPUMPFEEDBACK
+// Data part
+typedef struct {
+  // FB Interface - IN, OUT, IN_OUT variables
+  __DECLARE_VAR(BOOL,EN)
+  __DECLARE_VAR(BOOL,ENO)
+  __DECLARE_VAR(BOOL,ENABLE)
+  __DECLARE_VAR(REAL,ACT_RPM)
+  __DECLARE_VAR(REAL,ACT_ANGLE_DEG)
+  __DECLARE_VAR(REAL,ACT_TORQUE_PERMILLE)
+  __DECLARE_VAR(DWORD,VALID_FLAGS)
+  __DECLARE_VAR(BOOL,DONE)
+  __DECLARE_VAR(BOOL,BUSY)
+  __DECLARE_VAR(BOOL,ERROR)
+  __DECLARE_VAR(WORD,ERRORID)
+
+  // FB private variables - TEMP, private and located variables
+  __DECLARE_VAR(BOOL,DONE0)
+
+} HYD_SETPUMPFEEDBACK;
+
 // FUNCTION_BLOCK HYD_GETPUMPREQUEST
 // Data part
 typedef struct {
@@ -683,6 +704,7 @@ extern void __mcl_cmd_Reset(HYD_RESET *data__);
 extern void __mcl_cmd_MoveVelocity(HYD_MOVEVELOCITY *data__);
 extern void __mcl_cmd_PressureHandle(HYD_PRESSUREHANDLE *data__);
 extern void __mcl_cmd_SetAxisFeedback(HYD_SETAXISFEEDBACK *data__);
+extern void __mcl_cmd_SetPumpFeedback(HYD_SETPUMPFEEDBACK *data__);
 extern void __mcl_cmd_GetPumpRequest(HYD_GETPUMPREQUEST *data__);
 
 extern void __mcl_cmd_ReadStatus(HYD_READSTATUS* data__);

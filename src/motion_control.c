@@ -383,6 +383,10 @@ static HYD_TIME HYD_GetCurrentSegmentTime(const HYD_MotionControlFB* fb) {
     return (fb != NULL) ? fb->AXIS_REF.timestamp : 0.0f;
 }
 
+HYD_TIME HYD_MotionControlFB_GetCurrentControlTime(const HYD_MotionControlFB* fb) {
+    return HYD_GetCurrentSegmentTime(fb);
+}
+
 static const HYD_FbStateMask HYD_COMMAND_ALLOWED_STATE_MASKS[HYD_CMD_ACK + 1U] = {
     [HYD_CMD_NONE] = (HYD_FbStateMask)0U,
     [HYD_CMD_START] = HYD_FB_STATE_MASK_BIT(HYD_FB_STATE_IDLE) |

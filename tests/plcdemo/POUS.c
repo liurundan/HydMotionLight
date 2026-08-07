@@ -713,6 +713,49 @@ __end:
 } // HYD_SETAXISFEEDBACK_body__() 
 
 
+void HYD_SETPUMPFEEDBACK_init__(HYD_SETPUMPFEEDBACK *data__, BOOL retain) {
+  __INIT_VAR(data__->EN,__BOOL_LITERAL(TRUE),retain)
+  __INIT_VAR(data__->ENO,__BOOL_LITERAL(TRUE),retain)
+  __INIT_VAR(data__->ENABLE,__BOOL_LITERAL(FALSE),retain)
+  __INIT_VAR(data__->ACT_RPM,0,retain)
+  __INIT_VAR(data__->ACT_ANGLE_DEG,0,retain)
+  __INIT_VAR(data__->ACT_TORQUE_PERMILLE,0,retain)
+  __INIT_VAR(data__->VALID_FLAGS,0,retain)
+  __INIT_VAR(data__->DONE,__BOOL_LITERAL(FALSE),retain)
+  __INIT_VAR(data__->BUSY,__BOOL_LITERAL(FALSE),retain)
+  __INIT_VAR(data__->ERROR,__BOOL_LITERAL(FALSE),retain)
+  __INIT_VAR(data__->ERRORID,0,retain)
+  __INIT_VAR(data__->DONE0,__BOOL_LITERAL(FALSE),retain)
+}
+
+// Code part
+void HYD_SETPUMPFEEDBACK_body__(HYD_SETPUMPFEEDBACK *data__) {
+  // Control execution
+  if (!__GET_VAR(data__->EN)) {
+    __SET_VAR(data__->,ENO,,__BOOL_LITERAL(FALSE));
+    return;
+  }
+  else {
+    __SET_VAR(data__->,ENO,,__BOOL_LITERAL(TRUE));
+  }
+  // Initialise TEMP variables
+
+  __IL_DEFVAR_T __IL_DEFVAR;
+  __IL_DEFVAR_T __IL_DEFVAR_BACK;
+  #define GetFbVar(var,...) __GET_VAR(data__->var,__VA_ARGS__)
+  #define SetFbVar(var,val,...) __SET_VAR(data__->,var,__VA_ARGS__,val)
+ extern void __mcl_cmd_SetPumpFeedback(HYD_SETPUMPFEEDBACK*); __mcl_cmd_SetPumpFeedback(data__);
+  #undef GetFbVar
+  #undef SetFbVar
+;
+
+  goto __end;
+
+__end:
+  return;
+} // HYD_SETPUMPFEEDBACK_body__()
+
+
 
 
 

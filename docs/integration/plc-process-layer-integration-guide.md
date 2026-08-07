@@ -40,7 +40,7 @@ The PLC process layer should follow a stable cyclic pattern.
 ### Per-Cycle Sequence
 
 1. Read measured machine feedback.
-2. Update the library's axis/runtime feedback inputs.
+2. Update the library's axis/runtime feedback inputs, including the shared pump sample when available.
 3. Execute the PLC process state machine.
 4. Decide whether to trigger or maintain motion FB commands.
 5. Call the relevant motion FBs.
@@ -64,6 +64,28 @@ Read DONE/BUSY/ACTIVE/ERROR/COMMANDABORTED/INVELOCITY/INPRESSURE
 Drive valves and machine outputs
 Advance cycle
 ```
+
+### Shared Pump Feedback
+
+For a physical pump, call `HYD_SetPumpFeedback` once in each PLC scan after reading
+the pump sensor values and before the library publish/scan step. It represents the one
+shared pump, so it intentionally has no `AXISID`.
+
+Set `VALID_FLAGS` independently for the measured values that are trustworthy:
+
+| Bit | Meaning |
+| --- | --- |
+| `16#00000001` | `ACT_RPM` is valid |
+| `16#00000002` | `ACT_ANGLE_DEG` is valid |
+| `16#00000004` | `ACT_TORQUE_PERMILLE` is valid |
+
+The PLC must not supply a timestamp. The motion adapter assigns the exact control-clock
+time used by the pressure loop when it consumes the sample. A pump sample is consumed
+for one publish cycle only; omitting the call or clearing `ENABLE` means that no stale
+sample is reused. Invalid or incomplete feedback keeps deterministic pressure control
+running, while feedback-dependent learning and ripple compensation remain disabled.
+The shipped ripple table is deliberately uncalibrated, so a complete feedback packet
+does not enable ripple output until a validated production calibration is deployed.
 
 ## `EXECUTE` Usage Rules
 
@@ -415,4 +437,3 @@ half data race between two PLC actors, but its own pass is guaranteed
 not to contribute to one -- the runtime will never silently revive an
 old segment's setpoint by reflecting `fb->_activeSegment` back into
 `MOTION`.
-

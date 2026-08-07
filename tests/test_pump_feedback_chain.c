@@ -7,11 +7,19 @@
 #include "hydro_hardware.h"
 #include "hydro_sim.h"
 #include "hydro_sim_fb.h"
+#include "motion_interface.h"
 #include "motion_control.h"
+#include "pressure_controller.h"
 #include "pressure_model.h"
 #include "ripple_compensator.h"
 
 extern HYD_HydraulicSimFB* __MK_GetPublic_HydraulicSimFB(int index);
+extern HYD_MotionControlFB* __MK_GetPublic_MotionControlFB(int index);
+extern void __mcl_cmd_SetPumpFeedback(HYD_SETPUMPFEEDBACK *data__);
+
+static HYD_MotionSegment make_rbf_pi_pressure_segment(void);
+static HYD_MotionControlFB* create_physical_rbf_pi_axis(void);
+static void submit_valid_iec_pump_feedback(HYD_SETPUMPFEEDBACK* command);
 
 static void test_packet_contract(void) {
     HYD_PumpFeedback feedback;
@@ -31,6 +39,148 @@ static void test_packet_contract(void) {
     assert(HYD_PumpFeedback_HasValid(feedback.validFlags,
                                      HYD_PUMP_FEEDBACK_VALID_ANGLE));
     assert(feedback.torquePermille == 6242.0);
+}
+
+static void test_iec_set_pump_feedback_contract(void) {
+    HYD_SETPUMPFEEDBACK command;
+
+    memset(&command, 0, sizeof(command));
+    __SET_VAR(command., ENABLE, , true);
+    __SET_VAR(command., ACT_RPM, , 1200.0);
+    __SET_VAR(command., ACT_ANGLE_DEG, , 42.0);
+    __SET_VAR(command., ACT_TORQUE_PERMILLE, , 375.0);
+    __SET_VAR(command., VALID_FLAGS, , (IEC_DWORD)(
+        HYD_PUMP_FEEDBACK_VALID_RPM |
+        HYD_PUMP_FEEDBACK_VALID_ANGLE |
+        HYD_PUMP_FEEDBACK_VALID_TORQUE));
+
+    __mcl_cmd_SetPumpFeedback(&command);
+
+    assert(sizeof(command.VALID_FLAGS.value) == sizeof(IEC_DWORD));
+    assert(__GET_VAR(command.ENO));
+    assert(__GET_VAR(command.DONE));
+    assert(!__GET_VAR(command.BUSY));
+    assert(!__GET_VAR(command.ERROR));
+    assert(__GET_VAR(command.ERRORID) == HYD_DIAG_CODE_NONE);
+}
+
+static void test_iec_set_pump_feedback_sanitizes_nonfinite_fields(void) {
+    HYD_SETPUMPFEEDBACK command;
+    HYD_MotionControlFB* fb = create_physical_rbf_pi_axis();
+    RBF_PID_Handle before;
+
+    submit_valid_iec_pump_feedback(&command);
+    __HydMotion_framework_Publish();
+    before = fb->_pressureController.rbfPid;
+
+    memset(&command, 0, sizeof(command));
+    __SET_VAR(command., ENABLE, , true);
+    __SET_VAR(command., ACT_RPM, , NAN);
+    __SET_VAR(command., ACT_ANGLE_DEG, , INFINITY);
+    __SET_VAR(command., ACT_TORQUE_PERMILLE, , -INFINITY);
+    __SET_VAR(command., VALID_FLAGS, , (IEC_DWORD)(
+        HYD_PUMP_FEEDBACK_VALID_RPM |
+        HYD_PUMP_FEEDBACK_VALID_ANGLE |
+        HYD_PUMP_FEEDBACK_VALID_TORQUE));
+
+    __mcl_cmd_SetPumpFeedback(&command);
+
+    assert(__GET_VAR(command.DONE));
+    assert(!__GET_VAR(command.ERROR));
+    __HydMotion_framework_Publish();
+    assert(fb->_pressureController.rbfPid.KP == before.KP);
+    assert(fb->_pressureController.rbfPid.KI == before.KI);
+    assert(fb->_pressureController.rbfPid.Jacobian == before.Jacobian);
+}
+
+static void test_iec_set_pump_feedback_is_fresh_for_one_cycle(void) {
+    HYD_SETPUMPFEEDBACK command;
+    HYD_MotionControlFB* fb = create_physical_rbf_pi_axis();
+    RBF_PID_Handle before;
+
+    submit_valid_iec_pump_feedback(&command);
+    __HydMotion_framework_Publish();
+    before = fb->_pressureController.rbfPid;
+
+    submit_valid_iec_pump_feedback(&command);
+    __SET_VAR(command., ENABLE, , false);
+    __mcl_cmd_SetPumpFeedback(&command);
+    assert(__GET_VAR(command.DONE));
+    __HydMotion_framework_Publish();
+    assert(fb->_pressureController.rbfPid.KP == before.KP);
+    assert(fb->_pressureController.rbfPid.KI == before.KI);
+    assert(fb->_pressureController.rbfPid.Jacobian == before.Jacobian);
+}
+
+static HYD_MotionControlFB* create_physical_rbf_pi_axis(void) {
+    HYD_CREATEMOTION create_command;
+    HYD_MotionControlFB* fb;
+    HYD_MotionSegment segment;
+
+    __HydMotion_framework_Init();
+    memset(&create_command, 0, sizeof(create_command));
+    __SET_VAR(create_command., EN, , true);
+    __SET_VAR(create_command., USE_RECIPE, , false);
+    __SET_VAR(create_command., FLOW_TO_PUMPSPEED, , 20.0);
+    __SET_VAR(create_command., PUMPSPEED_LIMIT, , 1800.0);
+    __SET_VAR(create_command., USE_SIMULATION, , false);
+    __mcl_cmd_CreateMotion(&create_command);
+    assert(__GET_VAR(create_command.DONE));
+
+    fb = __MK_GetPublic_MotionControlFB(__GET_VAR(create_command.AXISID));
+    assert(fb != NULL);
+    for (int i = 0; i < 3; ++i) {
+        __HydMotion_framework_Publish();
+    }
+    fb->AXIS_REF.pressure = 10.0;
+    segment = make_rbf_pi_pressure_segment();
+    assert(HYD_MotionControlFB_LoadDirectSegment(fb, &segment));
+    assert(HYD_MotionControlFB_StartSegment(fb, 0U, 0.0));
+    return fb;
+}
+
+static void submit_valid_iec_pump_feedback(HYD_SETPUMPFEEDBACK* command) {
+    memset(command, 0, sizeof(*command));
+    __SET_VAR(command->, ENABLE, , true);
+    __SET_VAR(command->, ACT_RPM, , 1000.0);
+    __SET_VAR(command->, ACT_ANGLE_DEG, , 10.0);
+    __SET_VAR(command->, ACT_TORQUE_PERMILLE, , 250.0);
+    __SET_VAR(command->, VALID_FLAGS, , (IEC_DWORD)(
+        HYD_PUMP_FEEDBACK_VALID_RPM |
+        HYD_PUMP_FEEDBACK_VALID_ANGLE |
+        HYD_PUMP_FEEDBACK_VALID_TORQUE));
+    __mcl_cmd_SetPumpFeedback(command);
+    assert(__GET_VAR(command->DONE));
+}
+
+static void test_iec_pump_feedback_reaches_publish_once_with_control_time(void) {
+    HYD_SETPUMPFEEDBACK command;
+    HYD_MotionControlFB* fb = create_physical_rbf_pi_axis();
+    RBF_PID_Handle before;
+
+    submit_valid_iec_pump_feedback(&command);
+    __HydMotion_framework_Publish();
+    before = fb->_pressureController.rbfPid;
+
+    submit_valid_iec_pump_feedback(&command);
+    __HydMotion_framework_Publish();
+    assert(fb->_pressureController.rbfPid.KP != before.KP ||
+           fb->_pressureController.rbfPid.KI != before.KI ||
+           fb->_pressureController.rbfPid.Jacobian != before.Jacobian);
+
+    /* Segment time is now 3 ms; a retained zero timestamp exceeds the gate. */
+    before = fb->_pressureController.rbfPid;
+    submit_valid_iec_pump_feedback(&command);
+    __HydMotion_framework_Publish();
+    assert(fb->_pressureController.rbfPid.KP != before.KP ||
+           fb->_pressureController.rbfPid.KI != before.KI ||
+           fb->_pressureController.rbfPid.Jacobian != before.Jacobian);
+
+    before = fb->_pressureController.rbfPid;
+    __HydMotion_framework_Publish();
+    assert(fb->_pressureController.rbfPid.KP == before.KP);
+    assert(fb->_pressureController.rbfPid.KI == before.KI);
+    assert(fb->_pressureController.rbfPid.Jacobian == before.Jacobian);
 }
 
 static void assert_valid_feedback_fields_are_finite(const HYD_PumpFeedback* feedback) {
@@ -311,11 +461,105 @@ static void test_producer_packet_bridges_to_transient_motion_scan(void) {
     printf("PASS transient motion feedback bridge test\n");
 }
 
+static void test_generated_control_timestamp_reaches_rbf_pi_feedback_gate(void) {
+    HYD_MotionControlFB fb;
+    HYD_MotionSegment segment;
+    HYD_PressureControllerState state;
+    HYD_PressureControllerInput input;
+    HYD_PressureControllerOutput output;
+    HYD_PumpFeedback feedback;
+    RBF_PID_Handle before;
+
+    HYD_MotionControlFB_Init(&fb);
+    fb.AXIS_REF.timestamp = 0.001;
+    segment = make_rbf_pi_pressure_segment();
+    memset(&state, 0, sizeof(state));
+    memset(&input, 0, sizeof(input));
+    memset(&output, 0, sizeof(output));
+    memset(&feedback, 0, sizeof(feedback));
+
+    input.targetPressure = 20.0;
+    input.measuredPressure = 10.0;
+    input.timestamp = fb.AXIS_REF.timestamp;
+    feedback.rpm = 1000.0;
+    feedback.angleDeg = 10.0;
+    feedback.torquePermille = 250.0;
+    feedback.timestamp = input.timestamp;
+    feedback.validFlags = HYD_PUMP_FEEDBACK_VALID_RPM |
+                          HYD_PUMP_FEEDBACK_VALID_ANGLE |
+                          HYD_PUMP_FEEDBACK_VALID_TORQUE |
+                          HYD_PUMP_FEEDBACK_VALID_TIMESTAMP;
+
+    HYD_PressureController_ExecuteWithPumpFeedback(
+        &segment, &state, &input, &feedback, &output);
+    before = state.rbfPid;
+
+    input.timestamp = 0.002;
+    feedback.timestamp = input.timestamp;
+    HYD_PressureController_ExecuteWithPumpFeedback(
+        &segment, &state, &input, &feedback, &output);
+    assert(state.rbfPid.KP != before.KP ||
+           state.rbfPid.KI != before.KI ||
+           state.rbfPid.Jacobian != before.Jacobian);
+
+    before = state.rbfPid;
+    input.timestamp = 0.003;
+    feedback.validFlags = 0u;
+    HYD_PressureController_ExecuteWithPumpFeedback(
+        &segment, &state, &input, &feedback, &output);
+    assert(state.rbfPid.KP == before.KP);
+    assert(state.rbfPid.KI == before.KI);
+    assert(state.rbfPid.Jacobian == before.Jacobian);
+}
+
+static void test_invalid_sample_resets_ripple_phase_state(void) {
+    HYD_RippleCompState ripple_state;
+    HYD_RippleCompOutput ripple_output;
+    HYD_PressureRippleEntry entry = {1000.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+    HYD_RippleCompTable table = {&entry, 1U, true};
+    HYD_PumpFeedback feedback;
+
+    memset(&feedback, 0, sizeof(feedback));
+    feedback.rpm = 1000.0;
+    feedback.angleDeg = 0.0;
+    feedback.timestamp = 0.001;
+    feedback.validFlags = HYD_PUMP_FEEDBACK_VALID_RPM |
+                          HYD_PUMP_FEEDBACK_VALID_ANGLE |
+                          HYD_PUMP_FEEDBACK_VALID_TIMESTAMP;
+    HYD_RippleComp_Reset(&ripple_state);
+    (void)HYD_RippleComp_Scan(&feedback, &table, &ripple_state,
+                              1000.0, 1800.0, &ripple_output);
+    assert(ripple_state.initialized);
+
+    memset(&feedback, 0, sizeof(feedback));
+    (void)HYD_RippleComp_Scan(&feedback, &table, &ripple_state,
+                              1000.0, 1800.0, &ripple_output);
+    assert(!ripple_state.initialized);
+    assert(!ripple_output.active);
+    assert(ripple_output.deltaRpm == 0.0);
+
+    feedback.rpm = 1000.0;
+    feedback.angleDeg = 0.0;
+    feedback.timestamp = 0.002;
+    feedback.validFlags = HYD_PUMP_FEEDBACK_VALID_RPM |
+                          HYD_PUMP_FEEDBACK_VALID_ANGLE |
+                          HYD_PUMP_FEEDBACK_VALID_TIMESTAMP;
+    (void)HYD_RippleComp_Scan(&feedback, &table, &ripple_state,
+                              1000.0, 1800.0, &ripple_output);
+    assert(ripple_state.initialized);
+}
+
 int main(void) {
     test_packet_contract();
+    test_iec_set_pump_feedback_contract();
+    test_iec_set_pump_feedback_sanitizes_nonfinite_fields();
+    test_iec_set_pump_feedback_is_fresh_for_one_cycle();
+    test_iec_pump_feedback_reaches_publish_once_with_control_time();
     test_pressure_model_nonfinite_phase_is_not_valid();
     test_simulator_outputs_pump_feedback();
     test_pressure_model_packet_survives_simulator_refresh();
     test_producer_packet_bridges_to_transient_motion_scan();
+    test_generated_control_timestamp_reaches_rbf_pi_feedback_gate();
+    test_invalid_sample_resets_ripple_phase_state();
     return 0;
 }
