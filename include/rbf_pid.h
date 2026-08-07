@@ -145,6 +145,14 @@ typedef struct {
     float pid_mode_eta_d;
     bool pressure_accel_ff_requested;
     RBF_PID_ControlMode control_mode; /* Appended to preserve existing field offsets. */
+    float integral_state;             /* Continuous PI integrator [L/min]. */
+    float integral_limit;             /* Absolute continuous PI integrator bound [L/min]. */
+    float antiwindup_gain;            /* Back-calculation gain [1/s]. */
+    float raw_output;                 /* Continuous PI output before limits [L/min]. */
+    float applied_output;             /* Last applied output [L/min]. */
+    float feedforward_flow;           /* External flow bias, consumed by PI exactly once. */
+    float learning_error;             /* Continuous PI pressure error used for learning. */
+    float max_delta_flow;             /* Per-sample output slew limit [L/min], 0 disables. */
 } RBF_PID_Handle;
 
 /**
@@ -221,6 +229,13 @@ void RBF_PID_SetPressureAccelFeedforwardEnabled(RBF_PID_Handle *pid, bool enable
  *       incremental controller while disabling all derivative behavior.
  */
 void RBF_PID_SetControlMode(RBF_PID_Handle *pid, RBF_PID_ControlMode mode);
+
+/* Configure the positional continuous PI gains. Ki is in L/min/(bar*s). */
+void RBF_PID_SetContinuousGains(RBF_PID_Handle *pid, float kp, float ki);
+void RBF_PID_SetAntiWindup(RBF_PID_Handle *pid, float kaw, float integral_limit);
+void RBF_PID_SetOutputSlew(RBF_PID_Handle *pid, float max_delta_flow);
+void RBF_PID_SetFeedforwardFlow(RBF_PID_Handle *pid, float flow);
+void RBF_PID_TrackAppliedFlow(RBF_PID_Handle *pid, float flow);
 
 /**
  * @brief 设置网络初始化种子兼容字段

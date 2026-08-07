@@ -11,6 +11,9 @@ static void test_pressure_accel_feedforward_is_suppressed_inside_near_target_ban
 static void test_pressure_accel_feedforward_remains_active_outside_near_target_band(void);
 static void test_target_relative_small_error_reduces_gain_drift(void);
 static void test_control_mode_round_trip_restores_pid_configuration(void);
+static void test_continuous_pi_integrates_at_measured_sampling_period(void);
+static void test_continuous_pi_uses_feedforward_once_and_disables_legacy_terms(void);
+static void test_continuous_pi_limits_integrator_tracks_applied_output_and_slews(void);
 
 static void test_init_sets_ready_defaults(void) {
     RBF_PID_Handle pid;
@@ -436,6 +439,91 @@ static void test_target_relative_small_error_reduces_gain_drift(void) {
     printf("PASS target-relative small-error learning restraint test\n");
 }
 
+static void test_continuous_pi_integrates_at_measured_sampling_period(void) {
+    RBF_PID_Handle pid_1ms;
+    RBF_PID_Handle pid_2ms;
+    float output_1ms;
+    float output_2ms;
+
+    printf("Testing continuous RBF-PI integration at measured sampling periods...\n");
+    RBF_PID_Init(&pid_1ms, 0.001f, 100.0f, 1.0f);
+    RBF_PID_Init(&pid_2ms, 0.002f, 100.0f, 1.0f);
+    RBF_PID_SetControlMode(&pid_1ms, RBF_PID_CONTROL_MODE_PI);
+    RBF_PID_SetControlMode(&pid_2ms, RBF_PID_CONTROL_MODE_PI);
+    RBF_PID_SetContinuousGains(&pid_1ms, 0.0f, 10.0f);
+    RBF_PID_SetContinuousGains(&pid_2ms, 0.0f, 10.0f);
+    RBF_PID_SetAntiWindup(&pid_1ms, 0.0f, 100.0f);
+    RBF_PID_SetAntiWindup(&pid_2ms, 0.0f, 100.0f);
+
+    output_1ms = RBF_PID_Update(&pid_1ms, 2.0f, 1.0f);
+    output_2ms = RBF_PID_Update(&pid_2ms, 2.0f, 1.0f);
+
+    assert(fabsf(output_1ms - 0.010f) < 1e-6f);
+    assert(fabsf(output_2ms - 0.020f) < 1e-6f);
+    assert(fabsf(pid_1ms.integral_state - 0.010f) < 1e-6f);
+    assert(fabsf(pid_2ms.integral_state - 0.020f) < 1e-6f);
+    assert(fabsf(pid_2ms.integral_state - 2.0f * pid_1ms.integral_state) < 1e-6f);
+    printf("PASS continuous RBF-PI sampling-period integration test\n");
+}
+
+static void test_continuous_pi_uses_feedforward_once_and_disables_legacy_terms(void) {
+    RBF_PID_Handle pid;
+    float output;
+
+    printf("Testing continuous RBF-PI feedforward accounting and legacy-term suppression...\n");
+    RBF_PID_Init(&pid, 0.001f, 100.0f, 1.0f);
+    RBF_PID_SetControlMode(&pid, RBF_PID_CONTROL_MODE_PI);
+    RBF_PID_SetContinuousGains(&pid, 2.0f, 0.0f);
+    RBF_PID_SetFeedforwardFlow(&pid, 3.0f);
+    RBF_PID_SetLearningRates(&pid, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.9f);
+    RBF_PID_SetPressureAccelFeedforwardEnabled(&pid, true);
+    pid.prev_d_term = 8.0f;
+    pid.last_ref = -50.0f;
+    pid.fLastActPress = -100.0f;
+    pid.fLastActPress2 = 100.0f;
+
+    output = RBF_PID_Update(&pid, 5.0f, 4.0f);
+
+    assert(fabsf(output - 5.0f) < 1e-6f);
+    assert(fabsf(pid.raw_output - 5.0f) < 1e-6f);
+    assert(fabsf(pid.feedforward_flow - 3.0f) < 1e-6f);
+    assert(fabsf(pid.KD) < 1e-6f);
+    assert(fabsf(pid.eta_d) < 1e-6f);
+    assert(fabsf(pid.prev_d_term) < 1e-6f);
+    assert(!pid.pressure_accel_ff_enabled);
+    assert(fabsf(pid.learning_error - 1.0f) < 1e-6f);
+    printf("PASS continuous RBF-PI feedforward and legacy-term suppression test\n");
+}
+
+static void test_continuous_pi_limits_integrator_tracks_applied_output_and_slews(void) {
+    RBF_PID_Handle pid;
+    float output;
+
+    printf("Testing continuous RBF-PI anti-windup, applied-flow tracking, and slew limiting...\n");
+    RBF_PID_Init(&pid, 0.001f, 100.0f, 1.0f);
+    pid.output_min_flow = 0.0f;
+    pid.output_max_flow = 1.0f;
+    RBF_PID_SetControlMode(&pid, RBF_PID_CONTROL_MODE_PI);
+    RBF_PID_SetContinuousGains(&pid, 1.0f, 100.0f);
+    RBF_PID_SetAntiWindup(&pid, 10.0f, 0.25f);
+    RBF_PID_SetOutputSlew(&pid, 0.10f);
+    RBF_PID_TrackAppliedFlow(&pid, 0.40f);
+
+    output = RBF_PID_Update(&pid, 10.0f, 0.0f);
+    assert(fabsf(output - 0.50f) < 1e-6f);
+    assert(fabsf(pid.du - 0.10f) < 1e-6f);
+    assert(fabsf(pid.applied_output - output) < 1e-6f);
+    assert(fabsf(pid.u_prev - output) < 1e-6f);
+    assert(fabsf(pid.last_rbf_input[0] - 0.004f) < 1e-6f);
+    assert(fabsf(pid.integral_state) <= 0.250001f);
+
+    RBF_PID_TrackAppliedFlow(&pid, 0.20f);
+    assert(fabsf(pid.applied_output - 0.20f) < 1e-6f);
+    assert(fabsf(pid.u_prev - 0.20f) < 1e-6f);
+    assert(fabsf(pid.integral_state) <= 0.250001f);
+    printf("PASS continuous RBF-PI anti-windup/tracking/slew test\n");
+}
+
 int main(void) {
     printf("Running RBF_PID tests...\n\n");
 
@@ -455,6 +543,9 @@ int main(void) {
     test_pressure_accel_feedforward_is_suppressed_inside_near_target_band();
     test_pressure_accel_feedforward_remains_active_outside_near_target_band();
     test_target_relative_small_error_reduces_gain_drift();
+    test_continuous_pi_integrates_at_measured_sampling_period();
+    test_continuous_pi_uses_feedforward_once_and_disables_legacy_terms();
+    test_continuous_pi_limits_integrator_tracks_applied_output_and_slews();
 
     printf("\n✅ All RBF_PID tests passed successfully!\n");
     return 0;

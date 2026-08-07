@@ -340,6 +340,7 @@ static void HYD_ApplyRbfPidConfig(HYD_PressureControllerState* state,
         config->strategy == HYD_PRESSURE_CONTROLLER_RBF_PI
             ? RBF_PID_CONTROL_MODE_PI
             : RBF_PID_CONTROL_MODE_PID);
+    RBF_PID_SetAntiWindup(&state->rbfPid, 1.0f, (float)config->integralLimit);
     RBF_PID_SetPressureAccelFeedforwardEnabled(
         &state->rbfPid,
         config->strategy == HYD_PRESSURE_CONTROLLER_RBF_PI ||
@@ -383,6 +384,7 @@ static void HYD_ApplyRbfPidConfig(HYD_PressureControllerState* state,
 
 static void HYD_SynchronizeRbfPidState(HYD_PressureControllerState* state,
                                        HYD_REAL trackedOutputFlow,
+                                       HYD_REAL feedforwardFlow,
                                        HYD_REAL targetPressure,
                                        HYD_REAL measuredPressure,
                                        const HYD_PressureResolvedConfig* config,
@@ -399,6 +401,7 @@ static void HYD_SynchronizeRbfPidState(HYD_PressureControllerState* state,
     RBF_PID_Reset(&state->rbfPid);
     HYD_ApplyRbfPidConfig(state, config, segment,
                           flowToPumpSpeedGain, pumpSpeedLimit);
+    RBF_PID_SetFeedforwardFlow(&state->rbfPid, (float)feedforwardFlow);
     seededFlow = HYD_ClampReal(trackedOutputFlow, config->outputMin, config->outputMax);
 
     error = targetPressure - measuredPressure;
@@ -406,6 +409,8 @@ static void HYD_SynchronizeRbfPidState(HYD_PressureControllerState* state,
     state->rbfPid.Output = (float)seededFlow;
     state->rbfPid.u_prev = (float)seededFlow;
     state->rbfPid.n_out = (float)seededFlow;
+    state->rbfPid.applied_output = (float)seededFlow;
+    state->rbfPid.raw_output = (float)seededFlow;
     state->rbfPid.P_set = (float)targetPressure;
     state->rbfPid.P_actual = (float)measuredPressure;
     state->rbfPid.Error = (float)error;
@@ -421,6 +426,16 @@ static void HYD_SynchronizeRbfPidState(HYD_PressureControllerState* state,
     state->rbfPid.output_saturated = false;
     state->rbfPid.Status = 1;
     state->rbfPid.TuneResult = 0;
+    if (state->rbfPid.control_mode == RBF_PID_CONTROL_MODE_PI) {
+        state->rbfPid.integral_state = (float)(seededFlow - feedforwardFlow -
+                                               (HYD_REAL)state->rbfPid.KP * error);
+        if (state->rbfPid.integral_limit > 0.0f) {
+            state->rbfPid.integral_state = HYD_ClampReal(
+                state->rbfPid.integral_state,
+                -(HYD_REAL)state->rbfPid.integral_limit,
+                (HYD_REAL)state->rbfPid.integral_limit);
+        }
+    }
 }
 
 void HYD_PressureController_ClearState(HYD_PressureControllerState* state) {
@@ -455,8 +470,20 @@ void HYD_PressureController_RequestTracking(HYD_PressureControllerState* state,
         return;
     }
 
-    state->previousOutput = trackedOutputFlow;
+    HYD_PressureController_TrackAppliedFlow(state, trackedOutputFlow);
     state->trackingRequested = true;
+}
+
+void HYD_PressureController_TrackAppliedFlow(HYD_PressureControllerState* state,
+                                             HYD_REAL appliedBaseFlow) {
+    if (state == NULL) {
+        return;
+    }
+
+    state->previousOutput = appliedBaseFlow;
+    if (state->rbfInitialized) {
+        RBF_PID_TrackAppliedFlow(&state->rbfPid, (float)appliedBaseFlow);
+    }
 }
 
 void HYD_PressureController_Execute(const HYD_MotionSegment* segment,
@@ -540,11 +567,13 @@ void HYD_PressureController_Execute(const HYD_MotionSegment* segment,
             (input->targetPressure + 1e-6 < (HYD_REAL)state->rbfPid.P_set);
         HYD_ApplyRbfPidConfig(state, &config, segment,
                               input->flowToPumpSpeedGain, input->pumpSpeedLimit);
+        RBF_PID_SetFeedforwardFlow(&state->rbfPid, (float)input->feedforwardFlow);
 
         if (needsAdaptiveReset) {
             output->trackingApplied = true;
             HYD_SynchronizeRbfPidState(state,
                                        trackedOutputFlow,
+                                       input->feedforwardFlow,
                                        input->targetPressure,
                                        filteredPressure,
                                        &config,
@@ -567,8 +596,18 @@ void HYD_PressureController_Execute(const HYD_MotionSegment* segment,
         }
 
         output->targetPressure = effectiveTargetPressure;
-        output->feedbackFlow = rawOutputFlow - input->feedforwardFlow;
-        output->unsaturatedOutputFlow = rawOutputFlow;
+        if (config.strategy == HYD_PRESSURE_CONTROLLER_RBF_PI) {
+            output->controlError = (HYD_REAL)state->rbfPid.Error;
+            output->proportionalTerm =
+                (HYD_REAL)state->rbfPid.KP * output->controlError;
+            output->integralTerm = (HYD_REAL)state->rbfPid.integral_state;
+            output->derivativeTerm = 0.0;
+        }
+        output->feedbackFlow = outputFlow - input->feedforwardFlow;
+        output->unsaturatedOutputFlow =
+            (config.strategy == HYD_PRESSURE_CONTROLLER_RBF_PI)
+                ? (HYD_REAL)state->rbfPid.raw_output
+                : rawOutputFlow;
         output->outputFlow = outputFlow;
         output->samplingPeriod = config.samplingPeriod;
         output->adaptiveKp = (HYD_REAL)state->rbfPid.KP;
@@ -583,6 +622,7 @@ void HYD_PressureController_Execute(const HYD_MotionSegment* segment,
         state->rbfPid.Output = (float)outputFlow;
         state->rbfPid.u_prev = (float)outputFlow;
         state->rbfPid.n_out = (float)outputFlow;
+        state->rbfPid.applied_output = (float)outputFlow;
 
         state->initialized = true;
         state->trackingRequested = false;

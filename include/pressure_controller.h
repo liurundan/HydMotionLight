@@ -60,6 +60,8 @@ void HYD_PressureController_InitState(HYD_PressureControllerState* state,
                                       HYD_TIME timestamp);
 void HYD_PressureController_RequestTracking(HYD_PressureControllerState* state,
                                            HYD_REAL trackedOutputFlow);
+void HYD_PressureController_TrackAppliedFlow(HYD_PressureControllerState* state,
+                                             HYD_REAL appliedBaseFlow);
 void HYD_PressureController_Execute(const HYD_MotionSegment* segment,
                                     HYD_PressureControllerState* state,
                                     const HYD_PressureControllerInput* input,

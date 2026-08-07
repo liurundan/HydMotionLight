@@ -260,7 +260,7 @@ static void rbf_pid_step_rbf_nn(RBF_PID_Handle *pid) {
     float flow_scale = rbf_pid_effective_flow_scale(pid);
     float pressure_scale = rbf_pid_effective_pressure_scale(pid);
     float x[RBF_INPUT_DIM] = {
-        pid->du_prev / flow_scale,
+        (pid->control_mode == RBF_PID_CONTROL_MODE_PI ? pid->u_prev : pid->du_prev) / flow_scale,
         pid->y_prev1 / pressure_scale,
         pid->y_prev2 / pressure_scale
     };
@@ -394,6 +394,11 @@ static void rbf_pid_step_adaptive_gains(RBF_PID_Handle *pid, float error, float 
     float dde = de - (pid->e_prev1 - pid->e_prev2);
     float learning_scale = rbf_pid_target_relative_learning_scale(pid, raw_error);
 
+    if (pid->control_mode == RBF_PID_CONTROL_MODE_PI &&
+        pid->eta_p == 0.0f && pid->eta_i == 0.0f) {
+        return;
+    }
+
     if (rbf_pid_same_direction_saturation(pid, error)) {
         return;
     }
@@ -498,6 +503,40 @@ static void rbf_pid_step_incremental_output(RBF_PID_Handle *pid, float error, fl
     pid->last_ref = pid->P_set;
 }
 
+static void rbf_pid_step_continuous_pi_output(RBF_PID_Handle *pid, float error) {
+    float output_min = rbf_pid_output_lower_bound(pid);
+    float output_max = rbf_pid_output_upper_bound(pid);
+    float applied_output = clamp_finite(output_min, pid->applied_output,
+                                        output_max, 0.0f);
+    float integral_candidate;
+    float raw_output;
+    float limited_output;
+
+    integral_candidate = finite_or_default(pid->integral_state, 0.0f) +
+        pid->KI * pid->sampling_period * error;
+    raw_output = pid->feedforward_flow + pid->KP * error + integral_candidate;
+    limited_output = clampf(output_min, raw_output, output_max);
+    if (pid->max_delta_flow > 0.0f) {
+        limited_output = clampf(applied_output - pid->max_delta_flow,
+                                limited_output,
+                                applied_output + pid->max_delta_flow);
+    }
+
+    pid->integral_state = integral_candidate +
+        pid->antiwindup_gain * pid->sampling_period * (limited_output - raw_output);
+    if (pid->integral_limit > 0.0f) {
+        pid->integral_state = clampf(-pid->integral_limit, pid->integral_state,
+                                     pid->integral_limit);
+    }
+
+    pid->raw_output = raw_output;
+    pid->du = limited_output - applied_output;
+    pid->Output = limited_output;
+    pid->n_out = limited_output;
+    pid->applied_output = limited_output;
+    pid->output_saturated = fabsf(limited_output - raw_output) > 1.0e-6f;
+}
+
 static void rbf_pid_step_steady_state(RBF_PID_Handle *pid) {
     const float e_steady = 5.0f;
     const float t_steady = 0.2f;
@@ -545,6 +584,7 @@ void RBF_PID_Init(RBF_PID_Handle *pid, float sampling_period,
     pid->flowToPumpSpeedGain = 20.0f;
     pid->pressure_accel_ff_enabled = true;
     pid->control_mode = RBF_PID_CONTROL_MODE_PID;
+    pid->antiwindup_gain = 1.0f;
     rbf_pid_apply_default_limits(pid);
     rbf_pid_apply_default_learning_rates(pid);
     rbf_pid_apply_default_gains(pid);
@@ -569,13 +609,19 @@ float RBF_PID_Update(RBF_PID_Handle *pid, float setpoint, float feedback) {
     }
     rbf_pid_enforce_control_mode(pid);
     raw_error = pid->P_set - pid->P_actual;
-    error = rbf_pid_apply_deadband(raw_error);
+    error = (pid->control_mode == RBF_PID_CONTROL_MODE_PI)
+        ? raw_error : rbf_pid_apply_deadband(raw_error);
     pid->Error = error;
+    pid->learning_error = error;
     pid->control_state = rbf_pid_resolve_control_state(pid, raw_error);
 
     rbf_pid_step_rbf_nn(pid);
     rbf_pid_step_adaptive_gains(pid, error, raw_error);
-    rbf_pid_step_incremental_output(pid, error, raw_error);
+    if (pid->control_mode == RBF_PID_CONTROL_MODE_PI) {
+        rbf_pid_step_continuous_pi_output(pid, error);
+    } else {
+        rbf_pid_step_incremental_output(pid, error, raw_error);
+    }
 
     pid->y_prev2 = pid->y_prev1;
     pid->y_prev1 = pid->P_actual;
@@ -690,7 +736,69 @@ void RBF_PID_SetControlMode(RBF_PID_Handle *pid, RBF_PID_ControlMode mode) {
         pid->pressure_accel_ff_enabled = pid->pressure_accel_ff_requested;
         return;
     }
+    pid->applied_output = pid->Output;
+    pid->u_prev = pid->Output;
     rbf_pid_enforce_control_mode(pid);
+}
+
+void RBF_PID_SetContinuousGains(RBF_PID_Handle *pid, float kp, float ki) {
+    if (pid == NULL) {
+        return;
+    }
+
+    pid->KP = clamp_finite(0.0f, kp, 1.0e6f, 0.0f);
+    pid->KI = clamp_finite(0.0f, ki, 1.0e6f, 0.0f);
+    pid->eta_p = 0.0f;
+    pid->eta_i = 0.0f;
+}
+
+void RBF_PID_SetAntiWindup(RBF_PID_Handle *pid, float kaw, float integral_limit) {
+    if (pid == NULL) {
+        return;
+    }
+
+    pid->antiwindup_gain = clamp_finite(0.0f, kaw, 1.0e6f, 0.0f);
+    pid->integral_limit = clamp_finite(0.0f, integral_limit, 1.0e6f, 0.0f);
+    if (pid->integral_limit > 0.0f) {
+        pid->integral_state = clampf(-pid->integral_limit, pid->integral_state,
+                                     pid->integral_limit);
+    }
+}
+
+void RBF_PID_SetOutputSlew(RBF_PID_Handle *pid, float max_delta_flow) {
+    if (pid == NULL) {
+        return;
+    }
+
+    pid->max_delta_flow = clamp_finite(0.0f, max_delta_flow, 1.0e6f, 0.0f);
+}
+
+void RBF_PID_SetFeedforwardFlow(RBF_PID_Handle *pid, float flow) {
+    if (pid == NULL) {
+        return;
+    }
+
+    pid->feedforward_flow = finite_or_default(flow, 0.0f);
+}
+
+void RBF_PID_TrackAppliedFlow(RBF_PID_Handle *pid, float flow) {
+    float output_min;
+    float output_max;
+    float applied_flow;
+
+    if (pid == NULL) {
+        return;
+    }
+
+    output_min = rbf_pid_output_lower_bound(pid);
+    output_max = rbf_pid_output_upper_bound(pid);
+    applied_flow = clamp_finite(output_min, flow, output_max, pid->applied_output);
+    pid->Output = applied_flow;
+    pid->n_out = applied_flow;
+    pid->u_prev = applied_flow;
+    pid->applied_output = applied_flow;
+    pid->du = 0.0f;
+    pid->du_prev = 0.0f;
 }
 
 void RBF_PID_SetSeed(RBF_PID_Handle *pid, uint32_t seed) {
