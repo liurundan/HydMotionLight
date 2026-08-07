@@ -185,7 +185,10 @@ dtheta = angle_deg(k) - angle_deg(k-1)
 if dtheta >  180 deg: dtheta -= 360 deg
 if dtheta < -180 deg: dtheta += 360 deg
 
-tooth_phase = wrap_2pi(tooth_phase + 13 * dtheta * 2*pi / 360)
+shaft_phase = wrap_2pi(shaft_phase + dtheta * 2*pi / 360)
+phase13 = wrap_2pi(13 * shaft_phase)
+phase26 = wrap_2pi(26 * shaft_phase)
+phase39 = wrap_2pi(39 * shaft_phase)
 ```
 
 The tracker verifies timestamp monotonicity, a physical maximum angle increment derived
@@ -194,6 +197,10 @@ A zero angle increment is valid when the pump is stopped; it is not by itself a 
 An invalid angle disables synchronized compensation and preserves the base pressure loop.
 There is no synthetic phase integration from speed alone for a claim of phase-locked
 suppression.
+
+`phase13` is the existing compensator's `tooth_phase`; `phase26` and `phase39` are
+derived from the same shaft phase rather than independently integrated. A 13th-order
+term is always evaluated as `sin(phase13 + phi13)`, never as `sin(13 * phase13 + phi13)`.
 
 At the configured maximum RPM, the implementation must verify that the 13th order is
 observable at 1 ms. If the order approaches the Nyquist limit or has too few samples per
@@ -348,9 +355,9 @@ Qleak_outlet = Coutlet * DeltaPpump
 Qleak_cylinder = Ccylinder * max(Pc_abs - Psuction_abs, 0)
 
 Qpump = sign(n) * D * |n| / 60 * eta_v
-        * [1 + r13(Ps, |n|) * w13(tooth_phase)
-             + r26(Ps, |n|) * w26(tooth_phase)
-             + r39(Ps, |n|) * w39(tooth_phase)]
+        * [1 + r13(Ps, |n|) * w13(phase13)
+             + r26(Ps, |n|) * w26(phase26)
+             + r39(Ps, |n|) * w39(phase39)]
 
 dPs/dt = beta_e(Ps_abs) / Vs * (Qpump - Qline - Qleak_outlet - Qrelief)
 Lline * dQline/dt = Ps - Pc - Rlinear * Qline - Rquadratic * Qline * |Qline|
@@ -376,9 +383,11 @@ are separate pressure-difference-driven paths. The model must not multiply a cos
 tooth drop only onto visible pressure.
 
 The servo speed model has a measured delay, a second-order or otherwise identified speed
-response, and acceleration/torque limiting. It must not retain an arbitrary fixed 60 ms
-first-order constant after the CSV fit rejects it. The model provides a true torque
-signal when torque is evaluated:
+response, and acceleration limiting. It must not retain an arbitrary fixed 60 ms
+first-order constant after the CSV fit rejects it. `motor_torque_limit_permille` is a
+feedback/telemetry clamp in this phase; it does not constrain speed dynamics until a
+measured torque-to-acceleration relation and rotor-equivalent inertia are introduced.
+The model provides a true torque signal when torque is evaluated:
 
 ```text
 eta_m = clamp(eta_m_nominal - eta_m_pressure_loss_per_pa * DeltaPpump
@@ -386,7 +395,7 @@ eta_m = clamp(eta_m_nominal - eta_m_pressure_loss_per_pa * DeltaPpump
 Tdc_nm = sign(n) * DeltaPpump * D / (2 * pi * eta_m)
 torque_permille = clamp(1000 * Tdc_nm *
                         [1 + torque_ripple13_peak *
-                         sin(13 * tooth_phase + torque_ripple13_phase_rad)] /
+                         sin(phase13 + torque_ripple13_phase_rad)] /
                         rated_motor_torque_nm,
                         -torque_limit_permille, torque_limit_permille)
 ```
@@ -399,17 +408,29 @@ supports it. Its setpoint, deadband, and hysteresis are gauge-pressure threshold
 Sensor delay, quantization, bias, and bounded noise are added only as
 model states that are consumed by the measured-pressure output.
 
+The pressure observation point is fixed for this plan:
+
+```text
+real_pressure_bar     = Pchamber_gauge / 1e5
+measured_pressure_bar = delayed_quantized_sensor(Pchamber_gauge) / 1e5
+controller input      = measured_pressure_bar
+```
+
+Outlet/manifold pressure remains an internal pump/line/relief diagnostic. Moving the
+modelled sensor upstream requires a new documented sensor-placement contract and a new
+validation fixture.
+
 The physical model does not add actuator-position or temperature states unless a real
 motion/temperature input consumes them in the current phase.
 
 ### 8.3 Fixed-step and order-resolution policy
 
-The embedded-equivalent path accepts one 1 ms task interval. A finite positive interval
-up to 4 ms is split into `ceil(dt / 1 ms)` deterministic substeps, capped at four;
-nonfinite, nonpositive, or over-limit intervals use one 1 ms safe fallback step. Each
+The embedded-equivalent path accepts only an exact integer multiple of the 1 ms task
+period: 1, 2, 3, or 4 ms. It uses that many 1 ms deterministic substeps; nonfinite,
+nonpositive, nonintegral, or over-limit intervals use one 1 ms safe fallback step. Each
 substep updates delayed motor command, motor speed, line flow, then outlet and chamber
-pressure semi-implicitly. Delay queues have fixed static capacity for 64 ms and no dynamic
-allocation.
+pressure semi-implicitly. Delay queues therefore retain their fixed 64 ms meaning and
+have no dynamic allocation.
 
 At the observable 1 ms sampling interval, an `m`th tooth order is enabled only when
 `m * abs(rpm) / 60 < 0.45 / dt`. This gives a 10% guard below the nominal 1 ms Nyquist
@@ -423,6 +444,32 @@ The calibrated physical profile owns only the pump-to-chamber fluid chain. The e
 requires a later explicit adapter that derives `load_flow_m3_s` from a real cylinder state
 and is prohibited from being claimed as closed-loop plant validation before then.
 
+### 8.4 Parameter Admissibility and Replay Calibration
+
+`PressureModel_ValidatePhysicalParams()` is a deterministic C99 contract used by physical
+tests and the host replay before a calibrated run. It rejects nonfinite values; nonpositive
+volumes, inertance, oil modulus, or rated torque; `beta_min_pa > beta_oil_pa`; efficiencies
+outside `(0, 1]`; negative leakage/resistance/ripple limits; delays outside `[0, 64 ms]`;
+and a 1 ms hydraulic stiffness ratio
+`beta_oil_pa * (0.001 s)^2 / (line_inertance * min(outlet_volume, chamber_volume)) > 0.25`.
+The line update uses its semi-implicit resistance denominator; a nonpositive denominator
+is also invalid. Invalid physical settings do not receive broad silent clamping: replay
+fails, and the physical step holds its last finite chamber pressure with zero flow and an
+invalid torque packet.
+
+The host-only `pressure_model_replay` accepts a versioned deterministic calibration file:
+
+```text
+pressure_model_replay physical <rpm> <samples> <identified_params.kv>
+```
+
+`identified_params.kv` is emitted beside `identified_params.json`, contains every consumed
+physical parameter plus `schema_version` and a Python-computed SHA-256 `calibration_id`.
+Its
+strict file parser belongs only to the test/replay binary, never the 1 ms production path.
+The validation script verifies the JSON/KV calibration ID match and records that ID in its
+report and replay CSV header before comparing held-out data.
+
 ## 9. Identification and Validation Gate
 
 ### 9.1 Identification order
@@ -432,7 +479,9 @@ and is prohibited from being claimed as closed-loop plant validation before then
 3. Fit 13th, 26th, and measured 39th order amplitude/phase by angle-synchronous
    demodulation, not a fixed-frequency FFT across varying RPM.
 4. Fit bulk modulus, line inertia/damping, relief behavior, and sensor delay from
-   transients.
+   transients. Parameters not identifiable from the constant-speed hold windows must be
+   supplied by a versioned hardware/transient manifest with source and acquisition window;
+   absent provenance yields "model not calibrated".
 5. Hold out independent windows with different initial phase and pressure level for
    validation.
 

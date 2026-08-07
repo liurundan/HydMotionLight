@@ -323,6 +323,18 @@ remains the chamber gauge-pressure state for both profiles. Preserve the legacy
 first-order fields and delay buffer unchanged for the old profile. Every new state member
 must be consumed by one physical equation or output path.
 
+The state stores shaft phase in the existing `pump_phase_rev`; derive `phase13`, `phase26`,
+and `phase39` as 13, 26, and 39 times that shaft phase. Do not store three independently
+integrated tooth phases. `PressureModelOutput.real_pressure_bar` is chamber gauge pressure;
+`measured_pressure_bar` is the delayed/quantized/bias/noise sensor image of that chamber
+pressure. Outlet pressure is only a pump/line/relief diagnostic in this task.
+
+Expose `PressureModel_ValidatePhysicalParams()` for physical tests and host replay. It
+must reject invalid/nonfinite calibrated parameters rather than quietly clamping them:
+positive finite volumes/inertance/modulus/rated torque, `beta_min <= beta_oil`, efficiencies
+in `(0, 1]`, nonnegative leak/resistance/ripple values, delays no greater than 64 ms, and
+the fixed-1-ms hydraulic stiffness ratio must satisfy the documented stability bound.
+
 Retain and complete the `PressureModelOutput.pumpFeedback` packet introduced by Task 1;
 keep `estimated_torque_trend` as a compatibility diagnostic only. Legacy and first-order
 profiles keep torque at zero with `HYD_PUMP_FEEDBACK_VALID_TORQUE` clear. The calibrated
@@ -349,7 +361,11 @@ alpha_g(Pabsolute) = clamp(gas_fraction * gas_transition_pa /
              + alpha_g(Pabsolute) / max(Pabsolute, 1 Pa)
 beta_e = clamp(beta_e, beta_min_pa, beta_oil_pa)
 
-Qpump = sign(rpm) * D * abs(rpm) / 60 * eta_v * ripple_waveform(tooth_phase)
+phase13 = 2 * pi * 13 * pump_phase_rev
+phase26 = 2 * pi * 26 * pump_phase_rev
+phase39 = 2 * pi * 39 * pump_phase_rev
+Qpump = sign(rpm) * D * abs(rpm) / 60 * eta_v *
+        clamp(1 + r13 * w13(phase13) + r26 * w26(phase26) + r39 * w39(phase39))
 Lline * Qline_dot = Pout_gauge - Pchamber_gauge
                    - Rlinear * Qline - Rquadratic * Qline * abs(Qline)
 Pout_dot = beta_e(Pout_abs) / Vout * (Qpump - Qline - Qleak_outlet - Qrelief)
@@ -361,14 +377,17 @@ Use a bounded asymmetric lookup/Fourier waveform for 13th, 26th, and optional me
 is applied to delivered pump flow, never to visible pressure after integration. The pump
 leakage is already represented by `eta_v`, so it is not subtracted a second time from the
 outlet balance. Use a nonlinear relief deadband/orifice relation and a second-order/delayed
-motor response with acceleration and torque limits. Do not multiply a cosmetic pressure
-drop after the fluid integration.
+motor response with an acceleration limit. `motor_torque_limit_permille` limits the
+reported torque packet only in this phase; it cannot be called a motor-dynamics limit until
+measured torque-to-acceleration data supports a rotor-inertia extension. Do not multiply a
+cosmetic pressure drop after the fluid integration.
 
 Use semi-implicit Euler for the embedded-equivalent path: update delayed motor command,
 motor speed, line flow, then pressure states with the newest upstream values. A physical
-call accepts only a finite positive interval up to 4 ms; it uses `ceil(dt / 1 ms)` fixed
-substeps, capped at four. Nonfinite, nonpositive, or over-limit intervals fall back to one
-1 ms step. This is a safe HIL fallback, not permission to run an arbitrary slow plant.
+call accepts only exact integer multiples of 1 ms up to 4 ms and uses that many 1 ms fixed
+substeps. Nonfinite, nonpositive, nonintegral, or over-limit intervals fall back to one
+1 ms step. This preserves the fixed 64 ms delay-ring meaning and is a safe HIL fallback,
+not permission to run an arbitrary slow plant.
 The host calibration path may use the same fixed substeps or RK2, but it must share
 parameter names and physical signs with C.
 
@@ -386,7 +405,7 @@ eta_m = clamp(eta_m_nominal - eta_m_pressure_loss_per_pa * DeltaPpump
                - eta_m_speed_loss_per_rpm * abs(rpm), eta_m_min, 1)
 Tdc_nm = sign(rpm) * DeltaPpump * D / (2 * pi * eta_m)
 Tnm = Tdc_nm * [1 + torque_ripple13_peak *
-                 sin(13 * tooth_phase + torque_ripple13_phase_rad)]
+                 sin(phase13 + torque_ripple13_phase_rad)]
 torque_permille = clamp(1000 * Tnm / rated_motor_torque_nm,
                         -torque_limit_permille, torque_limit_permille)
 ```
@@ -408,12 +427,15 @@ not silently enable physical parameters while the first-order profile is selecte
 
 Update `src/sim/hydro_sim_fb.c` to copy `out.pumpFeedback` into the native feedback packet.
 Add `tests/pressure_model_replay.c` and the CMake target `pressure_model_replay`. It accepts
-`physical|first_order`, an RPM value, and a sample count, then writes one CSV row per 1 ms
-step to stdout with actual RPM, real/measured pressure, angle, torque, timestamp, and
-validity bits. The exact validation invocation is:
+`physical|first_order`, an RPM value, and a sample count, plus a required versioned
+`identified_params.kv` file for a calibrated physical replay. Its strict file parser is
+host-test-only; production code receives already validated parameter structures. The replay
+writes one CSV row per 1 ms step with actual RPM, chamber real/measured pressure, angle,
+torque, timestamp, validity bits, and a calibration ID header. The exact calibrated
+validation invocation is:
 
 ```bash
-./out/build/unixgcc/pressure_model_replay physical 20 20000 > docs/ripple-analysis/replay-20rpm.csv
+./out/build/unixgcc/pressure_model_replay physical 20 20000 docs/ripple-analysis/identified_params.kv > docs/ripple-analysis/replay-20rpm.csv
 ```
 
 Do not change IEC `HYD_PRESSUREMODEL` field order or add PLC pins in this task.
@@ -457,6 +479,7 @@ git commit -m "建立13齿齿轮泵物理压力模型" -m "在保留一阶回归
 - Create: `scripts/ripple/fit_physical_model.py`
 - Create: `scripts/ripple/export_ripple_table.py`
 - Create: `docs/ripple-analysis/`
+- Modify: `tests/pressure_model_replay.c`
 
 - [ ] **Step 1: Implement standard-library CSV parsing and data-contract checks**
 
@@ -484,28 +507,44 @@ The script must produce the measured values recorded in
 
 - [ ] **Step 3: Implement bounded deterministic physical-parameter fitting**
 
-`fit_physical_model.py` must use only `csv`, `math`, `json`, `statistics`, and
-`pathlib`. It runs a fixed coordinate-descent search over these bounded parameters:
+`fit_physical_model.py` must use only `csv`, `math`, `json`, `statistics`, `pathlib`, and
+`hashlib` from the Python standard library. It runs a fixed coordinate-descent search over the
+parameters observable in the
+recorded speed/pressure/angle/torque windows:
 
 ```text
 motor_natural_freq_hz [1.0, 200.0]
+motor_damping         [0.2, 2.0]
 motor_delay_s     [0.000, 0.050]
 outlet_volume_m3  [1e-5, 5e-3]
 gas_fraction      [1e-5, 2e-2]
 pump_leak_c0     [1e-14, 1e-9]
 pump_leak_speed   [1e-16, 1e-11]
 cylinder_leak    [1e-14, 1e-9]
+outlet_leak       [1e-14, 1e-9]
 ripple13_peak    [0.00, 0.30]
 ripple26_peak    [0.00, 0.15]
 ripple39_peak    [0.00, 0.10]
+torque_ripple13_peak [0.00, 0.30]
 ```
 
 Use 20 coordinate rounds, halve a parameter step when neither direction improves the
 weighted objective, and stop only when all step sizes are below 1% of their parameter
 range. The objective weights held-out pressure RMSE, RPM RMSE, and 13/26 order amplitude
-errors; it must not fit only the mean pressure. Emit
-`docs/ripple-analysis/identified_params.json` with parameter bounds, training windows,
-validation windows, seed, objective, and pass/fail gates.
+errors; it must not fit only the mean pressure. Emit a canonical `identified_params.json`
+and strict `identified_params.kv` with the same `schema_version` and SHA-256
+`calibration_id`.
+Each contains parameter bounds, training windows, validation windows, seed, objective, and
+pass/fail gates.
+
+Create `docs/ripple-analysis/physical_parameter_manifest.json` for all remaining consumed
+parameters that these windows cannot identify: atmospheric/suction pressure, chamber volume,
+line inertance/resistance, bulk-modulus minimum/transition, volumetric/mechanical efficiency
+bounds and coefficients, motor acceleration limit, relief curve/hysteresis, sensor
+delay/quantization, rated torque/torque limit, and ripple phases. Every entry records a
+value, unit, source (datasheet/nameplate/bench transient), acquisition window where
+applicable, and the same calibration ID. Missing or unprovenanced entries make the fitter
+emit `model not calibrated`.
 
 - [ ] **Step 4: Export only a validated fixed RPM compensation table**
 
@@ -528,7 +567,8 @@ python3 scripts/ripple/export_ripple_table.py docs/ripple-analysis/open_loop_sum
 ```
 
 Expected: the first script succeeds with exact 1 ms timing, the second writes a held-out
-fit report, and the third either writes the table after all model gates pass or exits
+fit report and matching KV/manifest artifacts, and the third either writes the table after
+all model gates pass or exits
 nonzero with `model not calibrated` and does not create a production table.
 
 Commit only the scripts, reports, and a table that passed the gates:
@@ -829,11 +869,14 @@ git commit -m "加入角度同步13阶和26阶RPM补偿" -m "在泵转换器之�
 
 - [ ] **Step 1: Replay all four measured speed windows through the C model**
 
-Add a deterministic replay mode to `validate_physical_model.py` that invokes the built
+Add a deterministic replay mode to `validate_physical_model.py` that first verifies the
+matching `identified_params.json`, `identified_params.kv`, and physical-parameter manifest
+share one `schema_version` and `calibration_id`. It then invokes the built
 `pressure_model_replay` executable, for example
-`./out/build/unixgcc/pressure_model_replay physical 20 20000`, and consumes its CSV
-output. Use the measured command-RPM segments, not the pressure column as a setpoint.
-Compare feedback RPM, mean pressure, p-p, and 13/26/39 angle-synchronous amplitudes.
+`./out/build/unixgcc/pressure_model_replay physical 20 20000 docs/ripple-analysis/identified_params.kv`,
+and consumes its CSV header/output. Use the measured command-RPM segments, not the pressure
+column as a setpoint. Compare feedback RPM, mean pressure, p-p, and 13/26/39
+angle-synchronous amplitudes.
 
 - [ ] **Step 2: Separate training and validation windows**
 
