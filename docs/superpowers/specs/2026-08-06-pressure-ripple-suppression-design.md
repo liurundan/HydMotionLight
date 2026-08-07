@@ -1,7 +1,7 @@
 # 13 Tooth Gear-Pump Pressure Ripple Suppression Design
 
 - Date: 2026-08-06
-- Status: Approved design; implementation plan review is next
+- Status: Approved design; Tasks 0-5 host implementation reviewed, calibration and machine gates pending
 - Scope: Vertical injection-molding machine, servo motor driven 13-tooth external gear pump
 - Control period: 1 ms
 
@@ -21,6 +21,12 @@ The approved production architecture is:
 
 RBF-PID remains a compatible, experimental strategy. It is not the default pressure-hold
 strategy and its adaptive D term is not enabled in the first production implementation.
+
+Current implementation status: the fluid-equation physical profile, feedback transport,
+tracking positional RBF-PI core, invalid-feedback learning gate, and calibrated-table
+compensator path are present and host-tested. The checked-in production ripple table is
+deliberately uncalibrated, so compensation is bypassed. No result from the supplied
+open-loop RPM recording is treated as closed-loop overshoot or ripple-reduction evidence.
 
 ## 2. Evidence and Current-System Findings
 
@@ -138,9 +144,15 @@ hide sensor-resolution effects.
 A single feedback structure is required rather than scattered optional arguments. Task 1
 ends at external producer and transport boundaries: `AxisFeedback`, `HydroPump`,
 `PressureModelOutput`, simulator state, and simulator handles. It must not retain the
-packet in `HYD_AxisRef`, diagnostics, or `HYD_PressureControllerInput`, because those
-core snapshots are resource-constrained and have no consumer before ripple compensation.
-Task 5 adds the first core consumer atomically through a transient per-cycle ingress.
+packet in `HYD_AxisRef`, diagnostics, `HYD_MotionControlFB`, or long-lived pressure
+controller state. Task 5 adds the first core consumer atomically through a borrowed,
+per-cycle ingress. A stack `HYD_PressureControllerInput` may borrow the packet only for
+that scan; it must never become its persistent owner.
+
+`HYD_RippleCompState` is caller/adapter-owned, one state per real control-axis ingress.
+It is not embedded in the size-capped `HYD_MotionControlFB`, copied into snapshots, or
+shared through static storage. The owner survives calls only to validate adjacent phase
+samples; the table and the current feedback packet are borrowed on each call.
 
 The fields and their first consumer are fixed here:
 
@@ -158,7 +170,8 @@ The chain is:
 ```text
 IEC/HAL -> HYD_PumpFeedback -> AxisFeedback/HydroPump/PressureModelOutput
         -> simulator state and public handle -> Task 5 transient motion ingress
-        -> ripple compensator -> pump converter -> final applied RPM
+        -> pressure controller flow output -> pump converter -> ripple compensator
+        -> final RPM limiter -> final applied RPM
         -> PI tracking state and diagnostics
 ```
 
@@ -211,9 +224,11 @@ cycle, the relevant compensator is disabled and a diagnostic is raised.
 ### 6.1 Controller selection
 
 Pressure hold, back-pressure control, and the pressure-controlled side of V/P transfer
-use RBF-PI as the production default. This matches the hydraulic object's leakage,
-compressibility, sensor delay, and periodic pump disturbance more safely than adaptive
-error-derivative control.
+may select tracking positional RBF-PI only after the held-out physical-model, STM32H7,
+and controlled-machine gates pass for that recipe. It is the preferred candidate over
+adaptive error-derivative control because it matches the hydraulic object's leakage,
+compressibility, sensor delay, and periodic pump disturbance. Until those gates pass,
+the existing approved PI/PID recipe remains the production default.
 
 RBF-PID is retained for recipe compatibility and A/B tests. It may only use a fixed,
 filtered measurement-rate damping path after model and closed-loop evidence show a
@@ -286,14 +301,19 @@ directly command a separate hidden output and does not adapt KD in the first rel
 - Learning freezes when angle, pressure, RPM, torque, or timestamp validity fails; when
   output is saturated in the same error direction; during relief; and while the output
   slew limiter is active beyond its allowed tracking threshold.
+- The current transient feedback gate requires all four packet validity bits, finite
+  values, pressure/task timestamp agreement within 2 ms, and no clear RPM/torque
+  direction conflict above 1 RPM and 50 permille. A failed gate freezes only RBF-PI
+  network/Kp/Ki adaptation; the deterministic positional PI update remains active.
 - Gain changes are rate limited and bumpless. RBF weight/gain adaptation can be decimated
   to every 4 to 10 control samples while the PI output still runs every 1 ms.
 
 ## 7. Angle-Synchronous Gear-Pump Ripple Feedforward
 
-The first production release uses fixed calibrated feedforward, not a direct online
-FxLMS implementation. This avoids relying on an unidentified secondary path and avoids
-the sign and unit errors in the previous draft.
+The candidate first release uses fixed calibrated feedforward, not a direct online FxLMS
+implementation. It is enabled only when the matching table is calibrated and the
+physical-model, resource, and machine gates pass. This avoids relying on an unidentified
+secondary path and avoids the sign and unit errors in the previous draft.
 
 ```text
 delta_n_ripple = A13(|n|) * sin(tooth_phase + phi13(|n|))
@@ -303,8 +323,11 @@ delta_n_ripple = A13(|n|) * sin(tooth_phase + phi13(|n|))
 `A` is in RPM and `phi` is in radians or degrees with one documented convention. The
 sign is established by calibration against the physical plant, not hard-coded as a
 generic subtraction. The table is indexed by absolute RPM and direction is handled
-explicitly. A small pressure-dependent schedule is introduced only if validation proves
-that a speed-only table leaves an unacceptable residual; it is not added preemptively.
+explicitly. The embedded implementation uses a bounded quarter-wave sine LUT, validates
+strictly increasing RPM breakpoints and the 30% RPM-domain amplitude bound, and gates
+13th/26th orders independently at the 1 ms observability limit. A small
+pressure-dependent schedule is introduced only if validation proves that a speed-only
+table leaves an unacceptable residual; it is not added preemptively.
 
 The 39th order is measured and reported. It is included only when a 13th/26th controller
 passes the resource gate but cannot meet the total p-p target. All compensation is
@@ -566,6 +589,8 @@ Unit and integration coverage must include:
 - RBF adaptation may be decimated; the PI, limiter, and phase gate execute every cycle.
 - Static RAM and flash deltas are inspected in the link map. Each new state member is
   accounted for by one of the data-chain consumers above.
+- `HYD_MotionControlFB` remains within its existing 3208-byte cap; ripple continuity
+  state is charged to the caller/HAL adapter that owns the axis ingress, not to the FB.
 - Worst-case control-task execution time is measured with the STM32H7 DWT cycle counter
   under pressure control, diagnostics, and communications load. The provisional gate is
   less than 20% of the 1 ms period; the exact board clock and scheduling budget are
@@ -578,10 +603,12 @@ Unit and integration coverage must include:
 
 ### Current implementation plan
 
-The next implementation plan covers the complete feedback chain, calibrated physical
-simulation profile, tracking positional RBF-PI core, final-output tracking, fixed 13th/
-26th feedforward, diagnostics, and the validation tests above. It removes or corrects
-the prior draft's incorrect angle, sign, unit, and model assumptions.
+The next implementation plan covers the complete feedback chain, an explicitly
+uncalibrated physical simulation profile, tracking positional RBF-PI core,
+final-output tracking, fixed 13th/26th feedforward plumbing, diagnostics, and the
+validation tests above. Neither the physical profile nor the table is production-ready
+until identification provenance and held-out validation pass; the plan removes or
+corrects the prior draft's incorrect angle, sign, unit, and model assumptions.
 
 ### Explicitly deferred to a later approved plan
 
