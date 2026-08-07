@@ -95,18 +95,29 @@ static float pressure_model_wrap_unit(float value) {
 static void pressure_model_fill_feedback(const PressureModelState *state,
                                          PressureModelOutput *out) {
     float angle;
+    float phase_degrees;
 
     if (state == NULL || out == NULL) return;
-    angle = fmodf(state->pump_phase_rev * 360.0f, 360.0f);
-    if (angle < 0.0f) angle += 360.0f;
+    angle = 0.0f;
+    phase_degrees = state->pump_phase_rev * 360.0f;
+    if (isfinite(phase_degrees)) {
+        angle = fmodf(phase_degrees, 360.0f);
+        if (angle < 0.0f) angle += 360.0f;
+    }
     memset(&out->pumpFeedback, 0, sizeof(out->pumpFeedback));
-    out->pumpFeedback.rpm = out->actual_motor_rpm;
-    out->pumpFeedback.angleDeg = angle;
     out->pumpFeedback.torquePermille = 0.0f;
-    out->pumpFeedback.timestamp = state->timestamp_s;
-    out->pumpFeedback.validFlags = HYD_PUMP_FEEDBACK_VALID_RPM |
-                                   HYD_PUMP_FEEDBACK_VALID_ANGLE |
-                                   HYD_PUMP_FEEDBACK_VALID_TIMESTAMP;
+    if (isfinite(out->actual_motor_rpm)) {
+        out->pumpFeedback.rpm = out->actual_motor_rpm;
+        out->pumpFeedback.validFlags |= HYD_PUMP_FEEDBACK_VALID_RPM;
+    }
+    if (isfinite(angle)) {
+        out->pumpFeedback.angleDeg = angle;
+        out->pumpFeedback.validFlags |= HYD_PUMP_FEEDBACK_VALID_ANGLE;
+    }
+    if (isfinite(state->timestamp_s)) {
+        out->pumpFeedback.timestamp = state->timestamp_s;
+        out->pumpFeedback.validFlags |= HYD_PUMP_FEEDBACK_VALID_TIMESTAMP;
+    }
 }
 
 static uint32_t pressure_model_seed(uint32_t seed) {
@@ -349,9 +360,11 @@ void PressureModel_Step(const PressureModelParams *params,
         return;
     }
 
-    dt = dt_s > 0.0f ? dt_s : PRESSURE_MODEL_DEFAULT_DT_S;
+    dt = (isfinite(dt_s) && dt_s > 0.0f) ? dt_s : PRESSURE_MODEL_DEFAULT_DT_S;
     state->timestamp_s += dt;
-    clamped_target = pressure_model_clampf(target_rpm, params->min_rpm, params->max_rpm);
+    clamped_target = isfinite(target_rpm)
+        ? pressure_model_clampf(target_rpm, params->min_rpm, params->max_rpm)
+        : 0.0f;
     alpha = dt / (params->motor_tau_s + dt);
     motor_noise = 0.0f;
     process_noise = 0.0f;

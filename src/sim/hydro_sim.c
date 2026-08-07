@@ -162,6 +162,16 @@ static void Sim_UpdateAxisFeedback(SimAxisState* axis) {
     axis->last_feedback.pressure_bar = pressure_bar;
 }
 
+static void Sim_AdoptCommandFeedback(SimAxisState* axis) {
+    if (axis == NULL) return;
+
+    memset(&axis->pump_feedback, 0, sizeof(axis->pump_feedback));
+    axis->pump_feedback.rpm = axis->last_cmd_rpm;
+    axis->pump_feedback.validFlags = HYD_PUMP_FEEDBACK_VALID_RPM;
+    axis->pump_feedback_from_pressure_model = false;
+    axis->last_feedback.pumpFeedback = axis->pump_feedback;
+}
+
 static SimAxisState* Sim_FindFreeAxisSlot(HydraulicSimEnv* env) {
     int i;
 
@@ -239,18 +249,16 @@ static void Sim_WritePump(void* ctx, HydroPump* pump) {
     pump->feedback_rpm = pump->feedback.rpm;
 
     if (pump->grant_valid && pump->granted_rpm > 0.0f) {
-        memset(&axis->pump_feedback, 0, sizeof(axis->pump_feedback));
-        axis->pump_feedback_from_pressure_model = false;
         env->cmd_rpm = pump->granted_rpm;
         env->pump_owner_axis_id = axis->axis_id;
         axis->last_cmd_rpm = pump->granted_rpm;
         axis->enabled = true;
+        Sim_AdoptCommandFeedback(axis);
     } else if (env->pump_owner_axis_id == axis->axis_id) {
-        memset(&axis->pump_feedback, 0, sizeof(axis->pump_feedback));
-        axis->pump_feedback_from_pressure_model = false;
         env->cmd_rpm = 0.0f;
         env->pump_owner_axis_id = -1;
         axis->last_cmd_rpm = 0.0f;
+        Sim_AdoptCommandFeedback(axis);
     }
 }
 
@@ -383,12 +391,11 @@ int HydraulicSim_SetAxisCommand(HydraulicSimEnv* env,
     if (axis == NULL) return 0;
 
     axis->enabled = enable;
-    memset(&axis->pump_feedback, 0, sizeof(axis->pump_feedback));
-    axis->pump_feedback_from_pressure_model = false;
     axis->last_cmd_rpm = (cmd_rpm > 0.0f) ? cmd_rpm : 0.0f;
     axis->direction_cmd = HydraulicSim_NormalizeDirection(direction);
     axis->valve_cmd.valve_fwd = (axis->direction_cmd > 0);
     axis->valve_cmd.valve_bwd = (axis->direction_cmd < 0);
+    Sim_AdoptCommandFeedback(axis);
 
     if (enable) {
         env->cmd_rpm = axis->last_cmd_rpm;

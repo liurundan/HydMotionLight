@@ -651,7 +651,7 @@ static void test_negative_same_direction_latches_inendvelocity_on_target_crossin
     if (core == NULL) {
         return;
     }
-    core->AXIS_REF.position = 200.0f;
+    HYD_MotionControlFB_SetSimulationPosition(core, 200.0f);
 
     init_movecontinuousabsolute(&cmd, axisId, 120.0f, 25.0f, 8.0f,
                                 HYD_DIRECTION_NEGATIVE,

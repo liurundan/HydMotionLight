@@ -3380,6 +3380,14 @@ void HYD_MotionControlFB_Init(HYD_MotionControlFB* fb) {
     fb->PRESSURE_LIMIT = 250.0f;
 }
 
+void HYD_MotionControlFB_SetSimulationPosition(HYD_MotionControlFB* fb,
+                                               HYD_REAL position) {
+    if (fb == NULL || !fb->_useSimulation || !isfinite((double)position)) {
+        return;
+    }
+    fb->AXIS_REF.position = (position < 0.0f) ? 0.0f : position;
+}
+
 void HYD_MotionControlFB_SoftReset(HYD_MotionControlFB* fb) {
     /* Persistent fields saved across soft reset */
     HYD_MotionSegment savedRecipe[HYD_MAX_SEGMENTS];

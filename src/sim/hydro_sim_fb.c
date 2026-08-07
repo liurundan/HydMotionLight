@@ -87,12 +87,17 @@ static void PressureModelFb_ClearAxisFeedback(void) {
     for (i = 0; i < HYD_MAX_HYDRAULIC_SIM_FB; ++i) {
         int slot;
 
-        if (!g_shared_env.axes[i].allocated) {
+        if (!g_shared_env.axes[i].allocated ||
+            !g_shared_env.axes[i].pump_feedback_from_pressure_model) {
             continue;
         }
         memset(&g_shared_env.axes[i].pump_feedback, 0,
                sizeof(g_shared_env.axes[i].pump_feedback));
         g_shared_env.axes[i].pump_feedback_from_pressure_model = false;
+        g_shared_env.axes[i].pump_feedback.rpm =
+            g_shared_env.axes[i].last_cmd_rpm;
+        g_shared_env.axes[i].pump_feedback.validFlags =
+            HYD_PUMP_FEEDBACK_VALID_RPM;
         g_shared_env.axes[i].last_feedback.pumpFeedback =
             g_shared_env.axes[i].pump_feedback;
         slot = Hyd_GetSlotByAxisId(g_shared_env.axes[i].axis_id);

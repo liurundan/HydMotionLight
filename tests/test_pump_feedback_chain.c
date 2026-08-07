@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <math.h>
 #include <string.h>
 
 #include "common_types.h"
@@ -115,6 +116,24 @@ static void test_pressure_model_packet_survives_simulator_refresh(void) {
     assert(!HYD_PumpFeedback_HasValid(handle->pumpFeedback.validFlags,
                                       HYD_PUMP_FEEDBACK_VALID_TORQUE));
     model_feedback = handle->pumpFeedback;
+    {
+        HYD_MOVESIMAXIS move_cmd;
+
+        memset(&move_cmd, 0, sizeof(move_cmd));
+        move_cmd.ENABLE.value = true;
+        move_cmd.AXISID.value = create_cmd.AXISID.value;
+        move_cmd.CMD_RPM.value = 50.0;
+        move_cmd.DIRECTION.value = 1;
+        __mcl_cmd_moveSimAxis(&move_cmd);
+        assert(HYD_PumpFeedback_HasValid(handle->pumpFeedback.validFlags,
+                                         HYD_PUMP_FEEDBACK_VALID_RPM));
+        assert(!HYD_PumpFeedback_HasValid(handle->pumpFeedback.validFlags,
+                                          HYD_PUMP_FEEDBACK_VALID_ANGLE |
+                                          HYD_PUMP_FEEDBACK_VALID_TIMESTAMP));
+        assert(handle->pumpFeedback.rpm == 50.0f);
+    }
+    __mcl_cmd_updatePressureModel(&model_cmd);
+    model_feedback = handle->pumpFeedback;
     __HydSimulator_framework_Publish();
     HYD_HydraulicSimFB_Cycle(handle);
 
@@ -127,7 +146,11 @@ static void test_pressure_model_packet_survives_simulator_refresh(void) {
     __mcl_cmd_updatePressureModel(&model_cmd);
     assert(!HYD_PumpFeedback_HasValid(handle->pumpFeedback.validFlags,
                                       HYD_PUMP_FEEDBACK_VALID_ANGLE));
-    assert(handle->pumpFeedback.validFlags == 0u);
+    assert(HYD_PumpFeedback_HasValid(handle->pumpFeedback.validFlags,
+                                     HYD_PUMP_FEEDBACK_VALID_RPM));
+    assert(!HYD_PumpFeedback_HasValid(handle->pumpFeedback.validFlags,
+                                      HYD_PUMP_FEEDBACK_VALID_TIMESTAMP));
+    assert(handle->pumpFeedback.rpm == 50.0f);
     __HydSimulator_framework_Publish();
     HYD_HydraulicSimFB_Cycle(handle);
     assert(!HYD_PumpFeedback_HasValid(handle->pumpFeedback.validFlags,
@@ -135,7 +158,41 @@ static void test_pressure_model_packet_survives_simulator_refresh(void) {
     assert(HYD_PumpFeedback_HasValid(handle->pumpFeedback.validFlags,
                                      HYD_PUMP_FEEDBACK_VALID_RPM |
                                      HYD_PUMP_FEEDBACK_VALID_TIMESTAMP));
-    assert(handle->pumpFeedback.rpm == 0.0f);
+    assert(handle->pumpFeedback.rpm == 50.0f);
+
+    {
+        HYD_MOVESIMAXIS move_cmd;
+
+        memset(&move_cmd, 0, sizeof(move_cmd));
+        move_cmd.ENABLE.value = true;
+        move_cmd.AXISID.value = create_cmd.AXISID.value;
+        move_cmd.CMD_RPM.value = 40.0;
+        move_cmd.DIRECTION.value = 1;
+        __mcl_cmd_moveSimAxis(&move_cmd);
+        __mcl_cmd_updatePressureModel(&model_cmd);
+        assert(handle->pumpFeedback.rpm == 40.0f);
+        assert(!HYD_PumpFeedback_HasValid(handle->pumpFeedback.validFlags,
+                                          HYD_PUMP_FEEDBACK_VALID_ANGLE));
+    }
+
+    model_cmd.ENABLE.value = true;
+    model_cmd.MOTOR_RPM.value = NAN;
+    model_cmd.TIME_S.value = 0.2;
+    __mcl_cmd_updatePressureModel(&model_cmd);
+    assert(!HYD_PumpFeedback_HasValid(handle->pumpFeedback.validFlags,
+                                      HYD_PUMP_FEEDBACK_VALID_TORQUE));
+    if (HYD_PumpFeedback_HasValid(handle->pumpFeedback.validFlags,
+                                  HYD_PUMP_FEEDBACK_VALID_RPM)) {
+        assert(isfinite(handle->pumpFeedback.rpm));
+    }
+    if (HYD_PumpFeedback_HasValid(handle->pumpFeedback.validFlags,
+                                  HYD_PUMP_FEEDBACK_VALID_ANGLE)) {
+        assert(isfinite(handle->pumpFeedback.angleDeg));
+    }
+    if (HYD_PumpFeedback_HasValid(handle->pumpFeedback.validFlags,
+                                  HYD_PUMP_FEEDBACK_VALID_TIMESTAMP)) {
+        assert(isfinite(handle->pumpFeedback.timestamp));
+    }
 }
 
 int main(void) {
