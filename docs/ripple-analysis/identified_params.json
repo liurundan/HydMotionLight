@@ -1,224 +1,244 @@
 {
-  "calibration_id": "e615634bcdf42cf13210faff493260cdbf146a785d0199652a343b0d41897872",
+  "calibration_id": "6f30fd573c576c091f277836c6d06b2bc1dcf9f063b0787b5658a9d9ce0182c7",
   "calibration_status": "model not calibrated",
   "coordinate_descent_trace": [
     {
       "max_step_fraction": 0.25,
       "objective": {
-        "order13_rmse_bar": 19.2782210716719,
-        "order26_rmse_bar": 7.676187217257556,
-        "pressure_rmse_bar": 808.9565695328292,
+        "order13_phase_rmse_deg": 121.10557900598957,
+        "order13_rmse_bar": 19.300622776025573,
+        "order26_rmse_bar": 7.698603257540209,
+        "pressure_rmse_bar": 808.944626944015,
         "rpm_rmse": 0.07553821411405655,
-        "value": 409.11665534529754
+        "value": 410.3284617858493
       },
       "round": 1
     },
     {
       "max_step_fraction": 0.25,
       "objective": {
-        "order13_rmse_bar": 19.288952620779675,
-        "order26_rmse_bar": 7.687910824067991,
-        "pressure_rmse_bar": 808.9492669839877,
+        "order13_phase_rmse_deg": 120.60524011525729,
+        "order13_rmse_bar": 19.302211644625235,
+        "order26_rmse_bar": 7.7005980616966685,
+        "pressure_rmse_bar": 808.9432967823552,
         "rpm_rmse": 0.02738041931522809,
-        "value": 409.10669118241964
+        "value": 410.313679011288
       },
       "round": 2
     },
     {
       "max_step_fraction": 0.25,
       "objective": {
-        "order13_rmse_bar": 19.288952616682995,
-        "order26_rmse_bar": 7.6879108202616155,
-        "pressure_rmse_bar": 808.9492669862019,
-        "rpm_rmse": 0.02738041931522809,
-        "value": 409.10669118232676
+        "order13_phase_rmse_deg": 119.87894042438725,
+        "order13_rmse_bar": 19.304394305661603,
+        "order26_rmse_bar": 7.703532264388679,
+        "pressure_rmse_bar": 808.9413237990145,
+        "rpm_rmse": 0.02576737698919104,
+        "value": 410.3058368667202
       },
       "round": 3
     },
     {
-      "max_step_fraction": 0.125,
+      "max_step_fraction": 0.25,
       "objective": {
-        "order13_rmse_bar": 19.28893168976911,
-        "order26_rmse_bar": 7.687891538696343,
-        "pressure_rmse_bar": 808.9492771528754,
-        "rpm_rmse": 0.026363221781461197,
-        "value": 409.1064867126175
+        "order13_phase_rmse_deg": 119.75469472054301,
+        "order13_rmse_bar": 19.304755025131684,
+        "order26_rmse_bar": 7.704045260710732,
+        "pressure_rmse_bar": 808.9409767491582,
+        "rpm_rmse": 0.025679109294723963,
+        "value": 410.3045266747408
       },
       "round": 4
     },
     {
-      "max_step_fraction": 0.0625,
+      "max_step_fraction": 0.125,
       "objective": {
-        "order13_rmse_bar": 19.224332783526254,
-        "order26_rmse_bar": 7.704037184111124,
-        "pressure_rmse_bar": 808.9660746084511,
-        "rpm_rmse": 0.03167125087810797,
-        "value": 409.1046418295175
+        "order13_phase_rmse_deg": 119.51627234035466,
+        "order13_rmse_bar": 19.244147523588076,
+        "order26_rmse_bar": 7.716321898127414,
+        "pressure_rmse_bar": 808.9577741062049,
+        "rpm_rmse": 0.030242257602678867,
+        "value": 410.3005599225569
       },
       "round": 5
     },
     {
       "max_step_fraction": 0.0625,
       "objective": {
-        "order13_rmse_bar": 19.224427894447153,
-        "order26_rmse_bar": 7.7040752171919635,
-        "pressure_rmse_bar": 808.9660361292906,
-        "rpm_rmse": 0.031006728956927233,
-        "value": 409.10451251104536
+        "order13_phase_rmse_deg": 119.51611798899687,
+        "order13_rmse_bar": 19.244150530681807,
+        "order26_rmse_bar": 7.716323292603706,
+        "pressure_rmse_bar": 808.9577724893355,
+        "rpm_rmse": 0.030242257602678867,
+        "value": 410.300558311475
       },
       "round": 6
     },
     {
-      "max_step_fraction": 0.0625,
+      "max_step_fraction": 0.03125,
       "objective": {
-        "order13_rmse_bar": 19.22457420144296,
-        "order26_rmse_bar": 7.704133541505046,
-        "pressure_rmse_bar": 808.9659769382889,
-        "rpm_rmse": 0.03044619069628952,
-        "value": 409.1044059017228
+        "order13_phase_rmse_deg": 119.51611798899687,
+        "order13_rmse_bar": 19.244150530681807,
+        "order26_rmse_bar": 7.716323292603706,
+        "pressure_rmse_bar": 808.9577724893355,
+        "rpm_rmse": 0.030242257602678867,
+        "value": 410.300558311475
       },
       "round": 7
     },
     {
-      "max_step_fraction": 0.0625,
+      "max_step_fraction": 0.015625,
       "objective": {
-        "order13_rmse_bar": 19.224128024717935,
-        "order26_rmse_bar": 7.7039456613131785,
-        "pressure_rmse_bar": 808.9661913714743,
+        "order13_phase_rmse_deg": 119.51611749713075,
+        "order13_rmse_bar": 19.244150338662646,
+        "order26_rmse_bar": 7.716323206384321,
+        "pressure_rmse_bar": 808.9577725687737,
         "rpm_rmse": 0.030242257602678867,
-        "value": 409.1043643083326
+        "value": 410.3005582992497
       },
       "round": 8
     },
     {
-      "max_step_fraction": 0.03125,
+      "max_step_fraction": 0.0078125,
       "objective": {
-        "order13_rmse_bar": 19.224318038044224,
-        "order26_rmse_bar": 7.704030943233323,
-        "pressure_rmse_bar": 808.966080989632,
+        "order13_phase_rmse_deg": 119.51611749713075,
+        "order13_rmse_bar": 19.244150338662646,
+        "order26_rmse_bar": 7.716323206384321,
+        "pressure_rmse_bar": 808.9577725687737,
         "rpm_rmse": 0.030242257602678867,
-        "value": 409.1043556482687
+        "value": 410.3005582992497
       },
       "round": 9
     },
     {
-      "max_step_fraction": 0.015625,
+      "max_step_fraction": 0.00390625,
       "objective": {
-        "order13_rmse_bar": 19.22431981065378,
-        "order26_rmse_bar": 7.704031678460525,
-        "pressure_rmse_bar": 808.9660798394054,
+        "order13_phase_rmse_deg": 119.51609831701154,
+        "order13_rmse_bar": 19.244150762730584,
+        "order26_rmse_bar": 7.716323402325281,
+        "pressure_rmse_bar": 808.9577723467112,
         "rpm_rmse": 0.030242257602678867,
-        "value": 409.1043555012001
+        "value": 410.3005581008249
       },
       "round": 10
     },
     {
-      "max_step_fraction": 0.015625,
+      "max_step_fraction": 0.001953125,
       "objective": {
-        "order13_rmse_bar": 19.22432086625864,
-        "order26_rmse_bar": 7.704032035517909,
-        "pressure_rmse_bar": 808.9660793185645,
+        "order13_phase_rmse_deg": 119.51609831701154,
+        "order13_rmse_bar": 19.244150762730584,
+        "order26_rmse_bar": 7.716323402325281,
+        "pressure_rmse_bar": 808.9577723467112,
         "rpm_rmse": 0.030242257602678867,
-        "value": 409.1043554876063
+        "value": 410.3005581008249
       },
       "round": 11
     },
     {
-      "max_step_fraction": 0.0078125,
+      "max_step_fraction": 0.0009765625,
       "objective": {
-        "order13_rmse_bar": 19.22432086625864,
-        "order26_rmse_bar": 7.704032035517909,
-        "pressure_rmse_bar": 808.9660793185645,
+        "order13_phase_rmse_deg": 119.51609831701154,
+        "order13_rmse_bar": 19.244150762730584,
+        "order26_rmse_bar": 7.716323402325281,
+        "pressure_rmse_bar": 808.9577723467112,
         "rpm_rmse": 0.030242257602678867,
-        "value": 409.1043554876063
+        "value": 410.3005581008249
       },
       "round": 12
     },
     {
-      "max_step_fraction": 0.0078125,
+      "max_step_fraction": 0.00048828125,
       "objective": {
-        "order13_rmse_bar": 19.224320413398644,
-        "order26_rmse_bar": 7.70403189651509,
-        "pressure_rmse_bar": 808.9660795131982,
+        "order13_phase_rmse_deg": 119.51609831701154,
+        "order13_rmse_bar": 19.244150762730584,
+        "order26_rmse_bar": 7.716323402325281,
+        "pressure_rmse_bar": 808.9577723467112,
         "rpm_rmse": 0.030242257602678867,
-        "value": 409.1043554804509
+        "value": 410.3005581008249
       },
       "round": 13
     },
     {
-      "max_step_fraction": 0.00390625,
+      "max_step_fraction": 0.000244140625,
       "objective": {
-        "order13_rmse_bar": 19.224320380670125,
-        "order26_rmse_bar": 7.7040318838963495,
-        "pressure_rmse_bar": 808.9660795265701,
+        "order13_phase_rmse_deg": 119.51609831701154,
+        "order13_rmse_bar": 19.244150762730584,
+        "order26_rmse_bar": 7.716323402325281,
+        "pressure_rmse_bar": 808.9577723467112,
         "rpm_rmse": 0.030242257602678867,
-        "value": 409.10435547932923
+        "value": 410.3005581008249
       },
       "round": 14
     },
     {
-      "max_step_fraction": 0.00390625,
+      "max_step_fraction": 0.0001220703125,
       "objective": {
-        "order13_rmse_bar": 19.224320154261676,
-        "order26_rmse_bar": 7.704031814399172,
-        "pressure_rmse_bar": 808.9660796238771,
+        "order13_phase_rmse_deg": 119.51609831701154,
+        "order13_rmse_bar": 19.244150762730584,
+        "order26_rmse_bar": 7.716323402325281,
+        "pressure_rmse_bar": 808.9577723467112,
         "rpm_rmse": 0.030242257602678867,
-        "value": 409.10435547575133
+        "value": 410.3005581008249
       },
       "round": 15
     },
     {
-      "max_step_fraction": 0.001953125,
+      "max_step_fraction": 6.103515625e-05,
       "objective": {
-        "order13_rmse_bar": 19.224320154261676,
-        "order26_rmse_bar": 7.704031814399172,
-        "pressure_rmse_bar": 808.9660796238771,
+        "order13_phase_rmse_deg": 119.51609831701154,
+        "order13_rmse_bar": 19.244150762730584,
+        "order26_rmse_bar": 7.716323402325281,
+        "pressure_rmse_bar": 808.9577723467112,
         "rpm_rmse": 0.030242257602678867,
-        "value": 409.10435547575133
+        "value": 410.3005581008249
       },
       "round": 16
     },
     {
-      "max_step_fraction": 0.0009765625,
+      "max_step_fraction": 6.103515625e-05,
       "objective": {
-        "order13_rmse_bar": 19.224320154261676,
-        "order26_rmse_bar": 7.704031814399172,
-        "pressure_rmse_bar": 808.9660796238771,
+        "order13_phase_rmse_deg": 119.51609831791129,
+        "order13_rmse_bar": 19.244150761150184,
+        "order26_rmse_bar": 7.716323401614314,
+        "pressure_rmse_bar": 808.9577723473764,
         "rpm_rmse": 0.030242257602678867,
-        "value": 409.10435547575133
+        "value": 410.3005581007793
       },
       "round": 17
     },
     {
-      "max_step_fraction": 0.00048828125,
+      "max_step_fraction": 3.0517578125e-05,
       "objective": {
-        "order13_rmse_bar": 19.22432013330122,
-        "order26_rmse_bar": 7.704031806079566,
-        "pressure_rmse_bar": 808.9660796323761,
+        "order13_phase_rmse_deg": 119.51609831791129,
+        "order13_rmse_bar": 19.244150761150184,
+        "order26_rmse_bar": 7.716323401614314,
+        "pressure_rmse_bar": 808.9577723473764,
         "rpm_rmse": 0.030242257602678867,
-        "value": 409.1043554749768
+        "value": 410.3005581007793
       },
       "round": 18
     },
     {
-      "max_step_fraction": 0.00048828125,
+      "max_step_fraction": 1.52587890625e-05,
       "objective": {
-        "order13_rmse_bar": 19.224320087137247,
-        "order26_rmse_bar": 7.704031784923939,
-        "pressure_rmse_bar": 808.9660796503252,
+        "order13_phase_rmse_deg": 119.51609831791129,
+        "order13_rmse_bar": 19.244150761150184,
+        "order26_rmse_bar": 7.716323401614314,
+        "pressure_rmse_bar": 808.9577723473764,
         "rpm_rmse": 0.030242257602678867,
-        "value": 409.104355472603
+        "value": 410.3005581007793
       },
       "round": 19
     },
     {
-      "max_step_fraction": 0.000244140625,
+      "max_step_fraction": 7.62939453125e-06,
       "objective": {
-        "order13_rmse_bar": 19.224320067639077,
-        "order26_rmse_bar": 7.704031777113874,
-        "pressure_rmse_bar": 808.9660796582119,
+        "order13_phase_rmse_deg": 119.51609831791129,
+        "order13_rmse_bar": 19.244150761150184,
+        "order26_rmse_bar": 7.716323401614314,
+        "pressure_rmse_bar": 808.9577723473764,
         "rpm_rmse": 0.030242257602678867,
-        "value": 409.1043554718657
+        "value": 410.3005581007793
       },
       "round": 20
     }
@@ -232,11 +252,12 @@
     "provenance_complete": false
   },
   "heldout_objective": {
-    "order13_rmse_bar": 19.646776750007668,
-    "order26_rmse_bar": 7.412317123582821,
-    "pressure_rmse_bar": 802.7133104490074,
+    "order13_phase_rmse_deg": 109.64334265015641,
+    "order13_rmse_bar": 19.665382538526362,
+    "order26_rmse_bar": 7.433673304630513,
+    "pressure_rmse_bar": 802.7049999736143,
     "rpm_rmse": 0.03179211930381949,
-    "value": 406.0336007107243
+    "value": 407.13173567533784
   },
   "parameter_bounds": {
     "cylinder_leak_m3_pa_s": [
@@ -329,21 +350,21 @@
     "motor_delay_s": 0.00078125,
     "motor_natural_freq_hz": 50.0,
     "motor_torque_limit_permille": 1000.0,
-    "outlet_leak_m3_pa_s": 1.8753709045410155e-10,
-    "outlet_volume_m3": 0.0008898437500000001,
-    "pump_leak_c0_m3_pa_s": 1.8763709045410158e-10,
-    "pump_leak_speed_m3_pa_s_per_rpm": 5.127901855468749e-13,
+    "outlet_leak_m3_pa_s": 1e-13,
+    "outlet_volume_m3": 1e-05,
+    "pump_leak_c0_m3_pa_s": 2.501975e-10,
+    "pump_leak_speed_m3_pa_s_per_rpm": 1e-15,
     "rated_motor_torque_nm": 150.0,
     "relief_deadband_pa": 200000.0,
     "relief_hysteresis_pa": 500000.0,
     "relief_orifice_coeff_m3_s_sqrt_pa": 1e-08,
     "relief_set_pa": 25000000.0,
-    "ripple13_peak": 0.018749999999999996,
-    "ripple13_phase_rad": -0.4392437501783221,
-    "ripple26_peak": 0.03000597456346212,
-    "ripple26_phase_rad": 0.9970011753066153,
-    "ripple39_peak": 1.52587890625e-06,
-    "ripple39_phase_rad": -1.9916082820225396,
+    "ripple13_peak": 0.0,
+    "ripple13_phase_rad": -0.33819276577635554,
+    "ripple26_peak": 0.15,
+    "ripple26_phase_rad": 1.5576711532788168,
+    "ripple39_peak": 0.0,
+    "ripple39_phase_rad": -2.0406716987850695,
     "sensor_delay_s": 0.0,
     "sensor_quantization_bar": 0.0,
     "suction_pressure_pa": 101325.0,
@@ -355,11 +376,12 @@
   "source_csv": "open10203040-positive.csv",
   "source_sha256": "7890a25fe2e0690f5d4e700c89e61d433712195df30859b148ba6a643680e695",
   "training_objective": {
-    "order13_rmse_bar": 19.224320067639077,
-    "order26_rmse_bar": 7.704031777113874,
-    "pressure_rmse_bar": 808.9660796582119,
+    "order13_phase_rmse_deg": 119.51609831791129,
+    "order13_rmse_bar": 19.244150761150184,
+    "order26_rmse_bar": 7.716323401614314,
+    "pressure_rmse_bar": 808.9577723473764,
     "rpm_rmse": 0.030242257602678867,
-    "value": 409.1043554718657
+    "value": 410.3005581007793
   },
   "training_windows": [
     "set_rpm_10_tail_first2500",

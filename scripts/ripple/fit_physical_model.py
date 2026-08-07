@@ -90,7 +90,7 @@ def predict(window, params):
             "torque13": solve_order(synth, 13, 6)}
 
 def objective(windows, params):
-    pressure_sq = rpm_sq = order13_sq = order26_sq = 0.0
+    pressure_sq = rpm_sq = order13_sq = order26_sq = phase13_sq = 0.0
     count = 0
     for window in windows:
         actual = window["actual"]; predicted = predict(window["rows"], params)
@@ -100,12 +100,16 @@ def objective(windows, params):
                        actual["orders"]["13"]["amplitude_bar"]) ** 2
         order26_sq += (predicted["orders"]["26"]["amplitude_bar"] -
                        actual["orders"]["26"]["amplitude_bar"]) ** 2
+        phase13_sq += math.degrees(phase_error(predicted["orders"]["13"]["phase_rad"],
+                                                actual["orders"]["13"]["phase_rad"])) ** 2
         count += 1
     pressure = math.sqrt(pressure_sq / count); rpm = math.sqrt(rpm_sq / count)
     order13 = math.sqrt(order13_sq / count); order26 = math.sqrt(order26_sq / count)
+    phase13 = math.sqrt(phase13_sq / count)
     return {"pressure_rmse_bar": pressure, "rpm_rmse": rpm, "order13_rmse_bar": order13,
             "order26_rmse_bar": order26,
-            "value": .50 * pressure + .20 * rpm + .20 * order13 + .10 * order26}
+            "order13_phase_rmse_deg": phase13,
+            "value": .50 * pressure + .20 * rpm + .20 * order13 + .10 * order26 + .01 * phase13}
 
 def window_sets(rows, summary):
     result = []
