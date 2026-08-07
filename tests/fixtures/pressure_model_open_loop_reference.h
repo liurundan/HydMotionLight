@@ -1,6 +1,10 @@
 #ifndef PRESSURE_MODEL_OPEN_LOOP_REFERENCE_H
 #define PRESSURE_MODEL_OPEN_LOOP_REFERENCE_H
 
+/*
+ * Legacy uncalibrated model-baseline sections.  The values are not measured
+ * machine data and must not be used as calibration or validation acceptance.
+ */
 typedef struct {
     float command_rpm;
     int sample_count;

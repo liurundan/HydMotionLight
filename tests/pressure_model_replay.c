@@ -65,12 +65,13 @@ int main(int argc, char **argv) {
     }
     PressureModel_Reset(&state, 0x13572468u);
     puts("# calibration_id=uncalibrated");
-    puts("# calibration_status=uncalibrated; identified_params.kv loader deferred to Task 3");
+    puts("# calibration_status=uncalibrated; supplied identified_params.kv is rejected until Task 3");
+    puts("# active_order_mask: bit0=13th, bit1=26th, bit2=39th; clear bits are disabled");
     puts("sample,actual_rpm,real_pressure_bar,measured_pressure_bar,angle_deg,"
-         "torque_permille,timestamp_s,valid_flags");
+         "torque_permille,timestamp_s,valid_flags,active_order_mask");
     for (i = 0; i < samples; ++i) {
         PressureModel_Step(&params, &state, rpm, 0.001f, &out);
-        printf("%d,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%u\n",
+        printf("%d,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%u,%u\n",
                i,
                out.actual_motor_rpm,
                out.real_pressure_bar,
@@ -78,7 +79,8 @@ int main(int argc, char **argv) {
                out.pumpFeedback.angleDeg,
                out.pumpFeedback.torquePermille,
                out.pumpFeedback.timestamp,
-               out.pumpFeedback.validFlags);
+               out.pumpFeedback.validFlags,
+               out.active_order_mask);
     }
     return 0;
 }

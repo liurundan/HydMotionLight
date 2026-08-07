@@ -77,6 +77,49 @@ static int pressure_model_is_finite_positive(float value) {
     return isfinite(value) && value > 0.0f;
 }
 
+static int pressure_model_physical_values_are_finite(const PressureModelPhysicalParams *p) {
+    return isfinite(p->atmospheric_pressure_pa) &&
+           isfinite(p->suction_pressure_pa) &&
+           isfinite(p->outlet_volume_m3) &&
+           isfinite(p->chamber_volume_m3) &&
+           isfinite(p->line_inertance_pa_s2_per_m3) &&
+           isfinite(p->line_resistance_pa_s_per_m3) &&
+           isfinite(p->line_quadratic_resistance_pa_s2_per_m6) &&
+           isfinite(p->beta_oil_pa) &&
+           isfinite(p->gas_fraction) &&
+           isfinite(p->gas_transition_pa) &&
+           isfinite(p->beta_min_pa) &&
+           isfinite(p->pump_leak_c0_m3_pa_s) &&
+           isfinite(p->pump_leak_speed_m3_pa_s_per_rpm) &&
+           isfinite(p->outlet_leak_m3_pa_s) &&
+           isfinite(p->cylinder_leak_m3_pa_s) &&
+           isfinite(p->eta_v_min) &&
+           isfinite(p->eta_m_nominal) &&
+           isfinite(p->eta_m_pressure_loss_per_pa) &&
+           isfinite(p->eta_m_speed_loss_per_rpm) &&
+           isfinite(p->eta_m_min) &&
+           isfinite(p->rated_motor_torque_nm) &&
+           isfinite(p->torque_ripple13_peak) &&
+           isfinite(p->torque_ripple13_phase_rad) &&
+           isfinite(p->ripple13_peak) &&
+           isfinite(p->ripple26_peak) &&
+           isfinite(p->ripple39_peak) &&
+           isfinite(p->ripple13_phase_rad) &&
+           isfinite(p->ripple26_phase_rad) &&
+           isfinite(p->ripple39_phase_rad) &&
+           isfinite(p->motor_natural_freq_hz) &&
+           isfinite(p->motor_damping) &&
+           isfinite(p->motor_delay_s) &&
+           isfinite(p->motor_accel_limit_rpm_s) &&
+           isfinite(p->motor_torque_limit_permille) &&
+           isfinite(p->relief_set_pa) &&
+           isfinite(p->relief_deadband_pa) &&
+           isfinite(p->relief_orifice_coeff_m3_s_sqrt_pa) &&
+           isfinite(p->relief_hysteresis_pa) &&
+           isfinite(p->sensor_delay_s) &&
+           isfinite(p->sensor_quantization_bar);
+}
+
 static unsigned char pressure_model_normalize_type(unsigned char model_type) {
     return model_type == PRESSURE_MODEL_TYPE_FIRST_ORDER
                ? PRESSURE_MODEL_TYPE_FIRST_ORDER
@@ -84,26 +127,30 @@ static unsigned char pressure_model_normalize_type(unsigned char model_type) {
 }
 
 static int pressure_model_delay_steps(float delay_s) {
+    if (!isfinite(delay_s) || delay_s < 0.0f ||
+        delay_s > PRESSURE_MODEL_PHYSICAL_MAX_DELAY_STEPS * PRESSURE_MODEL_DT_S) {
+        return 0;
+    }
     int steps = (int)(delay_s / PRESSURE_MODEL_DT_S + 0.5f);
 
     if (steps < 0) return 0;
-    if (steps >= PRESSURE_MODEL_PHYSICAL_MAX_DELAY_STEPS) {
-        return PRESSURE_MODEL_PHYSICAL_MAX_DELAY_STEPS - 1;
+    if (steps > PRESSURE_MODEL_PHYSICAL_MAX_DELAY_STEPS) {
+        return PRESSURE_MODEL_PHYSICAL_MAX_DELAY_STEPS;
     }
     return steps;
 }
 
-static float pressure_model_delay_write_read(float ring[PRESSURE_MODEL_PHYSICAL_MAX_DELAY_STEPS],
+static float pressure_model_delay_write_read(float ring[PRESSURE_MODEL_PHYSICAL_DELAY_SLOTS],
                                              unsigned char *index,
                                              int delay_steps,
                                              float value) {
     int read_index;
 
     ring[*index] = value;
-    read_index = ((int)*index + PRESSURE_MODEL_PHYSICAL_MAX_DELAY_STEPS - delay_steps) %
-                 PRESSURE_MODEL_PHYSICAL_MAX_DELAY_STEPS;
+    read_index = ((int)*index + PRESSURE_MODEL_PHYSICAL_DELAY_SLOTS - delay_steps) %
+                 PRESSURE_MODEL_PHYSICAL_DELAY_SLOTS;
     value = ring[read_index];
-    *index = (unsigned char)(((int)*index + 1) % PRESSURE_MODEL_PHYSICAL_MAX_DELAY_STEPS);
+    *index = (unsigned char)(((int)*index + 1) % PRESSURE_MODEL_PHYSICAL_DELAY_SLOTS);
     return value;
 }
 
@@ -155,7 +202,7 @@ float PressureModel_EffectiveBulkModulusPa(const PressureModelPhysicalParams *pa
 int PressureModel_ValidatePhysicalParams(const PressureModelPhysicalParams *params) {
     float stiffness_ratio;
 
-    if (params == NULL ||
+    if (params == NULL || !pressure_model_physical_values_are_finite(params) ||
         !pressure_model_is_finite_positive(params->atmospheric_pressure_pa) ||
         !pressure_model_is_finite_positive(params->suction_pressure_pa) ||
         !pressure_model_is_finite_positive(params->outlet_volume_m3) ||
@@ -190,17 +237,11 @@ int PressureModel_ValidatePhysicalParams(const PressureModelPhysicalParams *para
         !pressure_model_is_finite_nonnegative(params->ripple39_peak) ||
         params->eta_v_min <= 0.0f || params->eta_v_min > 1.0f ||
         params->eta_m_nominal <= 0.0f || params->eta_m_nominal > 1.0f ||
-        params->eta_m_min <= 0.0f || params->eta_m_min > 1.0f ||
+        params->eta_m_min <= 0.0f || params->eta_m_min > params->eta_m_nominal ||
         params->motor_delay_s < 0.0f || params->motor_delay_s > 0.064f ||
         params->sensor_delay_s < 0.0f || params->sensor_delay_s > 0.064f ||
-        !isfinite(params->eta_m_pressure_loss_per_pa) ||
-        !isfinite(params->eta_m_speed_loss_per_rpm) ||
-        !isfinite(params->torque_ripple13_phase_rad) ||
-        !isfinite(params->ripple13_phase_rad) ||
-        !isfinite(params->ripple26_phase_rad) ||
-        !isfinite(params->ripple39_phase_rad) ||
-        !isfinite(params->motor_torque_limit_permille) ||
-        params->motor_torque_limit_permille < 0.0f) {
+        params->eta_m_pressure_loss_per_pa < 0.0f ||
+        params->eta_m_speed_loss_per_rpm < 0.0f) {
         return 0;
     }
     stiffness_ratio = params->beta_oil_pa * PRESSURE_MODEL_DT_S * PRESSURE_MODEL_DT_S /
@@ -209,6 +250,18 @@ int PressureModel_ValidatePhysicalParams(const PressureModelPhysicalParams *para
                             ? params->outlet_volume_m3
                             : params->chamber_volume_m3));
     return isfinite(stiffness_ratio) && stiffness_ratio <= 0.25f;
+}
+
+static int pressure_model_validate_runtime_params(const PressureModelParams *params) {
+    return params != NULL &&
+           PressureModel_ValidatePhysicalParams(&params->physical) &&
+           pressure_model_is_finite_positive(params->pump_displacement_m3_rev) &&
+           isfinite(params->min_rpm) &&
+           isfinite(params->max_rpm) &&
+           params->min_rpm <= params->max_rpm &&
+           pressure_model_is_finite_positive(params->sensor_range_bar) &&
+           pressure_model_is_finite_nonnegative(params->sensor_noise_std_bar) &&
+           isfinite(params->sensor_bias_bar);
 }
 
 void PressureModel_InitParams(PressureModelParams *params) {
@@ -354,8 +407,13 @@ static void pressure_model_write_hold_output(PressureModelState *state,
     pressure_model_fill_feedback(state, out, 0, 0.0f);
 }
 
-static float pressure_model_waveform(float phase) {
-    return sinf(phase) + 0.20f * sinf(2.0f * phase + 0.3f);
+static float pressure_model_order_waveform(float phase) {
+    /*
+     * A zero-mean, unit-peak sinusoid keeps each enabled term at exactly its
+     * named order.  Asymmetric Fourier content requires separately gated
+     * harmonic terms and is deferred until those calibration parameters exist.
+     */
+    return sinf(phase);
 }
 
 static void pressure_model_step_physical_substep(const PressureModelParams *params,
@@ -366,6 +424,7 @@ static void pressure_model_step_physical_substep(const PressureModelParams *para
     const PressureModelPhysicalParams *p = &params->physical;
     float delayed_target;
     float wn;
+    float accel_derivative;
     float acceleration;
     float rpm;
     float abs_rpm;
@@ -402,12 +461,9 @@ static void pressure_model_step_physical_substep(const PressureModelParams *para
         pressure_model_clampf(isfinite(target_rpm) ? target_rpm : 0.0f,
                               params->min_rpm, params->max_rpm));
     wn = 2.0f * PRESSURE_MODEL_PI * p->motor_natural_freq_hz;
-    /*
-     * The identified speed path is a delayed, acceleration-limited first-order response.
-     * Keeping acceleration as state exposes the bounded motor derivative without adding
-     * an unverified rotor-inertia claim.
-     */
-    acceleration = wn * p->motor_damping * (delayed_target - state->motor_rpm);
+    accel_derivative = wn * wn * (delayed_target - state->motor_rpm) -
+                       2.0f * p->motor_damping * wn * state->motor_accel_rpm_s;
+    acceleration = state->motor_accel_rpm_s + PRESSURE_MODEL_DT_S * accel_derivative;
     acceleration = pressure_model_clampf(acceleration,
                                          -p->motor_accel_limit_rpm_s,
                                          p->motor_accel_limit_rpm_s);
@@ -427,11 +483,11 @@ static void pressure_model_step_physical_substep(const PressureModelParams *para
     order39_active = 39.0f * abs_rpm / 60.0f < 0.45f / PRESSURE_MODEL_DT_S;
     ripple = 1.0f;
     if (order13_active) ripple += p->ripple13_peak *
-        pressure_model_waveform(phase13 + p->ripple13_phase_rad);
+        pressure_model_order_waveform(phase13 + p->ripple13_phase_rad);
     if (order26_active) ripple += p->ripple26_peak *
-        pressure_model_waveform(phase26 + p->ripple26_phase_rad);
+        pressure_model_order_waveform(phase26 + p->ripple26_phase_rad);
     if (order39_active) ripple += p->ripple39_peak *
-        pressure_model_waveform(phase39 + p->ripple39_phase_rad);
+        pressure_model_order_waveform(phase39 + p->ripple39_phase_rad);
     ripple = pressure_model_clampf(ripple, 0.20f, 1.80f);
 
     p_out_abs = p->atmospheric_pressure_pa + pressure_model_maxf(state->outlet_pressure_pa, 0.0f);
@@ -500,6 +556,10 @@ static void pressure_model_step_physical_substep(const PressureModelParams *para
     out->pump_flow_m3_s = q_pump;
     out->net_flow_m3_s = q_chamber_net;
     out->relief_flow_m3_s = q_relief;
+    out->active_order_mask = 0u;
+    if (order13_active) out->active_order_mask |= PRESSURE_MODEL_ORDER_13_ACTIVE;
+    if (order26_active) out->active_order_mask |= PRESSURE_MODEL_ORDER_26_ACTIVE;
+    if (order39_active) out->active_order_mask |= PRESSURE_MODEL_ORDER_39_ACTIVE;
     out->relief_active = state->relief_latched != 0u;
     out->estimated_torque_trend = 0.0f;
 
@@ -570,7 +630,7 @@ void PressureModel_StepInput(const PressureModelParams *params,
                                         substeps * PRESSURE_MODEL_DT_S, out);
         return;
     }
-    if (!PressureModel_ValidatePhysicalParams(&params->physical)) {
+    if (!pressure_model_validate_runtime_params(params)) {
         state->timestamp_s += substeps * PRESSURE_MODEL_DT_S;
         pressure_model_write_hold_output(state, out);
         return;

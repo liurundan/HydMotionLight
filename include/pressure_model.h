@@ -11,6 +11,13 @@ extern "C" {
 
 #define PRESSURE_MODEL_FIRST_ORDER_MAX_DELAY_STEPS 1000
 #define PRESSURE_MODEL_PHYSICAL_MAX_DELAY_STEPS 64
+#define PRESSURE_MODEL_PHYSICAL_DELAY_SLOTS (PRESSURE_MODEL_PHYSICAL_MAX_DELAY_STEPS + 1)
+
+enum {
+    PRESSURE_MODEL_ORDER_13_ACTIVE = 1u << 0,
+    PRESSURE_MODEL_ORDER_26_ACTIVE = 1u << 1,
+    PRESSURE_MODEL_ORDER_39_ACTIVE = 1u << 2
+};
 
 typedef enum {
     PRESSURE_MODEL_TYPE_PHYSICAL_CALIBRATED = 0u,
@@ -125,8 +132,8 @@ typedef struct {
     unsigned char relief_latched;
     unsigned char motor_delay_index;
     unsigned char sensor_delay_index;
-    float motor_delay_ring[PRESSURE_MODEL_PHYSICAL_MAX_DELAY_STEPS];
-    float sensor_delay_ring[PRESSURE_MODEL_PHYSICAL_MAX_DELAY_STEPS];
+    float motor_delay_ring[PRESSURE_MODEL_PHYSICAL_DELAY_SLOTS];
+    float sensor_delay_ring[PRESSURE_MODEL_PHYSICAL_DELAY_SLOTS];
 } PressureModelState;
 
 typedef struct {
@@ -135,10 +142,11 @@ typedef struct {
     float actual_motor_rpm;
     float pump_flow_m3_s;
     float net_flow_m3_s;
-    float relief_flow_m3_s;
     int relief_active;
     float estimated_torque_trend;
     HYD_PumpFeedback pumpFeedback;
+    float relief_flow_m3_s;
+    uint8_t active_order_mask;
 } PressureModelOutput;
 
 void PressureModel_InitParams(PressureModelParams *params);

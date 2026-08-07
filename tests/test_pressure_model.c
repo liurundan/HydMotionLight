@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "common_types.h"
+#include "fixtures/pressure_model_open_loop_reference.h"
 #include "pressure_model.h"
 
 #define DT_S 0.001f
@@ -56,6 +57,10 @@ static void test_profile_alias_and_first_order_regression(void) {
 
 static void test_physical_params_validate_and_invalid_holds_safely(void) {
     PressureModelParams params = physical_params();
+    PressureModelParams invalid_eta;
+    PressureModelParams invalid_motor_delay;
+    PressureModelParams invalid_sensor_delay;
+    PressureModelParams invalid_runtime;
     PressureModelState state;
     PressureModelOutput out;
     float held_pressure;
@@ -71,6 +76,40 @@ static void test_physical_params_validate_and_invalid_holds_safely(void) {
     assert(!PressureModel_ValidatePhysicalParams(&params.physical));
     PressureModel_Step(&params, &state, 100.0f, DT_S, &out);
     assert(isfinite(out.real_pressure_bar));
+    assert(fabsf(out.real_pressure_bar - held_pressure) < 1.0e-5f);
+    assert(out.pump_flow_m3_s == 0.0f);
+    assert(!HYD_PumpFeedback_HasValid(out.pumpFeedback.validFlags,
+                                      HYD_PUMP_FEEDBACK_VALID_TORQUE));
+
+    invalid_eta = physical_params();
+    invalid_motor_delay = physical_params();
+    invalid_sensor_delay = physical_params();
+    invalid_runtime = physical_params();
+    invalid_eta.physical.eta_v_min = NAN;
+    invalid_motor_delay.physical.motor_delay_s = NAN;
+    invalid_sensor_delay.physical.sensor_delay_s = NAN;
+    invalid_runtime.pump_displacement_m3_rev = NAN;
+    assert(!PressureModel_ValidatePhysicalParams(&invalid_eta.physical));
+    assert(!PressureModel_ValidatePhysicalParams(&invalid_motor_delay.physical));
+    assert(!PressureModel_ValidatePhysicalParams(&invalid_sensor_delay.physical));
+    invalid_eta = physical_params();
+    invalid_eta.physical.eta_m_min = invalid_eta.physical.eta_m_nominal + 0.01f;
+    assert(!PressureModel_ValidatePhysicalParams(&invalid_eta.physical));
+    invalid_eta.physical.eta_v_min = NAN;
+    PressureModel_Step(&invalid_eta, &state, 100.0f, DT_S, &out);
+    assert(fabsf(out.real_pressure_bar - held_pressure) < 1.0e-5f);
+    assert(out.pump_flow_m3_s == 0.0f);
+    assert(!HYD_PumpFeedback_HasValid(out.pumpFeedback.validFlags,
+                                      HYD_PUMP_FEEDBACK_VALID_TORQUE));
+    PressureModel_Step(&invalid_motor_delay, &state, 100.0f, DT_S, &out);
+    assert(fabsf(out.real_pressure_bar - held_pressure) < 1.0e-5f);
+    assert(!HYD_PumpFeedback_HasValid(out.pumpFeedback.validFlags,
+                                      HYD_PUMP_FEEDBACK_VALID_TORQUE));
+    PressureModel_Step(&invalid_sensor_delay, &state, 100.0f, DT_S, &out);
+    assert(fabsf(out.real_pressure_bar - held_pressure) < 1.0e-5f);
+    assert(!HYD_PumpFeedback_HasValid(out.pumpFeedback.validFlags,
+                                      HYD_PUMP_FEEDBACK_VALID_TORQUE));
+    PressureModel_Step(&invalid_runtime, &state, 100.0f, DT_S, &out);
     assert(fabsf(out.real_pressure_bar - held_pressure) < 1.0e-5f);
     assert(out.pump_flow_m3_s == 0.0f);
     assert(!HYD_PumpFeedback_HasValid(out.pumpFeedback.validFlags,
@@ -112,6 +151,7 @@ static void test_load_leakage_and_gas_are_causal(void) {
     PressureModelOutput out_load;
     PressureModelOutput out_low_leak;
     PressureModelOutput out_high_leak;
+    PressureModelOutput out_baseline_short;
     PressureModelOutput out_gas;
 
     leaky.physical.pump_leak_c0_m3_pa_s *= 4.0f;
@@ -125,10 +165,12 @@ static void test_load_leakage_and_gas_are_causal(void) {
     step_n(&baseline, &positive_load, 80.0f, 1.0e-6f, 5000, &out_load);
     step_n(&baseline, &low_leak, 80.0f, 0.0f, 5000, &out_low_leak);
     step_n(&leaky, &high_leak, 80.0f, 0.0f, 5000, &out_high_leak);
-    step_n(&gassy, &gas_state, 80.0f, 0.0f, 10, &out_gas);
+    step_n(&baseline, &gas_state, 80.0f, 0.0f, 5000, &out_baseline_short);
+    PressureModel_Reset(&gas_state, 4u);
+    step_n(&gassy, &gas_state, 80.0f, 0.0f, 5000, &out_gas);
     assert(out_load.real_pressure_bar < out_zero.real_pressure_bar);
     assert(out_high_leak.real_pressure_bar < out_low_leak.real_pressure_bar);
-    assert(out_gas.real_pressure_bar < out_zero.real_pressure_bar);
+    assert(out_gas.real_pressure_bar < out_baseline_short.real_pressure_bar);
     assert(PressureModel_EffectiveBulkModulusPa(&gassy.physical,
                                                  gassy.physical.atmospheric_pressure_pa) <
            PressureModel_EffectiveBulkModulusPa(&gassy.physical,
@@ -187,6 +229,30 @@ static void test_line_relief_and_reverse_flow(void) {
     assert(relief_high_out.relief_flow_m3_s > relief_low_out.relief_flow_m3_s);
 }
 
+static void test_model_baseline_speed_sections_are_ordered(void) {
+    /*
+     * Uncalibrated model baseline only: these deterministic 10/20/30/40 RPM
+     * sections are not measured-machine or calibration acceptance values.
+     */
+    float previous_pressure = -1.0f;
+    int i;
+
+    for (i = 0; i < PRESSURE_MODEL_OPEN_LOOP_REFERENCE_COUNT; ++i) {
+        PressureModelParams params = physical_params();
+        PressureModelState state;
+        PressureModelOutput out;
+
+        PressureModel_Reset(&state, (uint32_t)(20 + i));
+        step_n(&params, &state, kPressureModelOpenLoopReference[i].command_rpm,
+               0.0f, 5000, &out);
+        assert(out.actual_motor_rpm >
+               kPressureModelOpenLoopReference[i].command_rpm * 0.95f);
+        assert(out.real_pressure_bar > previous_pressure);
+        assert(out.real_pressure_bar < params.sensor_range_bar);
+        previous_pressure = out.real_pressure_bar;
+    }
+}
+
 static void test_motor_sensor_order_and_torque_packet(void) {
     PressureModelParams params = physical_params();
     PressureModelState state;
@@ -221,6 +287,42 @@ static void test_motor_sensor_order_and_torque_packet(void) {
     assert(isfinite(out.pumpFeedback.torquePermille));
 }
 
+static void test_second_order_motor_and_exact_sixty_four_ms_delays(void) {
+    PressureModelParams params = physical_params();
+    PressureModelState motor_state;
+    PressureModelState sensor_state;
+    PressureModelOutput out;
+    int i;
+
+    params.physical.motor_delay_s = 0.064f;
+    params.physical.sensor_delay_s = 0.064f;
+    params.physical.motor_accel_limit_rpm_s = 1000.0f;
+    PressureModel_Reset(&motor_state, 12u);
+    for (i = 0; i < 64; ++i) {
+        PressureModel_Step(&params, &motor_state, 100.0f, DT_S, &out);
+        assert(out.actual_motor_rpm == 0.0f);
+    }
+    PressureModel_Step(&params, &motor_state, 100.0f, DT_S, &out);
+    assert(out.actual_motor_rpm > 0.0f);
+    assert(fabsf(motor_state.motor_accel_rpm_s) <=
+           params.physical.motor_accel_limit_rpm_s + 1.0e-4f);
+
+    params.physical.motor_delay_s = 0.0f;
+    params.physical.pump_leak_c0_m3_pa_s = 0.0f;
+    params.physical.pump_leak_speed_m3_pa_s_per_rpm = 0.0f;
+    params.physical.outlet_leak_m3_pa_s = 0.0f;
+    params.physical.cylinder_leak_m3_pa_s = 0.0f;
+    PressureModel_Reset(&sensor_state, 13u);
+    sensor_state.pressure_pa = 10.0e6f;
+    sensor_state.outlet_pressure_pa = 10.0e6f;
+    for (i = 0; i < 64; ++i) {
+        PressureModel_Step(&params, &sensor_state, 0.0f, DT_S, &out);
+        assert(out.measured_pressure_bar == 0.0f);
+    }
+    PressureModel_Step(&params, &sensor_state, 0.0f, DT_S, &out);
+    assert(out.measured_pressure_bar > 0.0f);
+}
+
 static void test_thirteenth_phase_and_true_torque_units(void) {
     PressureModelParams params = physical_params();
     PressureModelState state;
@@ -228,8 +330,6 @@ static void test_thirteenth_phase_and_true_torque_units(void) {
     float expected_flow;
     float expected_torque;
     float phase13;
-    float phase26;
-    float phase39;
     float eta_m;
     float high_speed_expected_flow;
 
@@ -247,7 +347,7 @@ static void test_thirteenth_phase_and_true_torque_units(void) {
     phase13 = 2.0f * 3.14159265358979323846f * 13.0f * 0.001f;
     expected_flow = params.pump_displacement_m3_rev *
                     (1.0f + params.physical.ripple13_peak *
-                     (sinf(phase13) + 0.20f * sinf(2.0f * phase13 + 0.3f)));
+                     sinf(phase13));
     assert(fabsf(out.pump_flow_m3_s - expected_flow) < 1.0e-10f);
     eta_m = params.physical.eta_m_nominal -
             params.physical.eta_m_pressure_loss_per_pa * 10.0e6f -
@@ -265,13 +365,11 @@ static void test_thirteenth_phase_and_true_torque_units(void) {
     params.physical.ripple39_peak = 0.1f;
     PressureModel_Step(&params, &state, 1200.0f, DT_S, &out);
     phase13 = 2.0f * 3.14159265358979323846f * 13.0f * 0.02f;
-    phase26 = 2.0f * 3.14159265358979323846f * 26.0f * 0.02f;
-    phase39 = 2.0f * 3.14159265358979323846f * 39.0f * 0.02f;
     high_speed_expected_flow = params.pump_displacement_m3_rev * 20.0f *
         (1.0f + params.physical.ripple13_peak *
-         (sinf(phase13) + 0.20f * sinf(2.0f * phase13 + 0.3f)));
+         sinf(phase13));
     assert(fabsf(out.pump_flow_m3_s - high_speed_expected_flow) < 1.0e-9f);
-    assert(fabsf(phase26) > 0.0f && fabsf(phase39) > 0.0f);
+    assert(out.active_order_mask == PRESSURE_MODEL_ORDER_13_ACTIVE);
 }
 
 static void test_repeatable_one_ms_physical_result(void) {
@@ -298,8 +396,10 @@ int main(void) {
     test_physical_params_validate_and_invalid_holds_safely();
     test_fixed_substeps_and_invalid_dt_are_safe();
     test_load_leakage_and_gas_are_causal();
+    test_model_baseline_speed_sections_are_ordered();
     test_line_relief_and_reverse_flow();
     test_motor_sensor_order_and_torque_packet();
+    test_second_order_motor_and_exact_sixty_four_ms_delays();
     test_thirteenth_phase_and_true_torque_units();
     test_repeatable_one_ms_physical_result();
     puts("pressure model tests passed");

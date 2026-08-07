@@ -322,8 +322,11 @@ leakage, saturation gates, phase-direction testing, and a safe rollback conditio
 ### 8.1 Profiles
 
 `PRESSURE_MODEL_TYPE_FIRST_ORDER` remains a legacy regression profile. A new explicit
-calibrated gear-pump physical profile is selected by one model-type enum, not by several
-conflicting boolean switches. Existing first-order tests keep their legacy behavior.
+gear-pump physical profile is selected by one model-type enum, not by several conflicting
+boolean switches. `PRESSURE_MODEL_TYPE_PHYSICAL_CALIBRATED` is retained as the canonical
+source-compatible enum name, but default physical parameters are **uncalibrated** until
+versioned raw-data identification and held-out validation succeed. Existing first-order
+tests keep their legacy behavior.
 
 The physical profile has two execution targets:
 
@@ -457,7 +460,9 @@ is also invalid. Invalid physical settings do not receive broad silent clamping:
 fails, and the physical step holds its last finite chamber pressure with zero flow and an
 invalid torque packet.
 
-The host-only `pressure_model_replay` accepts a versioned deterministic calibration file:
+Task 2 host-only `pressure_model_replay` emits only an explicitly uncalibrated deterministic
+stream and rejects any supplied KV file. Task 3 adds the strict versioned calibration-file
+loader before a replay may be labeled calibrated. The Task 3 calibrated invocation is:
 
 ```text
 pressure_model_replay physical <rpm> <samples> <identified_params.kv>
@@ -465,10 +470,9 @@ pressure_model_replay physical <rpm> <samples> <identified_params.kv>
 
 `identified_params.kv` is emitted beside `identified_params.json`, contains every consumed
 physical parameter plus `schema_version` and a Python-computed SHA-256 `calibration_id`.
-Its
-strict file parser belongs only to the test/replay binary, never the 1 ms production path.
-The validation script verifies the JSON/KV calibration ID match and records that ID in its
-report and replay CSV header before comparing held-out data.
+Its strict file parser belongs only to the Task 3 test/replay binary, never the 1 ms
+production path. The validation script verifies the JSON/KV calibration ID match and
+records that ID in its report and replay CSV header before comparing held-out data.
 
 ## 9. Identification and Validation Gate
 

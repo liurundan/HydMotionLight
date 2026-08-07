@@ -211,7 +211,11 @@ git add include/common_types.h include/hydro_hardware.h include/hydro_interfaces
 git commit -m "建立伺服泵反馈生产和传输边界" -m "让统一反馈包从仿真与压力模型生产者稳定传播到公开观察点，而不在没有消费者的运动核心快照中持久化。\n\nConstraint: 保持HYD_MotionControlFB资源上限和PLC引脚布局\nRejected: 预先将packet写入AXIS_REF或压力输入 | 引入无消费的长期RAM和ABI负担\nConfidence: high\nScope-risk: narrow\nDirective: Task 5必须通过瞬态每周期入口原子引入第一个核心消费者\nTested: test_pump_feedback_chain; test_toggle_mechanism_pool; test_hydro_sim_fb; test_pressure_model\nNot-tested: STM32H7目标板资源测量"
 ```
 
-## Task 2: Add the Calibrated Fluid-Equation Pressure Model Profile
+## Task 2: Add the Uncalibrated Fluid-Equation Pressure Model Profile
+
+`PRESSURE_MODEL_TYPE_PHYSICAL_CALIBRATED` remains the source-compatible canonical enum
+name, but Task 2 defaults are explicitly **uncalibrated**. They verify equation signs,
+fixed-step causality, and transport contracts only; they are not calibration evidence.
 
 **Files:**
 - Modify: `include/pressure_model.h`
@@ -426,13 +430,13 @@ profile switch, hold the current pressure and reset only states that cannot be m
 not silently enable physical parameters while the first-order profile is selected.
 
 Update `src/sim/hydro_sim_fb.c` to copy `out.pumpFeedback` into the native feedback packet.
-Add `tests/pressure_model_replay.c` and the CMake target `pressure_model_replay`. It accepts
-`physical|first_order`, an RPM value, and a sample count, plus a required versioned
-`identified_params.kv` file for a calibrated physical replay. Its strict file parser is
-host-test-only; production code receives already validated parameter structures. The replay
-writes one CSV row per 1 ms step with actual RPM, chamber real/measured pressure, angle,
-torque, timestamp, validity bits, and a calibration ID header. The exact calibrated
-validation invocation is:
+Add `tests/pressure_model_replay.c` and the CMake target `pressure_model_replay`. In Task 2
+it accepts `physical|first_order`, an RPM value, and a sample count and emits only the
+deterministic `calibration_id=uncalibrated` skeleton. A supplied `identified_params.kv`
+must fail clearly as uncalibrated; Task 2 must not load or validate held-out calibration
+data. The replay writes one CSV row per 1 ms step with actual RPM, chamber real/measured
+pressure, angle, torque, timestamp, validity bits, active-order mask, and a
+calibration-status header. Task 3 owns the strict host-only parser and calibrated invocation:
 
 ```bash
 ./out/build/unixgcc/pressure_model_replay physical 20 20000 docs/ripple-analysis/identified_params.kv > docs/ripple-analysis/replay-20rpm.csv
@@ -462,8 +466,8 @@ ctest --test-dir out/build/unixgcc -R '^(test_pressure_model|test_hydro_sim_fb)$
 ```
 
 Expected: legacy profile tests and the new deterministic physical-equation tests pass.
-This demonstrates equation consistency only; the model remains uncalibrated until Task 6
-passes held-out raw-data validation.
+This demonstrates equation consistency only; the model remains uncalibrated until Task 3
+loads a versioned parameter file and later held-out raw-data validation passes.
 
 - [ ] **Step 6: Commit the model profile**
 
@@ -479,7 +483,12 @@ git commit -m "建立13齿齿轮泵物理压力模型" -m "在保留一阶回归
 - Create: `scripts/ripple/fit_physical_model.py`
 - Create: `scripts/ripple/export_ripple_table.py`
 - Create: `docs/ripple-analysis/`
-- Modify: `tests/pressure_model_replay.c`
+- Modify: `tests/pressure_model_replay.c` to add the strict host-only
+  `identified_params.kv` parser/loader after the file schema is defined
+
+Task 3 is the first task allowed to load `identified_params.kv` into host replay, verify
+its schema/version/calibration ID, and label a replay calibrated. Task 2's replay skeleton
+must reject supplied KV files and remain explicitly uncalibrated.
 
 - [ ] **Step 1: Implement standard-library CSV parsing and data-contract checks**
 
