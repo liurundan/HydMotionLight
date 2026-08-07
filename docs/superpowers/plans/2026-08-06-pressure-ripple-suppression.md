@@ -226,7 +226,10 @@ git commit -m "建立伺服泵反馈生产和传输边界" -m "让统一反馈�
 - [ ] **Step 1: Add physical-model regression tests before implementation**
 
 Extend `tests/test_pressure_model.c` with deterministic tests for the new explicit physical
-profile:
+profile. The moving-load path is explicit rather than hidden in a parameter: add
+`PressureModelInput` and exercise `PressureModel_StepInput()` with both zero and positive
+`load_flow_m3_s`. Keep `PressureModel_Step()` as the compatibility wrapper that supplies
+zero load flow.
 
 ```c
 params.model_type = PRESSURE_MODEL_TYPE_PHYSICAL_CALIBRATED;
@@ -248,30 +251,44 @@ assert((out.pumpFeedback.validFlags & HYD_PUMP_FEEDBACK_VALID_TORQUE) != 0u);
 
 Add separate assertions that increasing outlet pressure increases pump leakage, low
 pressure has lower effective bulk modulus than high pressure, relief flow is monotonic
-after its deadband, negative speed reduces pressure, and torque contains a deterministic
-13th-order component when enabled. Run the test before implementation and record the
-expected compile or assertion failure.
+after its deadband, positive load flow lowers chamber pressure relative to the same
+zero-load run, negative speed reduces pressure, and torque contains a deterministic
+13th-order component when enabled. Cover a finite/bounded 1 ms step, a delayed sensor
+sample, quantization, and the order-resolution gate. Run the test before implementation
+and record the expected compile or assertion failure.
 
 - [ ] **Step 2: Introduce a nested physical-parameter block and state variables**
 
 Add `PressureModelPhysicalParams` inside `PressureModelParams` with only parameters used
-by the equations below:
+by the equations below. `atmospheric_pressure_pa` and `suction_pressure_pa` are **absolute**
+pressures. The outlet and chamber states remain gauge pressures, which avoids using a
+gauge pressure in the gas-compressibility denominator.
 
 ```c
 typedef struct {
+    float atmospheric_pressure_pa;
     float suction_pressure_pa;
     float outlet_volume_m3;
+    float chamber_volume_m3;
     float line_inertance_pa_s2_per_m3;
     float line_resistance_pa_s_per_m3;
-    float chamber_volume_m3;
+    float line_quadratic_resistance_pa_s2_per_m6;
     float beta_oil_pa;
     float gas_fraction;
     float gas_transition_pa;
     float beta_min_pa;
     float pump_leak_c0_m3_pa_s;
     float pump_leak_speed_m3_pa_s_per_rpm;
+    float outlet_leak_m3_pa_s;
     float cylinder_leak_m3_pa_s;
     float eta_v_min;
+    float eta_m_nominal;
+    float eta_m_pressure_loss_per_pa;
+    float eta_m_speed_loss_per_rpm;
+    float eta_m_min;
+    float rated_motor_torque_nm;
+    float torque_ripple13_peak;
+    float torque_ripple13_phase_rad;
     float ripple13_peak;
     float ripple26_peak;
     float ripple39_peak;
@@ -290,12 +307,21 @@ typedef struct {
     float sensor_delay_s;
     float sensor_quantization_bar;
 } PressureModelPhysicalParams;
+
+typedef struct {
+    float target_rpm;
+    float load_flow_m3_s;
+    float dt_s;
+} PressureModelInput;
 ```
 
-Add physical state fields for motor acceleration, outlet pressure, line flow, chamber
-pressure, delayed sensor pressure, an angle phase in motor revolutions, and `time_s` for
-the 1 ms model clock. Preserve the
-legacy first-order fields and delay buffer unchanged for the old profile.
+Use fixed-size `PRESSURE_MODEL_PHYSICAL_MAX_DELAY_STEPS` rings for delayed motor command
+and sensor pressure (bounded to 64 ms), together with motor acceleration, outlet gauge
+pressure, line flow, relief-latch state, and the existing chamber pressure, phase, and
+timestamp fields. Do not duplicate chamber pressure: `PressureModelState.pressure_pa`
+remains the chamber gauge-pressure state for both profiles. Preserve the legacy
+first-order fields and delay buffer unchanged for the old profile. Every new state member
+must be consumed by one physical equation or output path.
 
 Retain and complete the `PressureModelOutput.pumpFeedback` packet introduced by Task 1;
 keep `estimated_torque_trend` as a compatibility diagnostic only. Legacy and first-order
@@ -309,37 +335,67 @@ timestamp.
 Implement static helpers in `src/sim/PressureModel.c` for:
 
 ```text
-Qleak_pump = (C0 + Cn * abs(rpm)) * max(Pout - Psuction, 0)
+Pout_abs = Patm + max(Pout_gauge, 0)
+Pchamber_abs = Patm + max(Pchamber_gauge, 0)
+DeltaPpump = max(Pout_abs - Psuction_abs, 0)
+Qleak_pump = (C0 + Cn * abs(rpm)) * DeltaPpump
 eta_v = clamp(1 - Qleak_pump / (D * abs(rpm) / 60 + epsilon), eta_v_min, 1)
+Qleak_outlet = Coutlet * DeltaPpump
+Qleak_cylinder = Ccylinder * max(Pchamber_abs - Psuction_abs, 0)
 
-1 / beta_e = (1 - gas_fraction) / beta_oil
-             + gas_fraction / max(Pabsolute, 1 Pa)
+alpha_g(Pabsolute) = clamp(gas_fraction * gas_transition_pa /
+                           max(Pabsolute, gas_transition_pa), 0, gas_fraction)
+1 / beta_e = (1 - alpha_g(Pabsolute)) / beta_oil
+             + alpha_g(Pabsolute) / max(Pabsolute, 1 Pa)
 beta_e = clamp(beta_e, beta_min_pa, beta_oil_pa)
 
 Qpump = sign(rpm) * D * abs(rpm) / 60 * eta_v * ripple_waveform(tooth_phase)
-Lline * Qline_dot = Pout - Pchamber - Rline(Qline)
-Pout_dot = beta_e(Pout) / Vout * (Qpump - Qline - Qleak - Qrelief)
-Pchamber_dot = beta_e(Pchamber) / Vchamber * (Qline - Qload - Qleak_cylinder)
+Lline * Qline_dot = Pout_gauge - Pchamber_gauge
+                   - Rlinear * Qline - Rquadratic * Qline * abs(Qline)
+Pout_dot = beta_e(Pout_abs) / Vout * (Qpump - Qline - Qleak_outlet - Qrelief)
+Pchamber_dot = beta_e(Pchamber_abs) / Vchamber * (Qline - Qload - Qleak_cylinder)
 ```
 
 Use a bounded asymmetric lookup/Fourier waveform for 13th, 26th, and optional measured
-39th order. Use a nonlinear relief deadband/orifice relation and a second-order/delayed
+39th order. `ripple_waveform` is a multiplier clamped to a positive bounded interval and
+is applied to delivered pump flow, never to visible pressure after integration. The pump
+leakage is already represented by `eta_v`, so it is not subtracted a second time from the
+outlet balance. Use a nonlinear relief deadband/orifice relation and a second-order/delayed
 motor response with acceleration and torque limits. Do not multiply a cosmetic pressure
 drop after the fluid integration.
 
-Use semi-implicit Euler for the embedded-equivalent path: update motor speed, line flow,
-then pressure states with the newest upstream values. The host calibration path may use
-fixed substeps or RK2, but it must share parameter names and physical signs with C.
+Use semi-implicit Euler for the embedded-equivalent path: update delayed motor command,
+motor speed, line flow, then pressure states with the newest upstream values. A physical
+call accepts only a finite positive interval up to 4 ms; it uses `ceil(dt / 1 ms)` fixed
+substeps, capped at four. Nonfinite, nonpositive, or over-limit intervals fall back to one
+1 ms step. This is a safe HIL fallback, not permission to run an arbitrary slow plant.
+The host calibration path may use the same fixed substeps or RK2, but it must share
+parameter names and physical signs with C.
+
+At a 1 ms output interval, enable an order only when
+`order * abs(rpm) / 60 < 0.45 / dt_s`; otherwise disable that unresolved component in the
+embedded-equivalent model and record it in the replay report. This gates 26th order before
+the nominal 500 Hz Nyquist boundaries (about 1154 RPM for 26th and 769 RPM for 39th) with
+a 10% guard band; a model must not silently alias them into an apparently calibrated
+pressure wave.
 
 Generate true torque feedback as:
 
 ```text
-torque_permille = clamp(Tdc(pressure, abs(rpm))
-                        + T13(pressure, abs(rpm)) * sin(tooth_phase + phi_torque),
-                        -torque_limit, torque_limit)
+eta_m = clamp(eta_m_nominal - eta_m_pressure_loss_per_pa * DeltaPpump
+               - eta_m_speed_loss_per_rpm * abs(rpm), eta_m_min, 1)
+Tdc_nm = sign(rpm) * DeltaPpump * D / (2 * pi * eta_m)
+Tnm = Tdc_nm * [1 + torque_ripple13_peak *
+                 sin(13 * tooth_phase + torque_ripple13_phase_rad)]
+torque_permille = clamp(1000 * Tnm / rated_motor_torque_nm,
+                        -torque_limit_permille, torque_limit_permille)
 ```
 
-Use SI Pa/m3/s internally and convert only at `PressureModelOutput` boundaries.
+Set `HYD_PUMP_FEEDBACK_VALID_TORQUE` only when every torque operand is finite and
+`rated_motor_torque_nm > 0`. Use SI Pa/m3/s/Nm internally and convert only at
+`PressureModelOutput` boundaries.
+`relief_set_pa`, `relief_deadband_pa`, and `relief_hysteresis_pa` are gauge-pressure
+thresholds, so relief does not accidentally open at atmospheric pressure.
 
 - [ ] **Step 4: Preserve model-profile switching and legacy tests**
 
@@ -361,14 +417,20 @@ validity bits. The exact validation invocation is:
 ```
 
 Do not change IEC `HYD_PRESSUREMODEL` field order or add PLC pins in this task.
+`PressureModel_Step()` supplies `load_flow_m3_s = 0` for this legacy PLC path. A future
+motion-coupled HIL task may provide the instantaneous cylinder/load-flow trace through
+`PressureModelInput`; it must not add a retained PLC field or pretend that the standalone
+plant is already coupled to `HydraulicSim`.
 
 - [ ] **Step 5: Update fixtures and run physical-model tests**
 
-Create `tests/fixtures/open10203040_measurement_reference.h` with the measured open-loop
-summary: command RPM 10/20/30/40, 1 ms samples, actual-RPM means 9.97/19.96/29.91/39.72,
-tail pressure p-p 53/73/97/112 bar, and angle-synchronous 13th amplitudes 12.8/19.1/
-22.6/21.7 bar. Keep the old fixture for legacy regression and label its values as model
-baseline rather than machine data.
+Create `tests/fixtures/open10203040_measurement_reference.h` only from the checked-in raw
+open-loop measurement and record its source window. The expected summary is command RPM
+10/20/30/40, 1 ms samples, actual-RPM means 9.97/19.96/29.91/39.72, tail pressure p-p
+53/73/97/112 bar, and angle-synchronous 13th amplitudes 12.8/19.1/22.6/21.7 bar. Keep the
+old fixture for legacy regression and label its values as model baseline rather than
+machine data. Without the raw source and held-out windows, the fixture is a test target,
+not calibration evidence.
 
 Run:
 
@@ -378,6 +440,8 @@ ctest --test-dir out/build/unixgcc -R '^(test_pressure_model|test_hydro_sim_fb)$
 ```
 
 Expected: legacy profile tests and the new deterministic physical-equation tests pass.
+This demonstrates equation consistency only; the model remains uncalibrated until Task 6
+passes held-out raw-data validation.
 
 - [ ] **Step 6: Commit the model profile**
 

@@ -321,34 +321,47 @@ conflicting boolean switches. Existing first-order tests keep their legacy behav
 The physical profile has two execution targets:
 
 - Offline high-fidelity calibration: fixed small substeps and semi-implicit Euler or RK2.
-- Embedded-equivalent HIL: one or two deterministic fixed substeps, no allocation, no
+- Embedded-equivalent HIL: one to four deterministic fixed substeps, no allocation, no
   optimizer, and table-based nonlinear functions where required.
 
 Both profiles use the same parameter definitions and equations. The production pressure
-controller does not execute this model in its 1 ms path.
+controller does not execute this model in its 1 ms path. The standalone plant accepts a
+transient input `{ target_rpm, load_flow_m3_s, dt_s }`; `PressureModel_Step()` remains the
+source-compatible zero-load wrapper. `load_flow_m3_s` represents cylinder/load volume
+consumption at the chamber and is not stored in a model parameter or PLC pin. A later HIL
+integration may source it from an actual cylinder-flow trace only after the standalone
+model passes validation.
 
 ### 8.2 Required equations and nonlinearities
 
-All model pressures below are in Pa and flows in m3/s.
+All internal pressures below are in Pa and flows in m3/s. Outlet and chamber state
+pressures are gauge pressures. `Patm` and `Psuction_abs` are explicit absolute-pressure
+parameters, so `Pabs = Patm + max(Pgauge, 0)` is used wherever gas compressibility or
+pump pressure differential is evaluated.
 
 ```text
 Qideal = D * n / 60
-Qleak_pump = (C0 + Cn * |n|) * max(Ps - Psuction, 0)
+DeltaPpump = max(Ps_abs - Psuction_abs, 0)
+Qleak_pump = (C0 + Cn * |n|) * DeltaPpump
 eta_v = clamp(1 - Qleak_pump / (D * |n| / 60 + Qepsilon), eta_v_min, 1)
+Qleak_outlet = Coutlet * DeltaPpump
+Qleak_cylinder = Ccylinder * max(Pc_abs - Psuction_abs, 0)
 
 Qpump = sign(n) * D * |n| / 60 * eta_v
         * [1 + r13(Ps, |n|) * w13(tooth_phase)
-             + r26(Ps, |n|) * w26(tooth_phase)]
+             + r26(Ps, |n|) * w26(tooth_phase)
+             + r39(Ps, |n|) * w39(tooth_phase)]
 
-dPs/dt = beta_e(Ps) / Vs * (Qpump - Qline - Qleak_system - Qrelief)
-Lline * dQline/dt = Ps - Pc - Rline(Qline)
-dPc/dt = beta_e(Pc) / Vc * (Qline - Qload - Qleak_cylinder)
+dPs/dt = beta_e(Ps_abs) / Vs * (Qpump - Qline - Qleak_outlet - Qrelief)
+Lline * dQline/dt = Ps - Pc - Rlinear * Qline - Rquadratic * Qline * |Qline|
+dPc/dt = beta_e(Pc_abs) / Vc * (Qline - Qload - Qleak_cylinder)
 ```
 
 The effective bulk modulus represents entrained gas with physically bounded parameters:
 
 ```text
-1 / beta_e = (1 - alpha_g) / beta_o + alpha_g / Pabsolute
+alpha_g(Pabs) = clamp(alpha_g0 * Ptransition / max(Pabs, Ptransition), 0, alpha_g0)
+1 / beta_e = (1 - alpha_g(Pabsolute)) / beta_o + alpha_g(Pabsolute) / Pabsolute
 ```
 
 `alpha_g` may depend on pressure and is bounded. Temperature is not a runtime state in
@@ -357,7 +370,10 @@ this plan; any temperature effect is a calibrated offline parameter.
 Pump ripple uses calibrated asymmetric waveforms for trapped-volume and relief-window
 effects. `w13` and `w26` can be Fourier representations or a bounded lookup waveform,
 but their amplitudes are relative-to-mean **peak** flow amplitudes, not pressure p-p.
-The model must not multiply a cosmetic tooth drop only onto visible pressure.
+The total delivered-flow multiplier is clamped to a positive bounded interval. Pump
+leakage is accounted for once through volumetric efficiency; outlet and cylinder leakage
+are separate pressure-difference-driven paths. The model must not multiply a cosmetic
+tooth drop only onto visible pressure.
 
 The servo speed model has a measured delay, a second-order or otherwise identified speed
 response, and acceleration/torque limiting. It must not retain an arbitrary fixed 60 ms
@@ -365,17 +381,47 @@ first-order constant after the CSV fit rejects it. The model provides a true tor
 signal when torque is evaluated:
 
 ```text
-torque_permille = Tdc(Ps, n) + T13(Ps, n) * sin(tooth_phase + phi_torque)
+eta_m = clamp(eta_m_nominal - eta_m_pressure_loss_per_pa * DeltaPpump
+               - eta_m_speed_loss_per_rpm * |n|, eta_m_min, 1)
+Tdc_nm = sign(n) * DeltaPpump * D / (2 * pi * eta_m)
+torque_permille = clamp(1000 * Tdc_nm *
+                        [1 + torque_ripple13_peak *
+                         sin(13 * tooth_phase + torque_ripple13_phase_rad)] /
+                        rated_motor_torque_nm,
+                        -torque_limit_permille, torque_limit_permille)
 ```
 
-The existing `estimated_torque_trend` is not treated as this harmonic measurement.
+The torque-valid bit is set only when the computation and rated torque are finite and
+positive. The existing `estimated_torque_trend` is not treated as this harmonic measurement.
 
 Relief flow uses a nonlinear deadband/orifice relation with hysteresis where data
-supports it. Sensor delay, quantization, bias, and bounded noise are added only as
+supports it. Its setpoint, deadband, and hysteresis are gauge-pressure thresholds.
+Sensor delay, quantization, bias, and bounded noise are added only as
 model states that are consumed by the measured-pressure output.
 
 The physical model does not add actuator-position or temperature states unless a real
 motion/temperature input consumes them in the current phase.
+
+### 8.3 Fixed-step and order-resolution policy
+
+The embedded-equivalent path accepts one 1 ms task interval. A finite positive interval
+up to 4 ms is split into `ceil(dt / 1 ms)` deterministic substeps, capped at four;
+nonfinite, nonpositive, or over-limit intervals use one 1 ms safe fallback step. Each
+substep updates delayed motor command, motor speed, line flow, then outlet and chamber
+pressure semi-implicitly. Delay queues have fixed static capacity for 64 ms and no dynamic
+allocation.
+
+At the observable 1 ms sampling interval, an `m`th tooth order is enabled only when
+`m * abs(rpm) / 60 < 0.45 / dt`. This gives a 10% guard below the nominal 1 ms Nyquist
+limits of approximately 1154 RPM for 26th and 769 RPM for 39th, rather than silently
+aliasing either flow wave.
+An unresolved order is omitted from embedded-equivalent output and reported by replay;
+it is not turned into a fictitious low-frequency pressure component.
+
+The calibrated physical profile owns only the pump-to-chamber fluid chain. The existing
+`HydraulicSim` kinematic cylinder remains a separate simulator in this plan. Coupling it
+requires a later explicit adapter that derives `load_flow_m3_s` from a real cylinder state
+and is prohibited from being claimed as closed-loop plant validation before then.
 
 ## 9. Identification and Validation Gate
 
