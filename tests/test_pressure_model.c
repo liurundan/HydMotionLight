@@ -230,6 +230,55 @@ static void test_physical_extreme_admission_holds_state(void) {
     assert(out.net_flow_m3_s == 0.0f);
 }
 
+static void test_physical_increment_admission_and_rollback(void) {
+    PressureModelParams params = physical_params();
+    PressureModelState state;
+    PressureModelState held_state;
+    PressureModelOutput out;
+    PressureModelInput input;
+
+    /*
+     * These finite values satisfy the old stiffness-only physical validator,
+     * but the 1 ms peak-flow pressure increment overflows without the
+     * runtime pressure-increment admission check.
+     */
+    params.pump_displacement_m3_rev =
+        PRESSURE_MODEL_PHYSICAL_MAX_PUMP_DISPLACEMENT_M3_REV;
+    params.physical.beta_oil_pa = FLT_MAX;
+    params.physical.beta_min_pa = 5.0e7f;
+    params.physical.gas_fraction = 0.0f;
+    params.physical.outlet_volume_m3 = 8.0e-6f;
+    params.physical.chamber_volume_m3 = 8.0e-6f;
+    params.physical.line_inertance_pa_s2_per_m3 = FLT_MAX;
+    params.physical.ripple13_peak = 0.80f;
+    params.physical.ripple13_phase_rad = 0.21f;
+    assert(PressureModel_ValidatePhysicalParams(&params.physical));
+
+    PressureModel_Reset(&state, 5u);
+    state.motor_rpm = PRESSURE_MODEL_PHYSICAL_MAX_ABS_RPM;
+    held_state = state;
+    input.target_rpm = PRESSURE_MODEL_PHYSICAL_MAX_ABS_RPM;
+    input.load_flow_m3_s = 0.0f;
+    input.dt_s = DT_S;
+    PressureModel_StepInput(&params, &state, &input, &out);
+    held_state.timestamp_s += DT_S;
+    assert(memcmp(&state, &held_state, sizeof(state)) == 0);
+    assert(out.pump_flow_m3_s == 0.0f);
+    assert(out.net_flow_m3_s == 0.0f);
+
+    params = physical_params();
+    PressureModel_Reset(&state, 6u);
+    state.line_flow_m3_s = FLT_MAX;
+    held_state = state;
+    PressureModel_StepInput(&params, &state, &input, &out);
+    held_state.timestamp_s += DT_S;
+    assert(memcmp(&state, &held_state, sizeof(state)) == 0);
+    assert(out.pump_flow_m3_s == 0.0f);
+    assert(out.net_flow_m3_s == 0.0f);
+    assert(!HYD_PumpFeedback_HasValid(out.pumpFeedback.validFlags,
+                                      HYD_PUMP_FEEDBACK_VALID_TORQUE));
+}
+
 static void test_positive_pressure_profile_handover_advances_time(void) {
     PressureModelParams params = physical_params();
     PressureModelState state;
@@ -550,6 +599,7 @@ int main(void) {
     test_physical_params_validate_and_invalid_holds_safely();
     test_nonfinite_step_input_holds_physical_state();
     test_physical_extreme_admission_holds_state();
+    test_physical_increment_admission_and_rollback();
     test_positive_pressure_profile_handover_advances_time();
     test_measured_open_loop_reference_contract();
     test_fixed_substeps_and_invalid_dt_are_safe();

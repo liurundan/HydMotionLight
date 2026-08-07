@@ -77,6 +77,24 @@ static int pressure_model_is_finite_positive(float value) {
     return isfinite(value) && value > 0.0f;
 }
 
+static int pressure_model_physical_state_is_finite(const PressureModelState *state) {
+    int i;
+
+    if (!isfinite(state->motor_rpm) || !isfinite(state->pressure_pa) ||
+        !isfinite(state->pump_phase_rev) || !isfinite(state->timestamp_s) ||
+        !isfinite(state->spare_gauss) || !isfinite(state->outlet_pressure_pa) ||
+        !isfinite(state->line_flow_m3_s) || !isfinite(state->motor_accel_rpm_s)) {
+        return 0;
+    }
+    for (i = 0; i < PRESSURE_MODEL_PHYSICAL_DELAY_SLOTS; ++i) {
+        if (!isfinite(state->motor_delay_ring[i]) ||
+            !isfinite(state->sensor_delay_ring[i])) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
 static int pressure_model_physical_values_are_finite(const PressureModelPhysicalParams *p) {
     return isfinite(p->atmospheric_pressure_pa) &&
            isfinite(p->suction_pressure_pa) &&
@@ -259,6 +277,28 @@ int PressureModel_ValidatePhysicalParams(const PressureModelPhysicalParams *para
     return isfinite(stiffness_ratio) && stiffness_ratio <= 0.25f;
 }
 
+static int pressure_model_physical_pressure_increment_is_safe(
+    const PressureModelParams *params) {
+    float max_abs_rpm;
+    float min_volume_m3;
+    float peak_pump_flow_m3_s;
+    float max_net_flow_m3_s;
+    float pressure_increment_pa;
+
+    max_abs_rpm = pressure_model_maxf(pressure_model_absf(params->min_rpm),
+                                      pressure_model_absf(params->max_rpm));
+    min_volume_m3 = params->physical.outlet_volume_m3 < params->physical.chamber_volume_m3
+                        ? params->physical.outlet_volume_m3
+                        : params->physical.chamber_volume_m3;
+    peak_pump_flow_m3_s = params->pump_displacement_m3_rev * max_abs_rpm / 60.0f *
+                          PRESSURE_MODEL_PHYSICAL_MAX_FLOW_RIPPLE_FACTOR;
+    max_net_flow_m3_s = peak_pump_flow_m3_s + PRESSURE_MODEL_PHYSICAL_MAX_FLOW_M3_S;
+    pressure_increment_pa = params->physical.beta_oil_pa / min_volume_m3 *
+                            max_net_flow_m3_s * PRESSURE_MODEL_DT_S;
+    return isfinite(pressure_increment_pa) &&
+           pressure_increment_pa <= PRESSURE_MODEL_PHYSICAL_MAX_PRESSURE_INCREMENT_PA;
+}
+
 static int pressure_model_validate_runtime_params(const PressureModelParams *params) {
     return params != NULL &&
            PressureModel_ValidatePhysicalParams(&params->physical) &&
@@ -272,7 +312,8 @@ static int pressure_model_validate_runtime_params(const PressureModelParams *par
            params->min_rpm <= params->max_rpm &&
            pressure_model_is_finite_positive(params->sensor_range_bar) &&
            pressure_model_is_finite_nonnegative(params->sensor_noise_std_bar) &&
-           isfinite(params->sensor_bias_bar);
+           isfinite(params->sensor_bias_bar) &&
+           pressure_model_physical_pressure_increment_is_safe(params);
 }
 
 void PressureModel_InitParams(PressureModelParams *params) {
@@ -498,7 +539,8 @@ static void pressure_model_step_physical_substep(const PressureModelParams *para
         pressure_model_order_waveform(phase26 + p->ripple26_phase_rad);
     if (order39_active) ripple += p->ripple39_peak *
         pressure_model_order_waveform(phase39 + p->ripple39_phase_rad);
-    ripple = pressure_model_clampf(ripple, 0.20f, 1.80f);
+    ripple = pressure_model_clampf(ripple, 0.20f,
+                                   PRESSURE_MODEL_PHYSICAL_MAX_FLOW_RIPPLE_FACTOR);
 
     p_out_abs = p->atmospheric_pressure_pa + pressure_model_maxf(state->outlet_pressure_pa, 0.0f);
     p_chamber_abs = p->atmospheric_pressure_pa + pressure_model_maxf(state->pressure_pa, 0.0f);
@@ -652,9 +694,17 @@ void PressureModel_StepInput(const PressureModelParams *params,
         return;
     }
     for (i = 0; i < substeps; ++i) {
+        PressureModelState previous_state = *state;
+
         pressure_model_step_physical_substep(params, state, input->target_rpm,
                                               input->load_flow_m3_s,
                                               out);
+        if (!pressure_model_physical_state_is_finite(state)) {
+            *state = previous_state;
+            state->timestamp_s += PRESSURE_MODEL_DT_S;
+            pressure_model_write_hold_output(state, out);
+            return;
+        }
         state->timestamp_s += PRESSURE_MODEL_DT_S;
         pressure_model_fill_feedback(state, out,
             HYD_PumpFeedback_HasValid(out->pumpFeedback.validFlags,

@@ -15,12 +15,17 @@ extern "C" {
 
 /*
  * Physical/HIL admission bounds for the fixed 1 ms plant step. The configured
- * pump envelope is 50 cm^3/rev at 2000 rpm, or 1.666667e-3 m^3/s. The 50 Hz
- * motor limit keeps 2*pi*f*dt below 0.315 for the explicit second-order step.
+ * pump envelope is 50 cm^3/rev at 2000 rpm, or 1.666667e-3 m^3/s. With the
+ * 1.8 ripple peak and full opposing load, admission limits a pressure update
+ * to 25 MPa per scan using beta_oil * (peak_pump_flow + max_load_flow) *
+ * dt / min_volume. The 50 Hz motor limit keeps 2*pi*f*dt below 0.315 for the
+ * explicit second-order step.
  */
 #define PRESSURE_MODEL_PHYSICAL_MAX_ABS_RPM 2000.0f
 #define PRESSURE_MODEL_PHYSICAL_MAX_PUMP_DISPLACEMENT_M3_REV 50.0e-6f
 #define PRESSURE_MODEL_PHYSICAL_MAX_FLOW_M3_S 1.666667e-3f
+#define PRESSURE_MODEL_PHYSICAL_MAX_FLOW_RIPPLE_FACTOR 1.80f
+#define PRESSURE_MODEL_PHYSICAL_MAX_PRESSURE_INCREMENT_PA 25.0e6f
 #define PRESSURE_MODEL_PHYSICAL_MAX_MOTOR_NATURAL_FREQ_HZ 50.0f
 #define PRESSURE_MODEL_PHYSICAL_MAX_MOTOR_DAMPING 2.0f
 #define PRESSURE_MODEL_PHYSICAL_MAX_MOTOR_ACCEL_RPM_S 100000.0f
