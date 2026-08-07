@@ -18,6 +18,7 @@ typedef struct {
     float pressure_bar;   // 实时压力
     bool  interlock_ok;   // 硬件安全互锁是否满足 (如：安全门关)
     bool  servo_ready;    // 伺服驱动器无故障并就绪
+    HYD_PumpFeedback pumpFeedback; // 统一泵反馈包
 } AxisFeedback;
 
 /**
