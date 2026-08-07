@@ -8,6 +8,8 @@ ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "check_interface_layout_consistency.py"
 XML = ROOT / "pousHydMotion.xml"
 HEADER = ROOT / "include" / "motion_interface.h"
+SIMULATOR_XML = ROOT / "pousHydSimulator.xml"
+SIMULATOR_HEADER = ROOT / "include" / "hydro_sim_fb.h"
 BAD_XML = ROOT / "tests" / "fixtures" / "pous_layout_bad.xml"
 PLC_SOURCE = ROOT / "tests" / "plcdemo" / "POUS.c"
 PLC_HEADER = ROOT / "tests" / "plcdemo" / "POUS.h"
@@ -38,6 +40,13 @@ def main() -> int:
         print("expected generated-equivalent interface layout check to pass")
         print(generated.stdout)
         print(generated.stderr)
+        return 1
+
+    simulator = run_check(SIMULATOR_XML, SIMULATOR_HEADER)
+    if simulator.returncode != 0:
+        print("expected simulator XML/interface layout check to pass")
+        print(simulator.stdout)
+        print(simulator.stderr)
         return 1
 
     bad = run_check(BAD_XML, HEADER)

@@ -29,6 +29,10 @@ POU_TO_C_TYPE = {
     "HYD_WriteParameter": "HYD_WRITEPARAMETER",
     "HYD_ReadBoolParameter": "HYD_READBOOLPARAMETER",
     "HYD_WriteBoolParameter": "HYD_WRITEBOOLPARAMETER",
+    "HYD_CreateSimAxis": "HYD_CREATESIMAXIS",
+    "HYD_MoveSimAxis": "HYD_MOVESIMAXIS",
+    "HYD_ReadSimAxis": "HYD_READSIMAXIS",
+    "HYD_PressureModel": "HYD_PRESSUREMODEL",
 }
 
 POU_ALLOWED_C_ONLY_FIELDS = {
