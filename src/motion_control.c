@@ -2120,7 +2120,6 @@ static HYD_BOOL HYD_ExecuteActiveSegmentControl(HYD_MotionControlFB* fb,
     pressureOutput->appliedStrategy = HYD_PRESSURE_CONTROLLER_NONE;
 
     if (segment->mode == HYD_MODE_PRESSURE_CLOSED_LOOP) {
-        pressureInput.pumpFeedback = fb->AXIS_REF.pumpFeedback;
         pressureInput.targetPressure = rampOutput->rampedPressure;
         pressureInput.measuredPressure = fb->AXIS_REF.pressure;
         pressureInput.feedforwardFlow = segment->targetFlow;
@@ -3379,41 +3378,6 @@ void HYD_MotionControlFB_Init(HYD_MotionControlFB* fb) {
     fb->_simHoldStartTick = 0U;
     fb->_simCompletionCandidateStartTick = 0U;
     fb->PRESSURE_LIMIT = 250.0f;
-}
-
-void HYD_MotionControlFB_SetPumpFeedback(HYD_MotionControlFB* fb,
-                                         const HYD_PumpFeedback* feedback) {
-    HYD_PumpFeedback sanitized;
-
-    if (fb == NULL) {
-        return;
-    }
-
-    memset(&sanitized, 0, sizeof(sanitized));
-    if (feedback == NULL) {
-        fb->AXIS_REF.pumpFeedback = sanitized;
-        return;
-    }
-
-    sanitized = *feedback;
-    if (!isfinite((double)sanitized.rpm)) {
-        sanitized.rpm = 0.0;
-        sanitized.validFlags &= ~HYD_PUMP_FEEDBACK_VALID_RPM;
-    }
-    if (!isfinite((double)sanitized.angleDeg)) {
-        sanitized.angleDeg = 0.0;
-        sanitized.validFlags &= ~HYD_PUMP_FEEDBACK_VALID_ANGLE;
-    }
-    if (!isfinite((double)sanitized.torquePermille)) {
-        sanitized.torquePermille = 0.0;
-        sanitized.validFlags &= ~HYD_PUMP_FEEDBACK_VALID_TORQUE;
-    }
-    if (!isfinite((double)sanitized.timestamp)) {
-        sanitized.timestamp = 0.0;
-        sanitized.validFlags &= ~HYD_PUMP_FEEDBACK_VALID_TIMESTAMP;
-    }
-
-    fb->AXIS_REF.pumpFeedback = sanitized;
 }
 
 void HYD_MotionControlFB_SoftReset(HYD_MotionControlFB* fb) {

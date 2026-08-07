@@ -135,9 +135,14 @@ hide sensor-resolution effects.
 
 ## 4. Complete Feedback and Command Data Chain
 
-A single feedback structure is required rather than scattered optional arguments. Its
-exact public placement and ABI migration are implementation tasks, but the fields and
-their first consumer are fixed here:
+A single feedback structure is required rather than scattered optional arguments. Task 1
+ends at external producer and transport boundaries: `AxisFeedback`, `HydroPump`,
+`PressureModelOutput`, simulator state, and simulator handles. It must not retain the
+packet in `HYD_AxisRef`, diagnostics, or `HYD_PressureControllerInput`, because those
+core snapshots are resource-constrained and have no consumer before ripple compensation.
+Task 5 adds the first core consumer atomically through a transient per-cycle ingress.
+
+The fields and their first consumer are fixed here:
 
 | Field | Producer | First consumer | Required behavior |
 |---|---|---|---|
@@ -151,15 +156,17 @@ their first consumer are fixed here:
 The chain is:
 
 ```text
-IEC/HAL -> HYD_PumpFeedback -> motion_control -> pressure_controller
-        -> RBF-PI and ripple compensator -> pump converter -> final applied RPM
+IEC/HAL -> HYD_PumpFeedback -> AxisFeedback/HydroPump/PressureModelOutput
+        -> simulator state and public handle -> Task 5 transient motion ingress
+        -> ripple compensator -> pump converter -> final applied RPM
         -> PI tracking state and diagnostics
 ```
 
 Every stack instance of `HYD_PressureControllerInput` must be zero-initialized before its
 fields are filled. Each simulator, IEC adapter, test fixture, and hardware adapter must
-populate the same contract. If torque cannot drive the specified learning gate in the
-first implementation, the torque field is deferred rather than added unused.
+populate the same transport contract. If torque cannot drive the specified learning gate
+in the first core consumer, it remains observable only and is not copied into unused
+core state.
 
 No runtime temperature field is added in this plan because there is no confirmed sensor
 chain. Temperature remains an offline calibration parameter until that chain exists.

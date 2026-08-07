@@ -281,7 +281,6 @@ typedef struct {
     HYD_REAL flow;       /* L/min, magnitude at the pump side */
     HYD_REAL pressure;   /* bar */
     HYD_TIME timestamp;  /* s */
-    HYD_PumpFeedback pumpFeedback;
 } HYD_AxisRef;
 
 /*

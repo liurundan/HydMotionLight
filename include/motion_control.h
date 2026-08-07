@@ -433,8 +433,6 @@ static inline HYD_BOOL HYD_MotionControlFB_IsError(const HYD_MotionControlFB* fb
 
 /* Full reset of configuration, recipe, runtime state, and internal helpers. */
 void HYD_MotionControlFB_Init(HYD_MotionControlFB* fb);
-void HYD_MotionControlFB_SetPumpFeedback(HYD_MotionControlFB* fb,
-                                         const HYD_PumpFeedback* feedback);
 
 /*
  * Soft reset: clears runtime execution state, active segment, fault status,
@@ -542,11 +540,5 @@ HYD_BOOL HYD_MotionControlFB_ReadParameter(const HYD_MotionControlFB* fb, int pa
 HYD_BOOL HYD_MotionControlFB_WriteParameter(HYD_MotionControlFB* fb, int paramNumber, HYD_REAL value);
 HYD_BOOL HYD_MotionControlFB_ReadBoolParameter(const HYD_MotionControlFB* fb, int paramNumber, HYD_BOOL* value);
 HYD_BOOL HYD_MotionControlFB_WriteBoolParameter(HYD_MotionControlFB* fb, int paramNumber, HYD_BOOL value);
-
-#define HYD_PRESSURE_FEEDBACK_BUDGET_BYTES 64U
-/*
- * This is the measured unixgcc host ABI increase from embedding
- * HYD_PumpFeedback in HYD_AxisRef. Target ABI evidence remains required.
- */
 
 #endif /* HYD_MOTION_CONTROL_H */

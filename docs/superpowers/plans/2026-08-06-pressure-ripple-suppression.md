@@ -44,16 +44,16 @@
 
 | File | Responsibility in this plan |
 |---|---|
-| `include/common_types.h` | `HYD_PumpFeedback`, validity bits, and `HYD_AxisRef` feedback extension |
+| `include/common_types.h` | `HYD_PumpFeedback` and validity bits; core axis snapshots remain unchanged |
 | `include/hydro_hardware.h` | Unified pump feedback in the hardware pump object while retaining legacy RPM compatibility |
 | `include/hydro_interfaces.h` | Sensor-backend feedback packet propagation |
-| `include/pressure_controller.h` | Pump feedback input and applied-output tracking API |
+| `include/pressure_controller.h` | Existing pressure input and applied-output tracking API; no retained packet until Task 5 |
 | `include/rbf_pid.h`, `src/rbf_pid.c` | Tracking positional RBF-PI state, continuous Ki semantics, learning gates |
 | `include/ripple_compensator.h`, `src/ripple_compensator.c` | Modulo-360 phase tracker and fixed 13th/26th RPM compensation |
 | `include/pressure_model.h`, `src/sim/PressureModel.c` | Physical pressure model parameters, states, outputs, and legacy profile compatibility |
 | `include/hydro_sim.h`, `src/sim/hydro_sim.c`, `src/sim/hydro_sim_fb.c` | Simulator pump feedback and pressure-model output propagation |
-| `include/motion_control.h`, `src/motion_control.c` | Native pump-feedback setter, pressure-loop integration, post-converter tracking |
-| `src/motion_interface.c` | Preserve PLC axis feedback behavior and initialize the native pump-feedback path |
+| `include/motion_control.h`, `src/motion_control.c` | Existing motion core; Task 5 adds transient per-cycle feedback ingress with the first consumer |
+| `src/motion_interface.c` | Preserve PLC axis feedback behavior without adding packet IEC pins |
 | `tests/test_pump_feedback_chain.c` | Feedback packet validity and propagation tests |
 | `tests/test_ripple_compensator.c` | Angle wrap, phase, gate, table, sign, and limit tests |
 | `tests/test_pressure_model.c`, `tests/test_hydro_sim_fb.c` | Physical-model equations, profile switching, and simulator output tests |
@@ -186,52 +186,29 @@ static inline HYD_BOOL HYD_PumpFeedback_HasValid(uint32_t flags, uint32_t requir
 }
 ```
 
-Add `HYD_PumpFeedback pumpFeedback` to `HYD_AxisRef` and to
-`HYD_PressureControllerInput`. Add `HYD_PumpFeedback feedback` to `HydroPump` while
-keeping the legacy `feedback_rpm` field populated for existing hardware adapters. Do not
-add temperature, Goertzel history, or adaptive-coefficient fields here.
+Add `HYD_PumpFeedback feedback` to `HydroPump` while keeping the legacy `feedback_rpm`
+field populated for existing hardware adapters. Do not add the packet to `HYD_AxisRef`,
+`HYD_PressureControllerInput`, diagnostics, or another retained core snapshot before an
+actual core consumer exists. This preserves the hard motion-FB resource cap and prevents
+unused state from becoming an ABI obligation.
 
-- [ ] **Step 3: Add the native motion-control ingress**
-
-Declare and implement:
-
-```c
-void HYD_MotionControlFB_SetPumpFeedback(HYD_MotionControlFB *fb,
-                                         const HYD_PumpFeedback *feedback);
-```
-
-The implementation copies a finite packet, clears invalid nonfinite values, and clears
-the corresponding validity bit. A null packet clears all validity bits. The existing PLC
-`HYD_SETAXISFEEDBACK` pins remain unchanged; the native setter is the hardware/HAL ingress.
-
-- [ ] **Step 4: Copy feedback into the pressure-controller call**
-
-At the beginning of `HYD_ExecuteActiveSegmentControl()` in `src/motion_control.c`, add:
-
-```c
-memset(&pressureInput, 0, sizeof(pressureInput));
-pressureInput.pumpFeedback = fb->AXIS_REF.pumpFeedback;
-```
-
-Keep the existing pressure, flow, limit, and timestamp assignments. Update reset and
-initialization paths so `AXIS_REF.pumpFeedback.validFlags` is zero after reset.
-
-- [ ] **Step 5: Propagate simulator feedback without PLC layout changes**
+- [ ] **Step 3: Propagate simulator feedback without PLC layout changes**
 
 Extend `AxisFeedback` and the simulator environment with one `HYD_PumpFeedback` packet.
 `HydraulicSim_ReadAxis()` returns it, `Hyd_CopyAxisFeedbackToHandle()` copies it to the
 simulation handle, and `__mcl_cmd_updatePressureModel()` copies the model output packet.
-Do not add new IEC pins to `HYD_PRESSUREMODEL`; the C model and native motion setter are
-the consumers of angle and torque.
+Do not add new IEC pins to `HYD_PRESSUREMODEL`. Task 1 ends at these producer/transport
+boundaries; Task 5 introduces the first core consumer through a transient per-cycle
+feedback ingress, rather than storing the packet in `AXIS_REF`.
 
 - [ ] **Step 6: Run the focused test and commit**
 
 ```bash
 cmake --preset unixgcc
-cmake --build --preset unixgcc --target test_pump_feedback_chain test_motion_interface_unit test_hydro_sim_fb
-ctest --test-dir out/build/unixgcc -R '^(test_pump_feedback_chain|test_motion_interface_unit|test_hydro_sim_fb)$' --output-on-failure
-git add include/common_types.h include/hydro_hardware.h include/hydro_interfaces.h include/pressure_controller.h include/motion_control.h src/motion_control.c src/motion_interface.c src/sim/hydro_sim.c src/sim/hydro_sim_fb.c tests/test_pump_feedback_chain.c CMakeLists.txt
-git commit -m "贯通伺服泵角度转矩反馈链路" -m "让RPM、360度角度、0.1%转矩和有效标志从HAL/仿真进入压力控制器，并清除压力输入未初始化风险。\n\nConstraint: 保持PLC压力模型引脚布局不变\nRejected: 在压力控制器中增加分散的可选标量参数 | 容易出现生产链路断点\nConfidence: high\nScope-risk: moderate\nDirective: 后续补偿器只读取HYD_PumpFeedback，不自行复制反馈字段\nTested: test_pump_feedback_chain; test_motion_interface_unit; test_hydro_sim_fb\nNot-tested: physical pressure equations are not enabled yet"
+cmake --build --preset unixgcc --target test_pump_feedback_chain test_toggle_mechanism_pool test_hydro_sim_fb test_pressure_model
+ctest --test-dir out/build/unixgcc -R '^(test_pump_feedback_chain|test_toggle_mechanism_pool|test_hydro_sim_fb|test_pressure_model)$' --output-on-failure
+git add include/common_types.h include/hydro_hardware.h include/hydro_interfaces.h include/hydro_sim.h include/hydro_sim_fb.h include/pressure_model.h src/sim/PressureModel.c src/sim/hydro_sim.c src/sim/hydro_sim_fb.c tests/test_pump_feedback_chain.c CMakeLists.txt
+git commit -m "建立伺服泵反馈生产和传输边界" -m "让统一反馈包从仿真与压力模型生产者稳定传播到公开观察点，而不在没有消费者的运动核心快照中持久化。\n\nConstraint: 保持HYD_MotionControlFB资源上限和PLC引脚布局\nRejected: 预先将packet写入AXIS_REF或压力输入 | 引入无消费的长期RAM和ABI负担\nConfidence: high\nScope-risk: narrow\nDirective: Task 5必须通过瞬态每周期入口原子引入第一个核心消费者\nTested: test_pump_feedback_chain; test_toggle_mechanism_pool; test_hydro_sim_fb; test_pressure_model\nNot-tested: STM32H7目标板资源测量"
 ```
 
 ## Task 2: Add the Calibrated Fluid-Equation Pressure Model Profile
@@ -737,12 +714,14 @@ the 13th order is not observable at the configured 1 ms period.
 - [ ] **Step 4: Apply compensation at the RPM boundary and track the base output**
 
 Store `HYD_RippleCompState` in `HYD_MotionControlFB`. In
-`HYD_ExecuteActiveSegmentControl()`:
+`HYD_ExecuteActiveSegmentControl()`, obtain `feedbackIngress` from the producer route
+for the current cycle, validate it, and pass it directly to the compensator. Do not
+retain it in `AXIS_REF`, diagnostics, or `HYD_PressureControllerInput`:
 
 ```c
 base_rpm = pumpOutput->pumpSpeed;
 HYD_RippleComp_Execute(&fb->_rippleComp,
-                       &fb->AXIS_REF.pumpFeedback,
+                       feedbackIngress,
                        (float)base_rpm,
                        &rippleOutput);
 final_rpm = clamp_slew(base_rpm + rippleOutput.deltaRpm,
