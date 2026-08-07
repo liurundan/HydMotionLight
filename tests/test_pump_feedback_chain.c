@@ -6,6 +6,7 @@
 #include "hydro_hardware.h"
 #include "hydro_sim.h"
 #include "hydro_sim_fb.h"
+#include "pressure_model.h"
 
 extern HYD_HydraulicSimFB* __MK_GetPublic_HydraulicSimFB(int index);
 
@@ -27,6 +28,49 @@ static void test_packet_contract(void) {
     assert(HYD_PumpFeedback_HasValid(feedback.validFlags,
                                      HYD_PUMP_FEEDBACK_VALID_ANGLE));
     assert(feedback.torquePermille == 6242.0);
+}
+
+static void assert_valid_feedback_fields_are_finite(const HYD_PumpFeedback* feedback) {
+    assert(feedback != NULL);
+    if (HYD_PumpFeedback_HasValid(feedback->validFlags,
+                                  HYD_PUMP_FEEDBACK_VALID_RPM)) {
+        assert(isfinite(feedback->rpm));
+    }
+    if (HYD_PumpFeedback_HasValid(feedback->validFlags,
+                                  HYD_PUMP_FEEDBACK_VALID_ANGLE)) {
+        assert(isfinite(feedback->angleDeg));
+    }
+    if (HYD_PumpFeedback_HasValid(feedback->validFlags,
+                                  HYD_PUMP_FEEDBACK_VALID_TORQUE)) {
+        assert(isfinite(feedback->torquePermille));
+    }
+    if (HYD_PumpFeedback_HasValid(feedback->validFlags,
+                                  HYD_PUMP_FEEDBACK_VALID_TIMESTAMP)) {
+        assert(isfinite(feedback->timestamp));
+    }
+}
+
+static void test_pressure_model_nonfinite_phase_is_not_valid(void) {
+    PressureModelParams params;
+    PressureModelState state;
+    PressureModelOutput output;
+
+    PressureModel_InitParams(&params);
+    PressureModel_Reset(&state, 0x1234u);
+    state.pump_phase_rev = NAN;
+    memset(&output, 0, sizeof(output));
+    PressureModel_Step(&params, &state, 100.0f, 0.001f, &output);
+    assert(!HYD_PumpFeedback_HasValid(output.pumpFeedback.validFlags,
+                                      HYD_PUMP_FEEDBACK_VALID_ANGLE));
+    assert_valid_feedback_fields_are_finite(&output.pumpFeedback);
+
+    PressureModel_Reset(&state, 0x1234u);
+    state.pump_phase_rev = INFINITY;
+    memset(&output, 0, sizeof(output));
+    PressureModel_Step(&params, &state, 100.0f, 0.001f, &output);
+    assert(!HYD_PumpFeedback_HasValid(output.pumpFeedback.validFlags,
+                                      HYD_PUMP_FEEDBACK_VALID_ANGLE));
+    assert_valid_feedback_fields_are_finite(&output.pumpFeedback);
 }
 
 static void test_simulator_outputs_pump_feedback(void) {
@@ -197,6 +241,7 @@ static void test_pressure_model_packet_survives_simulator_refresh(void) {
 
 int main(void) {
     test_packet_contract();
+    test_pressure_model_nonfinite_phase_is_not_valid();
     test_simulator_outputs_pump_feedback();
     test_pressure_model_packet_survives_simulator_refresh();
     return 0;

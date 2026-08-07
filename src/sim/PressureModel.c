@@ -83,10 +83,11 @@ static float pressure_model_tooth_drop_phase(const PressureModelParams *params, 
 }
 
 static float pressure_model_wrap_unit(float value) {
-    while (value >= 1.0f) {
-        value -= 1.0f;
+    if (!isfinite(value)) {
+        return NAN;
     }
-    while (value < 0.0f) {
+    value = fmodf(value, 1.0f);
+    if (value < 0.0f) {
         value += 1.0f;
     }
     return value;
@@ -96,13 +97,16 @@ static void pressure_model_fill_feedback(const PressureModelState *state,
                                          PressureModelOutput *out) {
     float angle;
     float phase_degrees;
+    int angle_valid;
 
     if (state == NULL || out == NULL) return;
     angle = 0.0f;
+    angle_valid = 0;
     phase_degrees = state->pump_phase_rev * 360.0f;
     if (isfinite(phase_degrees)) {
         angle = fmodf(phase_degrees, 360.0f);
         if (angle < 0.0f) angle += 360.0f;
+        angle_valid = isfinite(angle);
     }
     memset(&out->pumpFeedback, 0, sizeof(out->pumpFeedback));
     out->pumpFeedback.torquePermille = 0.0f;
@@ -110,7 +114,7 @@ static void pressure_model_fill_feedback(const PressureModelState *state,
         out->pumpFeedback.rpm = out->actual_motor_rpm;
         out->pumpFeedback.validFlags |= HYD_PUMP_FEEDBACK_VALID_RPM;
     }
-    if (isfinite(angle)) {
+    if (angle_valid) {
         out->pumpFeedback.angleDeg = angle;
         out->pumpFeedback.validFlags |= HYD_PUMP_FEEDBACK_VALID_ANGLE;
     }
