@@ -259,6 +259,7 @@
     "rpm_rmse": 0.03179211930381949,
     "value": 407.13173567533784
   },
+  "manifest_provenance_sha256": "ac6eded76d2b5152543c3194c70626c38d9048ee431c5e9069e732ce6243af58",
   "parameter_bounds": {
     "cylinder_leak_m3_pa_s": [
       1e-14,
@@ -375,6 +376,7 @@
   "seed": 324478056,
   "source_csv": "open10203040-positive.csv",
   "source_sha256": "7890a25fe2e0690f5d4e700c89e61d433712195df30859b148ba6a643680e695",
+  "summary_sha256": "dc3fe4c6637fb0e2e1fa409410d82d701575705a80ccbe9a36a3b8b7f984ac6d",
   "training_objective": {
     "order13_phase_rmse_deg": 119.51609831791129,
     "order13_rmse_bar": 19.244150761150184,

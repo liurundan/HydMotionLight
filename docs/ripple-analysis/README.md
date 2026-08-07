@@ -13,3 +13,7 @@ in `0..2000`, phases in `[-pi, pi]` radians, and signed RPM amplitudes no larger
 30% of the corresponding RPM breakpoint. The exporter treats the authenticated KV as
 an artifact-consistency anchor; this detects mismatched generated artifacts, not a
 malicious writer with repository access.
+
+The consistency graph is `KV -> params -> manifest provenance -> summary -> validation`.
+Each digest is calculated over canonical sorted-key JSON with its own digest field
+excluded, preventing circular self-authentication.

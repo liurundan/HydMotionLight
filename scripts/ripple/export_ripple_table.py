@@ -5,6 +5,7 @@ import math
 import os
 import sys
 from pathlib import Path
+import hashlib
 
 def fail(message):
     print("model not calibrated: " + message, file=sys.stderr)
@@ -14,6 +15,10 @@ def canonical_lines(parameters, status, source_hash, manifest_hash):
     return ("schema_version=1\ncalibration_status=%s\nsource_sha256=%s\n"
             "manifest_provenance_sha256=%s\n" % (status, source_hash, manifest_hash)) + \
         "".join("%s=%.17g\n" % (key, parameters[key]) for key in sorted(parameters))
+def canonical_json(value, excluded=()):
+    if isinstance(value, dict):
+        value = {key: item for key, item in value.items() if key not in excluded}
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False)
 
 def read_kv(path):
     values = {}
@@ -33,7 +38,6 @@ def read_kv(path):
         raise ValueError("nonfinite KV parameter")
     canonical = canonical_lines(params, values["calibration_status"], values["source_sha256"],
                                 values["manifest_provenance_sha256"])
-    import hashlib
     if hashlib.sha256(canonical.encode("ascii")).hexdigest() != values["calibration_id"]:
         raise ValueError("KV calibration SHA-256 mismatch")
     return values, params
@@ -47,6 +51,8 @@ def main(argv):
         manifest = json.loads((params_path.parent / "physical_parameter_manifest.json").read_text(encoding="utf-8"))
         validation = json.loads((params_path.parent / "model_validation.json").read_text(encoding="utf-8"))
         kv, kv_params = read_kv(params_path.with_suffix(".kv"))
+        manifest_digest = hashlib.sha256(canonical_json(manifest.get("parameters", {})).encode("utf-8")).hexdigest()
+        summary_digest = hashlib.sha256(canonical_json(summary, ("summary_sha256",)).encode("utf-8")).hexdigest()
         ids = {summary.get("calibration_id"), params.get("calibration_id"), manifest.get("calibration_id"), validation.get("calibration_id")}
         if len(ids) != 1 or None in ids or any(item.get("schema_version") != 1
             for item in (summary, params, manifest, validation)):
@@ -54,7 +60,9 @@ def main(argv):
         if kv["calibration_id"] != params["calibration_id"] or \
            kv["calibration_status"] != params["calibration_status"] or \
            kv["source_sha256"] != params["source_sha256"] or \
-           kv["manifest_provenance_sha256"] != manifest["manifest_provenance_sha256"] or \
+           kv["manifest_provenance_sha256"] != manifest_digest or \
+           params.get("manifest_provenance_sha256") != manifest_digest or \
+           params.get("summary_sha256") != summary_digest or summary.get("summary_sha256") != summary_digest or \
            set(kv_params) != set(params.get("parameters", {})) or \
            any(kv_params[key] != params["parameters"][key] for key in kv_params):
             return fail("KV integrity anchor does not match JSON parameters")
@@ -77,9 +85,16 @@ def main(argv):
         amp26 = metrics.get("order26_amplitude_relative_error")
         numeric = (threshold, reference, amp13, phase13, amp26)
         if not all(isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
-                   for value in numeric) or threshold > max(.05 * abs(reference), 5.0) or \
+                   for value in numeric) or reference <= 0.0 or any(value < 0.0 for value in
+                   (threshold, amp13, phase13, amp26)) or threshold > max(.05 * reference, 5.0) or \
            amp13 > .20 or phase13 > 15.0 or amp26 > .30:
             return fail("held-out numeric calibration thresholds failed")
+        digests = validation.get("input_digests", {})
+        if digests.get("calibration_id") != params["calibration_id"] or \
+           digests.get("manifest_provenance_sha256") != manifest_digest or \
+           digests.get("summary_sha256") != summary_digest or \
+           digests.get("kv_sha256") != hashlib.sha256(params_path.with_suffix(".kv").read_bytes()).hexdigest():
+            return fail("validation input digest graph mismatch")
         entries = validation.get("rpm_table_entries")
         if not isinstance(entries, list) or not entries:
             return fail("validated RPM-domain compensation entries are missing")
@@ -90,7 +105,7 @@ def main(argv):
             if not all(isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
                        for value in values):
                 return fail("RPM-domain table contains non-numeric values")
-            if not (-2000.0 <= values[0] <= 2000.0) or (rows and values[0] <= rows[-1][0]):
+            if not (0.0 <= values[0] <= 2000.0) or (rows and values[0] <= rows[-1][0]):
                 return fail("RPM breakpoints must be strictly increasing within the admitted domain")
             if not (-math.pi <= values[2] <= math.pi and -math.pi <= values[4] <= math.pi) or \
                abs(values[1]) > .30 * values[0] or abs(values[3]) > .30 * values[0]:

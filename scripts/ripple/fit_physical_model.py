@@ -8,6 +8,11 @@ from pathlib import Path
 
 from analyze_open_loop import read_rows, solve_order
 
+def canonical_json(value, excluded=()):
+    if isinstance(value, dict):
+        value = {key: item for key, item in value.items() if key not in excluded}
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False)
+
 PARAM_BOUNDS = {
     "motor_natural_freq_hz": [1.0, 50.0], "motor_damping": [0.2, 2.0],
     "motor_delay_s": [0.0, 0.05], "outlet_volume_m3": [1e-5, 5e-3],
@@ -162,8 +167,7 @@ def main(argv):
         manifest_parameters = {key: {"value": value, "unit": "SI", "source": "unprovenanced",
                                "acquisition_window": None} for key, value in params.items()
                                if key not in PARAM_BOUNDS}
-        manifest_hash = hashlib.sha256(json.dumps(manifest_parameters, sort_keys=True,
-                                                  separators=(",", ":")).encode("utf-8")).hexdigest()
+        manifest_hash = hashlib.sha256(canonical_json(manifest_parameters).encode("utf-8")).hexdigest()
         status = "model not calibrated"
         cid = hashlib.sha256(canonical_lines(params, status, source_hash, manifest_hash).encode("ascii")).hexdigest()
         gates = {"mean_pressure_error": False, "order13_amplitude_error": False,
@@ -188,6 +192,11 @@ def main(argv):
         summary["calibration_id"] = cid
         summary["calibration_status"] = status
         summary["source_sha256"] = source_hash
+        summary["summary_sha256"] = hashlib.sha256(
+            canonical_json(summary, ("summary_sha256",)).encode("utf-8")).hexdigest()
+        artifact["summary_sha256"] = summary["summary_sha256"]
+        artifact["manifest_provenance_sha256"] = manifest_hash
+        output.write_text(json.dumps(artifact, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         Path(argv[2]).write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         (output.parent / "physical_parameter_manifest.json").write_text(
             json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
