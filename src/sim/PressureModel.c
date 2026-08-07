@@ -750,6 +750,9 @@ void PressureModel_StepInput(const PressureModelParams *params,
         pressure_model_write_hold_output(state, out);
         return;
     }
+    if (requested_type == PRESSURE_MODEL_TYPE_PHYSICAL_CALIBRATED) {
+        call_start = *state;
+    }
     pressure_bar = isfinite(state->pressure_pa) ? state->pressure_pa / PRESSURE_MODEL_PA_PER_BAR : 0.0f;
     if (requested_type != state->active_model_type) {
         if (pressure_bar <= 0.0f) {
@@ -783,7 +786,6 @@ void PressureModel_StepInput(const PressureModelParams *params,
                                         substeps * PRESSURE_MODEL_DT_S, out);
         return;
     }
-    call_start = *state;
     for (i = 0; i < substeps; ++i) {
         if (!pressure_model_physical_state_is_finite(state) ||
             !pressure_model_physical_state_is_admissible(params, state)) {

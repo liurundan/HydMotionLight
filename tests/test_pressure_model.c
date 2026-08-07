@@ -477,6 +477,17 @@ static void test_physical_multistep_failure_is_atomic(void) {
     assert(out.net_flow_m3_s == 0.0f);
     assert(!HYD_PumpFeedback_HasValid(out.pumpFeedback.validFlags,
                                       HYD_PUMP_FEEDBACK_VALID_TORQUE));
+
+    PressureModel_Reset(&state, 23u);
+    state.active_model_type = PRESSURE_MODEL_TYPE_FIRST_ORDER;
+    held_state = state;
+    PressureModel_StepInput(&params, &state, &input, &out);
+    held_state.timestamp_s += input.dt_s;
+    assert(memcmp(&state, &held_state, sizeof(state)) == 0);
+    assert(out.pump_flow_m3_s == 0.0f);
+    assert(out.net_flow_m3_s == 0.0f);
+    assert(!HYD_PumpFeedback_HasValid(out.pumpFeedback.validFlags,
+                                      HYD_PUMP_FEEDBACK_VALID_TORQUE));
 }
 
 static void test_order_mask_guard_boundaries(void) {
