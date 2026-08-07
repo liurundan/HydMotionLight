@@ -14,6 +14,7 @@ static void test_control_mode_round_trip_restores_pid_configuration(void);
 static void test_continuous_pi_integrates_at_measured_sampling_period(void);
 static void test_continuous_pi_uses_feedforward_once_and_disables_legacy_terms(void);
 static void test_continuous_pi_limits_integrator_tracks_applied_output_and_slews(void);
+static void test_pi_configuration_isolated_from_pid_runtime_state(void);
 
 static void test_init_sets_ready_defaults(void) {
     RBF_PID_Handle pid;
@@ -517,6 +518,53 @@ static void test_continuous_pi_limits_integrator_tracks_applied_output_and_slews
     printf("PASS continuous RBF-PI anti-windup/tracking/slew test\n");
 }
 
+static void test_pi_configuration_isolated_from_pid_runtime_state(void) {
+    RBF_PID_Handle expected;
+    RBF_PID_Handle actual;
+    float expected_output;
+    float actual_output;
+
+    printf("Testing PI configuration isolation from legacy RBF-PID runtime state...\n");
+    RBF_PID_Init(&expected, 0.001f, 90.0f, 1.0f);
+    RBF_PID_SetLearningRates(&expected, 0.0f, 0.0f, 0.0f,
+                             0.0f, 0.0f, 0.0f);
+    RBF_PID_SetPressureAccelFeedforwardEnabled(&expected, true);
+    (void)RBF_PID_Update(&expected, 80.0f, 20.0f);
+    actual = expected;
+
+    RBF_PID_SetContinuousGains(&actual, 17.0f, 19.0f);
+    RBF_PID_SetAntiWindup(&actual, 23.0f, 29.0f);
+    RBF_PID_SetOutputSlew(&actual, 31.0f);
+    RBF_PID_SetFeedforwardFlow(&actual, 37.0f);
+
+    assert(actual.control_mode == RBF_PID_CONTROL_MODE_PID);
+    assert(fabsf(actual.KP - expected.KP) < 1e-6f);
+    assert(fabsf(actual.KI - expected.KI) < 1e-6f);
+    assert(fabsf(actual.mode_state.pid.fLastActPress -
+                 expected.mode_state.pid.fLastActPress) < 1e-6f);
+    assert(fabsf(actual.mode_state.pid.fLastActPress2 -
+                 expected.mode_state.pid.fLastActPress2) < 1e-6f);
+    assert(fabsf(actual.mode_state.pid.last_ref -
+                 expected.mode_state.pid.last_ref) < 1e-6f);
+    assert(fabsf(actual.mode_state.pid.prev_d_term -
+                 expected.mode_state.pid.prev_d_term) < 1e-6f);
+    assert(actual.pressure_accel_ff_enabled == expected.pressure_accel_ff_enabled);
+
+    expected_output = RBF_PID_Update(&expected, 80.0f, 25.0f);
+    actual_output = RBF_PID_Update(&actual, 80.0f, 25.0f);
+    assert(fabsf(actual_output - expected_output) < 1e-6f);
+    assert(fabsf(actual.Output - expected.Output) < 1e-6f);
+    assert(fabsf(actual.mode_state.pid.fLastActPress -
+                 expected.mode_state.pid.fLastActPress) < 1e-6f);
+    assert(fabsf(actual.mode_state.pid.fLastActPress2 -
+                 expected.mode_state.pid.fLastActPress2) < 1e-6f);
+    assert(fabsf(actual.mode_state.pid.last_ref -
+                 expected.mode_state.pid.last_ref) < 1e-6f);
+    assert(fabsf(actual.mode_state.pid.prev_d_term -
+                 expected.mode_state.pid.prev_d_term) < 1e-6f);
+    printf("PASS PI configuration isolation from RBF-PID runtime state test\n");
+}
+
 int main(void) {
     printf("Running RBF_PID tests...\n\n");
 
@@ -539,6 +587,7 @@ int main(void) {
     test_continuous_pi_integrates_at_measured_sampling_period();
     test_continuous_pi_uses_feedforward_once_and_disables_legacy_terms();
     test_continuous_pi_limits_integrator_tracks_applied_output_and_slews();
+    test_pi_configuration_isolated_from_pid_runtime_state();
 
     printf("\n✅ All RBF_PID tests passed successfully!\n");
     return 0;

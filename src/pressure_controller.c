@@ -27,6 +27,7 @@ typedef struct {
     HYD_REAL etaI;
     HYD_REAL etaD;
     HYD_BOOL disablePressureAccelFeedforward;
+    HYD_REAL outputSlewRate;
 } HYD_RbfPidResolvedConfig;
 
 typedef struct {
@@ -173,6 +174,7 @@ static HYD_REAL HYD_ResolveAdaptiveSamplingPeriod(const HYD_PressureControllerSt
 }
 
 static void HYD_ResolveRbfPidConfig(const HYD_MotionSegment* segment,
+                                    HYD_PressureControllerType strategy,
                                     HYD_RbfPidResolvedConfig* config) {
     if (config == NULL) {
         return;
@@ -192,6 +194,7 @@ static void HYD_ResolveRbfPidConfig(const HYD_MotionSegment* segment,
     config->etaI = (HYD_REAL)HYD_DEFAULT_PID_I_LEARNING_RATE;
     config->etaD = (HYD_REAL)HYD_DEFAULT_PID_D_LEARNING_RATE;
     config->disablePressureAccelFeedforward = false;
+    config->outputSlewRate = 0.0;
 
     if (segment == NULL) {
         return;
@@ -209,8 +212,15 @@ static void HYD_ResolveRbfPidConfig(const HYD_MotionSegment* segment,
     config->etaP = HYD_ResolvePositiveOrDefault(segment->pressureRbfConfig.etaP, config->etaP);
     config->etaI = HYD_ResolvePositiveOrDefault(segment->pressureRbfConfig.etaI, config->etaI);
     config->etaD = HYD_ResolvePositiveOrDefault(segment->pressureRbfConfig.etaD, config->etaD);
-    config->disablePressureAccelFeedforward =
-        segment->pressureRbfConfig.disablePressureAccelFeedforward > 0.0 ? true : false;
+    if (strategy == HYD_PRESSURE_CONTROLLER_RBF_PID) {
+        config->disablePressureAccelFeedforward =
+            segment->pressureRbfConfig.strategy.disablePressureAccelFeedforward > 0.0
+                ? true : false;
+    } else if (strategy == HYD_PRESSURE_CONTROLLER_RBF_PI &&
+               segment->pressureRbfConfig.strategy.outputSlewRate > 0.0) {
+        config->outputSlewRate =
+            segment->pressureRbfConfig.strategy.outputSlewRate;
+    }
 }
 
 static void HYD_ResolvePressureControllerConfig(const HYD_MotionSegment* segment,
@@ -263,7 +273,7 @@ static void HYD_ResolvePressureControllerConfig(const HYD_MotionSegment* segment
         }
     }
     config->samplingPeriod = HYD_ResolveAdaptiveSamplingPeriod(state, config->dt);
-    HYD_ResolveRbfPidConfig(segment, &config->rbf);
+    HYD_ResolveRbfPidConfig(segment, config->strategy, &config->rbf);
 }
 
 static void HYD_EnsureRbfPidInitialized(HYD_PressureControllerState* state,
@@ -340,11 +350,16 @@ static void HYD_ApplyRbfPidConfig(HYD_PressureControllerState* state,
         config->strategy == HYD_PRESSURE_CONTROLLER_RBF_PI
             ? RBF_PID_CONTROL_MODE_PI
             : RBF_PID_CONTROL_MODE_PID);
-    RBF_PID_SetAntiWindup(&state->rbfPid, 1.0f, (float)config->integralLimit);
-    RBF_PID_SetPressureAccelFeedforwardEnabled(
-        &state->rbfPid,
-        config->strategy == HYD_PRESSURE_CONTROLLER_RBF_PI ||
+    if (config->strategy == HYD_PRESSURE_CONTROLLER_RBF_PI) {
+        RBF_PID_SetAntiWindup(&state->rbfPid, 1.0f, (float)config->integralLimit);
+        RBF_PID_SetOutputSlew(
+            &state->rbfPid,
+            (float)(config->rbf.outputSlewRate * config->samplingPeriod));
+    } else {
+        RBF_PID_SetPressureAccelFeedforwardEnabled(
+            &state->rbfPid,
             config->rbf.disablePressureAccelFeedforward ? false : true);
+    }
     RBF_PID_SetFlowNormalization(
         &state->rbfPid,
         (float)HYD_ResolvePositiveOrDefault(config->outputMax,
@@ -393,22 +408,16 @@ static void HYD_SynchronizeRbfPidState(HYD_PressureControllerState* state,
                                        HYD_REAL pumpSpeedLimit) {
     HYD_REAL seededFlow;
     HYD_REAL error;
-    float preservedMaxDeltaFlow = 0.0f;
 
     if (state == NULL || config == NULL) {
         return;
     }
 
-    if (state->rbfPid.control_mode == RBF_PID_CONTROL_MODE_PI) {
-        preservedMaxDeltaFlow = state->rbfPid.mode_state.pi.max_delta_flow;
-    }
-
     RBF_PID_Reset(&state->rbfPid);
     HYD_ApplyRbfPidConfig(state, config, segment,
                           flowToPumpSpeedGain, pumpSpeedLimit);
-    RBF_PID_SetFeedforwardFlow(&state->rbfPid, (float)feedforwardFlow);
     if (state->rbfPid.control_mode == RBF_PID_CONTROL_MODE_PI) {
-        RBF_PID_SetOutputSlew(&state->rbfPid, preservedMaxDeltaFlow);
+        RBF_PID_SetFeedforwardFlow(&state->rbfPid, (float)feedforwardFlow);
     }
     seededFlow = HYD_ClampReal(trackedOutputFlow, config->outputMin, config->outputMax);
 
@@ -582,7 +591,9 @@ void HYD_PressureController_Execute(const HYD_MotionSegment* segment,
             (input->targetPressure + 1e-6 < (HYD_REAL)state->rbfPid.P_set);
         HYD_ApplyRbfPidConfig(state, &config, segment,
                               input->flowToPumpSpeedGain, input->pumpSpeedLimit);
-        RBF_PID_SetFeedforwardFlow(&state->rbfPid, (float)input->feedforwardFlow);
+        if (config.strategy == HYD_PRESSURE_CONTROLLER_RBF_PI) {
+            RBF_PID_SetFeedforwardFlow(&state->rbfPid, (float)input->feedforwardFlow);
+        }
 
         if (needsAdaptiveReset) {
             output->trackingApplied = true;

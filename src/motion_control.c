@@ -483,6 +483,8 @@ static void HYD_ReportCommandNotAllowed(HYD_MotionControlFB* fb,
                                         HYD_TIME eventTimestamp,
                                         HYD_UINT requestedSegmentIndex,
                                         const HYD_ExecutionReference* references) {
+    (void)state;
+
     if (fb == NULL) {
         return;
     }
@@ -2832,6 +2834,10 @@ static void HYD_MotionControlFB_RunRunningState(HYD_MotionControlFB* fb) {
 
     plannerOutput.targetFlow = limiterOutput.commandFlow;
     executionReference.flowReference = limiterOutput.commandFlow;
+    if (segment->mode == HYD_MODE_PRESSURE_CLOSED_LOOP) {
+        HYD_PressureController_TrackAppliedFlow(&fb->_pressureController,
+                                                limiterOutput.commandFlow);
+    }
     if (limiterOutput.pressureLimitActive) {
         fb->STATE.limitFlags |= HYD_LIMIT_FLAG_PRESSURE;
     }

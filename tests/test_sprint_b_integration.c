@@ -163,14 +163,14 @@ static void test_gain_scheduling_transitions_smoothly(void) {
     printf("✓ Gain scheduling smooth transition test passed\n");
 }
 
-static void test_derate_reduces_runtime_pump_speed(void) {
+static void test_derate_reduces_runtime_pump_speed_and_tracks_rbf_pi_flow(void) {
     HYD_MotionControlFB fb;
     HYD_MotionSegment segment;
     HYD_REAL nominalSpeed;
     HYD_REAL deratedSpeed;
     HYD_REAL expectedDeratedSpeed;
 
-    printf("Testing diagnostic derate reduces runtime pump speed...\n");
+    printf("Testing diagnostic derate reduces RBF-PI runtime pump speed and tracks applied flow...\n");
 
     HYD_MotionControlFB_Init(&fb);
     fb.FLOW_TO_PUMP_SPEED_GAIN = 10.0;
@@ -196,8 +196,13 @@ static void test_derate_reduces_runtime_pump_speed(void) {
     segment.pressureTolerance = 0.1;
     segment.flowTolerance = 0.1;
     segment.pressureRampRate = 100.0;
-    segment.pressureController = HYD_PRESSURE_CONTROLLER_P;
-    segment.pressureKp = 1.0;
+    segment.pressureController = HYD_PRESSURE_CONTROLLER_RBF_PI;
+    segment.pressureRbfConfig.minKp = 1.0;
+    segment.pressureRbfConfig.maxKp = 1.0;
+    segment.pressureRbfConfig.minKi = 0.001;
+    segment.pressureRbfConfig.maxKi = 0.001;
+    segment.pressureRbfConfig.strategy.outputSlewRate = 100000.0;
+    segment.pressureIntegralLimit = 100.0;
 
     assert(HYD_MotionControlFB_LoadDirectSegment(&fb, &segment));
     assert(HYD_MotionControlFB_StartSegment(&fb, 0, 0.0));
@@ -225,11 +230,13 @@ static void test_derate_reduces_runtime_pump_speed(void) {
 
     assert(deratedSpeed > 0.0);
     assert(fabs(deratedSpeed - expectedDeratedSpeed) < 0.001);
+    assert(fabs((double)fb._pressureController.rbfPid.u_prev -
+                (double)fb.STATE.plannedFlow) < 1e-6);
     assert(fb.DIAGNOSTIC.code == HYD_DIAG_CODE_FLOW_DEVIATION);
     assert(fb.DIAGNOSTIC.protectionAction == HYD_PROTECTION_ACTION_DERATE);
     assert(fb.STATE.status == HYD_STATUS_DEGRADED);
 
-    printf("✓ Diagnostic derate runtime pump speed test passed\n");
+    printf("✓ Diagnostic derate RBF-PI runtime tracking test passed\n");
 }
 
 int main(void) {
@@ -238,7 +245,7 @@ int main(void) {
     test_fb_rejects_oversized_recipe_with_new_features();
     test_trapezoid_planning_with_short_distance_triangular();
     test_gain_scheduling_transitions_smoothly();
-    test_derate_reduces_runtime_pump_speed();
+    test_derate_reduces_runtime_pump_speed_and_tracks_rbf_pi_flow();
 
     printf("\n✅ All Sprint B integration tests passed successfully!\n");
     return 0;

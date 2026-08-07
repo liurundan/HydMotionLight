@@ -345,6 +345,67 @@ static void test_rbf_pid_strategy_uses_library_default_tuning_profile(void) {
     printf("✓ RBF-PID library default tuning profile test passed\n");
 }
 
+static void test_rbf_pid_reconfiguration_preserves_accel_history(void) {
+    HYD_MotionSegment segment;
+    HYD_PressureControllerState state;
+    HYD_PressureControllerInput input;
+    HYD_PressureControllerOutput output;
+    HYD_REAL measurements[] = {20.0, 25.0, 30.0, 34.0};
+    int step;
+
+    printf("Testing repeated RBF-PID configuration preserves acceleration history...\n");
+    segment = make_pressure_segment();
+    segment.pressureController = HYD_PRESSURE_CONTROLLER_RBF_PID;
+    segment.targetFlow = 0.0;
+    segment.targetPressure = 80.0;
+    segment.maxFlow = 90.0;
+    segment.pressureRbfConfig.etaW = 0.0;
+    segment.pressureRbfConfig.etaC = 0.0;
+    segment.pressureRbfConfig.etaB = 0.0;
+    segment.pressureRbfConfig.etaP = 0.0;
+    segment.pressureRbfConfig.etaI = 0.0;
+    segment.pressureRbfConfig.etaD = 0.0;
+
+    HYD_PressureController_InitState(&state, measurements[0], 0.0, 0.0);
+    memset(&input, 0, sizeof(input));
+    input.targetPressure = segment.targetPressure;
+    input.feedforwardFlow = 0.0;
+    input.outputMin = 0.0;
+    input.outputMax = segment.maxFlow;
+    input.flowToPumpSpeedGain = 20.0;
+    input.pumpSpeedLimit = 1800.0;
+
+    input.measuredPressure = measurements[0];
+    input.timestamp = 0.001;
+    HYD_PressureController_Execute(&segment, &state, &input, &output);
+    assert(state.rbfPid.pressure_accel_ff_enabled);
+
+    for (step = 1; step < (int)(sizeof(measurements) / sizeof(measurements[0])); ++step) {
+        RBF_PID_Handle expected = state.rbfPid;
+        float expectedOutput;
+
+        input.measuredPressure = measurements[step];
+        input.timestamp = (HYD_REAL)(step + 1) * 0.001;
+        expectedOutput = RBF_PID_Update(&expected,
+                                        (float)input.targetPressure,
+                                        (float)input.measuredPressure);
+        HYD_PressureController_Execute(&segment, &state, &input, &output);
+
+        assert(state.rbfPid.pressure_accel_ff_enabled);
+        assert(fabsf(state.rbfPid.Output - expectedOutput) < 1e-6f);
+        assert(fabsf(state.rbfPid.mode_state.pid.fLastActPress -
+                     expected.mode_state.pid.fLastActPress) < 1e-6f);
+        assert(fabsf(state.rbfPid.mode_state.pid.fLastActPress2 -
+                     expected.mode_state.pid.fLastActPress2) < 1e-6f);
+        assert(fabsf(state.rbfPid.mode_state.pid.last_ref -
+                     expected.mode_state.pid.last_ref) < 1e-6f);
+        assert(fabsf(state.rbfPid.mode_state.pid.prev_d_term -
+                     expected.mode_state.pid.prev_d_term) < 1e-6f);
+    }
+
+    printf("✓ Repeated RBF-PID configuration preserves acceleration history test passed\n");
+}
+
 static void test_rbf_pid_strategy_uses_segment_level_tuning_profile(void) {
     HYD_MotionSegment segment;
     HYD_PressureControllerState state;
@@ -368,7 +429,7 @@ static void test_rbf_pid_strategy_uses_segment_level_tuning_profile(void) {
     segment.pressureRbfConfig.etaP = 0.11;
     segment.pressureRbfConfig.etaI = 0.12;
     segment.pressureRbfConfig.etaD = 0.13;
-    segment.pressureRbfConfig.disablePressureAccelFeedforward = 1.0;
+    segment.pressureRbfConfig.strategy.disablePressureAccelFeedforward = 1.0;
 
     HYD_PressureController_InitState(&state, 5.0, segment.targetFlow, 0.0);
 
@@ -615,6 +676,7 @@ static void test_rbf_pi_sync_preserves_limited_tracking_configuration(void) {
     segment.pressureRbfConfig.maxKp = 10.0;
     segment.pressureRbfConfig.minKi = 1.0;
     segment.pressureRbfConfig.maxKi = 1.0;
+    segment.pressureRbfConfig.strategy.outputSlewRate = 100.0;
     segment.pressureIntegralLimit = 0.25;
     segment.maxFlow = 20.0;
 
@@ -630,7 +692,6 @@ static void test_rbf_pi_sync_preserves_limited_tracking_configuration(void) {
     input.timestamp = 0.001;
     HYD_PressureController_Execute(&segment, &state, &input, &output);
 
-    RBF_PID_SetOutputSlew(&state.rbfPid, 0.10f);
     HYD_PressureController_RequestTracking(&state, 0.20);
     input.targetPressure = 10.0;
     input.measuredPressure = 0.0;
@@ -1218,7 +1279,7 @@ static HYD_MotionSegment make_rbf_pid_segment(HYD_REAL target_bar) {
     /* This no-dead-time first-order harness relies on bounded PID/RBF
      * adaptation; keep pressure-acceleration FF disabled to avoid
      * unnecessary transient shaping here. */
-    seg.pressureRbfConfig.disablePressureAccelFeedforward = 1.0;
+    seg.pressureRbfConfig.strategy.disablePressureAccelFeedforward = 1.0;
     return seg;
 }
 
@@ -1229,6 +1290,7 @@ static HYD_MotionSegment make_rbf_pi_segment(HYD_REAL target_bar) {
     seg.pressureRbfConfig.minKd = 0.0;
     seg.pressureRbfConfig.maxKd = 0.0;
     seg.pressureRbfConfig.etaD = 0.0;
+    seg.pressureRbfConfig.strategy.outputSlewRate = 10000.0;
     return seg;
 }
 
@@ -1497,6 +1559,7 @@ int main(void) {
     test_strategy_switch_uses_descriptor_based_tracking();
     test_rbf_pid_strategy_executes_within_limits_and_adapts();
     test_rbf_pid_strategy_uses_library_default_tuning_profile();
+    test_rbf_pid_reconfiguration_preserves_accel_history();
     test_rbf_pid_strategy_uses_segment_level_tuning_profile();
     test_rbf_pid_strategy_switch_tracks_previous_output_bumplessly();
     test_rbf_pi_strategy_disables_derivative_behavior();

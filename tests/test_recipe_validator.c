@@ -115,6 +115,16 @@ static void test_validate_rbf_pi_pressure_controller(void) {
     assert(HYD_RecipeValidator_ValidateSegment(&segment, 0, &code, NULL));
     assert(code == HYD_DIAG_CODE_NONE);
 
+    segment.pressureRbfConfig.strategy.outputSlewRate = 12.0;
+    assert(HYD_RecipeValidator_ValidateSegment(&segment, 0, &code, NULL));
+    assert(code == HYD_DIAG_CODE_NONE);
+
+    segment.pressureRbfConfig.strategy.outputSlewRate = -1.0;
+    code = HYD_DIAG_CODE_NONE;
+    assert(!HYD_RecipeValidator_ValidateSegment(&segment, 0, &code, NULL));
+    assert(code == HYD_DIAG_CODE_SEGMENT_INVALID);
+
+    segment.pressureRbfConfig.strategy.outputSlewRate = 0.0;
     segment.pressureRbfConfig.minKp = 2.0;
     segment.pressureRbfConfig.maxKp = 1.0;
     code = HYD_DIAG_CODE_NONE;

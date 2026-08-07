@@ -89,13 +89,19 @@ static HYD_BOOL HYD_RecipeValidator_HasCustomRbfConfig(const HYD_MotionSegment* 
            (segment->pressureRbfConfig.etaB > 0.0) ||
            (segment->pressureRbfConfig.etaP > 0.0) ||
            (segment->pressureRbfConfig.etaI > 0.0) ||
-           (segment->pressureRbfConfig.etaD > 0.0);
+           (segment->pressureRbfConfig.etaD > 0.0) ||
+           ((segment->pressureController == HYD_PRESSURE_CONTROLLER_RBF_PID) &&
+            (segment->pressureRbfConfig.strategy.disablePressureAccelFeedforward > 0.0)) ||
+           ((segment->pressureController == HYD_PRESSURE_CONTROLLER_RBF_PI) &&
+            (segment->pressureRbfConfig.strategy.outputSlewRate > 0.0));
 }
 
 HYD_BOOL HYD_RecipeValidator_ValidateSegment(const HYD_MotionSegment* segment,
                                             size_t segmentIndex,
                                             HYD_DiagnosticCode* code,
                                             const HYD_CylinderConfig* cylinderConfig) {
+    (void)segmentIndex;
+
     if (segment == NULL) {
         return HYD_RecipeValidator_Fail(code, HYD_DIAG_CODE_SEGMENT_INVALID);
     }
@@ -238,6 +244,11 @@ HYD_BOOL HYD_RecipeValidator_ValidateSegment(const HYD_MotionSegment* segment,
         segment->pressureRbfConfig.etaP < 0.0 ||
         segment->pressureRbfConfig.etaI < 0.0 ||
         segment->pressureRbfConfig.etaD < 0.0) {
+        return HYD_RecipeValidator_Fail(code, HYD_DIAG_CODE_SEGMENT_INVALID);
+    }
+
+    if (segment->pressureController == HYD_PRESSURE_CONTROLLER_RBF_PI &&
+        segment->pressureRbfConfig.strategy.outputSlewRate < 0.0) {
         return HYD_RecipeValidator_Fail(code, HYD_DIAG_CODE_SEGMENT_INVALID);
     }
 
@@ -404,6 +415,8 @@ HYD_BOOL HYD_RecipeValidator_ValidateStartContext(const HYD_MotionSegment* segme
                                                  const HYD_AxisRef* axisRef,
                                                  HYD_DiagnosticCode* code) {
     HYD_REAL positionTolerance;
+
+    (void)segmentIndex;
 
     if (segment == NULL || axisRef == NULL) {
         return HYD_RecipeValidator_Fail(code, HYD_DIAG_CODE_START_CONTEXT_INVALID);
