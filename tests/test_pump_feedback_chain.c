@@ -6,8 +6,11 @@
 #include "hydro_hardware.h"
 #include "hydro_interfaces.h"
 #include "hydro_sim.h"
+#include "hydro_sim_fb.h"
 #include "motion_control.h"
 #include "pressure_controller.h"
+
+extern HYD_HydraulicSimFB* __MK_GetPublic_HydraulicSimFB(int index);
 
 static void test_packet_contract(void) {
     HYD_PumpFeedback feedback;
@@ -98,6 +101,32 @@ static void test_simulator_outputs_pump_feedback(void) {
     env.axes[0].backend.write_pump(env.axes[0].backend.ctx, &pump);
     assert(pump.feedback_rpm == 120.0f);
     assert(pump.feedback.rpm == 120.0f);
+
+    {
+        HYD_CREATESIMAXIS create_cmd;
+        HYD_MOVESIMAXIS move_cmd;
+        HYD_HydraulicSimFB *handle;
+
+        __HydSimulator_framework_Init();
+        memset(&create_cmd, 0, sizeof(create_cmd));
+        create_cmd.AXISTYPE.value = SIM_AXIS_CLAMP;
+        create_cmd.MAXVEL.value = 100.0;
+        create_cmd.MAXACC.value = 100.0;
+        create_cmd.MAXDEC.value = 100.0;
+        __mcl_cmd_createSimAxis(&create_cmd);
+        memset(&move_cmd, 0, sizeof(move_cmd));
+        move_cmd.ENABLE.value = true;
+        move_cmd.AXISID.value = create_cmd.AXISID.value;
+        move_cmd.CMD_RPM.value = 80.0;
+        move_cmd.DIRECTION.value = 1;
+        __mcl_cmd_moveSimAxis(&move_cmd);
+        __HydSimulator_framework_Publish();
+        handle = __MK_GetPublic_HydraulicSimFB(create_cmd.AXISID.value);
+        assert(handle != NULL);
+        assert(HYD_PumpFeedback_HasValid(handle->pumpFeedback.validFlags,
+                                         HYD_PUMP_FEEDBACK_VALID_RPM));
+        assert(handle->pumpFeedback.rpm == 80.0f);
+    }
 }
 
 int main(void) {

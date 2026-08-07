@@ -92,6 +92,24 @@ static float pressure_model_wrap_unit(float value) {
     return value;
 }
 
+static void pressure_model_fill_feedback(const PressureModelState *state,
+                                         PressureModelOutput *out) {
+    float angle;
+
+    if (state == NULL || out == NULL) return;
+    angle = fmodf(state->pump_phase_rev * 360.0f, 360.0f);
+    if (angle < 0.0f) angle += 360.0f;
+    memset(&out->pumpFeedback, 0, sizeof(out->pumpFeedback));
+    out->pumpFeedback.rpm = out->actual_motor_rpm;
+    out->pumpFeedback.angleDeg = angle;
+    out->pumpFeedback.torquePermille = out->estimated_torque_trend;
+    out->pumpFeedback.timestamp = state->timestamp_s;
+    out->pumpFeedback.validFlags = HYD_PUMP_FEEDBACK_VALID_RPM |
+                                   HYD_PUMP_FEEDBACK_VALID_ANGLE |
+                                   HYD_PUMP_FEEDBACK_VALID_TORQUE |
+                                   HYD_PUMP_FEEDBACK_VALID_TIMESTAMP;
+}
+
 static uint32_t pressure_model_seed(uint32_t seed) {
     return seed == 0u ? 0xA341316Cu : seed;
 }
@@ -278,6 +296,7 @@ static void pressure_model_step_first_order(const PressureModelParams *params,
         params->torque_bias +
             params->torque_from_pressure_gain * out->measured_pressure_bar +
             params->torque_from_speed_gain * abs_motor_rpm);
+    pressure_model_fill_feedback(state, out);
 }
 
 static void pressure_model_write_switch_hold_output(const PressureModelParams *params,
@@ -303,6 +322,7 @@ static void pressure_model_write_switch_hold_output(const PressureModelParams *p
         params->torque_bias +
             params->torque_from_pressure_gain * out->measured_pressure_bar +
             params->torque_from_speed_gain * abs_motor_rpm);
+    pressure_model_fill_feedback(state, out);
 }
 
 void PressureModel_Step(const PressureModelParams *params,
@@ -331,6 +351,7 @@ void PressureModel_Step(const PressureModelParams *params,
     }
 
     dt = dt_s > 0.0f ? dt_s : PRESSURE_MODEL_DEFAULT_DT_S;
+    state->timestamp_s += dt;
     clamped_target = pressure_model_clampf(target_rpm, params->min_rpm, params->max_rpm);
     alpha = dt / (params->motor_tau_s + dt);
     motor_noise = 0.0f;
@@ -433,6 +454,7 @@ void PressureModel_Step(const PressureModelParams *params,
             params->torque_from_speed_gain * abs_motor_rpm);
     out->relief_active = (q_relief > 0.0f || state->pressure_pa > params->relief_set_pa) ? 1 : 0;
     state->active_model_type = PRESSURE_MODEL_TYPE_PHYSICAL;
+    pressure_model_fill_feedback(state, out);
 }
 
 float pressure_update(float target_rpm,

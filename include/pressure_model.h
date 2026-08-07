@@ -2,6 +2,7 @@
 #define PRESSURE_MODEL_H
 
 #include <stdint.h>
+#include "common_types.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -56,6 +57,7 @@ typedef struct {
     float motor_rpm;
     float pressure_pa;
     float pump_phase_rev;
+    float timestamp_s;
     uint32_t rng_state;
     int has_spare_gauss;
     float spare_gauss;
@@ -73,6 +75,7 @@ typedef struct {
     float net_flow_m3_s;
     int relief_active;
     float estimated_torque_trend;
+    HYD_PumpFeedback pumpFeedback;
 } PressureModelOutput;
 
 void PressureModel_InitParams(PressureModelParams *params);
