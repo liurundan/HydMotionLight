@@ -304,8 +304,13 @@ void __mcl_cmd_updatePressureModel(HYD_PRESSUREMODEL *data__)
     g_pressure_model_feedback = out.pumpFeedback;
     for (int i = 0; i < HYD_MAX_HYDRAULIC_SIM_FB; ++i) {
         if (g_shared_env.axes[i].allocated) {
+            int slot = Hyd_GetSlotByAxisId(g_shared_env.axes[i].axis_id);
+
             g_shared_env.axes[i].pump_feedback = g_pressure_model_feedback;
             g_shared_env.axes[i].last_feedback.pumpFeedback = g_pressure_model_feedback;
+            if (slot >= 0) {
+                Hyd_CopyAxisFeedbackToHandle(&_sim_fb[slot]);
+            }
         }
     }
 
