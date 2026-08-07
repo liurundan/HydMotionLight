@@ -1,0 +1,138 @@
+Preset CMake variables:
+
+  CMAKE_BUILD_TYPE="Debug"
+  CMAKE_INSTALL_PREFIX="/home/dan/project/hdy-motion-light/out/install/unixgcc"
+  CMAKE_TOOLCHAIN_FILE="/home/dan/project/hdy-motion-light/cmake/unixgcc_toolchain.cmake"
+
+Preset environment variables:
+
+  PATH="/usr/bin/"
+
+-- Configuring done
+-- Generating done
+-- Build files have been written to: /home/dan/project/hdy-motion-light/out/build/unixgcc
+Consolidate compiler generated dependencies of target HydroMotionLib
+[ 90%] Built target HydroMotionLib
+Consolidate compiler generated dependencies of target test_pressure_controller
+[100%] Built target test_pressure_controller
+Consolidate compiler generated dependencies of target HydroSimLib
+[ 16%] Built target HydroSimLib
+[ 91%] Built target HydroMotionLib
+Consolidate compiler generated dependencies of target test_pressure_model
+[100%] Built target test_pressure_model
+[ 80%] Built target HydroSimLib
+Consolidate compiler generated dependencies of target test_hydro_sim_fb
+[100%] Built target test_hydro_sim_fb
+[ 94%] Built target HydroMotionLib
+Consolidate compiler generated dependencies of target rbf_pid_test
+[100%] Built target rbf_pid_test
+Internal ctest changing into directory: /home/dan/project/hdy-motion-light/out/build/unixgcc
+Test project /home/dan/project/hdy-motion-light/out/build/unixgcc
+      Start  1: test_pump_cylinder_config
+ 1/52 Test  #1: test_pump_cylinder_config ..............................   Passed    0.07 sec
+      Start  2: test_motion_planner
+ 2/52 Test  #2: test_motion_planner ....................................   Passed    0.07 sec
+      Start  3: test_recipe_validator
+ 3/52 Test  #3: test_recipe_validator ..................................   Passed    0.01 sec
+      Start  4: test_pressure_controller
+ 4/52 Test  #4: test_pressure_controller ...............................   Passed    0.09 sec
+      Start  5: test_pump_converter
+ 5/52 Test  #5: test_pump_converter ....................................   Passed    0.02 sec
+      Start  6: test_output_limiter
+ 6/52 Test  #6: test_output_limiter ....................................   Passed    0.04 sec
+      Start  7: test_velocity_controller
+ 7/52 Test  #7: test_velocity_controller ...............................   Passed    0.07 sec
+      Start  8: test_action_profile
+ 8/52 Test  #8: test_action_profile ....................................   Passed    0.08 sec
+      Start  9: test_vp_transfer
+ 9/52 Test  #9: test_vp_transfer .......................................   Passed    0.00 sec
+      Start 10: test_segment_completion
+10/52 Test #10: test_segment_completion ................................   Passed    0.00 sec
+      Start 11: test_rbf_pid
+11/52 Test #11: test_rbf_pid ...........................................   Passed    0.07 sec
+      Start 12: test_diagnostic_monitor
+12/52 Test #12: test_diagnostic_monitor ................................   Passed    0.02 sec
+      Start 13: test_diagnostic_criteria
+13/52 Test #13: test_diagnostic_criteria ...............................   Passed    0.02 sec
+      Start 14: test_sprint3_integration
+14/52 Test #14: test_sprint3_integration ...............................   Passed    0.02 sec
+      Start 15: test_sprint_b_integration
+15/52 Test #15: test_sprint_b_integration ..............................   Passed    0.07 sec
+      Start 16: test_direct_mode
+16/52 Test #16: test_direct_mode .......................................   Passed    0.04 sec
+      Start 17: test_direct_mode_simple
+17/52 Test #17: test_direct_mode_simple ................................   Passed    0.08 sec
+      Start 18: test_parameter_access
+18/52 Test #18: test_parameter_access ..................................   Passed    0.07 sec
+      Start 19: test_parameter_iec
+19/52 Test #19: test_parameter_iec .....................................   Passed    0.09 sec
+      Start 20: test_hydro_sim_fb
+20/52 Test #20: test_hydro_sim_fb ......................................   Passed    0.09 sec
+      Start 21: test_pressure_model
+21/52 Test #21: test_pressure_model ....................................   Passed    0.16 sec
+      Start 22: test_pressure_hold_diagnosis
+22/52 Test #22: test_pressure_hold_diagnosis ...........................   Passed    0.53 sec
+      Start 23: test_motion_interface_unit
+23/52 Test #23: test_motion_interface_unit .............................   Passed    0.03 sec
+      Start 24: test_motion_interface_arbitration
+24/52 Test #24: test_motion_interface_arbitration ......................   Passed    0.02 sec
+      Start 25: test_motion_interface_done_signals
+25/52 Test #25: test_motion_interface_done_signals .....................   Passed    0.07 sec
+      Start 26: test_movevelocity_stop_reverse_restart
+26/52 Test #26: test_movevelocity_stop_reverse_restart .................   Passed    0.04 sec
+      Start 27: test_movecontinuousabsolute_integration
+27/52 Test #27: test_movecontinuousabsolute_integration ................   Passed    0.10 sec
+      Start 28: test_movecontinuousabsolute_external_sim_integration
+28/52 Test #28: test_movecontinuousabsolute_external_sim_integration ...   Passed    0.11 sec
+      Start 29: test_moveabsolute_stop_integration
+29/52 Test #29: test_moveabsolute_stop_integration .....................   Passed    0.09 sec
+      Start 30: test_moveabsolute_blending_done
+30/52 Test #30: test_moveabsolute_blending_done ........................   Passed    0.35 sec
+      Start 31: test_stop_immediate_done
+31/52 Test #31: test_stop_immediate_done ...............................   Passed    0.02 sec
+      Start 32: test_ramp_controller_detailed
+32/52 Test #32: test_ramp_controller_detailed ..........................   Passed    0.01 sec
+      Start 33: test_fault_recovery
+33/52 Test #33: test_fault_recovery ....................................   Passed    0.01 sec
+      Start 34: test_stop_diagnostics_retained
+34/52 Test #34: test_stop_diagnostics_retained .........................   Passed    0.02 sec
+      Start 35: test_state_reporter
+35/52 Test #35: test_state_reporter ....................................   Passed    0.02 sec
+      Start 36: test_safety_state_manager
+36/52 Test #36: test_safety_state_manager ..............................   Passed    0.03 sec
+      Start 37: test_diagnostics
+37/52 Test #37: test_diagnostics .......................................   Passed    0.00 sec
+      Start 38: test_axismotion_setpoint_isolation
+38/52 Test #38: test_axismotion_setpoint_isolation .....................   Passed    0.01 sec
+      Start 39: test_recipe_multi_segment_ownership
+39/52 Test #39: test_recipe_multi_segment_ownership ....................   Passed    0.02 sec
+      Start 40: test_mold_protect
+40/52 Test #40: test_mold_protect ......................................   Passed    0.02 sec
+      Start 41: test_rbf_pid_hil
+41/52 Test #41: test_rbf_pid_hil .......................................   Passed    0.03 sec
+      Start 42: test_pump_direction_conflict
+42/52 Test #42: test_pump_direction_conflict ...........................   Passed    0.02 sec
+      Start 43: test_vp_bumpless_reverse
+43/52 Test #43: test_vp_bumpless_reverse ...............................   Passed    0.00 sec
+      Start 44: test_interface_layout_consistency
+44/52 Test #44: test_interface_layout_consistency ......................   Passed    0.56 sec
+      Start 45: test_negative_flow
+45/52 Test #45: test_negative_flow .....................................   Passed    0.01 sec
+      Start 46: test_toggle_kinematics
+46/52 Test #46: test_toggle_kinematics .................................   Passed    0.03 sec
+      Start 47: test_toggle_mechanism_pool
+47/52 Test #47: test_toggle_mechanism_pool .............................   Passed    0.01 sec
+      Start 48: test_actuation_mapper
+48/52 Test #48: test_actuation_mapper ..................................   Passed    0.01 sec
+      Start 49: test_toggle_motion_interface
+49/52 Test #49: test_toggle_motion_interface ...........................   Passed    0.02 sec
+      Start 50: test_toggle_motion_integration
+50/52 Test #50: test_toggle_motion_integration .........................   Passed    0.07 sec
+      Start 51: test_toggle_hydraulic_sim
+51/52 Test #51: test_toggle_hydraulic_sim ..............................   Passed    0.05 sec
+      Start 52: test_motion_interface_negative_speed
+52/52 Test #52: test_motion_interface_negative_speed ...................   Passed    0.04 sec
+
+100% tests passed, 0 tests failed out of 52
+
+Total Test time (real) =   3.60 sec
