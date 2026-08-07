@@ -167,9 +167,10 @@ static void test_resource_budget(void)
     size_t slot_bytes = HYD_ToggleMechanismPool_SlotSize();
     size_t validation_bytes = sizeof(HYD_ToggleValidation);
     size_t motion_fb_bytes = sizeof(HYD_MotionControlFB);
+    size_t feedback_budget_bytes = HYD_PRESSURE_FEEDBACK_BUDGET_BYTES;
 
-    printf("toggle slot bytes=%zu validation bytes=%zu motion fb bytes=%zu\n",
-           slot_bytes, validation_bytes, motion_fb_bytes);
+    printf("toggle slot bytes=%zu validation bytes=%zu motion fb bytes=%zu feedback budget=%zu\n",
+           slot_bytes, validation_bytes, motion_fb_bytes, feedback_budget_bytes);
     assert(slot_bytes <= 112U);
     assert(validation_bytes <= 160U);
     assert(motion_fb_bytes <= HYD_BASELINE_MOTION_FB_BYTES +
@@ -178,6 +179,7 @@ static void test_resource_budget(void)
 #else
            32U
 #endif
+           + feedback_budget_bytes
     );
 }
 

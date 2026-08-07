@@ -638,6 +638,7 @@ static void test_negative_same_direction_latches_inendvelocity_on_target_crossin
     int positionReachedStep;
     HYD_REAL finalVelocity = 0.0f;
     bool readOk = false;
+    HYD_MotionControlFB *core;
 
     __HydMotion_framework_Init();
     axisId = create_sim_axis();
@@ -645,8 +646,14 @@ static void test_negative_same_direction_latches_inendvelocity_on_target_crossin
     if (axisId < 0) {
         return;
     }
+    core = __MK_GetPublic_MotionControlFB(axisId);
+    ASSERT_TRUE(core != NULL, "CreateMotion should expose the simulation axis");
+    if (core == NULL) {
+        return;
+    }
+    core->AXIS_REF.position = 200.0f;
 
-    init_movecontinuousabsolute(&cmd, axisId, -120.0f, 25.0f, 8.0f,
+    init_movecontinuousabsolute(&cmd, axisId, 120.0f, 25.0f, 8.0f,
                                 HYD_DIRECTION_NEGATIVE,
                                 HYD_DIRECTION_NEGATIVE);
     rising_edge_scan(&cmd);
