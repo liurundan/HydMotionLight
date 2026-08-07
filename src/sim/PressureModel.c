@@ -316,6 +316,8 @@ static int pressure_model_physical_state_is_admissible(
     const PressureModelState *state) {
     return state->motor_rpm >= params->min_rpm &&
            state->motor_rpm <= params->max_rpm &&
+           state->pressure_pa >= 0.0f &&
+           state->outlet_pressure_pa >= 0.0f &&
            pressure_model_absf(state->motor_accel_rpm_s) <=
                params->physical.motor_accel_limit_rpm_s &&
            state->pump_phase_rev >= 0.0f && state->pump_phase_rev < 1.0f &&
@@ -336,6 +338,8 @@ static int pressure_model_validate_runtime_params(const PressureModelParams *par
            params->min_rpm >= -PRESSURE_MODEL_PHYSICAL_MAX_ABS_RPM &&
            params->max_rpm <= PRESSURE_MODEL_PHYSICAL_MAX_ABS_RPM &&
            params->min_rpm <= params->max_rpm &&
+           params->min_rpm <= 0.0f &&
+           params->max_rpm >= 0.0f &&
            pressure_model_is_finite_positive(params->sensor_range_bar) &&
            pressure_model_is_finite_nonnegative(params->sensor_noise_std_bar) &&
            isfinite(params->sensor_bias_bar) &&
@@ -718,6 +722,7 @@ void PressureModel_StepInput(const PressureModelParams *params,
     unsigned char requested_type;
     float dt_s;
     float pressure_bar;
+    PressureModelState call_start;
     int substeps;
     int i;
 
@@ -778,12 +783,12 @@ void PressureModel_StepInput(const PressureModelParams *params,
                                         substeps * PRESSURE_MODEL_DT_S, out);
         return;
     }
+    call_start = *state;
     for (i = 0; i < substeps; ++i) {
-        PressureModelState previous_state = *state;
-
         if (!pressure_model_physical_state_is_finite(state) ||
             !pressure_model_physical_state_is_admissible(params, state)) {
-            state->timestamp_s += PRESSURE_MODEL_DT_S;
+            *state = call_start;
+            state->timestamp_s += substeps * PRESSURE_MODEL_DT_S;
             pressure_model_write_hold_output(state, out);
             return;
         }
@@ -791,8 +796,8 @@ void PressureModel_StepInput(const PressureModelParams *params,
                                                   input->load_flow_m3_s,
                                                   out) ||
             !pressure_model_physical_state_is_finite(state)) {
-            *state = previous_state;
-            state->timestamp_s += PRESSURE_MODEL_DT_S;
+            *state = call_start;
+            state->timestamp_s += substeps * PRESSURE_MODEL_DT_S;
             pressure_model_write_hold_output(state, out);
             return;
         }

@@ -481,9 +481,15 @@ it never clamps an overflowed pressure trajectory into a plausible result. Inval
 physical state is rejected before delay-ring access and preserved unchanged except for the
 normal finite scan timestamp advance.
 
-Task 2 host-only `pressure_model_replay` emits only an explicitly uncalibrated deterministic
-stream and rejects any supplied KV file. Task 3 adds the strict versioned calibration-file
-loader before a replay may be labeled calibrated. The Task 3 calibrated invocation is:
+For a valid multi-substep physical scan, integration is atomic: if any later 1 ms substep
+cannot complete, the model restores the state captured at scan entry, advances only the finite
+requested scan timestamp, and emits hold output. This prevents a failed 4 ms scan from exposing
+a partially integrated plant state.
+
+Task 2 ends with an explicitly uncalibrated deterministic `pressure_model_replay` baseline.
+Task 3 exclusively owns KV-calibrated replay, including its strict versioned
+`identified_params.kv` parser, verifier, load admission, and calibrated output labeling. The
+Task 3 calibrated invocation is:
 
 ```text
 pressure_model_replay physical <rpm> <samples> <identified_params.kv>

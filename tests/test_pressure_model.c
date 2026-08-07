@@ -119,6 +119,12 @@ static void test_physical_params_validate_and_invalid_holds_safely(void) {
     invalid_runtime.max_rpm = PRESSURE_MODEL_PHYSICAL_MAX_ABS_RPM + 1.0f;
     assert(PressureModel_ValidatePhysicalParams(&invalid_runtime.physical));
     assert(!PressureModel_ValidateParams(&invalid_runtime));
+    invalid_runtime = physical_params();
+    invalid_runtime.min_rpm = 1.0f;
+    assert(!PressureModel_ValidateParams(&invalid_runtime));
+    invalid_runtime = physical_params();
+    invalid_runtime.max_rpm = -1.0f;
+    assert(!PressureModel_ValidateParams(&invalid_runtime));
     invalid_eta = physical_params();
     invalid_eta.physical.motor_torque_limit_permille = -1.0f;
     assert(!PressureModel_ValidatePhysicalParams(&invalid_eta.physical));
@@ -414,6 +420,24 @@ static void test_invalid_physical_state_holds_without_mutation(void) {
     held_state.timestamp_s += DT_S;
     assert(memcmp(&state, &held_state, sizeof(state)) == 0);
 
+    PressureModel_Reset(&state, 20u);
+    state.pressure_pa = -1.0f;
+    held_state = state;
+    PressureModel_StepInput(&params, &state, &input, &out);
+    held_state.timestamp_s += DT_S;
+    assert(memcmp(&state, &held_state, sizeof(state)) == 0);
+    assert(out.pump_flow_m3_s == 0.0f);
+    assert(out.net_flow_m3_s == 0.0f);
+
+    PressureModel_Reset(&state, 21u);
+    state.outlet_pressure_pa = -1.0f;
+    held_state = state;
+    PressureModel_StepInput(&params, &state, &input, &out);
+    held_state.timestamp_s += DT_S;
+    assert(memcmp(&state, &held_state, sizeof(state)) == 0);
+    assert(out.pump_flow_m3_s == 0.0f);
+    assert(out.net_flow_m3_s == 0.0f);
+
     PressureModel_Reset(&state, 19u);
     state.pressure_pa = NAN;
     held_state = state;
@@ -422,6 +446,37 @@ static void test_invalid_physical_state_holds_without_mutation(void) {
     assert(memcmp(&state, &held_state, sizeof(state)) == 0);
     assert(out.real_pressure_bar == 0.0f);
     assert(out.pump_flow_m3_s == 0.0f);
+}
+
+static void test_physical_multistep_failure_is_atomic(void) {
+    PressureModelParams params = physical_params();
+    PressureModelState state;
+    PressureModelState held_state;
+    PressureModelState first_substep_state;
+    PressureModelOutput out;
+    PressureModelInput input;
+
+    params.physical.outlet_leak_m3_pa_s = FLT_MAX;
+    assert(PressureModel_ValidateParams(&params));
+    input.target_rpm = 100.0f;
+    input.load_flow_m3_s = 0.0f;
+    input.dt_s = DT_S;
+
+    PressureModel_Reset(&first_substep_state, 22u);
+    PressureModel_StepInput(&params, &first_substep_state, &input, &out);
+    assert(first_substep_state.outlet_pressure_pa > 0.0f);
+    assert(fabsf(first_substep_state.timestamp_s - DT_S) < 1.0e-6f);
+
+    PressureModel_Reset(&state, 22u);
+    held_state = state;
+    input.dt_s = 0.004f;
+    PressureModel_StepInput(&params, &state, &input, &out);
+    held_state.timestamp_s += input.dt_s;
+    assert(memcmp(&state, &held_state, sizeof(state)) == 0);
+    assert(out.pump_flow_m3_s == 0.0f);
+    assert(out.net_flow_m3_s == 0.0f);
+    assert(!HYD_PumpFeedback_HasValid(out.pumpFeedback.validFlags,
+                                      HYD_PUMP_FEEDBACK_VALID_TORQUE));
 }
 
 static void test_order_mask_guard_boundaries(void) {
@@ -777,6 +832,7 @@ int main(void) {
     test_physical_extreme_admission_holds_state();
     test_physical_increment_admission_and_rollback();
     test_invalid_physical_state_holds_without_mutation();
+    test_physical_multistep_failure_is_atomic();
     test_order_mask_guard_boundaries();
     test_positive_pressure_profile_handover_advances_time();
     test_measured_open_loop_reference_contract();

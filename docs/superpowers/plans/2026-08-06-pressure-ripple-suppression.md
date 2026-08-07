@@ -450,13 +450,12 @@ profile switch, hold the current pressure and reset only states that cannot be m
 not silently enable physical parameters while the first-order profile is selected.
 
 Update `src/sim/hydro_sim_fb.c` to copy `out.pumpFeedback` into the native feedback packet.
-Add `tests/pressure_model_replay.c` and the CMake target `pressure_model_replay`. In Task 2
-it accepts `physical|first_order`, an RPM value, and a sample count and emits only the
-deterministic `calibration_id=uncalibrated` skeleton. A supplied `identified_params.kv`
-must fail clearly as uncalibrated; Task 2 must not load or validate held-out calibration
-data. The replay writes one CSV row per 1 ms step with actual RPM, chamber real/measured
-pressure, angle, torque, timestamp, validity bits, active-order mask, and a
-calibration-status header. Task 3 owns the strict host-only parser and calibrated invocation:
+Add `tests/pressure_model_replay.c` and the CMake target `pressure_model_replay`. Task 2 ends
+with an uncalibrated deterministic replay baseline that accepts `physical|first_order`, an RPM
+value, and a sample count. It writes one CSV row per 1 ms step with actual RPM, chamber
+real/measured pressure, angle, torque, timestamp, validity bits, active-order mask, and a
+calibration-status header. Task 3 owns KV-calibrated replay, including the strict host-only
+`identified_params.kv` parser, verifier, load admission, and calibrated invocation:
 
 ```bash
 ./out/build/unixgcc/pressure_model_replay physical 20 20000 docs/ripple-analysis/identified_params.kv > docs/ripple-analysis/replay-20rpm.csv
@@ -506,9 +505,9 @@ git commit -m "建立13齿齿轮泵物理压力模型" -m "在保留一阶回归
 - Modify: `tests/pressure_model_replay.c` to add the strict host-only
   `identified_params.kv` parser/loader after the file schema is defined
 
-Task 3 is the first task allowed to load `identified_params.kv` into host replay, verify
-its schema/version/calibration ID, and label a replay calibrated. Task 2's replay skeleton
-must reject supplied KV files and remain explicitly uncalibrated.
+Task 3 is the first task allowed to load `identified_params.kv` into host replay, verify its
+schema/version/calibration ID, and label a replay calibrated. Task 2 remains the uncalibrated
+physical-model baseline; KV replay behavior is entirely a Task 3 responsibility.
 
 - [ ] **Step 1: Implement standard-library CSV parsing and data-contract checks**
 
