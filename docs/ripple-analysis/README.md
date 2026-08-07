@@ -16,4 +16,6 @@ malicious writer with repository access.
 
 The consistency graph is `KV -> params -> manifest provenance -> summary -> validation`.
 Each digest is calculated over canonical sorted-key JSON with its own digest field
-excluded, preventing circular self-authentication.
+excluded. The manifest provenance digest additionally excludes derived
+`calibration_id`, because that ID itself binds the manifest digest; all other manifest
+admission fields, including `missing_provenance`, remain covered.

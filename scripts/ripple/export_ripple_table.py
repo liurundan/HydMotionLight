@@ -51,7 +51,8 @@ def main(argv):
         manifest = json.loads((params_path.parent / "physical_parameter_manifest.json").read_text(encoding="utf-8"))
         validation = json.loads((params_path.parent / "model_validation.json").read_text(encoding="utf-8"))
         kv, kv_params = read_kv(params_path.with_suffix(".kv"))
-        manifest_digest = hashlib.sha256(canonical_json(manifest.get("parameters", {})).encode("utf-8")).hexdigest()
+        manifest_digest = hashlib.sha256(
+            canonical_json(manifest, ("manifest_provenance_sha256", "calibration_id")).encode("utf-8")).hexdigest()
         summary_digest = hashlib.sha256(canonical_json(summary, ("summary_sha256",)).encode("utf-8")).hexdigest()
         ids = {summary.get("calibration_id"), params.get("calibration_id"), manifest.get("calibration_id"), validation.get("calibration_id")}
         if len(ids) != 1 or None in ids or any(item.get("schema_version") != 1

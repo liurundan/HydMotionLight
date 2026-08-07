@@ -167,8 +167,11 @@ def main(argv):
         manifest_parameters = {key: {"value": value, "unit": "SI", "source": "unprovenanced",
                                "acquisition_window": None} for key, value in params.items()
                                if key not in PARAM_BOUNDS}
-        manifest_hash = hashlib.sha256(canonical_json(manifest_parameters).encode("utf-8")).hexdigest()
         status = "model not calibrated"
+        manifest_payload = {"schema_version": 1, "calibration_status": status,
+                            "source_sha256": source_hash, "parameters": manifest_parameters,
+                            "missing_provenance": sorted(k for k in DEFAULTS if k not in PARAM_BOUNDS)}
+        manifest_hash = hashlib.sha256(canonical_json(manifest_payload).encode("utf-8")).hexdigest()
         cid = hashlib.sha256(canonical_lines(params, status, source_hash, manifest_hash).encode("ascii")).hexdigest()
         gates = {"mean_pressure_error": False, "order13_amplitude_error": False,
                  "order13_phase_error": False, "order26_amplitude_error": False,
@@ -185,10 +188,8 @@ def main(argv):
         output.with_suffix(".kv").write_text("schema_version=1\ncalibration_id=%s\n%s" %
                                              (cid, canonical_lines(params, status, source_hash, manifest_hash)
                                               .split("\n", 1)[1]), encoding="ascii")
-        manifest = {"schema_version": 1, "calibration_id": cid, "calibration_status": status,
-                    "source_sha256": source_hash, "manifest_provenance_sha256": manifest_hash,
-                    "parameters": manifest_parameters,
-                    "missing_provenance": sorted(k for k in DEFAULTS if k not in PARAM_BOUNDS)}
+        manifest = dict(manifest_payload)
+        manifest.update({"calibration_id": cid, "manifest_provenance_sha256": manifest_hash})
         summary["calibration_id"] = cid
         summary["calibration_status"] = status
         summary["source_sha256"] = source_hash

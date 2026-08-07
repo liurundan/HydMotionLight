@@ -32,16 +32,18 @@ def build_bundle(directory):
         key: {"value": value, "unit": "SI", "source": "fixture", "acquisition_window": "bench"}
         for key, value in parameters.items() if key not in PARAM_BOUNDS
     }
-    manifest_hash = hashlib.sha256(canonical_json(manifest_parameters).encode()).hexdigest()
+    manifest_payload = {"schema_version": 1, "calibration_status": status,
+                        "source_sha256": source_hash, "parameters": manifest_parameters,
+                        "missing_provenance": []}
+    manifest_hash = hashlib.sha256(canonical_json(manifest_payload).encode()).hexdigest()
     calibration_id = hashlib.sha256(
         canonical_lines(parameters, status, source_hash, manifest_hash).encode("ascii")).hexdigest()
     summary = {"schema_version": 1, "calibration_id": calibration_id,
                "calibration_status": status, "source_sha256": source_hash, "segments": []}
     summary["summary_sha256"] = hashlib.sha256(
         canonical_json(summary, ("summary_sha256",)).encode()).hexdigest()
-    manifest = {"schema_version": 1, "calibration_id": calibration_id,
-                "calibration_status": status, "source_sha256": source_hash,
-                "manifest_provenance_sha256": manifest_hash, "parameters": manifest_parameters}
+    manifest = dict(manifest_payload)
+    manifest.update({"calibration_id": calibration_id, "manifest_provenance_sha256": manifest_hash})
     params = {"schema_version": 1, "calibration_id": calibration_id,
               "calibration_status": status, "source_sha256": source_hash,
               "manifest_provenance_sha256": manifest_hash,
@@ -114,6 +116,22 @@ assert_rejected_after_mutation(lambda d: (d / "model_validation.json").write_tex
 assert_rejected_after_mutation(lambda d: (d / "model_validation.json").write_text(
     (d / "model_validation.json").read_text().replace("\"mean_pressure_error_bar\":1.0",
                                                         "\"mean_pressure_error_bar\":-1.0")))
+assert_rejected_after_mutation(lambda d: (d / "summary.json").write_text(
+    (d / "summary.json").read_text().replace("\"segments\":[]", "\"segments\":[1]")))
+assert_rejected_after_mutation(lambda d: (d / "model_validation.json").write_text(
+    (d / "model_validation.json").read_text().replace("\"summary_sha256\":\"",
+                                                        "\"summary_sha256\":\"bad")))
+assert_rejected_after_mutation(lambda d: (d / "model_validation.json").write_text(
+    (d / "model_validation.json").read_text().replace("\"rpm\":10.0", "\"rpm\":-1.0")))
+assert_rejected_after_mutation(lambda d: (d / "model_validation.json").write_text(
+    (d / "model_validation.json").read_text().replace("\"order13_phase_error_deg\":5.0",
+                                                        "\"order13_phase_error_deg\":16.0")))
+assert_rejected_after_mutation(lambda d: (d / "model_validation.json").write_text(
+    (d / "model_validation.json").read_text().replace("\"order13_amplitude_relative_error\":0.1",
+                                                        "\"order13_amplitude_relative_error\":0.21")))
+assert_rejected_after_mutation(lambda d: (d / "model_validation.json").write_text(
+    (d / "model_validation.json").read_text().replace("\"order26_amplitude_relative_error\":0.1",
+                                                        "\"order26_amplitude_relative_error\":0.31")))
 for replacement in ("NaN", "Infinity", "7.0", "4.0"):
     def mutate(directory, replacement=replacement):
         path = directory / "model_validation.json"
