@@ -74,7 +74,10 @@ typedef struct {
 
     /* 兼容配置 */
     float K;                        // 系统增益 (bar per L/min, 稳态压力/流量比)
-    float fGainCompensation;        // 兼容字段：保留最近一次计算的补偿因子
+    union {
+        float fGainCompensation;            // PID compatibility field
+        float feedforward_flow;             /* PI external flow bias. */
+    };
     bool gain_compensation_enabled; // 是否在输出末端应用兼容增益补偿
     bool pressure_accel_ff_enabled;
     float gain_compensation_factor; // 输出补偿因子，默认 1.0
@@ -122,7 +125,7 @@ typedef struct {
     float w_2[RBF_HNUM];
 
     /* 控制器状态变量 */
-    float u_prev;
+    float u_prev;                    /* PI actual prior applied flow. */
     float e_prev1;
     float e_prev2;
     float du_prev;
@@ -134,25 +137,27 @@ typedef struct {
     float y_prev2;
     float last_rbf_input[RBF_INPUT_DIM];
 
-    /* 前馈控制相关 */
-    float fLastActPress;            // 上一次压力反馈
-    float fLastActPress2;           // 上上次压力反馈
-    float last_ref;                 // 上一次设定值
-    float prev_d_term;                // 上一次微分项
+    /* PID acceleration/feedforward history shares PI persistent state. */
+    union {
+        struct {
+            float fLastActPress;     // 上一次压力反馈
+            float fLastActPress2;    // 上上次压力反馈
+            float last_ref;          // 上一次设定值
+            float prev_d_term;       // 上一次微分项
+        };
+        struct {
+            float integral_state;    /* Continuous PI integrator [L/min]. */
+            float integral_limit;    /* Absolute continuous PI integrator bound [L/min]. */
+            float antiwindup_gain;   /* Back-calculation gain [1/s]. */
+            float max_delta_flow;    /* Per-sample PI slew limit [L/min], 0 disables. */
+        };
+    };
     /* 网络初始化种子 */
     uint32_t network_seed;          // 兼容保留字段：当前仅存储，尚未接入网络初始化流程
     float pid_mode_kd;
     float pid_mode_eta_d;
     bool pressure_accel_ff_requested;
     RBF_PID_ControlMode control_mode; /* Appended to preserve existing field offsets. */
-    float integral_state;             /* Continuous PI integrator [L/min]. */
-    float integral_limit;             /* Absolute continuous PI integrator bound [L/min]. */
-    float antiwindup_gain;            /* Back-calculation gain [1/s]. */
-    float raw_output;                 /* Continuous PI output before limits [L/min]. */
-    float applied_output;             /* Last applied output [L/min]. */
-    float feedforward_flow;           /* External flow bias, consumed by PI exactly once. */
-    float learning_error;             /* Continuous PI pressure error used for learning. */
-    float max_delta_flow;             /* Per-sample output slew limit [L/min], 0 disables. */
 } RBF_PID_Handle;
 
 /**

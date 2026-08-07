@@ -477,21 +477,15 @@ static void test_continuous_pi_uses_feedforward_once_and_disables_legacy_terms(v
     RBF_PID_SetFeedforwardFlow(&pid, 3.0f);
     RBF_PID_SetLearningRates(&pid, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.9f);
     RBF_PID_SetPressureAccelFeedforwardEnabled(&pid, true);
-    pid.prev_d_term = 8.0f;
-    pid.last_ref = -50.0f;
-    pid.fLastActPress = -100.0f;
-    pid.fLastActPress2 = 100.0f;
 
     output = RBF_PID_Update(&pid, 5.0f, 4.0f);
 
     assert(fabsf(output - 5.0f) < 1e-6f);
-    assert(fabsf(pid.raw_output - 5.0f) < 1e-6f);
     assert(fabsf(pid.feedforward_flow - 3.0f) < 1e-6f);
     assert(fabsf(pid.KD) < 1e-6f);
     assert(fabsf(pid.eta_d) < 1e-6f);
-    assert(fabsf(pid.prev_d_term) < 1e-6f);
     assert(!pid.pressure_accel_ff_enabled);
-    assert(fabsf(pid.learning_error - 1.0f) < 1e-6f);
+    assert(fabsf(pid.Error - 1.0f) < 1e-6f);
     printf("PASS continuous RBF-PI feedforward and legacy-term suppression test\n");
 }
 
@@ -512,13 +506,11 @@ static void test_continuous_pi_limits_integrator_tracks_applied_output_and_slews
     output = RBF_PID_Update(&pid, 10.0f, 0.0f);
     assert(fabsf(output - 0.50f) < 1e-6f);
     assert(fabsf(pid.du - 0.10f) < 1e-6f);
-    assert(fabsf(pid.applied_output - output) < 1e-6f);
     assert(fabsf(pid.u_prev - output) < 1e-6f);
     assert(fabsf(pid.last_rbf_input[0] - 0.004f) < 1e-6f);
     assert(fabsf(pid.integral_state) <= 0.250001f);
 
     RBF_PID_TrackAppliedFlow(&pid, 0.20f);
-    assert(fabsf(pid.applied_output - 0.20f) < 1e-6f);
     assert(fabsf(pid.u_prev - 0.20f) < 1e-6f);
     assert(fabsf(pid.integral_state) <= 0.250001f);
     printf("PASS continuous RBF-PI anti-windup/tracking/slew test\n");

@@ -2,6 +2,7 @@
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
+#include "motion_control.h"
 #include "pump_converter.h"
 #include "pressure_controller.h"
 
@@ -584,7 +585,6 @@ static void test_rbf_pi_feedforward_and_outer_applied_flow_tracking(void) {
 
     HYD_PressureController_TrackAppliedFlow(&state, 1.25);
     assert(fabs(state.previousOutput - 1.25) < 1e-6);
-    assert(fabsf(state.rbfPid.applied_output - 1.25f) < 1e-6f);
     assert(fabsf(state.rbfPid.u_prev - 1.25f) < 1e-6f);
 
     input.feedforwardFlow = 1.25;
@@ -594,6 +594,12 @@ static void test_rbf_pi_feedforward_and_outer_applied_flow_tracking(void) {
     assert(fabs(output1.feedbackFlow + output1.feedforwardFlow - output1.outputFlow) < 1e-6);
     assert(fabs(state.previousOutput - output1.outputFlow) < 1e-6);
     printf("PASS RBF-PI feedforward/outer tracking test\n");
+}
+
+static void test_rbf_pi_state_stays_within_motion_fb_budget(void) {
+    printf("Testing RBF-PI state memory budget...\n");
+    assert(sizeof(HYD_MotionControlFB) <= 3208U);
+    printf("PASS RBF-PI state memory budget test\n");
 }
 
 static void test_rbf_pid_deadzone_clamp_marks_internal_saturation(void) {
@@ -1447,6 +1453,7 @@ int main(void) {
     test_rbf_pi_strategy_disables_derivative_behavior();
     test_rbf_pi_strategy_switch_tracks_previous_output_bumplessly();
     test_rbf_pi_feedforward_and_outer_applied_flow_tracking();
+    test_rbf_pi_state_stays_within_motion_fb_budget();
     test_rbf_pid_deadzone_clamp_marks_internal_saturation();
     test_rbf_pi_output_clamp_saturation_survives_outer_wrapper();
     test_rbf_pid_soft_cap_preserves_legacy_wrapper_state();
