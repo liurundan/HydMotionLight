@@ -84,15 +84,25 @@ static void sha_final(Sha256 *sha, unsigned char digest[32]) {
     }
 }
 
+static int sha_update_kv_line(Sha256 *sha, const char *key, const char *value) {
+    char normalized[256];
+    int written = snprintf(normalized, sizeof(normalized), "%s=%s\n", key, value);
+    if (written < 0 || (size_t)written >= sizeof(normalized)) return 0;
+    sha_update(sha, (const unsigned char *)normalized, (size_t)written);
+    return 1;
+}
+
 static int kv_load(const char *path, PressureModelParams *params, char *calibration_id) {
     FILE *file = fopen(path, "rb");
-    char line[256], canonical[8192] = "";
+    char line[256], previous_key[96] = "";
     unsigned seen = 0u, status_ok = 0u, field_count = 0u;
     uint64_t fields_seen = 0u;
     Sha256 sha; unsigned char digest[32]; char computed[65]; size_t i;
     if (file == NULL) return 0;
+    sha_init(&sha);
     while (fgets(line, sizeof(line), file) != NULL) {
         char *eq = strchr(line, '='), *value, *end;
+        if (strchr(line, '\n') == NULL && !feof(file)) { fclose(file); return 0; }
         if (eq == NULL || strchr(eq + 1, '=') != NULL) { fclose(file); return 0; }
         *eq = '\0';
         value = eq + 1; end = value + strlen(value);
@@ -100,7 +110,9 @@ static int kv_load(const char *path, PressureModelParams *params, char *calibrat
         *end = '\0';
         if (strcmp(line, "schema_version") == 0) {
             if (strcmp(value, "1") != 0) { fclose(file); return 0; }
-            if (seen & 1u) { fclose(file); return 0; } seen |= 1u; strcat(canonical, "schema_version=1\n"); continue;
+            if (seen & 1u || field_count != 0u) { fclose(file); return 0; }
+            if (!sha_update_kv_line(&sha, line, value)) { fclose(file); return 0; }
+            seen |= 1u; continue;
         }
         if (strcmp(line, "calibration_id") == 0) {
             if (seen & 2u || strlen(value) != 64u) { fclose(file); return 0; }
@@ -108,6 +120,8 @@ static int kv_load(const char *path, PressureModelParams *params, char *calibrat
             memcpy(calibration_id, value, 64); calibration_id[64] = '\0'; seen |= 2u; continue;
         }
         if (strcmp(line, "calibration_status") == 0) {
+            if (seen & 4u) { fclose(file); return 0; }
+            seen |= 4u;
             status_ok = strcmp(value, "calibrated") == 0; continue;
         }
         {
@@ -117,8 +131,10 @@ static int kv_load(const char *path, PressureModelParams *params, char *calibrat
 #define KV_FIELD(index, name) \
             if (strcmp(line, #name) == 0) { \
                 if ((fields_seen & (UINT64_C(1) << (index))) != 0u) { fclose(file); return 0; } \
+                if (previous_key[0] != '\0' && strcmp(previous_key, line) >= 0) { fclose(file); return 0; } \
                 fields_seen |= UINT64_C(1) << (index); ++field_count; params->physical.name = parsed; \
-                strcat(canonical, line); strcat(canonical, "="); strcat(canonical, value); strcat(canonical, "\n"); \
+                if (!sha_update_kv_line(&sha, line, value)) { fclose(file); return 0; } \
+                strncpy(previous_key, line, sizeof(previous_key) - 1u); previous_key[sizeof(previous_key) - 1u] = '\0'; \
                 continue; \
             }
             KV_FIELD(0, atmospheric_pressure_pa) KV_FIELD(1, suction_pressure_pa)
@@ -144,8 +160,8 @@ static int kv_load(const char *path, PressureModelParams *params, char *calibrat
         }
     }
     fclose(file);
-    if ((seen & 3u) != 3u || !status_ok || field_count != 40u) return 0;
-    sha_init(&sha); sha_update(&sha, (const unsigned char *)canonical, strlen(canonical)); sha_final(&sha, digest);
+    if ((seen & 7u) != 7u || !status_ok || field_count != 40u) return 0;
+    sha_final(&sha, digest);
     for (i = 0; i < sizeof(digest); ++i) sprintf(computed + i * 2u, "%02x", digest[i]);
     computed[64] = '\0';
     return strcmp(computed, calibration_id) == 0;
@@ -205,9 +221,14 @@ int main(int argc, char **argv) {
         return 2;
     }
     if (argc == 5) {
+        PressureModelInput input;
+        input.target_rpm = rpm;
+        input.load_flow_m3_s = 0.0f;
+        input.dt_s = 0.001f;
         if (params.model_type != PRESSURE_MODEL_TYPE_PHYSICAL_CALIBRATED ||
             !kv_load(argv[4], &params, calibration_id) ||
-            !PressureModel_ValidatePhysicalParams(&params.physical)) {
+            !PressureModel_ValidateParams(&params) ||
+            !PressureModel_ValidateInput(&params, &input)) {
             fprintf(stderr, "model not calibrated: invalid or incomplete identified_params.kv\n");
             return 2;
         }

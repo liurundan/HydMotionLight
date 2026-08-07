@@ -1,5 +1,5 @@
 {
-  "calibration_id": "6e334c7ed8efe20e8e018136d6e65122cbb0d078982710901bdd073896bd3d45",
+  "calibration_id": "135036b8e7f638768ac687592c415c049b4527c3690ae5c7b48996463590fd8e",
   "calibration_status": "model not calibrated",
   "missing_provenance": [
     "atmospheric_pressure_pa",
@@ -22,13 +22,9 @@
     "relief_hysteresis_pa",
     "relief_orifice_coeff_m3_s_sqrt_pa",
     "relief_set_pa",
-    "ripple13_phase_rad",
-    "ripple26_phase_rad",
-    "ripple39_phase_rad",
     "sensor_delay_s",
     "sensor_quantization_bar",
-    "suction_pressure_pa",
-    "torque_ripple13_phase_rad"
+    "suction_pressure_pa"
   ],
   "parameters": {
     "atmospheric_pressure_pa": {
@@ -151,24 +147,6 @@
       "unit": "SI",
       "value": 25000000.0
     },
-    "ripple13_phase_rad": {
-      "acquisition_window": null,
-      "source": "unprovenanced",
-      "unit": "SI",
-      "value": 0.0
-    },
-    "ripple26_phase_rad": {
-      "acquisition_window": null,
-      "source": "unprovenanced",
-      "unit": "SI",
-      "value": 0.0
-    },
-    "ripple39_phase_rad": {
-      "acquisition_window": null,
-      "source": "unprovenanced",
-      "unit": "SI",
-      "value": 0.0
-    },
     "sensor_delay_s": {
       "acquisition_window": null,
       "source": "unprovenanced",
@@ -186,13 +164,8 @@
       "source": "unprovenanced",
       "unit": "SI",
       "value": 101325.0
-    },
-    "torque_ripple13_phase_rad": {
-      "acquisition_window": null,
-      "source": "unprovenanced",
-      "unit": "SI",
-      "value": 0.0
     }
   },
-  "schema_version": 1
+  "schema_version": 1,
+  "source_sha256": "7890a25fe2e0690f5d4e700c89e61d433712195df30859b148ba6a643680e695"
 }

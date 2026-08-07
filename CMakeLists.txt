@@ -300,3 +300,7 @@ add_test(NAME test_motion_interface_negative_speed COMMAND test_motion_interface
 add_executable(test_pump_feedback_chain tests/test_pump_feedback_chain.c)
 target_link_libraries(test_pump_feedback_chain PRIVATE HydroMotionLib HydroSimLib)
 add_test(NAME test_pump_feedback_chain COMMAND test_pump_feedback_chain)
+
+add_test(NAME test_ripple_tools
+         COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_ripple_tools.py
+                 $<TARGET_FILE:pressure_model_replay>)

@@ -26,9 +26,12 @@ def read_rows(path):
         if len(row) < 8:
             raise ValueError("row %d has fewer than 8 columns" % line_no)
         try:
-            data.append([float(value.strip()) for value in row[:8]])
+            values = [float(value.strip()) for value in row[:8]]
         except ValueError as exc:
             raise ValueError("row %d contains a non-numeric value" % line_no) from exc
+        if not all(math.isfinite(value) for value in values):
+            raise ValueError("row %d contains NaN or infinity" % line_no)
+        data.append(values)
     if len(data) < 2:
         raise ValueError("CSV needs at least two samples")
     for index in range(1, len(data)):
@@ -41,14 +44,14 @@ def read_rows(path):
     return data
 
 
-def solve_order(samples, order):
+def solve_order(samples, order, signal_index=1):
     matrix = [[0.0, 0.0, 0.0] for _ in range(3)]
     vector = [0.0, 0.0, 0.0]
     for row in samples:
         angle = math.radians(order * row[7])
         basis = (1.0, math.cos(angle), math.sin(angle))
         for i in range(3):
-            vector[i] += basis[i] * row[1]
+            vector[i] += basis[i] * row[signal_index]
             for j in range(3):
                 matrix[i][j] += basis[i] * basis[j]
     for pivot in range(3):
@@ -94,9 +97,23 @@ def analyze(path):
             tail = stable[-5000:]
             if len(tail) < 5000:
                 raise ValueError("set-rpm %.9g segment has fewer than 5000 tail samples" % rpm)
+            def window_metrics(window, window_id):
+                return {
+                    "window_id": window_id,
+                    "sample_count": len(window),
+                    "mean_feedback_rpm": statistics.fmean(row[2] for row in window),
+                    "mean_feedback_pressure_bar": statistics.fmean(row[1] for row in window),
+                    "feedback_rpm_stddev": statistics.pstdev(row[2] for row in window),
+                    "torque_mean_permille": statistics.fmean(row[6] for row in window),
+                    "orders": {str(order): solve_order(window, order) for order in (13, 26, 39)},
+                    "torque_order13": solve_order(window, 13, 6),
+                }
+            train = tail[:len(tail) // 2]
+            heldout = tail[len(tail) // 2:]
             metrics = {
                 "window_id": "set_rpm_%g_full" % rpm,
-                "validation_window_id": "set_rpm_%g_tail5000" % rpm,
+                "training_window_id": "set_rpm_%g_tail_first2500" % rpm,
+                "validation_window_id": "set_rpm_%g_tail_last2500" % rpm,
                 "set_rpm": rpm,
                 "timestamp_start_ms": int(segment[0][0]),
                 "timestamp_end_ms": int(segment[-1][0]),
@@ -110,6 +127,8 @@ def analyze(path):
                 "feedback_rpm_stddev": statistics.pstdev(row[2] for row in tail),
                 "torque_mean_permille": statistics.fmean(row[6] for row in tail),
                 "orders": {str(order): solve_order(tail, order) for order in (13, 26, 39)},
+                "training": window_metrics(train, "set_rpm_%g_tail_first2500" % rpm),
+                "heldout": window_metrics(heldout, "set_rpm_%g_tail_last2500" % rpm),
             }
             segments.append(metrics)
         start = end
