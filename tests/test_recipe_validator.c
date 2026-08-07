@@ -1,5 +1,6 @@
 #include <assert.h>
 #include <math.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <string.h>
 #include "recipe_validator.h"
@@ -115,22 +116,40 @@ static void test_validate_rbf_pi_pressure_controller(void) {
     assert(HYD_RecipeValidator_ValidateSegment(&segment, 0, &code, NULL));
     assert(code == HYD_DIAG_CODE_NONE);
 
-    segment.pressureRbfConfig.strategy.outputSlewRate = 12.0;
+    segment.pressureRbfConfig.disablePressureAccelFeedforward = 12.0;
     assert(HYD_RecipeValidator_ValidateSegment(&segment, 0, &code, NULL));
     assert(code == HYD_DIAG_CODE_NONE);
 
-    segment.pressureRbfConfig.strategy.outputSlewRate = -1.0;
+    segment.pressureRbfConfig.disablePressureAccelFeedforward = -1.0;
     code = HYD_DIAG_CODE_NONE;
     assert(!HYD_RecipeValidator_ValidateSegment(&segment, 0, &code, NULL));
     assert(code == HYD_DIAG_CODE_SEGMENT_INVALID);
 
-    segment.pressureRbfConfig.strategy.outputSlewRate = 0.0;
+    segment.pressureRbfConfig.disablePressureAccelFeedforward = (HYD_REAL)NAN;
+    code = HYD_DIAG_CODE_NONE;
+    assert(!HYD_RecipeValidator_ValidateSegment(&segment, 0, &code, NULL));
+    assert(code == HYD_DIAG_CODE_SEGMENT_INVALID);
+
+    segment.pressureRbfConfig.disablePressureAccelFeedforward = (HYD_REAL)INFINITY;
+    code = HYD_DIAG_CODE_NONE;
+    assert(!HYD_RecipeValidator_ValidateSegment(&segment, 0, &code, NULL));
+    assert(code == HYD_DIAG_CODE_SEGMENT_INVALID);
+
+    segment.pressureRbfConfig.disablePressureAccelFeedforward = 0.0;
     segment.pressureRbfConfig.minKp = 2.0;
     segment.pressureRbfConfig.maxKp = 1.0;
     code = HYD_DIAG_CODE_NONE;
     assert(!HYD_RecipeValidator_ValidateSegment(&segment, 0, &code, NULL));
     assert(code == HYD_DIAG_CODE_SEGMENT_INVALID);
     printf("✓ RBF-PI pressure controller validation test passed\n");
+}
+
+static void test_rbf_pid_config_preserves_legacy_abi_slot(void) {
+    printf("Testing RBF-PID config legacy field layout...\n");
+    assert(offsetof(HYD_RbfPidConfig, disablePressureAccelFeedforward) ==
+           12U * sizeof(HYD_REAL));
+    assert(sizeof(HYD_RbfPidConfig) == 13U * sizeof(HYD_REAL));
+    printf("✓ RBF-PID config legacy field layout test passed\n");
 }
 
 static void test_validate_start_context_direction_conflict(void) {
@@ -392,6 +411,7 @@ int main(void) {
     test_validate_runtime_config();
     test_validate_pressure_derivative_filter_alpha();
     test_validate_rbf_pi_pressure_controller();
+    test_rbf_pid_config_preserves_legacy_abi_slot();
     test_validate_start_context_direction_conflict();
     test_invalid_ceiling_tolerance_rejected();
     test_invalid_ceiling_value_rejected();

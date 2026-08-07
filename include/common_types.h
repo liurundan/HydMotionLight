@@ -250,13 +250,25 @@ typedef struct {
     HYD_REAL etaP;
     HYD_REAL etaI;
     HYD_REAL etaD;
-    union {
-        /* RBF-PID only: >0 disables the internal -0.5 * d2P term. */
-        HYD_REAL disablePressureAccelFeedforward;
-        /* RBF-PI only: maximum output change in L/min/s; zero disables slew limiting. */
-        HYD_REAL outputSlewRate;
-    } strategy;
+    /*
+     * RBF-PID: >0 disables the internal -0.5 * d2P term.
+     * RBF-PI: this legacy slot is interpreted as output slew rate in L/min/s.
+     */
+    HYD_REAL disablePressureAccelFeedforward;
 } HYD_RbfPidConfig;
+
+static inline HYD_REAL HYD_RbfPidConfig_GetRbfPiOutputSlewRate(
+    const HYD_RbfPidConfig* config) {
+    return (config != NULL) ? config->disablePressureAccelFeedforward : 0.0;
+}
+
+static inline void HYD_RbfPidConfig_SetRbfPiOutputSlewRate(
+    HYD_RbfPidConfig* config,
+    HYD_REAL outputSlewRate) {
+    if (config != NULL) {
+        config->disablePressureAccelFeedforward = outputSlewRate;
+    }
+}
 
 typedef struct {
     HYD_REAL targetPressure;

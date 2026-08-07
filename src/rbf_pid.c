@@ -820,22 +820,39 @@ void RBF_PID_SetFeedforwardFlow(RBF_PID_Handle *pid, float flow) {
 }
 
 void RBF_PID_TrackAppliedFlow(RBF_PID_Handle *pid, float flow) {
+    RBF_PID_PiState *pi;
     float output_min;
     float output_max;
     float applied_flow;
+    float proportional_term;
+    float integral_state;
 
-    if (pid == NULL) {
+    if (pid == NULL || pid->control_mode != RBF_PID_CONTROL_MODE_PI) {
         return;
     }
 
     output_min = rbf_pid_output_lower_bound(pid);
     output_max = rbf_pid_output_upper_bound(pid);
     applied_flow = clamp_finite(output_min, flow, output_max, pid->u_prev);
+    pi = rbf_pid_pi_state(pid);
+    proportional_term = finite_or_default(pid->KP, 0.0f) *
+        finite_or_default(pid->Error, 0.0f);
+    integral_state = applied_flow -
+        finite_or_default(pid->mode_gain.feedforward_flow, 0.0f) -
+        proportional_term;
+    if (pi->integral_limit > 0.0f) {
+        integral_state = clampf(-pi->integral_limit, integral_state,
+                                pi->integral_limit);
+    }
+
+    pi->integral_state = integral_state;
     pid->Output = applied_flow;
     pid->n_out = applied_flow;
     pid->u_prev = applied_flow;
     pid->du = 0.0f;
     pid->du_prev = 0.0f;
+    pid->gain_compensation_factor = applied_flow;
+    pid->output_saturated = false;
 }
 
 void RBF_PID_SetSeed(RBF_PID_Handle *pid, uint32_t seed) {

@@ -214,12 +214,14 @@ static void HYD_ResolveRbfPidConfig(const HYD_MotionSegment* segment,
     config->etaD = HYD_ResolvePositiveOrDefault(segment->pressureRbfConfig.etaD, config->etaD);
     if (strategy == HYD_PRESSURE_CONTROLLER_RBF_PID) {
         config->disablePressureAccelFeedforward =
-            segment->pressureRbfConfig.strategy.disablePressureAccelFeedforward > 0.0
+            segment->pressureRbfConfig.disablePressureAccelFeedforward > 0.0
                 ? true : false;
     } else if (strategy == HYD_PRESSURE_CONTROLLER_RBF_PI &&
-               segment->pressureRbfConfig.strategy.outputSlewRate > 0.0) {
+               HYD_RbfPidConfig_GetRbfPiOutputSlewRate(
+                   &segment->pressureRbfConfig) > 0.0) {
         config->outputSlewRate =
-            segment->pressureRbfConfig.strategy.outputSlewRate;
+            HYD_RbfPidConfig_GetRbfPiOutputSlewRate(
+                &segment->pressureRbfConfig);
     }
 }
 

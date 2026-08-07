@@ -201,7 +201,8 @@ static void test_derate_reduces_runtime_pump_speed_and_tracks_rbf_pi_flow(void) 
     segment.pressureRbfConfig.maxKp = 1.0;
     segment.pressureRbfConfig.minKi = 0.001;
     segment.pressureRbfConfig.maxKi = 0.001;
-    segment.pressureRbfConfig.strategy.outputSlewRate = 100000.0;
+    HYD_RbfPidConfig_SetRbfPiOutputSlewRate(
+        &segment.pressureRbfConfig, 100000.0);
     segment.pressureIntegralLimit = 100.0;
 
     assert(HYD_MotionControlFB_LoadDirectSegment(&fb, &segment));

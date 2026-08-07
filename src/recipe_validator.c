@@ -91,9 +91,10 @@ static HYD_BOOL HYD_RecipeValidator_HasCustomRbfConfig(const HYD_MotionSegment* 
            (segment->pressureRbfConfig.etaI > 0.0) ||
            (segment->pressureRbfConfig.etaD > 0.0) ||
            ((segment->pressureController == HYD_PRESSURE_CONTROLLER_RBF_PID) &&
-            (segment->pressureRbfConfig.strategy.disablePressureAccelFeedforward > 0.0)) ||
+            (segment->pressureRbfConfig.disablePressureAccelFeedforward > 0.0)) ||
            ((segment->pressureController == HYD_PRESSURE_CONTROLLER_RBF_PI) &&
-            (segment->pressureRbfConfig.strategy.outputSlewRate > 0.0));
+            (HYD_RbfPidConfig_GetRbfPiOutputSlewRate(
+                 &segment->pressureRbfConfig) > 0.0));
 }
 
 HYD_BOOL HYD_RecipeValidator_ValidateSegment(const HYD_MotionSegment* segment,
@@ -248,7 +249,10 @@ HYD_BOOL HYD_RecipeValidator_ValidateSegment(const HYD_MotionSegment* segment,
     }
 
     if (segment->pressureController == HYD_PRESSURE_CONTROLLER_RBF_PI &&
-        segment->pressureRbfConfig.strategy.outputSlewRate < 0.0) {
+        (!isfinite(HYD_RbfPidConfig_GetRbfPiOutputSlewRate(
+             &segment->pressureRbfConfig)) ||
+         HYD_RbfPidConfig_GetRbfPiOutputSlewRate(
+             &segment->pressureRbfConfig) < 0.0)) {
         return HYD_RecipeValidator_Fail(code, HYD_DIAG_CODE_SEGMENT_INVALID);
     }
 

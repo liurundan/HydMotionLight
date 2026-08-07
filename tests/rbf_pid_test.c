@@ -14,6 +14,7 @@ static void test_control_mode_round_trip_restores_pid_configuration(void);
 static void test_continuous_pi_integrates_at_measured_sampling_period(void);
 static void test_continuous_pi_uses_feedforward_once_and_disables_legacy_terms(void);
 static void test_continuous_pi_limits_integrator_tracks_applied_output_and_slews(void);
+static void test_continuous_pi_tracks_repeated_derate_release_without_stale_command(void);
 static void test_pi_configuration_isolated_from_pid_runtime_state(void);
 
 static void test_init_sets_ready_defaults(void) {
@@ -518,6 +519,40 @@ static void test_continuous_pi_limits_integrator_tracks_applied_output_and_slews
     printf("PASS continuous RBF-PI anti-windup/tracking/slew test\n");
 }
 
+static void test_continuous_pi_tracks_repeated_derate_release_without_stale_command(void) {
+    RBF_PID_Handle pid;
+    float output;
+
+    printf("Testing continuous RBF-PI repeated derate tracking and release...\n");
+    RBF_PID_Init(&pid, 0.001f, 100.0f, 1.0f);
+    pid.output_min_flow = 0.0f;
+    pid.output_max_flow = 20.0f;
+    RBF_PID_SetControlMode(&pid, RBF_PID_CONTROL_MODE_PI);
+    RBF_PID_SetContinuousGains(&pid, 2.0f, 10.0f);
+    RBF_PID_SetLearningRates(&pid, 0.0f, 0.0f, 0.0f,
+                             0.0f, 0.0f, 0.0f);
+    RBF_PID_SetAntiWindup(&pid, 1.0f, 20.0f);
+    RBF_PID_SetFeedforwardFlow(&pid, 3.0f);
+
+    output = RBF_PID_Update(&pid, 1.0f, 0.0f);
+    assert(fabsf(output - 5.01f) < 1e-6f);
+    RBF_PID_TrackAppliedFlow(&pid, 1.0f);
+    assert(fabsf(pid.mode_state.pi.integral_state + 4.0f) < 1e-6f);
+    assert(fabsf(pid.gain_compensation_factor - 1.0f) < 1e-6f);
+
+    output = RBF_PID_Update(&pid, 1.0f, 0.0f);
+    assert(fabsf(output - 1.01f) < 1e-6f);
+    RBF_PID_TrackAppliedFlow(&pid, 1.0f);
+    output = RBF_PID_Update(&pid, 1.0f, 0.0f);
+    assert(fabsf(output - 1.01f) < 1e-6f);
+    RBF_PID_TrackAppliedFlow(&pid, 1.0f);
+
+    output = RBF_PID_Update(&pid, 1.0f, 0.0f);
+    assert(fabsf(output - 1.01f) < 1e-6f);
+    assert(fabsf(pid.du - 0.01f) < 1e-6f);
+    printf("PASS continuous RBF-PI repeated derate tracking/release test\n");
+}
+
 static void test_pi_configuration_isolated_from_pid_runtime_state(void) {
     RBF_PID_Handle expected;
     RBF_PID_Handle actual;
@@ -587,6 +622,7 @@ int main(void) {
     test_continuous_pi_integrates_at_measured_sampling_period();
     test_continuous_pi_uses_feedforward_once_and_disables_legacy_terms();
     test_continuous_pi_limits_integrator_tracks_applied_output_and_slews();
+    test_continuous_pi_tracks_repeated_derate_release_without_stale_command();
     test_pi_configuration_isolated_from_pid_runtime_state();
 
     printf("\n✅ All RBF_PID tests passed successfully!\n");

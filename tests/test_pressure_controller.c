@@ -429,7 +429,7 @@ static void test_rbf_pid_strategy_uses_segment_level_tuning_profile(void) {
     segment.pressureRbfConfig.etaP = 0.11;
     segment.pressureRbfConfig.etaI = 0.12;
     segment.pressureRbfConfig.etaD = 0.13;
-    segment.pressureRbfConfig.strategy.disablePressureAccelFeedforward = 1.0;
+    segment.pressureRbfConfig.disablePressureAccelFeedforward = 1.0;
 
     HYD_PressureController_InitState(&state, 5.0, segment.targetFlow, 0.0);
 
@@ -648,7 +648,7 @@ static void test_rbf_pi_feedforward_and_outer_applied_flow_tracking(void) {
     assert(fabs(state.previousOutput - 1.25) < 1e-6);
     assert(fabsf(state.rbfPid.u_prev - 1.25f) < 1e-6f);
 
-    input.feedforwardFlow = 1.25;
+    input.feedforwardFlow = 3.0;
     input.timestamp = 0.002;
     HYD_PressureController_Execute(&segment, &state, &input, &output1);
     assert(fabs(output1.outputFlow - 1.25) < 1e-6);
@@ -676,7 +676,8 @@ static void test_rbf_pi_sync_preserves_limited_tracking_configuration(void) {
     segment.pressureRbfConfig.maxKp = 10.0;
     segment.pressureRbfConfig.minKi = 1.0;
     segment.pressureRbfConfig.maxKi = 1.0;
-    segment.pressureRbfConfig.strategy.outputSlewRate = 100.0;
+    HYD_RbfPidConfig_SetRbfPiOutputSlewRate(
+        &segment.pressureRbfConfig, 100.0);
     segment.pressureIntegralLimit = 0.25;
     segment.maxFlow = 20.0;
 
@@ -1279,7 +1280,7 @@ static HYD_MotionSegment make_rbf_pid_segment(HYD_REAL target_bar) {
     /* This no-dead-time first-order harness relies on bounded PID/RBF
      * adaptation; keep pressure-acceleration FF disabled to avoid
      * unnecessary transient shaping here. */
-    seg.pressureRbfConfig.strategy.disablePressureAccelFeedforward = 1.0;
+    seg.pressureRbfConfig.disablePressureAccelFeedforward = 1.0;
     return seg;
 }
 
@@ -1290,7 +1291,8 @@ static HYD_MotionSegment make_rbf_pi_segment(HYD_REAL target_bar) {
     seg.pressureRbfConfig.minKd = 0.0;
     seg.pressureRbfConfig.maxKd = 0.0;
     seg.pressureRbfConfig.etaD = 0.0;
-    seg.pressureRbfConfig.strategy.outputSlewRate = 10000.0;
+    HYD_RbfPidConfig_SetRbfPiOutputSlewRate(
+        &seg.pressureRbfConfig, 10000.0);
     return seg;
 }
 

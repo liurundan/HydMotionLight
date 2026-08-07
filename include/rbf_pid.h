@@ -248,6 +248,7 @@ void RBF_PID_SetContinuousGains(RBF_PID_Handle *pid, float kp, float ki);
 void RBF_PID_SetAntiWindup(RBF_PID_Handle *pid, float kaw, float integral_limit);
 void RBF_PID_SetOutputSlew(RBF_PID_Handle *pid, float max_delta_flow);
 void RBF_PID_SetFeedforwardFlow(RBF_PID_Handle *pid, float flow);
+/* PI mode only: reconstructs integral state from the applied flow. */
 void RBF_PID_TrackAppliedFlow(RBF_PID_Handle *pid, float flow);
 
 /**
