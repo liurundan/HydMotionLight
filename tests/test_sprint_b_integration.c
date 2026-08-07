@@ -239,6 +239,33 @@ static void test_derate_reduces_runtime_pump_speed_and_tracks_rbf_pi_flow(void) 
     printf("✓ Diagnostic derate RBF-PI runtime tracking test passed\n");
 }
 
+static void test_limiter_handoff_preserves_rbf_pid_incremental_state(void) {
+    HYD_PressureControllerState state;
+
+    printf("Testing limiter handoff preserves RBF-PID incremental state...\n");
+    HYD_PressureController_InitState(&state, 20.0, 6.0, 0.0);
+    RBF_PID_Init(&state.rbfPid, 0.001f, 90.0f, 1.0f);
+    RBF_PID_SetControlMode(&state.rbfPid, RBF_PID_CONTROL_MODE_PID);
+    state.rbfInitialized = true;
+    state.activeStrategy = HYD_PRESSURE_CONTROLLER_RBF_PID;
+    state.rbfPid.Output = 6.0f;
+    state.rbfPid.u_prev = 6.0f;
+    state.rbfPid.n_out = 6.0f;
+    state.rbfPid.du = 0.75f;
+    state.rbfPid.du_prev = 0.50f;
+
+    /* Models the post-limiter applied-flow handoff in motion_control.c. */
+    HYD_PressureController_TrackAppliedFlow(&state, 3.0);
+
+    assert(fabs(state.previousOutput - 3.0) < 1e-6);
+    assert(fabsf(state.rbfPid.Output - 6.0f) < 1e-6f);
+    assert(fabsf(state.rbfPid.u_prev - 6.0f) < 1e-6f);
+    assert(fabsf(state.rbfPid.n_out - 6.0f) < 1e-6f);
+    assert(fabsf(state.rbfPid.du - 0.75f) < 1e-6f);
+    assert(fabsf(state.rbfPid.du_prev - 0.50f) < 1e-6f);
+    printf("✓ Limiter handoff preserves RBF-PID incremental state test passed\n");
+}
+
 int main(void) {
     printf("Running Sprint B integration tests...\n\n");
 
@@ -246,6 +273,7 @@ int main(void) {
     test_trapezoid_planning_with_short_distance_triangular();
     test_gain_scheduling_transitions_smoothly();
     test_derate_reduces_runtime_pump_speed_and_tracks_rbf_pi_flow();
+    test_limiter_handoff_preserves_rbf_pid_incremental_state();
 
     printf("\n✅ All Sprint B integration tests passed successfully!\n");
     return 0;

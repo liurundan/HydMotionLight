@@ -505,7 +505,9 @@ void HYD_PressureController_TrackAppliedFlow(HYD_PressureControllerState* state,
     }
 
     state->previousOutput = appliedBaseFlow;
-    if (state->rbfInitialized) {
+    if (state->rbfInitialized &&
+        state->activeStrategy == HYD_PRESSURE_CONTROLLER_RBF_PI &&
+        state->rbfPid.control_mode == RBF_PID_CONTROL_MODE_PI) {
         RBF_PID_TrackAppliedFlow(&state->rbfPid, (float)appliedBaseFlow);
     }
 }
