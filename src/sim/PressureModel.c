@@ -336,6 +336,14 @@ int PressureModel_ValidateParams(const PressureModelParams *params) {
     return pressure_model_validate_runtime_params(params);
 }
 
+int PressureModel_ValidateInput(const PressureModelParams *params,
+                                const PressureModelInput *input) {
+    return PressureModel_ValidateParams(params) && input != NULL &&
+           isfinite(input->target_rpm) && isfinite(input->load_flow_m3_s) &&
+           pressure_model_absf(input->load_flow_m3_s) <=
+               PRESSURE_MODEL_PHYSICAL_MAX_FLOW_M3_S;
+}
+
 void PressureModel_InitParams(PressureModelParams *params) {
     PressureModelPhysicalParams *physical;
 
@@ -714,9 +722,7 @@ void PressureModel_StepInput(const PressureModelParams *params,
     requested_type = pressure_model_normalize_type(params->model_type);
     if (!isfinite(input->target_rpm) || !isfinite(input->load_flow_m3_s) ||
         (requested_type == PRESSURE_MODEL_TYPE_PHYSICAL_CALIBRATED &&
-         (!pressure_model_validate_runtime_params(params) ||
-          pressure_model_absf(input->load_flow_m3_s) >
-              PRESSURE_MODEL_PHYSICAL_MAX_FLOW_M3_S))) {
+         !PressureModel_ValidateInput(params, input))) {
         state->timestamp_s += substeps * PRESSURE_MODEL_DT_S;
         pressure_model_write_hold_output(state, out);
         return;

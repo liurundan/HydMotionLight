@@ -457,11 +457,14 @@ contract. It rejects nonfinite values; nonpositive volumes, inertance, oil modul
 torque; `beta_min_pa > beta_oil_pa`; efficiencies outside `(0, 1]`; negative
 leakage/resistance/ripple limits; delays outside `[0, 64 ms]`; and a 1 ms hydraulic stiffness ratio
 `beta_oil_pa * (0.001 s)^2 / (line_inertance * min(outlet_volume, chamber_volume)) > 0.25`.
-`PressureModel_ValidateParams()` is the full runtime-admission contract used by physical
-tests and host replay before a calibrated run. It also rejects pump displacement above
-`50e-6 m3/rev`, configured RPM ranges outside `[-2000, 2000]`, load-flow magnitude above
-`1.666667e-3 m3/s`, motor natural frequency above `50 Hz`, motor damping above `2`, or
-motor acceleration limit above `100000 RPM/s`. The line update uses its semi-implicit
+`PressureModel_ValidateParams()` is the full runtime-parameter contract used by physical
+tests and host replay before a calibrated run. It rejects pump displacement above
+`50e-6 m3/rev`, configured RPM ranges outside `[-2000, 2000]`, motor natural frequency
+above `50 Hz`, motor damping above `2`, or motor acceleration limit above `100000 RPM/s`.
+`PressureModel_ValidateInput()` validates each physical scan and rejects nonfinite target
+or load flow, and load-flow magnitude above `1.666667e-3 m3/s`; it intentionally does not
+reject an irregular `dt_s`, because `PressureModel_StepInput()` normalizes that case to one
+safe 1 ms substep. The line update uses its semi-implicit
 resistance denominator; a nonpositive denominator is also invalid. Invalid physical
 settings do not receive broad silent clamping: replay fails, and the physical step holds
 its last finite chamber pressure with zero flow and an invalid torque packet.

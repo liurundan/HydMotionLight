@@ -333,18 +333,20 @@ integrated tooth phases. `PressureModelOutput.real_pressure_bar` is chamber gaug
 `measured_pressure_bar` is the delayed/quantized/bias/noise sensor image of that chamber
 pressure. Outlet pressure is only a pump/line/relief diagnostic in this task.
 
-Expose `PressureModel_ValidatePhysicalParams()` as the intrinsic physical-block validator
-and `PressureModel_ValidateParams()` as the full runtime-admission validator used by host
+Expose `PressureModel_ValidatePhysicalParams()` as the intrinsic physical-block validator,
+`PressureModel_ValidateParams()` as the full runtime-parameter validator, and
+`PressureModel_ValidateInput()` as the per-scan physical-input validator used by host
 replay before physical integration. The intrinsic validator must reject invalid/nonfinite
 calibrated parameters rather than quietly clamping them:
 positive finite volumes/inertance/modulus/rated torque, `beta_min <= beta_oil`, efficiencies
 in `(0, 1]`, nonnegative leak/resistance/ripple values, delays no greater than 64 ms, and
 the fixed-1-ms hydraulic stiffness ratio must satisfy the documented stability bound.
 The physical HIL admission envelope is part of the full runtime contract: `abs(rpm) <= 2000`, pump
-displacement `<= 50e-6 m3/rev`, absolute load flow `<= 1.666667e-3 m3/s`, motor natural
+displacement `<= 50e-6 m3/rev`; `PressureModel_ValidateInput()` additionally rejects an
+unbounded/nonfinite target or absolute load flow above `1.666667e-3 m3/s`. Motor natural
 frequency `<= 50 Hz`, damping `<= 2`, and acceleration limit `<= 100000 RPM/s`. The
 calibration tools must search only this envelope; values outside it are not usable by the
-1 ms embedded-equivalent model. Runtime admission also evaluates the complete 1 ms
+1 ms embedded-equivalent model. Runtime parameter admission also evaluates the complete 1 ms
 envelope before integration: with a peak ripple factor of `1.8`, the worst opposing
 load, `beta_oil`, and the smaller hydraulic volume, the pressure increment must not
 exceed `25 MPa` per scan. It rejects the parameter bundle rather than clamping a

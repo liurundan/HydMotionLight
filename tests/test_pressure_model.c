@@ -65,10 +65,20 @@ static void test_physical_params_validate_and_invalid_holds_safely(void) {
     PressureModelParams invalid_runtime;
     PressureModelState state;
     PressureModelOutput out;
+    PressureModelInput input;
     float held_pressure;
 
     assert(PressureModel_ValidatePhysicalParams(&params.physical));
     assert(PressureModel_ValidateParams(&params));
+    input.target_rpm = 100.0f;
+    input.load_flow_m3_s = 0.0f;
+    input.dt_s = DT_S;
+    assert(PressureModel_ValidateInput(&params, &input));
+    input.load_flow_m3_s = PRESSURE_MODEL_PHYSICAL_MAX_FLOW_M3_S + 1.0e-6f;
+    assert(!PressureModel_ValidateInput(&params, &input));
+    input.load_flow_m3_s = 0.0f;
+    input.target_rpm = NAN;
+    assert(!PressureModel_ValidateInput(&params, &input));
     PressureModel_Reset(&state, 2u);
     step_n(&params, &state, 100.0f, 0.0f, 3000, &out);
     held_pressure = out.real_pressure_bar;
