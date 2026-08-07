@@ -1,0 +1,131 @@
+{
+  "calibration_id": "6e334c7ed8efe20e8e018136d6e65122cbb0d078982710901bdd073896bd3d45",
+  "calibration_status": "model not calibrated",
+  "gates": {
+    "mean_pressure_error": false,
+    "order13_amplitude_error": false,
+    "order13_phase_error": false,
+    "order26_amplitude_error": false,
+    "provenance_complete": false
+  },
+  "objective": {
+    "coordinate_rounds": 5,
+    "order_amplitude_error": null,
+    "weighted_pressure_rmse_bar": null,
+    "weighted_rpm_rmse": null,
+    "weights": {
+      "order13": 0.2,
+      "order26": 0.1,
+      "pressure_rmse": 0.5,
+      "rpm_rmse": 0.2
+    }
+  },
+  "parameter_bounds": {
+    "cylinder_leak_m3_pa_s": [
+      1e-14,
+      1e-09
+    ],
+    "gas_fraction": [
+      1e-05,
+      0.02
+    ],
+    "motor_damping": [
+      0.2,
+      2.0
+    ],
+    "motor_delay_s": [
+      0.0,
+      0.05
+    ],
+    "motor_natural_freq_hz": [
+      1.0,
+      50.0
+    ],
+    "outlet_leak_m3_pa_s": [
+      1e-14,
+      1e-09
+    ],
+    "outlet_volume_m3": [
+      1e-05,
+      0.005
+    ],
+    "pump_leak_c0_m3_pa_s": [
+      1e-14,
+      1e-09
+    ],
+    "pump_leak_speed_m3_pa_s_per_rpm": [
+      1e-16,
+      1e-11
+    ],
+    "ripple13_peak": [
+      0.0,
+      0.3
+    ],
+    "ripple26_peak": [
+      0.0,
+      0.15
+    ],
+    "ripple39_peak": [
+      0.0,
+      0.1
+    ],
+    "torque_ripple13_peak": [
+      0.0,
+      0.3
+    ]
+  },
+  "parameters": {
+    "atmospheric_pressure_pa": 101325.0,
+    "beta_min_pa": 50000000.0,
+    "beta_oil_pa": 1200000000.0,
+    "chamber_volume_m3": 0.0005,
+    "cylinder_leak_m3_pa_s": 1e-13,
+    "eta_m_min": 0.5,
+    "eta_m_nominal": 0.9,
+    "eta_m_pressure_loss_per_pa": 1e-09,
+    "eta_m_speed_loss_per_rpm": 1e-05,
+    "eta_v_min": 0.6,
+    "gas_fraction": 0.002,
+    "gas_transition_pa": 1000000.0,
+    "line_inertance_pa_s2_per_m3": 100000000.0,
+    "line_quadratic_resistance_pa_s2_per_m6": 0.0,
+    "line_resistance_pa_s_per_m3": 2000000000000.0,
+    "motor_accel_limit_rpm_s": 20000.0,
+    "motor_damping": 1.0,
+    "motor_delay_s": 0.0,
+    "motor_natural_freq_hz": 12.0,
+    "motor_torque_limit_permille": 1000.0,
+    "outlet_leak_m3_pa_s": 1e-13,
+    "outlet_volume_m3": 0.0005,
+    "pump_leak_c0_m3_pa_s": 2e-13,
+    "pump_leak_speed_m3_pa_s_per_rpm": 1e-15,
+    "rated_motor_torque_nm": 150.0,
+    "relief_deadband_pa": 200000.0,
+    "relief_hysteresis_pa": 500000.0,
+    "relief_orifice_coeff_m3_s_sqrt_pa": 1e-08,
+    "relief_set_pa": 25000000.0,
+    "ripple13_peak": 0.08,
+    "ripple13_phase_rad": 0.0,
+    "ripple26_peak": 0.03,
+    "ripple26_phase_rad": 0.0,
+    "ripple39_peak": 0.0177083528334137,
+    "ripple39_phase_rad": 0.0,
+    "sensor_delay_s": 0.0,
+    "sensor_quantization_bar": 0.0,
+    "suction_pressure_pa": 101325.0,
+    "torque_ripple13_peak": 0.02,
+    "torque_ripple13_phase_rad": 0.0
+  },
+  "provenance": "open-loop constant-speed windows; remaining parameters require manifest",
+  "schema_version": 1,
+  "seed": 324478056,
+  "source_csv": "open10203040-positive.csv",
+  "training_windows": [
+    "set_rpm_10_full",
+    "set_rpm_20_full"
+  ],
+  "validation_windows": [
+    "set_rpm_30_tail5000",
+    "set_rpm_40_tail5000"
+  ]
+}

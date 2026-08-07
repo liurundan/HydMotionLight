@@ -1,0 +1,198 @@
+{
+  "calibration_id": "6e334c7ed8efe20e8e018136d6e65122cbb0d078982710901bdd073896bd3d45",
+  "calibration_status": "model not calibrated",
+  "missing_provenance": [
+    "atmospheric_pressure_pa",
+    "beta_min_pa",
+    "beta_oil_pa",
+    "chamber_volume_m3",
+    "eta_m_min",
+    "eta_m_nominal",
+    "eta_m_pressure_loss_per_pa",
+    "eta_m_speed_loss_per_rpm",
+    "eta_v_min",
+    "gas_transition_pa",
+    "line_inertance_pa_s2_per_m3",
+    "line_quadratic_resistance_pa_s2_per_m6",
+    "line_resistance_pa_s_per_m3",
+    "motor_accel_limit_rpm_s",
+    "motor_torque_limit_permille",
+    "rated_motor_torque_nm",
+    "relief_deadband_pa",
+    "relief_hysteresis_pa",
+    "relief_orifice_coeff_m3_s_sqrt_pa",
+    "relief_set_pa",
+    "ripple13_phase_rad",
+    "ripple26_phase_rad",
+    "ripple39_phase_rad",
+    "sensor_delay_s",
+    "sensor_quantization_bar",
+    "suction_pressure_pa",
+    "torque_ripple13_phase_rad"
+  ],
+  "parameters": {
+    "atmospheric_pressure_pa": {
+      "acquisition_window": null,
+      "source": "unprovenanced",
+      "unit": "SI",
+      "value": 101325.0
+    },
+    "beta_min_pa": {
+      "acquisition_window": null,
+      "source": "unprovenanced",
+      "unit": "SI",
+      "value": 50000000.0
+    },
+    "beta_oil_pa": {
+      "acquisition_window": null,
+      "source": "unprovenanced",
+      "unit": "SI",
+      "value": 1200000000.0
+    },
+    "chamber_volume_m3": {
+      "acquisition_window": null,
+      "source": "unprovenanced",
+      "unit": "SI",
+      "value": 0.0005
+    },
+    "eta_m_min": {
+      "acquisition_window": null,
+      "source": "unprovenanced",
+      "unit": "SI",
+      "value": 0.5
+    },
+    "eta_m_nominal": {
+      "acquisition_window": null,
+      "source": "unprovenanced",
+      "unit": "SI",
+      "value": 0.9
+    },
+    "eta_m_pressure_loss_per_pa": {
+      "acquisition_window": null,
+      "source": "unprovenanced",
+      "unit": "SI",
+      "value": 1e-09
+    },
+    "eta_m_speed_loss_per_rpm": {
+      "acquisition_window": null,
+      "source": "unprovenanced",
+      "unit": "SI",
+      "value": 1e-05
+    },
+    "eta_v_min": {
+      "acquisition_window": null,
+      "source": "unprovenanced",
+      "unit": "SI",
+      "value": 0.6
+    },
+    "gas_transition_pa": {
+      "acquisition_window": null,
+      "source": "unprovenanced",
+      "unit": "SI",
+      "value": 1000000.0
+    },
+    "line_inertance_pa_s2_per_m3": {
+      "acquisition_window": null,
+      "source": "unprovenanced",
+      "unit": "SI",
+      "value": 100000000.0
+    },
+    "line_quadratic_resistance_pa_s2_per_m6": {
+      "acquisition_window": null,
+      "source": "unprovenanced",
+      "unit": "SI",
+      "value": 0.0
+    },
+    "line_resistance_pa_s_per_m3": {
+      "acquisition_window": null,
+      "source": "unprovenanced",
+      "unit": "SI",
+      "value": 2000000000000.0
+    },
+    "motor_accel_limit_rpm_s": {
+      "acquisition_window": null,
+      "source": "unprovenanced",
+      "unit": "SI",
+      "value": 20000.0
+    },
+    "motor_torque_limit_permille": {
+      "acquisition_window": null,
+      "source": "unprovenanced",
+      "unit": "SI",
+      "value": 1000.0
+    },
+    "rated_motor_torque_nm": {
+      "acquisition_window": null,
+      "source": "unprovenanced",
+      "unit": "SI",
+      "value": 150.0
+    },
+    "relief_deadband_pa": {
+      "acquisition_window": null,
+      "source": "unprovenanced",
+      "unit": "SI",
+      "value": 200000.0
+    },
+    "relief_hysteresis_pa": {
+      "acquisition_window": null,
+      "source": "unprovenanced",
+      "unit": "SI",
+      "value": 500000.0
+    },
+    "relief_orifice_coeff_m3_s_sqrt_pa": {
+      "acquisition_window": null,
+      "source": "unprovenanced",
+      "unit": "SI",
+      "value": 1e-08
+    },
+    "relief_set_pa": {
+      "acquisition_window": null,
+      "source": "unprovenanced",
+      "unit": "SI",
+      "value": 25000000.0
+    },
+    "ripple13_phase_rad": {
+      "acquisition_window": null,
+      "source": "unprovenanced",
+      "unit": "SI",
+      "value": 0.0
+    },
+    "ripple26_phase_rad": {
+      "acquisition_window": null,
+      "source": "unprovenanced",
+      "unit": "SI",
+      "value": 0.0
+    },
+    "ripple39_phase_rad": {
+      "acquisition_window": null,
+      "source": "unprovenanced",
+      "unit": "SI",
+      "value": 0.0
+    },
+    "sensor_delay_s": {
+      "acquisition_window": null,
+      "source": "unprovenanced",
+      "unit": "SI",
+      "value": 0.0
+    },
+    "sensor_quantization_bar": {
+      "acquisition_window": null,
+      "source": "unprovenanced",
+      "unit": "SI",
+      "value": 0.0
+    },
+    "suction_pressure_pa": {
+      "acquisition_window": null,
+      "source": "unprovenanced",
+      "unit": "SI",
+      "value": 101325.0
+    },
+    "torque_ripple13_phase_rad": {
+      "acquisition_window": null,
+      "source": "unprovenanced",
+      "unit": "SI",
+      "value": 0.0
+    }
+  },
+  "schema_version": 1
+}

@@ -1,0 +1,180 @@
+{
+  "analysis": "angle_synchronous_open_loop",
+  "discard_prefix_s": 2,
+  "open_loop_target_pressure_bar": 0,
+  "orders": [
+    13,
+    26,
+    39
+  ],
+  "schema_version": 1,
+  "segments": [
+    {
+      "discarded_prefix_samples": 2000,
+      "feedback_rpm_stddev": 2.67958915507583,
+      "mean_feedback_pressure_bar": 211.97538100820634,
+      "mean_feedback_rpm": 9.968688940992575,
+      "orders": {
+        "13": {
+          "amplitude_bar": 12.731761884070721,
+          "cosine_bar": -5.004119973774092,
+          "dc_bar": 215.26263329288918,
+          "phase_deg": -23.143928242849316,
+          "phase_rad": -0.40393774968302637,
+          "sine_bar": 11.707115099833572
+        },
+        "26": {
+          "amplitude_bar": 6.3265127965372665,
+          "cosine_bar": 3.0213485520993544,
+          "dc_bar": 215.57550019248936,
+          "phase_deg": 151.473228133467,
+          "phase_rad": 2.643706559553504,
+          "sine_bar": -5.558436568989244
+        },
+        "39": {
+          "amplitude_bar": 3.753734838890619,
+          "cosine_bar": -2.343201141087101,
+          "dc_bar": 215.4991705967235,
+          "phase_deg": -38.62583529640823,
+          "phase_rad": -0.6741480022553635,
+          "sine_bar": 2.9325643476502417
+        }
+      },
+      "sample_count": 20472,
+      "set_rpm": 10.0,
+      "tail_pressure_peak_to_peak_bar": 53.0,
+      "tail_sample_count": 5000,
+      "timestamp_end_ms": -91596,
+      "timestamp_start_ms": -112067,
+      "torque_mean_permille": 2805.298,
+      "validation_window_id": "set_rpm_10_tail5000",
+      "window_id": "set_rpm_10_full"
+    },
+    {
+      "discarded_prefix_samples": 2000,
+      "feedback_rpm_stddev": 3.13813141216234,
+      "mean_feedback_pressure_bar": 546.6235628778002,
+      "mean_feedback_rpm": 19.956185057879974,
+      "orders": {
+        "13": {
+          "amplitude_bar": 19.354424746541905,
+          "cosine_bar": -5.081052061261299,
+          "dc_bar": 544.3186379268294,
+          "phase_deg": -15.220036882717181,
+          "phase_rad": -0.26563975587838884,
+          "sine_bar": 18.675563370894757
+        },
+        "26": {
+          "amplitude_bar": 8.215613797528464,
+          "cosine_bar": 5.869590159527738,
+          "dc_bar": 544.7896068099255,
+          "phase_deg": 134.40240659381914,
+          "phase_rad": 2.345764517666281,
+          "sine_bar": -5.748410339329927
+        },
+        "39": {
+          "amplitude_bar": 5.144429420316966,
+          "cosine_bar": -4.8748415919549775,
+          "dc_bar": 544.905121481585,
+          "phase_deg": -71.36908388304461,
+          "phase_rad": -1.245625497891148,
+          "sine_bar": 1.6434942999501447
+        }
+      },
+      "sample_count": 25311,
+      "set_rpm": 20.0,
+      "tail_pressure_peak_to_peak_bar": 73.0,
+      "tail_sample_count": 5000,
+      "timestamp_end_ms": -60342,
+      "timestamp_start_ms": -85652,
+      "torque_mean_permille": 6221.826,
+      "validation_window_id": "set_rpm_20_tail5000",
+      "window_id": "set_rpm_20_full"
+    },
+    {
+      "discarded_prefix_samples": 2000,
+      "feedback_rpm_stddev": 5.078820319719925,
+      "mean_feedback_pressure_bar": 902.7542549562185,
+      "mean_feedback_rpm": 29.912399075091923,
+      "orders": {
+        "13": {
+          "amplitude_bar": 22.525324308889545,
+          "cosine_bar": -5.942394661228345,
+          "dc_bar": 891.6899342917455,
+          "phase_deg": -15.296225406722433,
+          "phase_rad": -0.26696949647451523,
+          "sine_bar": 21.727360191952798
+        },
+        "26": {
+          "amplitude_bar": 8.036307907530292,
+          "cosine_bar": 6.524206481372802,
+          "dc_bar": 892.8526633121587,
+          "phase_deg": 125.72377867581186,
+          "phase_rad": 2.1942938859415535,
+          "sine_bar": -4.6922249064859445
+        },
+        "39": {
+          "amplitude_bar": 5.3851686844537,
+          "cosine_bar": -5.367781403312216,
+          "dc_bar": 892.9169639401885,
+          "phase_deg": -94.60543581151636,
+          "phase_rad": -1.651176345195114,
+          "sine_bar": -0.4323939942648656
+        }
+      },
+      "sample_count": 26381,
+      "set_rpm": 30.0,
+      "tail_pressure_peak_to_peak_bar": 97.0,
+      "tail_sample_count": 5000,
+      "timestamp_end_ms": -26227,
+      "timestamp_start_ms": -52607,
+      "torque_mean_permille": 9746.644,
+      "validation_window_id": "set_rpm_30_tail5000",
+      "window_id": "set_rpm_30_full"
+    },
+    {
+      "discarded_prefix_samples": 2000,
+      "feedback_rpm_stddev": 7.421391888318525,
+      "mean_feedback_pressure_bar": 1230.6765369684933,
+      "mean_feedback_rpm": 39.71779362643315,
+      "orders": {
+        "13": {
+          "amplitude_bar": 21.97354722020209,
+          "cosine_bar": -7.481745500443931,
+          "dc_bar": 1261.1717383683497,
+          "phase_deg": -19.90665380183211,
+          "phase_rad": -0.34743665189661715,
+          "sine_bar": 20.660596838064432
+        },
+        "26": {
+          "amplitude_bar": 7.945504638557782,
+          "cosine_bar": 7.48133195492884,
+          "dc_bar": 1262.3615373394703,
+          "phase_deg": 109.68130839078256,
+          "phase_rad": 1.914299959314439,
+          "sine_bar": -2.675951446028843
+        },
+        "39": {
+          "amplitude_bar": 5.129884544597452,
+          "cosine_bar": -4.577386248896549,
+          "dc_bar": 1262.451054459191,
+          "phase_deg": -116.8365386800053,
+          "phase_rad": -2.039182286599802,
+          "sine_bar": -2.3158692902045623
+        }
+      },
+      "sample_count": 11077,
+      "set_rpm": 40.0,
+      "tail_pressure_peak_to_peak_bar": 112.0,
+      "tail_sample_count": 5000,
+      "timestamp_end_ms": -8052,
+      "timestamp_start_ms": -19128,
+      "torque_mean_permille": 13627.222,
+      "validation_window_id": "set_rpm_40_tail5000",
+      "window_id": "set_rpm_40_full"
+    }
+  ],
+  "source": "open10203040-positive.csv",
+  "tail_samples": 5000,
+  "timestamp_period_ms": 1
+}
