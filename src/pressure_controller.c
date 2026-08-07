@@ -5,6 +5,9 @@
 #define HYD_LEGACY_PRESSURE_FLOW_KP 1.5
 #define HYD_DEFAULT_PRESSURE_FILTER_ALPHA 0.1
 #define HYD_DEFAULT_PRESSURE_DERIVATIVE_FILTER_ALPHA 0.05
+#define HYD_RBF_PI_FEEDBACK_TIMESTAMP_TOLERANCE_S 0.002
+#define HYD_RBF_PI_DIRECTION_RPM_DEADBAND 1.0
+#define HYD_RBF_PI_DIRECTION_TORQUE_DEADBAND_PERMILLE 50.0
 
 typedef struct {
     HYD_PressureControllerType strategy;
@@ -171,6 +174,44 @@ static HYD_REAL HYD_ResolveAdaptiveSamplingPeriod(const HYD_PressureControllerSt
     }
 
     return HYD_DEFAULT_RBF_PID_SAMPLING_PERIOD;
+}
+
+/*
+ * RBF-PI continues its deterministic positional PI update on a bad packet, but
+ * must not change the network or adaptive Kp/Ki from stale or incoherent motor
+ * feedback. Torque sign is checked only beyond a clear 5% signal threshold to
+ * avoid treating low-load quantization as a direction fault.
+ */
+static HYD_BOOL HYD_RbfPiFeedbackAllowsLearning(
+    const HYD_PressureControllerInput* input,
+    const HYD_PumpFeedback* feedback) {
+    if (input == NULL || feedback == NULL ||
+        !isfinite(input->targetPressure) || !isfinite(input->measuredPressure) ||
+        !isfinite(input->timestamp)) {
+        return false;
+    }
+
+    if (!HYD_PumpFeedback_HasValid(
+            feedback->validFlags,
+            HYD_PUMP_FEEDBACK_VALID_RPM |
+                HYD_PUMP_FEEDBACK_VALID_ANGLE |
+                HYD_PUMP_FEEDBACK_VALID_TORQUE |
+                HYD_PUMP_FEEDBACK_VALID_TIMESTAMP) ||
+        !isfinite(feedback->rpm) || !isfinite(feedback->angleDeg) ||
+        !isfinite(feedback->torquePermille) || !isfinite(feedback->timestamp) ||
+        fabs(input->timestamp - feedback->timestamp) >
+            HYD_RBF_PI_FEEDBACK_TIMESTAMP_TOLERANCE_S) {
+        return false;
+    }
+
+    if (fabs(feedback->rpm) > HYD_RBF_PI_DIRECTION_RPM_DEADBAND &&
+        fabs(feedback->torquePermille) >
+            HYD_RBF_PI_DIRECTION_TORQUE_DEADBAND_PERMILLE &&
+        feedback->rpm * feedback->torquePermille < 0.0) {
+        return false;
+    }
+
+    return true;
 }
 
 static void HYD_ResolveRbfPidConfig(const HYD_MotionSegment* segment,
@@ -518,6 +559,16 @@ void HYD_PressureController_Execute(const HYD_MotionSegment* segment,
                                     HYD_PressureControllerState* state,
                                     const HYD_PressureControllerInput* input,
                                     HYD_PressureControllerOutput* output) {
+    HYD_PressureController_ExecuteWithPumpFeedback(segment, state, input,
+                                                   NULL, output);
+}
+
+void HYD_PressureController_ExecuteWithPumpFeedback(
+    const HYD_MotionSegment* segment,
+    HYD_PressureControllerState* state,
+    const HYD_PressureControllerInput* input,
+    const HYD_PumpFeedback* pumpFeedback,
+    HYD_PressureControllerOutput* output) {
     HYD_PressureResolvedConfig config;
     HYD_REAL filteredPressure;
     HYD_REAL rawPressureRate;
@@ -613,9 +664,17 @@ void HYD_PressureController_Execute(const HYD_MotionSegment* segment,
         }
 
         effectiveTargetPressure = input->targetPressure; //(error == 0.0) ? filteredPressure :
-        rawOutputFlow = (HYD_REAL)RBF_PID_Update(&state->rbfPid,
-                                                 (float)effectiveTargetPressure,
-                                                 (float)filteredPressure);
+        if (config.strategy == HYD_PRESSURE_CONTROLLER_RBF_PI) {
+            rawOutputFlow = (HYD_REAL)RBF_PID_UpdateWithLearningEnabled(
+                &state->rbfPid,
+                (float)effectiveTargetPressure,
+                (float)filteredPressure,
+                HYD_RbfPiFeedbackAllowsLearning(input, pumpFeedback) ? true : false);
+        } else {
+            rawOutputFlow = (HYD_REAL)RBF_PID_Update(&state->rbfPid,
+                                                     (float)effectiveTargetPressure,
+                                                     (float)filteredPressure);
+        }
         internalSaturated = state->rbfPid.output_saturated;
 
         outputFlow = HYD_ClampReal(rawOutputFlow, config.outputMin, config.outputMax);

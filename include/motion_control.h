@@ -2,6 +2,7 @@
 #define HYD_MOTION_CONTROL_H
 
 #include "common_types.h"
+#include "ripple_compensator.h"
 #include "output_limiter.h"
 #include "pressure_controller.h"
 #include "ramp_controller.h"
@@ -523,6 +524,16 @@ void HYD_MotionControlFB_Cycle(HYD_MotionControlFB* fb);
 
 /* Samples edge-triggered command inputs (for example START_SEGMENT) then calls Cycle(). */
 void HYD_MotionControlFB_Scan(HYD_MotionControlFB* fb);
+
+/*
+ * Per-cycle pump-feedback ingress for the first pressure-loop consumer. Both
+ * pointers are borrowed: the caller/HAL owns `rippleState`, while the packet
+ * must remain valid only for this scan. The legacy Scan() path passes NULL.
+ */
+void HYD_MotionControlFB_ScanWithPumpFeedback(
+    HYD_MotionControlFB* fb,
+    const HYD_PumpFeedback* pumpFeedback,
+    HYD_RippleCompState* rippleState);
 
 /* Compatibility cyclic entry; currently equivalent to Scan(). */
 void HYD_MotionControlFB_Execute(HYD_MotionControlFB* fb);

@@ -100,7 +100,9 @@ with tempfile.TemporaryDirectory() as name:
     assert replay.returncode == 0 and "# calibration_status=calibrated" in replay.stdout, replay.stderr
     table = directory / "table.h"
     result = export(directory, table)
-    assert result.returncode == 0 and "PRESSURE_RIPPLE_TABLE_COUNT 1" in table.read_text(), result.stderr
+    generated = table.read_text()
+    assert result.returncode == 0 and "HYD_PRESSURE_RIPPLE_TABLE_CALIBRATED 1" in generated, result.stderr
+    assert "HYD_PRESSURE_RIPPLE_TABLE_COUNT 1" in generated
     tu = directory / "table.c"
     tu.write_text('#include "table.h"\nint main(void) { return 0; }\n')
     compile_result = subprocess.run(["gcc", "-std=c99", "-Wall", "-Wextra", "-Werror",

@@ -1,12 +1,15 @@
 #include <assert.h>
 #include <math.h>
+#include <stdio.h>
 #include <string.h>
 
 #include "common_types.h"
 #include "hydro_hardware.h"
 #include "hydro_sim.h"
 #include "hydro_sim_fb.h"
+#include "motion_control.h"
 #include "pressure_model.h"
+#include "ripple_compensator.h"
 
 extern HYD_HydraulicSimFB* __MK_GetPublic_HydraulicSimFB(int index);
 
@@ -239,10 +242,80 @@ static void test_pressure_model_packet_survives_simulator_refresh(void) {
     }
 }
 
+static HYD_MotionSegment make_rbf_pi_pressure_segment(void) {
+    HYD_MotionSegment segment;
+
+    memset(&segment, 0, sizeof(segment));
+    segment.segmentTag = 1;
+    segment.segmentType = HYD_SEGMENT_TYPE_HOLDING;
+    segment.planner = HYD_PLANNER_TIME_BASED;
+    segment.mode = HYD_MODE_PRESSURE_CLOSED_LOOP;
+    segment.endCondition = HYD_END_TIME;
+    segment.direction = HYD_DIRECTION_HOLD;
+    segment.targetPressure = 20.0;
+    segment.targetFlow = 0.0;
+    segment.maxFlow = 20.0;
+    segment.duration = 1.0;
+    segment.pressureTolerance = 0.5;
+    segment.pressureRampRate = 1000.0;
+    segment.pressureController = HYD_PRESSURE_CONTROLLER_RBF_PI;
+    segment.pressureRbfConfig.minKp = 0.1;
+    segment.pressureRbfConfig.maxKp = 0.5;
+    segment.pressureRbfConfig.minKi = 0.001;
+    segment.pressureRbfConfig.maxKi = 0.01;
+    segment.pressureIntegralLimit = 20.0;
+    return segment;
+}
+
+static void test_producer_packet_bridges_to_transient_motion_scan(void) {
+    PressureModelParams params;
+    PressureModelState model_state;
+    PressureModelOutput model_output;
+    HYD_MotionControlFB fb;
+    HYD_MotionSegment segment;
+    HYD_RippleCompState ripple_state;
+
+    printf("Testing pressure-model feedback bridge into transient motion scan...\n");
+    PressureModel_InitParams(&params);
+    params.model_type = PRESSURE_MODEL_TYPE_PHYSICAL_CALIBRATED;
+    PressureModel_Reset(&model_state, 17u);
+    memset(&model_output, 0, sizeof(model_output));
+    PressureModel_Step(&params, &model_state, 100.0f, 0.001f, &model_output);
+    assert(HYD_PumpFeedback_HasValid(model_output.pumpFeedback.validFlags,
+                                     HYD_PUMP_FEEDBACK_VALID_RPM |
+                                     HYD_PUMP_FEEDBACK_VALID_ANGLE |
+                                     HYD_PUMP_FEEDBACK_VALID_TORQUE |
+                                     HYD_PUMP_FEEDBACK_VALID_TIMESTAMP));
+
+    HYD_MotionControlFB_Init(&fb);
+    fb.FLOW_TO_PUMP_SPEED_GAIN = 20.0;
+    fb.PUMP_SPEED_LIMIT = 1800.0;
+    fb.AXIS_REF.pressure = 10.0;
+    fb.AXIS_REF.timestamp = model_output.pumpFeedback.timestamp;
+    segment = make_rbf_pi_pressure_segment();
+    assert(HYD_MotionControlFB_LoadDirectSegment(&fb, &segment));
+    assert(HYD_MotionControlFB_StartSegment(&fb, 0U, 0.0));
+
+    HYD_RippleComp_Reset(&ripple_state);
+    HYD_MotionControlFB_ScanWithPumpFeedback(&fb, &model_output.pumpFeedback,
+                                              &ripple_state);
+    assert(isfinite(fb.PUMP_SPEED));
+    assert(fb.FB_STATE == HYD_FB_STATE_RUNNING ||
+           fb.FB_STATE == HYD_FB_STATE_STARTING);
+    assert(sizeof(HYD_MotionControlFB) <= 3208U);
+
+    /* Legacy scan has no packet/state ownership and stays callable. */
+    fb.AXIS_REF.timestamp += 0.001;
+    HYD_MotionControlFB_Scan(&fb);
+    assert(isfinite(fb.PUMP_SPEED));
+    printf("PASS transient motion feedback bridge test\n");
+}
+
 int main(void) {
     test_packet_contract();
     test_pressure_model_nonfinite_phase_is_not_valid();
     test_simulator_outputs_pump_feedback();
     test_pressure_model_packet_survives_simulator_refresh();
+    test_producer_packet_bridges_to_transient_motion_scan();
     return 0;
 }

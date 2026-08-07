@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <math.h>
 #include <stdio.h>
+#include <string.h>
 #include "rbf_pid.h"
 
 static void test_flow_normalization_and_system_gain_soft_cap_are_configurable(void);
@@ -16,6 +17,7 @@ static void test_continuous_pi_uses_feedforward_once_and_disables_legacy_terms(v
 static void test_continuous_pi_limits_integrator_tracks_applied_output_and_slews(void);
 static void test_continuous_pi_tracks_repeated_derate_release_without_stale_command(void);
 static void test_pi_configuration_isolated_from_pid_runtime_state(void);
+static void test_learning_gate_freezes_pi_adaptation_without_changing_pid_compatibility(void);
 
 static void test_init_sets_ready_defaults(void) {
     RBF_PID_Handle pid;
@@ -600,6 +602,76 @@ static void test_pi_configuration_isolated_from_pid_runtime_state(void) {
     printf("PASS PI configuration isolation from RBF-PID runtime state test\n");
 }
 
+static void test_learning_gate_freezes_pi_adaptation_without_changing_pid_compatibility(void) {
+    RBF_PID_Handle pi;
+    RBF_PID_Handle pid;
+    RBF_PID_Handle expected_pid;
+    RBF_PID_Handle pi_before;
+    float pi_output;
+    float pid_output;
+    float expected_pid_output;
+
+    printf("Testing per-call RBF learning gate for positional PI and legacy PID...\n");
+
+    RBF_PID_Init(&pi, 0.001f, 100.0f, 1.0f);
+    RBF_PID_SetControlMode(&pi, RBF_PID_CONTROL_MODE_PI);
+    RBF_PID_SetParamLimits(&pi, 0.01f, 2.0f, 0.0001f, 1.0f, 0.0f, 1.0f);
+    RBF_PID_SetLearningRates(&pi, 0.2f, 0.2f, 0.2f, 0.1f, 0.1f, 0.0f);
+    RBF_PID_SetContinuousGains(&pi, 0.4f, 0.01f);
+    RBF_PID_SetAntiWindup(&pi, 1.0f, 100.0f);
+    (void)RBF_PID_Update(&pi, 100.0f, 0.0f);
+    pi_before = pi;
+
+    pi_output = RBF_PID_UpdateWithLearningEnabled(&pi, 100.0f, 0.0f, false);
+    assert(isfinite(pi_output));
+    assert(fabsf(pi.KP - pi_before.KP) < 1e-7f);
+    assert(fabsf(pi.KI - pi_before.KI) < 1e-7f);
+    assert(memcmp(pi.w, pi_before.w, sizeof(pi.w)) == 0);
+    assert(memcmp(pi.c, pi_before.c, sizeof(pi.c)) == 0);
+    assert(memcmp(pi.b_rbf, pi_before.b_rbf, sizeof(pi.b_rbf)) == 0);
+
+    RBF_PID_Init(&pid, 0.001f, 100.0f, 1.0f);
+    RBF_PID_SetLearningRates(&pid, 0.2f, 0.2f, 0.2f, 0.1f, 0.1f, 0.1f);
+    expected_pid = pid;
+    pid_output = RBF_PID_UpdateWithLearningEnabled(&pid, 100.0f, 0.0f, false);
+    expected_pid_output = RBF_PID_Update(&expected_pid, 100.0f, 0.0f);
+    assert(fabsf(pid_output - expected_pid_output) < 1e-7f);
+    assert(fabsf(pid.KP - expected_pid.KP) < 1e-7f);
+    assert(fabsf(pid.KI - expected_pid.KI) < 1e-7f);
+    assert(fabsf(pid.KD - expected_pid.KD) < 1e-7f);
+    assert(memcmp(pid.w, expected_pid.w, sizeof(pid.w)) == 0);
+    assert(memcmp(pid.c, expected_pid.c, sizeof(pid.c)) == 0);
+    assert(memcmp(pid.b_rbf, expected_pid.b_rbf, sizeof(pid.b_rbf)) == 0);
+    printf("PASS per-call RBF learning gate test\n");
+}
+
+static void test_outer_limiter_delta_freezes_same_direction_learning(void) {
+    RBF_PID_Handle pid;
+    RBF_PID_Handle before;
+
+    printf("Testing outer-limiter tracking freezes same-direction PI learning...\n");
+    RBF_PID_Init(&pid, 0.001f, 100.0f, 1.0f);
+    RBF_PID_SetControlMode(&pid, RBF_PID_CONTROL_MODE_PI);
+    RBF_PID_SetParamLimits(&pid, 0.01f, 2.0f, 0.0001f, 1.0f, 0.0f, 1.0f);
+    RBF_PID_SetLearningRates(&pid, 0.2f, 0.2f, 0.2f, 0.1f, 0.1f, 0.0f);
+    RBF_PID_SetContinuousGains(&pid, 1.0f, 0.1f);
+    pid.output_min_flow = 0.0f;
+    pid.output_max_flow = 20.0f;
+    (void)RBF_PID_Update(&pid, 10.0f, 0.0f);
+    RBF_PID_TrackAppliedFlow(&pid, 1.0f);
+    before = pid;
+    assert(before.output_saturated);
+    assert(before.du < 0.0f);
+
+    (void)RBF_PID_UpdateWithLearningEnabled(&pid, 10.0f, 0.0f, true);
+    assert(fabsf(pid.KP - before.KP) < 1e-7f);
+    assert(fabsf(pid.KI - before.KI) < 1e-7f);
+    assert(memcmp(pid.w, before.w, sizeof(pid.w)) == 0);
+    assert(memcmp(pid.c, before.c, sizeof(pid.c)) == 0);
+    assert(memcmp(pid.b_rbf, before.b_rbf, sizeof(pid.b_rbf)) == 0);
+    printf("PASS outer-limiter learning gate test\n");
+}
+
 int main(void) {
     printf("Running RBF_PID tests...\n\n");
 
@@ -624,6 +696,8 @@ int main(void) {
     test_continuous_pi_limits_integrator_tracks_applied_output_and_slews();
     test_continuous_pi_tracks_repeated_derate_release_without_stale_command();
     test_pi_configuration_isolated_from_pid_runtime_state();
+    test_learning_gate_freezes_pi_adaptation_without_changing_pid_compatibility();
+    test_outer_limiter_delta_freezes_same_direction_learning();
 
     printf("\n✅ All RBF_PID tests passed successfully!\n");
     return 0;

@@ -272,7 +272,10 @@ static bool rbf_pid_same_direction_saturation(const RBF_PID_Handle *pid, float e
     }
 
     return (pid->Output >= output_max - 1.0e-6f && error > 0.0f) ||
-        (pid->Output <= output_min + 1.0e-6f && error < 0.0f);
+        (pid->Output <= output_min + 1.0e-6f && error < 0.0f) ||
+        (pid->control_mode == RBF_PID_CONTROL_MODE_PI &&
+         ((pid->du < -1.0e-6f && error > 0.0f) ||
+          (pid->du > 1.0e-6f && error < 0.0f)));
 }
 
 static void rbf_pid_step_rbf_nn(RBF_PID_Handle *pid) {
@@ -615,6 +618,13 @@ void RBF_PID_Init(RBF_PID_Handle *pid, float sampling_period,
 }
 
 float RBF_PID_Update(RBF_PID_Handle *pid, float setpoint, float feedback) {
+    return RBF_PID_UpdateWithLearningEnabled(pid, setpoint, feedback, true);
+}
+
+float RBF_PID_UpdateWithLearningEnabled(RBF_PID_Handle *pid,
+                                        float setpoint,
+                                        float feedback,
+                                        bool learning_enabled) {
     float raw_error;
     float error;
 
@@ -633,8 +643,10 @@ float RBF_PID_Update(RBF_PID_Handle *pid, float setpoint, float feedback) {
     pid->Error = error;
     pid->control_state = rbf_pid_resolve_control_state(pid, raw_error);
 
-    rbf_pid_step_rbf_nn(pid);
-    rbf_pid_step_adaptive_gains(pid, error, raw_error);
+    if (pid->control_mode != RBF_PID_CONTROL_MODE_PI || learning_enabled) {
+        rbf_pid_step_rbf_nn(pid);
+        rbf_pid_step_adaptive_gains(pid, error, raw_error);
+    }
     if (pid->control_mode == RBF_PID_CONTROL_MODE_PI) {
         rbf_pid_step_continuous_pi_output(pid, error);
     } else {
@@ -824,6 +836,7 @@ void RBF_PID_TrackAppliedFlow(RBF_PID_Handle *pid, float flow) {
     float output_min;
     float output_max;
     float applied_flow;
+    float commanded_flow;
     float proportional_term;
     float integral_state;
 
@@ -833,6 +846,7 @@ void RBF_PID_TrackAppliedFlow(RBF_PID_Handle *pid, float flow) {
 
     output_min = rbf_pid_output_lower_bound(pid);
     output_max = rbf_pid_output_upper_bound(pid);
+    commanded_flow = clamp_finite(output_min, pid->Output, output_max, pid->u_prev);
     applied_flow = clamp_finite(output_min, flow, output_max, pid->u_prev);
     pi = rbf_pid_pi_state(pid);
     proportional_term = finite_or_default(pid->KP, 0.0f) *
@@ -849,10 +863,12 @@ void RBF_PID_TrackAppliedFlow(RBF_PID_Handle *pid, float flow) {
     pid->Output = applied_flow;
     pid->n_out = applied_flow;
     pid->u_prev = applied_flow;
-    pid->du = 0.0f;
-    pid->du_prev = 0.0f;
+    /* Preserve the outer-limiter delta for the next scan's same-direction
+     * learning gate. The applied output remains the PI tracking reference. */
+    pid->du = applied_flow - commanded_flow;
+    pid->du_prev = pid->du;
     pid->gain_compensation_factor = applied_flow;
-    pid->output_saturated = false;
+    pid->output_saturated = fabsf(applied_flow - commanded_flow) > 1.0e-6f;
 }
 
 void RBF_PID_SetSeed(RBF_PID_Handle *pid, uint32_t seed) {

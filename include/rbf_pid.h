@@ -188,6 +188,17 @@ void RBF_PID_Init(RBF_PID_Handle *pid, float sampling_period,
  */
 float RBF_PID_Update(RBF_PID_Handle *pid, float setpoint, float feedback);
 
+/*
+ * Runs one control update while optionally freezing RBF-network and Kp/Ki
+ * adaptation in positional PI mode. The base PI calculation and all output
+ * tracking still execute. Legacy incremental PID intentionally ignores the
+ * gate so its historical behavior remains unchanged.
+ */
+float RBF_PID_UpdateWithLearningEnabled(RBF_PID_Handle *pid,
+                                        float setpoint,
+                                        float feedback,
+                                        bool learning_enabled);
+
 /**
  * @brief 复位控制器(清空所有历史状态)
  * @param pid RBF_PID句柄指针

@@ -13,6 +13,7 @@
 #include "motion_utils.h"
 #include "motion_validator.h"
 #include "output_limiter.h"
+#include "ripple_compensator.h"
 #include "segment_limits.h"
 #include "vp_transfer.h"
 #include "hyd_config.h"
@@ -27,7 +28,10 @@ static HYD_BOOL HYD_QueuePendingCommand(HYD_MotionControlFB* fb,
                                         HYD_UINT segmentIndex,
                                         HYD_TIME timestamp);
 static HYD_BOOL HYD_IsValidPressureControllerParameter(HYD_REAL value);
-static void HYD_MotionControlFB_RunRunningState(HYD_MotionControlFB* fb);
+static void HYD_MotionControlFB_RunRunningState(
+    HYD_MotionControlFB* fb,
+    const HYD_PumpFeedback* pumpFeedback,
+    HYD_RippleCompState* rippleState);
 static HYD_BOOL HYD_RunRunningStateStopping(HYD_MotionControlFB* fb,
                                             const HYD_MotionSegment* segment,
                                             HYD_MotionPlannerOutput* plannerOutput,
@@ -53,6 +57,7 @@ static HYD_BOOL HYD_ExecuteActiveSegmentControl(HYD_MotionControlFB* fb,
                                                 const HYD_MotionSegment* segment,
                                                 HYD_REAL elapsed,
                                                 HYD_REAL deltaTime,
+                                                const HYD_PumpFeedback* pumpFeedback,
                                                 HYD_RampControllerOutput* rampOutput,
                                                 HYD_MotionPlannerOutput* plannerOutput,
                                                 HYD_PressureControllerOutput* pressureOutput,
@@ -1952,8 +1957,11 @@ static HYD_BOOL HYD_MotionControlFB_ConsumePendingCommand(HYD_MotionControlFB* f
     }
 }
 
-static void HYD_MotionControlFB_RunStateMachine(HYD_MotionControlFB* fb,
-                                                HYD_BOOL allowRunningExecution) {
+static void HYD_MotionControlFB_RunStateMachine(
+    HYD_MotionControlFB* fb,
+    HYD_BOOL allowRunningExecution,
+    const HYD_PumpFeedback* pumpFeedback,
+    HYD_RippleCompState* rippleState) {
     if (fb == NULL || !allowRunningExecution) {
         return;
     }
@@ -1961,7 +1969,7 @@ static void HYD_MotionControlFB_RunStateMachine(HYD_MotionControlFB* fb,
     switch (fb->FB_STATE) {
         case HYD_FB_STATE_STARTING:
         case HYD_FB_STATE_RUNNING:
-            HYD_MotionControlFB_RunRunningState(fb);
+            HYD_MotionControlFB_RunRunningState(fb, pumpFeedback, rippleState);
             break;
         case HYD_FB_STATE_DISABLED:
         case HYD_FB_STATE_IDLE:
@@ -2074,6 +2082,7 @@ static HYD_BOOL HYD_ExecuteActiveSegmentControl(HYD_MotionControlFB* fb,
                                                 const HYD_MotionSegment* segment,
                                                 HYD_REAL elapsed,
                                                 HYD_REAL deltaTime,
+                                                const HYD_PumpFeedback* pumpFeedback,
                                                 HYD_RampControllerOutput* rampOutput,
                                                 HYD_MotionPlannerOutput* plannerOutput,
                                                 HYD_PressureControllerOutput* pressureOutput,
@@ -2136,10 +2145,9 @@ static HYD_BOOL HYD_ExecuteActiveSegmentControl(HYD_MotionControlFB* fb,
             pressureInput.pumpSpeedLimit = fb->PUMP_SPEED_LIMIT;
         }
         pressureInput.timestamp = HYD_GetCurrentSegmentTime(fb);
-        HYD_PressureController_Execute(segment,
-                                       &fb->_pressureController,
-                                       &pressureInput,
-                                       pressureOutput);
+        HYD_PressureController_ExecuteWithPumpFeedback(
+            segment, &fb->_pressureController, &pressureInput,
+            pumpFeedback, pressureOutput);
         plannerOutput->targetFlow = pressureOutput->outputFlow;
         plannerOutput->direction = segment->direction;
     } else {
@@ -2665,7 +2673,10 @@ static void HYD_UpdateExecutionDiagnostics(HYD_MotionControlFB* fb,
     }
 }
 
-static void HYD_MotionControlFB_RunRunningState(HYD_MotionControlFB* fb) {
+static void HYD_MotionControlFB_RunRunningState(
+    HYD_MotionControlFB* fb,
+    const HYD_PumpFeedback* pumpFeedback,
+    HYD_RippleCompState* rippleState) {
     HYD_DiagnosticCode code = HYD_DIAG_CODE_NONE;
     const HYD_MotionSegment* segment;
     HYD_REAL elapsed;
@@ -2677,6 +2688,9 @@ static void HYD_MotionControlFB_RunRunningState(HYD_MotionControlFB* fb) {
     HYD_OutputLimiterInput limiterInput;
     HYD_OutputLimiterOutput limiterOutput;
     HYD_ExecutionReference executionReference;
+    HYD_RippleCompOutput rippleOutput;
+    HYD_RippleCompTable rippleTable;
+    HYD_REAL rippleDeltaRpm = 0.0;
 
     if (fb == NULL) {
         return;
@@ -2692,6 +2706,10 @@ static void HYD_MotionControlFB_RunRunningState(HYD_MotionControlFB* fb) {
     }
 
     segment = &fb->_activeSegment;
+
+    if (fb->_segmentChangedFlag && rippleState != NULL) {
+        HYD_RippleComp_Reset(rippleState);
+    }
 
     if ((fb->_activeSegmentSource == HYD_SEGMENT_SOURCE_RECIPE &&
          fb->STATE.currentSegmentIndex >= fb->RECIPE_SIZE) ||
@@ -2761,6 +2779,7 @@ static void HYD_MotionControlFB_RunRunningState(HYD_MotionControlFB* fb) {
                                          segment,
                                          elapsed,
                                          deltaTime,
+                                         pumpFeedback,
                                          &rampOutput,
                                          &plannerOutput,
                                          &pressureOutput,
@@ -2782,8 +2801,6 @@ static void HYD_MotionControlFB_RunRunningState(HYD_MotionControlFB* fb) {
         }
     }
 
-    limiterInput.requestedFlow = pumpOutput.commandFlow;
-    limiterInput.requestedPumpSpeed = pumpOutput.pumpSpeed;
     if (HYD_PumpConfig_IsValid(&fb->pumpConfig)) {
         limiterInput.flowToPumpSpeedGain = HYD_PumpConfig_GetFlowToSpeedGain(&fb->pumpConfig);
         limiterInput.pumpSpeedLimit = HYD_PumpConfig_GetSpeedLimit(&fb->pumpConfig);
@@ -2791,6 +2808,27 @@ static void HYD_MotionControlFB_RunRunningState(HYD_MotionControlFB* fb) {
         limiterInput.flowToPumpSpeedGain = fb->FLOW_TO_PUMP_SPEED_GAIN;
         limiterInput.pumpSpeedLimit = fb->PUMP_SPEED_LIMIT;
     }
+
+    memset(&rippleOutput, 0, sizeof(rippleOutput));
+    if (segment->mode == HYD_MODE_PRESSURE_CLOSED_LOOP &&
+        pressureOutput.appliedStrategy == HYD_PRESSURE_CONTROLLER_RBF_PI) {
+        rippleTable = HYD_RippleComp_DefaultTable();
+        (void)HYD_RippleComp_Scan(pumpFeedback, &rippleTable, rippleState,
+                                  pumpOutput.pumpSpeed,
+                                  limiterInput.pumpSpeedLimit,
+                                  &rippleOutput);
+        rippleDeltaRpm = rippleOutput.deltaRpm;
+        if (rippleOutput.active && limiterInput.flowToPumpSpeedGain > 0.0) {
+            pumpOutput.pumpSpeed += rippleDeltaRpm;
+            pumpOutput.commandFlow = pumpOutput.pumpSpeed /
+                limiterInput.flowToPumpSpeedGain;
+        }
+    } else if (rippleState != NULL) {
+        HYD_RippleComp_Reset(rippleState);
+    }
+
+    limiterInput.requestedFlow = pumpOutput.commandFlow;
+    limiterInput.requestedPumpSpeed = pumpOutput.pumpSpeed;
     limiterInput.protectionAction = fb->DIAGNOSTIC.protectionAction;
     limiterInput.derateRatio = HYD_Segment_GetDerateRatio(segment);
 
@@ -2835,8 +2873,14 @@ static void HYD_MotionControlFB_RunRunningState(HYD_MotionControlFB* fb) {
     plannerOutput.targetFlow = limiterOutput.commandFlow;
     executionReference.flowReference = limiterOutput.commandFlow;
     if (segment->mode == HYD_MODE_PRESSURE_CLOSED_LOOP) {
+        HYD_REAL appliedBaseFlow = limiterOutput.commandFlow;
+
+        if (limiterInput.flowToPumpSpeedGain > 0.0) {
+            appliedBaseFlow = (limiterOutput.pumpSpeed - rippleDeltaRpm) /
+                limiterInput.flowToPumpSpeedGain;
+        }
         HYD_PressureController_TrackAppliedFlow(&fb->_pressureController,
-                                                limiterOutput.commandFlow);
+                                                appliedBaseFlow);
     }
     if (limiterOutput.pressureLimitActive) {
         fb->STATE.limitFlags |= HYD_LIMIT_FLAG_PRESSURE;
@@ -3865,7 +3909,10 @@ HYD_BOOL HYD_MotionControlFB_AcknowledgeDiagnostics(HYD_MotionControlFB* fb) {
     return true;
 }
 
-void HYD_MotionControlFB_Cycle(HYD_MotionControlFB* fb) {
+static void HYD_MotionControlFB_CycleWithPumpFeedback(
+    HYD_MotionControlFB* fb,
+    const HYD_PumpFeedback* pumpFeedback,
+    HYD_RippleCompState* rippleState) {
     HYD_FbCommand processedCommand;
     HYD_BOOL allowRunningExecution;
 
@@ -3876,18 +3923,34 @@ void HYD_MotionControlFB_Cycle(HYD_MotionControlFB* fb) {
     fb->SEGMENT_CHANGED = false;
 
     if (fb->RESET) {
+        HYD_RippleComp_Reset(rippleState);
         HYD_MotionControlFB_SoftReset(fb);
         return;
     }
 
     allowRunningExecution = HYD_MotionControlFB_ConsumePendingCommand(fb, &processedCommand);
-    HYD_MotionControlFB_RunStateMachine(fb, allowRunningExecution);
+    HYD_MotionControlFB_RunStateMachine(fb, allowRunningExecution,
+                                        pumpFeedback, rippleState);
     HYD_MotionControlFB_PublishOutputs(fb, processedCommand == HYD_CMD_NONE);
 }
 
+void HYD_MotionControlFB_Cycle(HYD_MotionControlFB* fb) {
+    HYD_MotionControlFB_CycleWithPumpFeedback(fb, NULL, NULL);
+}
+
 void HYD_MotionControlFB_Scan(HYD_MotionControlFB* fb) {
+    HYD_MotionControlFB_ScanWithPumpFeedback(fb, NULL, NULL);
+}
+
+void HYD_MotionControlFB_ScanWithPumpFeedback(
+    HYD_MotionControlFB* fb,
+    const HYD_PumpFeedback* pumpFeedback,
+    HYD_RippleCompState* rippleState) {
+    if (fb == NULL) {
+        return;
+    }
     HYD_MotionControlFB_SampleCommands(fb);
-    HYD_MotionControlFB_Cycle(fb);
+    HYD_MotionControlFB_CycleWithPumpFeedback(fb, pumpFeedback, rippleState);
 }
 
 void HYD_MotionControlFB_Execute(HYD_MotionControlFB* fb) {

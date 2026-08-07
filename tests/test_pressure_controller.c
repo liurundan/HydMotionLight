@@ -713,6 +713,103 @@ static void test_rbf_pi_sync_preserves_limited_tracking_configuration(void) {
     printf("PASS RBF-PI synchronization tracking configuration test\n");
 }
 
+static void assert_rbf_pi_adaptation_unchanged(const RBF_PID_Handle* before,
+                                                const RBF_PID_Handle* after) {
+    assert(before != NULL);
+    assert(after != NULL);
+    assert(fabsf(after->KP - before->KP) < 1e-7f);
+    assert(fabsf(after->KI - before->KI) < 1e-7f);
+    assert(memcmp(after->w, before->w, sizeof(after->w)) == 0);
+    assert(memcmp(after->c, before->c, sizeof(after->c)) == 0);
+    assert(memcmp(after->b_rbf, before->b_rbf, sizeof(after->b_rbf)) == 0);
+}
+
+static void test_rbf_pi_invalid_pump_feedback_freezes_learning_only(void) {
+    HYD_MotionSegment segment;
+    HYD_PressureControllerState state;
+    HYD_PressureControllerInput input;
+    HYD_PressureControllerOutput output;
+    HYD_PumpFeedback feedback;
+    RBF_PID_Handle before;
+
+    printf("Testing RBF-PI invalid pump feedback freezes learning but keeps PI active...\n");
+    segment = make_pressure_segment();
+    segment.pressureController = HYD_PRESSURE_CONTROLLER_RBF_PI;
+    segment.targetFlow = 0.0;
+    segment.maxFlow = 50.0;
+    segment.pressureRbfConfig.minKp = 0.01;
+    segment.pressureRbfConfig.maxKp = 2.0;
+    segment.pressureRbfConfig.minKi = 0.0001;
+    segment.pressureRbfConfig.maxKi = 1.0;
+    segment.pressureRbfConfig.etaW = 0.2;
+    segment.pressureRbfConfig.etaC = 0.2;
+    segment.pressureRbfConfig.etaB = 0.2;
+    segment.pressureRbfConfig.etaP = 0.1;
+    segment.pressureRbfConfig.etaI = 0.1;
+    segment.pressureRbfConfig.etaD = 0.0;
+    segment.pressureIntegralLimit = 50.0;
+
+    HYD_PressureController_InitState(&state, 10.0, 0.0, 0.0);
+    memset(&input, 0, sizeof(input));
+    memset(&feedback, 0, sizeof(feedback));
+    feedback.rpm = 100.0;
+    feedback.angleDeg = 1.0;
+    feedback.torquePermille = 100.0;
+    feedback.timestamp = 0.001;
+    feedback.validFlags = HYD_PUMP_FEEDBACK_VALID_RPM |
+                          HYD_PUMP_FEEDBACK_VALID_ANGLE |
+                          HYD_PUMP_FEEDBACK_VALID_TORQUE |
+                          HYD_PUMP_FEEDBACK_VALID_TIMESTAMP;
+    input.targetPressure = 50.0;
+    input.measuredPressure = 10.0;
+    input.feedforwardFlow = 0.0;
+    input.outputMin = 0.0;
+    input.outputMax = segment.maxFlow;
+    input.flowToPumpSpeedGain = 20.0;
+    input.pumpSpeedLimit = 1800.0;
+    input.timestamp = feedback.timestamp;
+    HYD_PressureController_ExecuteWithPumpFeedback(
+        &segment, &state, &input, &feedback, &output);
+    assert(isfinite(output.outputFlow));
+
+    before = state.rbfPid;
+    feedback.validFlags &= ~HYD_PUMP_FEEDBACK_VALID_TORQUE;
+    feedback.timestamp = 0.002;
+    input.timestamp = feedback.timestamp;
+    HYD_PressureController_ExecuteWithPumpFeedback(
+        &segment, &state, &input, &feedback, &output);
+    assert(isfinite(output.outputFlow));
+    assert_rbf_pi_adaptation_unchanged(&before, &state.rbfPid);
+
+    before = state.rbfPid;
+    feedback.validFlags |= HYD_PUMP_FEEDBACK_VALID_TORQUE;
+    feedback.torquePermille = NAN;
+    feedback.timestamp = 0.003;
+    input.timestamp = feedback.timestamp;
+    HYD_PressureController_ExecuteWithPumpFeedback(
+        &segment, &state, &input, &feedback, &output);
+    assert(isfinite(output.outputFlow));
+    assert_rbf_pi_adaptation_unchanged(&before, &state.rbfPid);
+
+    before = state.rbfPid;
+    feedback.torquePermille = 100.0;
+    feedback.timestamp = 0.100;
+    input.timestamp = 0.004;
+    HYD_PressureController_ExecuteWithPumpFeedback(
+        &segment, &state, &input, &feedback, &output);
+    assert(isfinite(output.outputFlow));
+    assert_rbf_pi_adaptation_unchanged(&before, &state.rbfPid);
+
+    before = state.rbfPid;
+    feedback.timestamp = 0.005;
+    feedback.torquePermille = -100.0;
+    input.timestamp = feedback.timestamp;
+    HYD_PressureController_Execute(&segment, &state, &input, &output);
+    assert(isfinite(output.outputFlow));
+    assert_rbf_pi_adaptation_unchanged(&before, &state.rbfPid);
+    printf("PASS invalid pump-feedback learning freeze test\n");
+}
+
 static void test_rbf_pid_deadzone_clamp_marks_internal_saturation(void) {
     HYD_MotionSegment segment;
     HYD_PressureControllerState state;
@@ -1569,6 +1666,7 @@ int main(void) {
     test_rbf_pi_feedforward_and_outer_applied_flow_tracking();
     test_rbf_pi_state_stays_within_motion_fb_budget();
     test_rbf_pi_sync_preserves_limited_tracking_configuration();
+    test_rbf_pi_invalid_pump_feedback_freezes_learning_only();
     test_rbf_pid_deadzone_clamp_marks_internal_saturation();
     test_rbf_pi_output_clamp_saturation_survives_outer_wrapper();
     test_rbf_pid_soft_cap_preserves_legacy_wrapper_state();

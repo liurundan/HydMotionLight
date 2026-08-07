@@ -66,5 +66,11 @@ void HYD_PressureController_Execute(const HYD_MotionSegment* segment,
                                     HYD_PressureControllerState* state,
                                     const HYD_PressureControllerInput* input,
                                     HYD_PressureControllerOutput* output);
+void HYD_PressureController_ExecuteWithPumpFeedback(
+    const HYD_MotionSegment* segment,
+    HYD_PressureControllerState* state,
+    const HYD_PressureControllerInput* input,
+    const HYD_PumpFeedback* pumpFeedback,
+    HYD_PressureControllerOutput* output);
 
 #endif /* HYD_PRESSURE_CONTROLLER_H */

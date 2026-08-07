@@ -44,6 +44,9 @@ target_link_libraries(test_recipe_validator PRIVATE HydroMotionLib)
 add_executable(test_pressure_controller tests/test_pressure_controller.c)
 target_link_libraries(test_pressure_controller PRIVATE HydroMotionLib)
 
+add_executable(test_ripple_compensator tests/test_ripple_compensator.c)
+target_link_libraries(test_ripple_compensator PRIVATE HydroMotionLib)
+
 add_executable(test_pump_converter tests/test_pump_converter.c)
 target_link_libraries(test_pump_converter PRIVATE HydroMotionLib)
 
@@ -215,6 +218,7 @@ enable_testing()
 add_test(NAME test_motion_planner COMMAND test_motion_planner)
 add_test(NAME test_recipe_validator COMMAND test_recipe_validator)
 add_test(NAME test_pressure_controller COMMAND test_pressure_controller)
+add_test(NAME test_ripple_compensator COMMAND test_ripple_compensator)
 add_test(NAME test_pump_converter COMMAND test_pump_converter)
 add_test(NAME test_output_limiter COMMAND test_output_limiter)
 add_test(NAME test_velocity_controller COMMAND test_velocity_controller)

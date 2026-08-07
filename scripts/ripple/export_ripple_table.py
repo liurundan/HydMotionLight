@@ -127,13 +127,17 @@ def main(argv):
                abs(values[1]) > .30 * values[0] or abs(values[3]) > .30 * values[0]:
                 return fail("table phase or RPM-domain amplitude is outside the admitted contract")
             rows.append(values)
-        lines = ["/* generated from model_validation.json */", "#ifndef PRESSURE_RIPPLE_TABLE_H",
-                 "#define PRESSURE_RIPPLE_TABLE_H", "#define PRESSURE_RIPPLE_TABLE_COUNT %d" % len(rows),
+        lines = ["/* generated from model_validation.json */", "#ifndef HYD_PRESSURE_RIPPLE_TABLE_H",
+                 "#define HYD_PRESSURE_RIPPLE_TABLE_H", "#define HYD_PRESSURE_RIPPLE_TABLE_CALIBRATED 1",
+                 "#define HYD_PRESSURE_RIPPLE_TABLE_COUNT %d" % len(rows),
+                 "#ifndef HYD_PRESSURE_RIPPLE_ENTRY_DEFINED",
+                 "#define HYD_PRESSURE_RIPPLE_ENTRY_DEFINED",
                  "typedef struct { float rpm; float amp13_rpm; float phase13_rad; float amp26_rpm; float phase26_rad; } HYD_PressureRippleEntry;",
+                 "#endif",
                  "static const HYD_PressureRippleEntry HYD_PRESSURE_RIPPLE_TABLE[] = {"]
         lines.extend("    {%s, %s, %s, %s, %s}," % tuple(c_float(value) for value in row)
                      for row in rows)
-        lines.extend(["};", "#endif /* PRESSURE_RIPPLE_TABLE_H */", ""])
+        lines.extend(["};", "#endif /* HYD_PRESSURE_RIPPLE_TABLE_H */", ""])
         output = Path(argv[3]); output.parent.mkdir(parents=True, exist_ok=True)
         temporary = output.with_name(output.name + ".tmp")
         temporary.write_text("\n".join(lines), encoding="ascii")
