@@ -157,8 +157,8 @@ static void test_pressure_model_packet_survives_simulator_refresh(void) {
                                      HYD_PUMP_FEEDBACK_VALID_RPM |
                                      HYD_PUMP_FEEDBACK_VALID_ANGLE |
                                      HYD_PUMP_FEEDBACK_VALID_TIMESTAMP));
-    assert(!HYD_PumpFeedback_HasValid(handle->pumpFeedback.validFlags,
-                                      HYD_PUMP_FEEDBACK_VALID_TORQUE));
+    assert(HYD_PumpFeedback_HasValid(handle->pumpFeedback.validFlags,
+                                     HYD_PUMP_FEEDBACK_VALID_TORQUE));
     model_feedback = handle->pumpFeedback;
     {
         HYD_MOVESIMAXIS move_cmd;

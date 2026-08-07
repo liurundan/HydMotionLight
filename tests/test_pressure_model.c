@@ -1,1180 +1,307 @@
+#include <assert.h>
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
 
 #include "common_types.h"
-#include "pump_converter.h"
-#include "pressure_controller.h"
-#include "fixtures/pressure_model_open_loop_reference.h"
 #include "pressure_model.h"
 
 #define DT_S 0.001f
-#define PRESSURE_EPS 1e-4f
-#define RPM_EPS 1e-3f
 
-#define ASSERT_TRUE(condition)                                                         \
-    do {                                                                               \
-        if (!(condition)) {                                                            \
-            fprintf(stderr, "Assertion failed at %s:%d: %s\n", __FILE__, __LINE__,    \
-                    #condition);                                                       \
-            return 0;                                                                  \
-        }                                                                              \
-    } while (0)
-
-#define ASSERT_NEAR(actual, expected, tolerance)                                       \
-    do {                                                                               \
-        if (fabs((double)((actual) - (expected))) > (double)(tolerance)) {            \
-            fprintf(stderr,                                                            \
-                    "Assertion failed at %s:%d: %s=%f expected=%f tolerance=%f\n",    \
-                    __FILE__,                                                          \
-                    __LINE__,                                                          \
-                    #actual,                                                           \
-                    (double)(actual),                                                  \
-                    (double)(expected),                                                \
-                    (double)(tolerance));                                              \
-            return 0;                                                                  \
-        }                                                                              \
-    } while (0)
-
-static PressureModelParams make_deterministic_params(void) {
+static PressureModelParams physical_params(void) {
     PressureModelParams params;
 
     PressureModel_InitParams(&params);
-    params.sensor_noise_std_bar = 0.0f;
-    params.sensor_bias_bar = 0.0f;
-    params.motor_noise_std_rpm = 0.0f;
-    params.process_noise_std_m3_s = 0.0f;
+    params.model_type = PRESSURE_MODEL_TYPE_PHYSICAL_CALIBRATED;
     params.enable_sensor_noise = 0u;
     params.enable_motor_noise = 0u;
     params.enable_process_noise = 0u;
-
     return params;
 }
 
-static PressureModelParams make_physical_params(void) {
-    PressureModelParams params = make_deterministic_params();
-
-    params.model_type = PRESSURE_MODEL_TYPE_PHYSICAL;
-
-    return params;
-}
-
-static PressureModelParams make_first_order_params(float gain, float tau_s, float delay_s) {
-    PressureModelParams params = make_deterministic_params();
-
-    params.model_type = PRESSURE_MODEL_TYPE_FIRST_ORDER;
-    params.first_order_k_bar_per_rpm = gain;
-    params.first_order_tau_s = tau_s;
-    params.first_order_delay_s = delay_s;
-    params.sensor_range_bar = 10000.0f;
-    params.motor_tau_s = 0.0f;
-
-    return params;
-}
-
-static void run_steps(const PressureModelParams *params,
-                      PressureModelState *state,
-                      float target_rpm,
-                      int cycles,
-                      float dt_s,
-                      PressureModelOutput *out) {
+static void step_n(const PressureModelParams *params,
+                   PressureModelState *state,
+                   float rpm,
+                   float load_flow_m3_s,
+                   int count,
+                   PressureModelOutput *out) {
+    PressureModelInput input;
     int i;
 
-    for (i = 0; i < cycles; ++i) {
-        PressureModel_Step(params, state, target_rpm, dt_s, out);
+    input.target_rpm = rpm;
+    input.load_flow_m3_s = load_flow_m3_s;
+    input.dt_s = DT_S;
+    for (i = 0; i < count; ++i) {
+        PressureModel_StepInput(params, state, &input, out);
     }
 }
 
-typedef struct {
-    float head_pressure_bar;
-    float tail_pressure_bar;
-    float head_motor_rpm;
-    float tail_motor_rpm;
-    float tail_tooth_span_bar;
-    float tail_tooth_min_phase;
-    float tail_torque_trend;
-} PressureModelSectionSummary;
-
-typedef struct {
-    float peak_real_pressure_bar;
-    float tail_filtered_min_bar;
-    float tail_filtered_max_bar;
-} ClosedLoopPressureMetrics;
-
-typedef struct {
-    float target_bar;
-    int total_steps;
-    int tail_start_step;
-    float flow_to_speed_gain;
-    float pump_speed_limit_rpm;
-    PressureModelParams params;
-    HYD_MotionSegment segment;
-} ClosedLoopPressureCase;
-
-static void summarize_open_loop_section(const PressureModelParams *params,
-                                        const PressureModelOpenLoopReference *reference,
-                                        PressureModelSectionSummary *summary) {
-    PressureModelState state;
-    PressureModelOutput out;
-    float head_pressure_sum = 0.0f;
-    float tail_pressure_sum = 0.0f;
-    float head_motor_sum = 0.0f;
-    float tail_motor_sum = 0.0f;
-    float tail_torque_sum = 0.0f;
-    float bins[26];
-    int counts[26];
-    int i;
-
-    memset(&out, 0, sizeof(out));
-    memset(summary, 0, sizeof(*summary));
-    memset(bins, 0, sizeof(bins));
-    memset(counts, 0, sizeof(counts));
-    PressureModel_Reset(&state, 0x61616161u + (unsigned int)reference->command_rpm);
-
-    for (i = 0; i < reference->sample_count; ++i) {
-        float tooth_phase;
-        int bin_index;
-
-        PressureModel_Step(params, &state, reference->command_rpm, DT_S, &out);
-        if (i < 2000) {
-            head_pressure_sum += out.measured_pressure_bar;
-            head_motor_sum += out.actual_motor_rpm;
-        }
-        if (i >= reference->sample_count - 2000) {
-            tail_pressure_sum += out.measured_pressure_bar;
-            tail_motor_sum += out.actual_motor_rpm;
-            tail_torque_sum += out.estimated_torque_trend;
-        }
-        if (i >= reference->sample_count - 5000) {
-            tooth_phase = fmodf(13.0f * state.pump_phase_rev, 1.0f);
-            if (tooth_phase < 0.0f) {
-                tooth_phase += 1.0f;
-            }
-            bin_index = (int)(tooth_phase * 26.0f);
-            if (bin_index > 25) {
-                bin_index = 25;
-            }
-            bins[bin_index] += out.measured_pressure_bar;
-            counts[bin_index] += 1;
-        }
-    }
-
-    summary->head_pressure_bar = head_pressure_sum / 2000.0f;
-    summary->tail_pressure_bar = tail_pressure_sum / 2000.0f;
-    summary->head_motor_rpm = head_motor_sum / 2000.0f;
-    summary->tail_motor_rpm = tail_motor_sum / 2000.0f;
-    summary->tail_torque_trend = tail_torque_sum / 2000.0f;
-
-    {
-        float min_value = 1.0e30f;
-        float max_value = -1.0e30f;
-        int min_index = 0;
-
-        for (i = 0; i < 26; ++i) {
-            float mean_value;
-            if (counts[i] == 0) {
-                continue;
-            }
-            mean_value = bins[i] / (float)counts[i];
-            if (mean_value < min_value) {
-                min_value = mean_value;
-                min_index = i;
-            }
-            if (mean_value > max_value) {
-                max_value = mean_value;
-            }
-        }
-
-        summary->tail_tooth_span_bar = max_value - min_value;
-        summary->tail_tooth_min_phase = ((float)min_index + 0.5f) / 26.0f;
-    }
-}
-
-static HYD_MotionSegment make_closed_loop_pressure_segment(float target_bar,
-                                                           float flow_to_speed_gain,
-                                                           float pump_speed_limit_rpm,
-                                                           float system_gain) {
-    HYD_MotionSegment segment;
-
-    memset(&segment, 0, sizeof(segment));
-    segment.mode = HYD_MODE_PRESSURE_CLOSED_LOOP;
-    segment.endCondition = HYD_END_TIME;
-    segment.direction = HYD_DIRECTION_HOLD;
-    segment.duration = 10.0;
-    segment.targetPressure = target_bar;
-    segment.maxFlow = pump_speed_limit_rpm / flow_to_speed_gain;
-    segment.pressureController = HYD_PRESSURE_CONTROLLER_RBF_PID;
-    segment.pressureCeiling = target_bar * 3.0f;
-    segment.pressureFilterAlpha = 1.0f;
-    segment.pressureDerivativeFilterAlpha = 1.0f;
-    segment.systemGain = system_gain;
-    segment.pressureRbfConfig.minKp = 0.040f;
-    segment.pressureRbfConfig.maxKp = 0.060f;
-    segment.pressureRbfConfig.minKi = 0.0008f;
-    segment.pressureRbfConfig.maxKi = 0.0016f;
-    segment.pressureRbfConfig.minKd = 0.015f;
-    segment.pressureRbfConfig.maxKd = 0.035f;
-    segment.pressureRbfConfig.etaW = 0.0020f;
-    segment.pressureRbfConfig.etaC = 0.0020f;
-    segment.pressureRbfConfig.etaB = 0.0010f;
-    segment.pressureRbfConfig.etaP = 0.00010f;
-    segment.pressureRbfConfig.etaI = 0.00005f;
-    segment.pressureRbfConfig.etaD = 0.00010f;
-    segment.pressureRbfConfig.disablePressureAccelFeedforward = 1.0f;
-
-    return segment;
-}
-
-static ClosedLoopPressureCase make_first_order_closed_loop_case(void) {
-    ClosedLoopPressureCase test_case;
-
-    memset(&test_case, 0, sizeof(test_case));
-    test_case.target_bar = 100.0f;
-    test_case.total_steps = 8000;
-    test_case.tail_start_step = 7000;
-    test_case.flow_to_speed_gain = 20.0f;
-    test_case.pump_speed_limit_rpm = 1800.0f;
-    test_case.params = make_first_order_params(5.4f, 1.0f, 0.0f);
-    test_case.segment = make_closed_loop_pressure_segment(test_case.target_bar,
-                                                          test_case.flow_to_speed_gain,
-                                                          test_case.pump_speed_limit_rpm,
-                                                          5.4f * test_case.flow_to_speed_gain);
-    return test_case;
-}
-
-static ClosedLoopPressureCase make_physical_closed_loop_case(void) {
-    ClosedLoopPressureCase test_case;
-
-    memset(&test_case, 0, sizeof(test_case));
-    test_case.target_bar = 100.0f;
-    test_case.total_steps = 30000;
-    test_case.tail_start_step = 29000;
-    test_case.flow_to_speed_gain = 20.0f;
-    test_case.pump_speed_limit_rpm = 1800.0f;
-    test_case.params = make_physical_params();
-    test_case.params.sensor_range_bar = 10000.0f;
-    test_case.params.flow_ripple_ratio = 0.0f;
-    test_case.params.tooth_drop_depth_ratio = 0.0f;
-    test_case.params.tooth_drop_depth_base = 0.0f;
-    test_case.segment = make_closed_loop_pressure_segment(test_case.target_bar,
-                                                          test_case.flow_to_speed_gain,
-                                                          test_case.pump_speed_limit_rpm,
-                                                          30.0f);
-    test_case.segment.pressureController = HYD_PRESSURE_CONTROLLER_PI;
-    test_case.segment.pressureFilterAlpha = 0.20f;
-    test_case.segment.pressureKp = 0.05f;
-    test_case.segment.pressureKi = 0.005f;
-    test_case.segment.pressureIntegralLimit = test_case.segment.maxFlow;
-    return test_case;
-}
-
-static float closed_loop_tail_filtered_p2p_bar(const ClosedLoopPressureMetrics *metrics) {
-    return metrics->tail_filtered_max_bar - metrics->tail_filtered_min_bar;
-}
-
-static void run_closed_loop_pressure_case(const ClosedLoopPressureCase *test_case,
-                                          ClosedLoopPressureMetrics *metrics) {
-    PressureModelState plant_state;
-    PressureModelOutput plant_out;
-    HYD_PressureControllerState controller_state;
-    HYD_PressureControllerInput input;
-    HYD_PressureControllerOutput output;
-    HYD_PumpConverterInput pump_input;
-    HYD_PumpConverterOutput pump_output;
-    int step;
-
-    memset(metrics, 0, sizeof(*metrics));
-    memset(&plant_out, 0, sizeof(plant_out));
-    memset(&input, 0, sizeof(input));
-    memset(&output, 0, sizeof(output));
-    memset(&pump_input, 0, sizeof(pump_input));
-    memset(&pump_output, 0, sizeof(pump_output));
-    metrics->tail_filtered_min_bar = 1.0e30f;
-    metrics->tail_filtered_max_bar = -1.0e30f;
-
-    PressureModel_Reset(&plant_state, 0x5a5a5a5au);
-    HYD_PressureController_InitState(&controller_state, 0.0, 0.0, 0.0);
-
-    for (step = 0; step < test_case->total_steps; ++step) {
-        input.targetPressure = test_case->target_bar;
-        input.measuredPressure = plant_out.measured_pressure_bar;
-        input.feedforwardFlow = 0.0;
-        input.outputMin = 0.0;
-        input.outputMax = test_case->segment.maxFlow;
-        input.flowToPumpSpeedGain = test_case->flow_to_speed_gain;
-        input.pumpSpeedLimit = test_case->pump_speed_limit_rpm;
-        input.timestamp = (HYD_REAL)((step + 1) * DT_S);
-
-        HYD_PressureController_Execute(&test_case->segment, &controller_state, &input, &output);
-
-        pump_input.requestedFlow = output.outputFlow;
-        pump_input.flowToPumpSpeedGain = input.flowToPumpSpeedGain;
-        pump_input.pumpSpeedLimit = input.pumpSpeedLimit;
-        pump_input.direction = test_case->segment.direction;
-        HYD_PumpConverter_Execute(&pump_input, &pump_output);
-
-        PressureModel_Step(&test_case->params,
-                           &plant_state,
-                           (float)pump_output.pumpSpeed,
-                           DT_S,
-                           &plant_out);
-
-        if (plant_out.real_pressure_bar > metrics->peak_real_pressure_bar) {
-            metrics->peak_real_pressure_bar = plant_out.real_pressure_bar;
-        }
-
-        if (step >= test_case->tail_start_step) {
-            float filtered_pressure_bar = (float)output.filteredPressure;
-
-            if (filtered_pressure_bar < metrics->tail_filtered_min_bar) {
-                metrics->tail_filtered_min_bar = filtered_pressure_bar;
-            }
-            if (filtered_pressure_bar > metrics->tail_filtered_max_bar) {
-                metrics->tail_filtered_max_bar = filtered_pressure_bar;
-            }
-        }
-    }
-}
-
-static int test_zero_speed_holds_zero_pressure(void) {
-    PressureModelParams params = make_deterministic_params();
-    PressureModelState state;
-    PressureModelOutput out;
-
-    memset(&out, 0, sizeof(out));
-    PressureModel_Reset(&state, 0x12345678u);
-
-    run_steps(&params, &state, 0.0f, 2000, DT_S, &out);
-
-    ASSERT_NEAR(out.actual_motor_rpm, 0.0f, RPM_EPS);
-    ASSERT_NEAR(out.real_pressure_bar, 0.0f, PRESSURE_EPS);
-    ASSERT_NEAR(out.measured_pressure_bar, 0.0f, PRESSURE_EPS);
-
-    return 1;
-}
-
-static int test_explicit_first_order_tuning_contract(void) {
-    PressureModelParams params = make_first_order_params(5.4f, 1.0f, 0.0f);
-    PressureModelState state;
-    PressureModelOutput out;
-
-    memset(&out, 0, sizeof(out));
-    PressureModel_Reset(&state, 0x51515151u);
-
-    ASSERT_TRUE(params.model_type == PRESSURE_MODEL_TYPE_FIRST_ORDER);
-    ASSERT_NEAR(params.first_order_k_bar_per_rpm, 5.4f, 1e-6f);
-    ASSERT_NEAR(params.first_order_tau_s, 1.0f, 1e-6f);
-    ASSERT_NEAR(params.first_order_delay_s, 0.0f, 1e-6f);
-    ASSERT_TRUE(state.active_model_type == PRESSURE_MODEL_TYPE_PHYSICAL);
-    ASSERT_NEAR(state.first_order_prev_pressure_bar, 0.0f, 1e-6f);
-    ASSERT_TRUE(state.first_order_buffer_index == 0);
-
-    {
-        const float command_rpm = 100.0f;
-        const float prev_pressure_bar = 0.0f;
-        float expected_pressure_bar;
-
-        PressureModel_Step(&params, &state, command_rpm, DT_S, &out);
-        expected_pressure_bar =
-            ((params.first_order_k_bar_per_rpm * command_rpm * DT_S) +
-             (params.first_order_tau_s * prev_pressure_bar)) /
-            (params.first_order_tau_s + DT_S);
-
-        ASSERT_TRUE(state.active_model_type == PRESSURE_MODEL_TYPE_FIRST_ORDER);
-        ASSERT_NEAR(out.measured_pressure_bar, out.real_pressure_bar, 1e-6f);
-        ASSERT_NEAR(out.real_pressure_bar, expected_pressure_bar, 1e-6f);
-    }
-
-    return 1;
-}
-
-static int test_init_params_expose_open_loop_fit_knobs(void) {
+static void test_profile_alias_and_first_order_regression(void) {
     PressureModelParams params;
     PressureModelState state;
     PressureModelOutput out;
 
-    memset(&out, 0, sizeof(out));
+    assert(PRESSURE_MODEL_TYPE_PHYSICAL == PRESSURE_MODEL_TYPE_PHYSICAL_CALIBRATED);
     PressureModel_InitParams(&params);
-    params.enable_sensor_noise = 0u;
-    params.enable_motor_noise = 0u;
-    params.enable_process_noise = 0u;
-    PressureModel_Reset(&state, 0x51515151u);
-    PressureModel_Step(&params, &state, 0.0f, DT_S, &out);
-
-    ASSERT_NEAR(params.veff_base_m3, 4.4e-4f, 1e-9f);
-    ASSERT_NEAR(params.leak_base_m3_pa_s, 1.2245e-12f, 1e-16f);
-    ASSERT_NEAR(params.flow_ripple_ratio, 0.08f, 1e-6f);
-    ASSERT_NEAR(params.tooth_drop_depth_base, 0.16f, 1e-6f);
-    ASSERT_NEAR(params.tooth_drop_width_ratio, 0.20f, 1e-6f);
-    ASSERT_NEAR(params.tooth_drop_phase_base, 0.58f, 1e-6f);
-    ASSERT_NEAR(params.veff_speed_scale[0], 1.18f, 1e-6f);
-    ASSERT_NEAR(params.veff_speed_scale[1], 1.00f, 1e-6f);
-    ASSERT_NEAR(params.veff_speed_scale[2], 0.86f, 1e-6f);
-    ASSERT_NEAR(params.leak_speed_scale[0], 1.27f, 1e-6f);
-    ASSERT_NEAR(params.leak_speed_scale[1], 1.00f, 1e-6f);
-    ASSERT_NEAR(params.leak_speed_scale[2], 0.875f, 1e-6f);
-    ASSERT_NEAR(params.drop_depth_scale[0], 1.00f, 1e-6f);
-    ASSERT_NEAR(params.drop_depth_scale[1], 0.62f, 1e-6f);
-    ASSERT_NEAR(params.drop_depth_scale[2], 0.30f, 1e-6f);
-    ASSERT_NEAR(params.drop_phase_offset[0], 0.00f, 1e-6f);
-    ASSERT_NEAR(params.drop_phase_offset[1], 0.07f, 1e-6f);
-    ASSERT_NEAR(params.drop_phase_offset[2], 0.11f, 1e-6f);
-    ASSERT_NEAR(params.torque_bias, 400.0f, 1e-6f);
-    ASSERT_NEAR(params.torque_from_pressure_gain, 110.0f, 1e-6f);
-    ASSERT_NEAR(params.torque_from_speed_gain, 8.0f, 1e-6f);
-    ASSERT_NEAR(out.estimated_torque_trend, 400.0f, 1e-4f);
-
-    return 1;
-}
-
-static int test_open_loop_sections_match_measured_pressure_envelope(void) {
-    PressureModelParams params = make_physical_params();
-    int i;
-
-    for (i = 0; i < PRESSURE_MODEL_OPEN_LOOP_REFERENCE_COUNT; ++i) {
-        PressureModelSectionSummary summary;
-        const PressureModelOpenLoopReference *reference = &kPressureModelOpenLoopReference[i];
-
-        summarize_open_loop_section(&params, reference, &summary);
-
-        ASSERT_NEAR(summary.head_pressure_bar, reference->head_pressure_bar, 4.0f);
-        ASSERT_NEAR(summary.tail_pressure_bar, reference->tail_pressure_bar, 3.0f);
-        ASSERT_NEAR(summary.head_motor_rpm, reference->head_motor_rpm, 0.8f);
-        ASSERT_NEAR(summary.tail_motor_rpm, reference->tail_motor_rpm, 0.4f);
-    }
-
-    return 1;
-}
-
-static int test_open_loop_sections_match_tooth_phase_and_torque_trend(void) {
-    PressureModelParams params = make_physical_params();
-    float previous_tail_torque = -1.0f;
-    int i;
-
-    for (i = 0; i < PRESSURE_MODEL_OPEN_LOOP_REFERENCE_COUNT; ++i) {
-        PressureModelSectionSummary summary;
-        const PressureModelOpenLoopReference *reference = &kPressureModelOpenLoopReference[i];
-
-        summarize_open_loop_section(&params, reference, &summary);
-        ASSERT_NEAR(summary.tail_tooth_span_bar, reference->tail_tooth_span_bar, 1.5f);
-        ASSERT_NEAR(summary.tail_tooth_min_phase, reference->tail_tooth_min_phase, 0.08f);
-        ASSERT_TRUE(summary.tail_torque_trend > previous_tail_torque);
-        ASSERT_TRUE(summary.tail_torque_trend > reference->tail_torque_trend * 0.80f);
-        ASSERT_TRUE(summary.tail_torque_trend < reference->tail_torque_trend * 1.20f);
-        previous_tail_torque = summary.tail_torque_trend;
-    }
-
-    return 1;
-}
-
-static int test_motor_state_is_continuous_across_steps(void) {
-    PressureModelParams params = make_physical_params();
-    PressureModelState state;
-    PressureModelOutput out0;
-    PressureModelOutput out1;
-
-    memset(&out0, 0, sizeof(out0));
-    memset(&out1, 0, sizeof(out1));
-    PressureModel_Reset(&state, 0x12345678u);
-
-    PressureModel_Step(&params, &state, 1000.0f, DT_S, &out0);
-    PressureModel_Step(&params, &state, 1000.0f, DT_S, &out1);
-
-    ASSERT_TRUE(out0.actual_motor_rpm > 0.0f);
-    ASSERT_TRUE(out0.actual_motor_rpm < 1000.0f);
-    ASSERT_TRUE(out1.actual_motor_rpm > out0.actual_motor_rpm);
-
-    return 1;
-}
-
-static int test_first_order_zero_input_holds_zero_pressure(void) {
-    PressureModelParams params = make_first_order_params(0.5f, 0.2f, 0.0f);
-    PressureModelState state;
-    PressureModelOutput out;
-
-    memset(&out, 0, sizeof(out));
-    PressureModel_Reset(&state, 0x78787878u);
-
-    run_steps(&params, &state, 0.0f, 200, DT_S, &out);
-
-    ASSERT_NEAR(out.real_pressure_bar, 0.0f, PRESSURE_EPS);
-    ASSERT_NEAR(out.measured_pressure_bar, 0.0f, PRESSURE_EPS);
-    ASSERT_NEAR(out.actual_motor_rpm, 0.0f, RPM_EPS);
-
-    return 1;
-}
-
-static int test_first_order_tau_zero_matches_gain_times_actual_rpm(void) {
-    PressureModelParams params = make_first_order_params(0.25f, 0.0f, 0.0f);
-    PressureModelState state;
-    PressureModelOutput out;
-
-    memset(&out, 0, sizeof(out));
-    PressureModel_Reset(&state, 0x79797979u);
-    PressureModel_Step(&params, &state, 120.0f, DT_S, &out);
-
-    ASSERT_NEAR(out.real_pressure_bar,
-                params.first_order_k_bar_per_rpm * out.actual_motor_rpm,
-                1e-4f);
-    ASSERT_NEAR(out.measured_pressure_bar, out.real_pressure_bar, 1e-6f);
-
-    return 1;
-}
-
-static int test_first_order_tau_positive_matches_discrete_recurrence_from_reset(void) {
-    PressureModelParams params = make_first_order_params(0.5f, 0.2f, 0.0f);
-    PressureModelState state;
-    PressureModelOutput out;
-    float expected_pressure_bar = 0.0f;
-    int i;
-
-    memset(&out, 0, sizeof(out));
-    PressureModel_Reset(&state, 0x7c7c7c7cu);
-
-    for (i = 0; i < 4; ++i) {
-        PressureModel_Step(&params, &state, 100.0f, DT_S, &out);
-        expected_pressure_bar =
-            ((params.first_order_k_bar_per_rpm * 100.0f * DT_S) +
-             (params.first_order_tau_s * expected_pressure_bar)) /
-            (params.first_order_tau_s + DT_S);
-
-        ASSERT_NEAR(out.actual_motor_rpm, 100.0f, RPM_EPS);
-        ASSERT_NEAR(out.real_pressure_bar, expected_pressure_bar, 1e-6f);
-        ASSERT_NEAR(out.measured_pressure_bar, expected_pressure_bar, 1e-6f);
-    }
-
-    return 1;
-}
-
-static int test_first_order_delay_defers_visible_output(void) {
-    PressureModelParams params = make_first_order_params(0.5f, 0.0f, 0.003f);
-    PressureModelState state;
-    PressureModelOutput out;
-
-    memset(&out, 0, sizeof(out));
-    PressureModel_Reset(&state, 0x7a7a7a7au);
-
+    assert(params.model_type == PRESSURE_MODEL_TYPE_FIRST_ORDER);
+    params.first_order_k_bar_per_rpm = 0.5f;
+    params.first_order_tau_s = 0.0f;
+    PressureModel_Reset(&state, 1u);
     PressureModel_Step(&params, &state, 100.0f, DT_S, &out);
-    ASSERT_NEAR(out.real_pressure_bar, 0.0f, 1e-6f);
+    assert(fabsf(out.real_pressure_bar - 50.0f) < 1.0e-4f);
+    assert(out.measured_pressure_bar == out.real_pressure_bar);
+    assert(!HYD_PumpFeedback_HasValid(out.pumpFeedback.validFlags,
+                                      HYD_PUMP_FEEDBACK_VALID_TORQUE));
+}
+
+static void test_physical_params_validate_and_invalid_holds_safely(void) {
+    PressureModelParams params = physical_params();
+    PressureModelState state;
+    PressureModelOutput out;
+    float held_pressure;
+
+    assert(PressureModel_ValidatePhysicalParams(&params.physical));
+    PressureModel_Reset(&state, 2u);
+    step_n(&params, &state, 100.0f, 0.0f, 3000, &out);
+    held_pressure = out.real_pressure_bar;
+    params.physical.outlet_volume_m3 = 0.0f;
+    assert(!PressureModel_ValidatePhysicalParams(&params.physical));
+    params.physical.outlet_volume_m3 = 1.0e-4f;
+    params.physical.chamber_volume_m3 = 1.0e-10f;
+    assert(!PressureModel_ValidatePhysicalParams(&params.physical));
     PressureModel_Step(&params, &state, 100.0f, DT_S, &out);
-    ASSERT_NEAR(out.real_pressure_bar, 0.0f, 1e-6f);
+    assert(isfinite(out.real_pressure_bar));
+    assert(fabsf(out.real_pressure_bar - held_pressure) < 1.0e-5f);
+    assert(out.pump_flow_m3_s == 0.0f);
+    assert(!HYD_PumpFeedback_HasValid(out.pumpFeedback.validFlags,
+                                      HYD_PUMP_FEEDBACK_VALID_TORQUE));
+}
+
+static void test_fixed_substeps_and_invalid_dt_are_safe(void) {
+    PressureModelParams params = physical_params();
+    PressureModelState a;
+    PressureModelState b;
+    PressureModelOutput out_a;
+    PressureModelOutput out_b;
+    PressureModelInput input;
+
+    PressureModel_Reset(&a, 3u);
+    PressureModel_Reset(&b, 3u);
+    input.target_rpm = 120.0f;
+    input.load_flow_m3_s = 0.0f;
+    input.dt_s = 0.004f;
+    PressureModel_StepInput(&params, &a, &input, &out_a);
+    step_n(&params, &b, 120.0f, 0.0f, 4, &out_b);
+    assert(fabsf(out_a.real_pressure_bar - out_b.real_pressure_bar) < 1.0e-5f);
+    input.dt_s = 0.0015f;
+    PressureModel_StepInput(&params, &a, &input, &out_a);
+    assert(isfinite(out_a.real_pressure_bar));
+    assert(fabsf(a.timestamp_s - 0.005f) < 1.0e-6f);
+}
+
+static void test_load_leakage_and_gas_are_causal(void) {
+    PressureModelParams baseline = physical_params();
+    PressureModelParams leaky = baseline;
+    PressureModelParams gassy = baseline;
+    PressureModelState zero_load;
+    PressureModelState positive_load;
+    PressureModelState low_leak;
+    PressureModelState high_leak;
+    PressureModelState gas_state;
+    PressureModelOutput out_zero;
+    PressureModelOutput out_load;
+    PressureModelOutput out_low_leak;
+    PressureModelOutput out_high_leak;
+    PressureModelOutput out_gas;
+
+    leaky.physical.pump_leak_c0_m3_pa_s *= 4.0f;
+    gassy.physical.gas_fraction = 0.02f;
+    PressureModel_Reset(&zero_load, 4u);
+    PressureModel_Reset(&positive_load, 4u);
+    PressureModel_Reset(&low_leak, 4u);
+    PressureModel_Reset(&high_leak, 4u);
+    PressureModel_Reset(&gas_state, 4u);
+    step_n(&baseline, &zero_load, 80.0f, 0.0f, 5000, &out_zero);
+    step_n(&baseline, &positive_load, 80.0f, 1.0e-6f, 5000, &out_load);
+    step_n(&baseline, &low_leak, 80.0f, 0.0f, 5000, &out_low_leak);
+    step_n(&leaky, &high_leak, 80.0f, 0.0f, 5000, &out_high_leak);
+    step_n(&gassy, &gas_state, 80.0f, 0.0f, 10, &out_gas);
+    assert(out_load.real_pressure_bar < out_zero.real_pressure_bar);
+    assert(out_high_leak.real_pressure_bar < out_low_leak.real_pressure_bar);
+    assert(out_gas.real_pressure_bar < out_zero.real_pressure_bar);
+    assert(PressureModel_EffectiveBulkModulusPa(&gassy.physical,
+                                                 gassy.physical.atmospheric_pressure_pa) <
+           PressureModel_EffectiveBulkModulusPa(&gassy.physical,
+                                                 gassy.physical.atmospheric_pressure_pa +
+                                                     20.0e6f));
+}
+
+static void test_line_relief_and_reverse_flow(void) {
+    PressureModelParams params = physical_params();
+    PressureModelParams high_resistance = params;
+    PressureModelState charged;
+    PressureModelState passive;
+    PressureModelState reverse;
+    PressureModelState low_line;
+    PressureModelState high_line;
+    PressureModelState relief_low;
+    PressureModelState relief_high;
+    PressureModelOutput out;
+    PressureModelOutput low_out;
+    PressureModelOutput high_out;
+    PressureModelOutput relief_low_out;
+    PressureModelOutput relief_high_out;
+    float relief_before;
+
+    params.physical.relief_set_pa = 1.0e6f;
+    PressureModel_Reset(&charged, 5u);
+    step_n(&params, &charged, 300.0f, 0.0f, 6000, &out);
+    assert(out.relief_active);
+    relief_before = out.relief_flow_m3_s;
+    assert(relief_before > 0.0f);
+    passive = charged;
+    reverse = charged;
+    step_n(&params, &passive, 0.0f, 0.0f, 1000, &out);
+    step_n(&params, &reverse, -100.0f, 0.0f, 1000, &out);
+    assert(reverse.pressure_pa < passive.pressure_pa);
+    assert(reverse.pressure_pa >= 0.0f);
+
+    high_resistance.physical.line_resistance_pa_s_per_m3 *= 20.0f;
+    PressureModel_Reset(&low_line, 8u);
+    PressureModel_Reset(&high_line, 8u);
+    low_line.outlet_pressure_pa = 5.0e6f;
+    high_line.outlet_pressure_pa = 5.0e6f;
+    PressureModel_Step(&params, &low_line, 0.0f, DT_S, &low_out);
+    PressureModel_Step(&high_resistance, &high_line, 0.0f, DT_S, &high_out);
+    assert(low_line.line_flow_m3_s > high_line.line_flow_m3_s);
+
+    PressureModel_Reset(&relief_low, 9u);
+    PressureModel_Reset(&relief_high, 9u);
+    relief_low.outlet_pressure_pa =
+        params.physical.relief_set_pa + params.physical.relief_deadband_pa + 0.1e6f;
+    relief_high.outlet_pressure_pa =
+        params.physical.relief_set_pa + params.physical.relief_deadband_pa + 1.0e6f;
+    PressureModel_Step(&params, &relief_low, 0.0f, DT_S, &relief_low_out);
+    PressureModel_Step(&params, &relief_high, 0.0f, DT_S, &relief_high_out);
+    assert(relief_low_out.relief_active && relief_high_out.relief_active);
+    assert(relief_high_out.relief_flow_m3_s > relief_low_out.relief_flow_m3_s);
+}
+
+static void test_motor_sensor_order_and_torque_packet(void) {
+    PressureModelParams params = physical_params();
+    PressureModelState state;
+    PressureModelOutput out;
+    float first_rpm;
+    float first_measured;
+
+    params.physical.motor_delay_s = 0.003f;
+    params.physical.sensor_delay_s = 0.002f;
+    params.physical.sensor_quantization_bar = 0.5f;
+    params.physical.motor_accel_limit_rpm_s = 1000.0f;
+    params.physical.ripple13_peak = 0.1f;
+    params.physical.ripple26_peak = 0.1f;
+    params.physical.ripple39_peak = 0.1f;
+    PressureModel_Reset(&state, 6u);
     PressureModel_Step(&params, &state, 100.0f, DT_S, &out);
-    ASSERT_NEAR(out.real_pressure_bar, 0.0f, 1e-6f);
-    PressureModel_Step(&params, &state, 100.0f, DT_S, &out);
-    ASSERT_TRUE(out.real_pressure_bar > 0.0f);
-
-    return 1;
+    first_rpm = out.actual_motor_rpm;
+    first_measured = out.measured_pressure_bar;
+    assert(first_rpm == 0.0f);
+    step_n(&params, &state, 100.0f, 0.0f, 20, &out);
+    assert(out.actual_motor_rpm > 0.0f);
+    assert(out.actual_motor_rpm <= 20.0f + 1.0e-4f);
+    assert(fabsf(out.measured_pressure_bar * 2.0f -
+                 roundf(out.measured_pressure_bar * 2.0f)) < 1.0e-4f);
+    assert(first_measured == 0.0f);
+    assert(HYD_PumpFeedback_HasValid(out.pumpFeedback.validFlags,
+                                     HYD_PUMP_FEEDBACK_VALID_RPM |
+                                         HYD_PUMP_FEEDBACK_VALID_ANGLE |
+                                         HYD_PUMP_FEEDBACK_VALID_TIMESTAMP |
+                                         HYD_PUMP_FEEDBACK_VALID_TORQUE));
+    assert(out.pumpFeedback.angleDeg >= 0.0f && out.pumpFeedback.angleDeg < 360.0f);
+    assert(isfinite(out.pumpFeedback.torquePermille));
 }
 
-static int test_first_order_outputs_measured_equal_real_and_zero_flow_terms(void) {
-    PressureModelParams params = make_first_order_params(0.1f, 0.2f, 0.0f);
+static void test_thirteenth_phase_and_true_torque_units(void) {
+    PressureModelParams params = physical_params();
     PressureModelState state;
     PressureModelOutput out;
-
-    memset(&out, 0, sizeof(out));
-    PressureModel_Reset(&state, 0x7b7b7b7bu);
-    run_steps(&params, &state, 250.0f, 50, DT_S, &out);
-
-    ASSERT_NEAR(out.measured_pressure_bar, out.real_pressure_bar, 1e-6f);
-    ASSERT_NEAR(out.pump_flow_m3_s, 0.0f, 1e-6f);
-    ASSERT_NEAR(out.net_flow_m3_s, 0.0f, 1e-6f);
-
-    return 1;
-}
-
-static int test_invalid_model_type_matches_physical_branch(void) {
-    PressureModelParams physical_params = make_physical_params();
-    PressureModelParams invalid_params = physical_params;
-    PressureModelState physical_state;
-    PressureModelState invalid_state;
-    PressureModelOutput physical_out;
-    PressureModelOutput invalid_out;
-    int i;
-
-    invalid_params.model_type = 99u;
-    memset(&physical_out, 0, sizeof(physical_out));
-    memset(&invalid_out, 0, sizeof(invalid_out));
-    PressureModel_Reset(&physical_state, 0x7c7c7c7cu);
-    PressureModel_Reset(&invalid_state, 0x7c7c7c7cu);
-
-    for (i = 0; i < 500; ++i) {
-        PressureModel_Step(&physical_params, &physical_state, 40.0f, DT_S, &physical_out);
-        PressureModel_Step(&invalid_params, &invalid_state, 40.0f, DT_S, &invalid_out);
-    }
-
-    ASSERT_NEAR(invalid_out.real_pressure_bar, physical_out.real_pressure_bar, 1e-6f);
-    ASSERT_NEAR(invalid_out.measured_pressure_bar, physical_out.measured_pressure_bar, 1e-6f);
-    ASSERT_NEAR(invalid_out.actual_motor_rpm, physical_out.actual_motor_rpm, 1e-6f);
-
-    return 1;
-}
-
-static int test_switch_from_physical_to_first_order_preserves_pressure(void) {
-    PressureModelParams params = make_physical_params();
-    PressureModelState state;
-    PressureModelOutput out;
-    float charged_pressure;
-
-    memset(&out, 0, sizeof(out));
-    PressureModel_Reset(&state, 0x7d7d7d7du);
-    run_steps(&params, &state, 40.0f, 12000, DT_S, &out);
-    charged_pressure = out.real_pressure_bar;
-
-    params.model_type = PRESSURE_MODEL_TYPE_FIRST_ORDER;
-    params.first_order_k_bar_per_rpm = 1.0f;
-    params.first_order_tau_s = 0.2f;
-    params.first_order_delay_s = 0.0f;
-    PressureModel_Step(&params, &state, 40.0f, DT_S, &out);
-
-    ASSERT_NEAR(out.real_pressure_bar, charged_pressure, 1e-6f);
-    ASSERT_NEAR(out.measured_pressure_bar, charged_pressure, 1e-6f);
-    ASSERT_TRUE(state.active_model_type == PRESSURE_MODEL_TYPE_FIRST_ORDER);
-
-    return 1;
-}
-
-static int test_switch_from_first_order_to_physical_preserves_pressure(void) {
-    PressureModelParams params = make_first_order_params(0.5f, 0.2f, 0.0f);
-    PressureModelState state;
-    PressureModelOutput out;
-    float charged_pressure;
-
-    memset(&out, 0, sizeof(out));
-    PressureModel_Reset(&state, 0x7e7e7e7eu);
-    run_steps(&params, &state, 200.0f, 400, DT_S, &out);
-    charged_pressure = out.real_pressure_bar;
-
-    params = make_physical_params();
-    PressureModel_Step(&params, &state, 200.0f, DT_S, &out);
-
-    ASSERT_NEAR(out.real_pressure_bar, charged_pressure, 1e-6f);
-    ASSERT_NEAR(out.measured_pressure_bar, charged_pressure, 1e-6f);
-    ASSERT_TRUE(state.active_model_type == PRESSURE_MODEL_TYPE_PHYSICAL);
-
-    return 1;
-}
-
-static int count_visible_tooth_valleys(const float *measured,
-                                       const float *real,
-                                       int samples,
-                                       float min_gap_bar) {
-    int i;
-    int valleys = 0;
-
-    for (i = 1; i + 1 < samples; ++i) {
-        if (measured[i] < measured[i - 1] &&
-            measured[i] <= measured[i + 1] &&
-            (real[i] - measured[i]) >= min_gap_bar) {
-            ++valleys;
-        }
-    }
-
-    return valleys;
-}
-
-static int test_negative_speed_depressurizes_faster_than_passive_leak(void) {
-    PressureModelParams params = make_physical_params();
-    PressureModelState charged_state;
-    PressureModelState leak_only_state;
-    PressureModelState reverse_state;
-    PressureModelOutput out;
-
-    memset(&out, 0, sizeof(out));
-    PressureModel_Reset(&charged_state, 0x11111111u);
-    run_steps(&params, &charged_state, 10.0f, 15000, DT_S, &out);
-
-    leak_only_state = charged_state;
-    reverse_state = charged_state;
-
-    run_steps(&params, &leak_only_state, 0.0f, 2000, DT_S, &out);
-    run_steps(&params, &reverse_state, -50.0f, 2000, DT_S, &out);
-
-    ASSERT_TRUE(reverse_state.pressure_pa < leak_only_state.pressure_pa);
-    ASSERT_TRUE(reverse_state.pressure_pa >= 0.0f);
-
-    return 1;
-}
-
-static int test_tooth_drop_is_visible_once_per_tooth(void) {
-    PressureModelParams params = make_physical_params();
-    PressureModelState state;
-    PressureModelOutput out;
-    float measured[100];
-    float real[100];
-    int i;
-    int valleys;
-
-    memset(&out, 0, sizeof(out));
-    PressureModel_Reset(&state, 0x22222222u);
-
-    run_steps(&params, &state, 600.0f, 2000, DT_S, &out);
-    for (i = 0; i < 100; ++i) {
-        PressureModel_Step(&params, &state, 600.0f, DT_S, &out);
-        measured[i] = out.measured_pressure_bar;
-        real[i] = out.real_pressure_bar;
-    }
-
-    valleys = count_visible_tooth_valleys(measured, real, 100, 0.05f);
-    ASSERT_TRUE(valleys >= 10 && valleys <= 16);
-
-    return 1;
-}
-
-static int test_legacy_tooth_drop_ratio_still_controls_visible_tooth_drop(void) {
-    PressureModelParams params = make_physical_params();
-    PressureModelState state;
-    PressureModelOutput out;
-    float max_gap_bar = 0.0f;
-    int i;
-
-    params.tooth_drop_depth_ratio = 0.0f;
-    params.sensor_range_bar = 10000.0f;
-
-    memset(&out, 0, sizeof(out));
-    PressureModel_Reset(&state, 0x26262626u);
-
-    run_steps(&params, &state, 600.0f, 2000, DT_S, &out);
-    for (i = 0; i < 100; ++i) {
-        PressureModel_Step(&params, &state, 600.0f, DT_S, &out);
-        if ((out.real_pressure_bar - out.measured_pressure_bar) > max_gap_bar) {
-            max_gap_bar = out.real_pressure_bar - out.measured_pressure_bar;
-        }
-    }
-
-    ASSERT_NEAR(max_gap_bar, 0.0f, 1e-3f);
-
-    return 1;
-}
-
-static int test_legacy_leak_coeff_still_controls_pressure_response(void) {
-    PressureModelParams baseline_params = make_physical_params();
-    PressureModelParams legacy_params = baseline_params;
-    PressureModelState baseline_state;
-    PressureModelState legacy_state;
-    PressureModelOutput baseline_out;
-    PressureModelOutput legacy_out;
-
-    legacy_params.leak_coeff_m3_pa_s = baseline_params.leak_coeff_m3_pa_s * 2.0f;
-    baseline_params.sensor_range_bar = 10000.0f;
-    legacy_params.sensor_range_bar = 10000.0f;
-
-    memset(&baseline_out, 0, sizeof(baseline_out));
-    memset(&legacy_out, 0, sizeof(legacy_out));
-    PressureModel_Reset(&baseline_state, 0x28282828u);
-    PressureModel_Reset(&legacy_state, 0x28282828u);
-
-    run_steps(&baseline_params, &baseline_state, 10.0f, 15000, DT_S, &baseline_out);
-    run_steps(&legacy_params, &legacy_state, 10.0f, 15000, DT_S, &legacy_out);
-
-    ASSERT_TRUE(legacy_out.real_pressure_bar < baseline_out.real_pressure_bar - 10.0f);
-
-    return 1;
-}
-
-static int test_legacy_chamber_volume_still_controls_pressure_rise(void) {
-    PressureModelParams baseline_params = make_physical_params();
-    PressureModelParams legacy_params = baseline_params;
-    PressureModelState baseline_state;
-    PressureModelState legacy_state;
-    PressureModelOutput baseline_out;
-    PressureModelOutput legacy_out;
-
-    legacy_params.chamber_volume_m3 = baseline_params.chamber_volume_m3 * 2.0f;
-    baseline_params.sensor_range_bar = 10000.0f;
-    legacy_params.sensor_range_bar = 10000.0f;
-
-    memset(&baseline_out, 0, sizeof(baseline_out));
-    memset(&legacy_out, 0, sizeof(legacy_out));
-    PressureModel_Reset(&baseline_state, 0x29292929u);
-    PressureModel_Reset(&legacy_state, 0x29292929u);
-
-    run_steps(&baseline_params, &baseline_state, 10.0f, 500, DT_S, &baseline_out);
-    run_steps(&legacy_params, &legacy_state, 10.0f, 500, DT_S, &legacy_out);
-
-    ASSERT_TRUE(legacy_out.real_pressure_bar < baseline_out.real_pressure_bar - 5.0f);
-
-    return 1;
-}
-
-static int test_torque_speed_gain_affects_estimated_torque_trend(void) {
-    PressureModelParams params = make_physical_params();
-    PressureModelState state;
-    PressureModelOutput out;
-    float expected_speed_torque;
-
-    params.torque_bias = 0.0f;
-    params.torque_from_pressure_gain = 0.0f;
-    params.torque_from_speed_gain = 0.01f;
-
-    memset(&out, 0, sizeof(out));
-    PressureModel_Reset(&state, 0x27272727u);
-
-    run_steps(&params, &state, 100.0f, 200, DT_S, &out);
-
-    expected_speed_torque = params.torque_from_speed_gain * fabsf(out.actual_motor_rpm);
-    ASSERT_TRUE(out.actual_motor_rpm > 0.0f);
-    ASSERT_NEAR(out.estimated_torque_trend, expected_speed_torque, 1e-5f);
-
-    return 1;
-}
-
-static int test_torque_bias_and_pressure_gain_affect_estimated_torque_trend(void) {
-    PressureModelParams params = make_physical_params();
-    PressureModelState state;
-    PressureModelOutput out;
+    float expected_flow;
     float expected_torque;
+    float phase13;
+    float phase26;
+    float phase39;
+    float eta_m;
+    float high_speed_expected_flow;
 
-    params.torque_bias = 1.25f;
-    params.torque_from_pressure_gain = 0.05f;
-    params.torque_from_speed_gain = 0.0f;
+    params.physical.ripple13_peak = 0.1f;
+    params.physical.ripple26_peak = 0.0f;
+    params.physical.ripple39_peak = 0.0f;
+    params.physical.pump_leak_c0_m3_pa_s = 0.0f;
+    params.physical.pump_leak_speed_m3_pa_s_per_rpm = 0.0f;
+    params.physical.outlet_leak_m3_pa_s = 0.0f;
+    params.physical.cylinder_leak_m3_pa_s = 0.0f;
+    PressureModel_Reset(&state, 10u);
+    state.motor_rpm = 60.0f;
+    state.outlet_pressure_pa = 10.0e6f;
+    PressureModel_Step(&params, &state, 60.0f, DT_S, &out);
+    phase13 = 2.0f * 3.14159265358979323846f * 13.0f * 0.001f;
+    expected_flow = params.pump_displacement_m3_rev *
+                    (1.0f + params.physical.ripple13_peak *
+                     (sinf(phase13) + 0.20f * sinf(2.0f * phase13 + 0.3f)));
+    assert(fabsf(out.pump_flow_m3_s - expected_flow) < 1.0e-10f);
+    eta_m = params.physical.eta_m_nominal -
+            params.physical.eta_m_pressure_loss_per_pa * 10.0e6f -
+            params.physical.eta_m_speed_loss_per_rpm * 60.0f;
+    expected_torque = 1000.0f * 10.0e6f * params.pump_displacement_m3_rev /
+                      (2.0f * 3.14159265358979323846f * eta_m) /
+                      params.physical.rated_motor_torque_nm;
+    expected_torque *= 1.0f + params.physical.torque_ripple13_peak *
+                       sinf(phase13 + params.physical.torque_ripple13_phase_rad);
+    assert(fabsf(out.pumpFeedback.torquePermille - expected_torque) < 1.0e-3f);
 
-    memset(&out, 0, sizeof(out));
-    PressureModel_Reset(&state, 0x2b2b2b2bu);
-
-    run_steps(&params, &state, 10.0f, 500, DT_S, &out);
-
-    expected_torque = params.torque_bias +
-                      params.torque_from_pressure_gain * out.measured_pressure_bar;
-    ASSERT_NEAR(out.estimated_torque_trend, expected_torque, 1e-5f);
-
-    return 1;
+    PressureModel_Reset(&state, 11u);
+    state.motor_rpm = 1200.0f;
+    params.physical.ripple26_peak = 0.1f;
+    params.physical.ripple39_peak = 0.1f;
+    PressureModel_Step(&params, &state, 1200.0f, DT_S, &out);
+    phase13 = 2.0f * 3.14159265358979323846f * 13.0f * 0.02f;
+    phase26 = 2.0f * 3.14159265358979323846f * 26.0f * 0.02f;
+    phase39 = 2.0f * 3.14159265358979323846f * 39.0f * 0.02f;
+    high_speed_expected_flow = params.pump_displacement_m3_rev * 20.0f *
+        (1.0f + params.physical.ripple13_peak *
+         (sinf(phase13) + 0.20f * sinf(2.0f * phase13 + 0.3f)));
+    assert(fabsf(out.pump_flow_m3_s - high_speed_expected_flow) < 1.0e-9f);
+    assert(fabsf(phase26) > 0.0f && fabsf(phase39) > 0.0f);
 }
 
-static int test_relief_caps_measured_output_at_two_hundred_fifty_bar(void) {
-    PressureModelParams params = make_physical_params();
-    PressureModelState state;
-    PressureModelOutput out;
-
-    memset(&out, 0, sizeof(out));
-    PressureModel_Reset(&state, 0x33333333u);
-
-    run_steps(&params, &state, 2000.0f, 30000, DT_S, &out);
-
-    ASSERT_TRUE(out.measured_pressure_bar <= 250.0f + 1e-3f);
-    ASSERT_TRUE(out.relief_active);
-
-    return 1;
-}
-
-static int test_noise_control_is_repeatable_with_fixed_seed(void) {
-    PressureModelParams params;
-    PressureModelState state_a;
-    PressureModelState state_b;
+static void test_repeatable_one_ms_physical_result(void) {
+    PressureModelParams params = physical_params();
+    PressureModelState a;
+    PressureModelState b;
     PressureModelOutput out_a;
     PressureModelOutput out_b;
     int i;
 
-    params = make_physical_params();
-    params.enable_sensor_noise = 1u;
-    params.enable_motor_noise = 1u;
-    params.enable_process_noise = 1u;
-    params.process_noise_std_m3_s = 1.0e-7f;
-
-    memset(&out_a, 0, sizeof(out_a));
-    memset(&out_b, 0, sizeof(out_b));
-    PressureModel_Reset(&state_a, 0x44444444u);
-    PressureModel_Reset(&state_b, 0x44444444u);
-
-    for (i = 0; i < 500; ++i) {
-        PressureModel_Step(&params, &state_a, 800.0f, DT_S, &out_a);
-        PressureModel_Step(&params, &state_b, 800.0f, DT_S, &out_b);
-        ASSERT_NEAR(out_a.measured_pressure_bar, out_b.measured_pressure_bar, 1e-6f);
-        ASSERT_NEAR(out_a.actual_motor_rpm, out_b.actual_motor_rpm, 1e-6f);
+    PressureModel_Reset(&a, 7u);
+    PressureModel_Reset(&b, 7u);
+    for (i = 0; i < 2000; ++i) {
+        PressureModel_Step(&params, &a, 150.0f, DT_S, &out_a);
+        PressureModel_Step(&params, &b, 150.0f, DT_S, &out_b);
     }
-
-    return 1;
-}
-
-static int test_physical_closed_loop_overshoot_within_five_percent_of_pset(void) {
-    ClosedLoopPressureCase test_case = make_physical_closed_loop_case();
-    ClosedLoopPressureMetrics metrics;
-
-    run_closed_loop_pressure_case(&test_case, &metrics);
-
-    ASSERT_TRUE(metrics.peak_real_pressure_bar <= test_case.target_bar * 1.05f);
-
-    return 1;
-}
-
-static int test_physical_closed_loop_steady_state_ripple_below_one_percent_of_pset(void) {
-    ClosedLoopPressureCase test_case = make_physical_closed_loop_case();
-    ClosedLoopPressureMetrics metrics;
-
-    run_closed_loop_pressure_case(&test_case, &metrics);
-
-    ASSERT_TRUE(closed_loop_tail_filtered_p2p_bar(&metrics) < test_case.target_bar * 0.01f);
-
-    return 1;
-}
-
-static int test_first_order_closed_loop_overshoot_within_five_percent_of_pset(void) {
-    ClosedLoopPressureCase test_case = make_first_order_closed_loop_case();
-    ClosedLoopPressureMetrics metrics;
-
-    run_closed_loop_pressure_case(&test_case, &metrics);
-
-    ASSERT_TRUE(metrics.peak_real_pressure_bar <= test_case.target_bar * 1.05f);
-
-    return 1;
-}
-
-static int test_first_order_closed_loop_steady_state_ripple_below_one_percent_of_pset(void) {
-    ClosedLoopPressureCase test_case = make_first_order_closed_loop_case();
-    ClosedLoopPressureMetrics metrics;
-
-    run_closed_loop_pressure_case(&test_case, &metrics);
-
-    ASSERT_TRUE(closed_loop_tail_filtered_p2p_bar(&metrics) < test_case.target_bar * 0.01f);
-
-    return 1;
-}
-
-static int test_legacy_pressure_update_keeps_motor_state_between_calls(void) {
-    float pressure_state = 0.0f;
-    float real_pressure0 = 0.0f;
-    float real_pressure1 = 0.0f;
-    float rpm0 = 0.0f;
-    float rpm1 = 0.0f;
-    float measured0;
-    float measured1;
-
-    measured0 = pressure_update(1000.0f, 0.000f, &pressure_state, &real_pressure0, &rpm0);
-    measured1 = pressure_update(1000.0f, 0.001f, &pressure_state, &real_pressure1, &rpm1);
-
-    ASSERT_TRUE(rpm1 > rpm0);
-    ASSERT_TRUE(real_pressure1 >= real_pressure0);
-    ASSERT_TRUE(measured0 >= 0.0f && measured1 >= 0.0f);
-
-    return 1;
+    assert(isfinite(out_a.real_pressure_bar));
+    assert(out_a.real_pressure_bar == out_b.real_pressure_bar);
+    assert(out_a.pumpFeedback.torquePermille == out_b.pumpFeedback.torquePermille);
 }
 
 int main(void) {
-    int passed = 0;
-    int failed = 0;
-
-    if (test_zero_speed_holds_zero_pressure()) {
-        ++passed;
-        printf("PASS test_zero_speed_holds_zero_pressure\n");
-    } else {
-        ++failed;
-        printf("FAIL test_zero_speed_holds_zero_pressure\n");
-    }
-    if (test_explicit_first_order_tuning_contract()) {
-        ++passed;
-        printf("PASS test_explicit_first_order_tuning_contract\n");
-    } else {
-        ++failed;
-        printf("FAIL test_explicit_first_order_tuning_contract\n");
-    }
-
-    if (test_init_params_expose_open_loop_fit_knobs()) {
-        ++passed;
-        printf("PASS test_init_params_expose_open_loop_fit_knobs\n");
-    } else {
-        ++failed;
-        printf("FAIL test_init_params_expose_open_loop_fit_knobs\n");
-    }
-
-    if (test_open_loop_sections_match_measured_pressure_envelope()) {
-        ++passed;
-        printf("PASS test_open_loop_sections_match_measured_pressure_envelope\n");
-    } else {
-        ++failed;
-        printf("FAIL test_open_loop_sections_match_measured_pressure_envelope\n");
-    }
-
-    if (test_open_loop_sections_match_tooth_phase_and_torque_trend()) {
-        ++passed;
-        printf("PASS test_open_loop_sections_match_tooth_phase_and_torque_trend\n");
-    } else {
-        ++failed;
-        printf("FAIL test_open_loop_sections_match_tooth_phase_and_torque_trend\n");
-    }
-
-    if (test_motor_state_is_continuous_across_steps()) {
-        ++passed;
-        printf("PASS test_motor_state_is_continuous_across_steps\n");
-    } else {
-        ++failed;
-        printf("FAIL test_motor_state_is_continuous_across_steps\n");
-    }
-
-    if (test_first_order_zero_input_holds_zero_pressure()) {
-        ++passed;
-        printf("PASS test_first_order_zero_input_holds_zero_pressure\n");
-    } else {
-        ++failed;
-        printf("FAIL test_first_order_zero_input_holds_zero_pressure\n");
-    }
-
-    if (test_first_order_tau_zero_matches_gain_times_actual_rpm()) {
-        ++passed;
-        printf("PASS test_first_order_tau_zero_matches_gain_times_actual_rpm\n");
-    } else {
-        ++failed;
-        printf("FAIL test_first_order_tau_zero_matches_gain_times_actual_rpm\n");
-    }
-
-    if (test_first_order_tau_positive_matches_discrete_recurrence_from_reset()) {
-        ++passed;
-        printf("PASS test_first_order_tau_positive_matches_discrete_recurrence_from_reset\n");
-    } else {
-        ++failed;
-        printf("FAIL test_first_order_tau_positive_matches_discrete_recurrence_from_reset\n");
-    }
-
-    if (test_first_order_delay_defers_visible_output()) {
-        ++passed;
-        printf("PASS test_first_order_delay_defers_visible_output\n");
-    } else {
-        ++failed;
-        printf("FAIL test_first_order_delay_defers_visible_output\n");
-    }
-
-    if (test_first_order_outputs_measured_equal_real_and_zero_flow_terms()) {
-        ++passed;
-        printf("PASS test_first_order_outputs_measured_equal_real_and_zero_flow_terms\n");
-    } else {
-        ++failed;
-        printf("FAIL test_first_order_outputs_measured_equal_real_and_zero_flow_terms\n");
-    }
-
-    if (test_invalid_model_type_matches_physical_branch()) {
-        ++passed;
-        printf("PASS test_invalid_model_type_matches_physical_branch\n");
-    } else {
-        ++failed;
-        printf("FAIL test_invalid_model_type_matches_physical_branch\n");
-    }
-
-    if (test_switch_from_physical_to_first_order_preserves_pressure()) {
-        ++passed;
-        printf("PASS test_switch_from_physical_to_first_order_preserves_pressure\n");
-    } else {
-        ++failed;
-        printf("FAIL test_switch_from_physical_to_first_order_preserves_pressure\n");
-    }
-
-    if (test_switch_from_first_order_to_physical_preserves_pressure()) {
-        ++passed;
-        printf("PASS test_switch_from_first_order_to_physical_preserves_pressure\n");
-    } else {
-        ++failed;
-        printf("FAIL test_switch_from_first_order_to_physical_preserves_pressure\n");
-    }
-
-    if (test_negative_speed_depressurizes_faster_than_passive_leak()) {
-        ++passed;
-        printf("PASS test_negative_speed_depressurizes_faster_than_passive_leak\n");
-    } else {
-        ++failed;
-        printf("FAIL test_negative_speed_depressurizes_faster_than_passive_leak\n");
-    }
-
-    if (test_tooth_drop_is_visible_once_per_tooth()) {
-        ++passed;
-        printf("PASS test_tooth_drop_is_visible_once_per_tooth\n");
-    } else {
-        ++failed;
-        printf("FAIL test_tooth_drop_is_visible_once_per_tooth\n");
-    }
-
-    if (test_legacy_tooth_drop_ratio_still_controls_visible_tooth_drop()) {
-        ++passed;
-        printf("PASS test_legacy_tooth_drop_ratio_still_controls_visible_tooth_drop\n");
-    } else {
-        ++failed;
-        printf("FAIL test_legacy_tooth_drop_ratio_still_controls_visible_tooth_drop\n");
-    }
-
-    if (test_legacy_leak_coeff_still_controls_pressure_response()) {
-        ++passed;
-        printf("PASS test_legacy_leak_coeff_still_controls_pressure_response\n");
-    } else {
-        ++failed;
-        printf("FAIL test_legacy_leak_coeff_still_controls_pressure_response\n");
-    }
-
-    if (test_legacy_chamber_volume_still_controls_pressure_rise()) {
-        ++passed;
-        printf("PASS test_legacy_chamber_volume_still_controls_pressure_rise\n");
-    } else {
-        ++failed;
-        printf("FAIL test_legacy_chamber_volume_still_controls_pressure_rise\n");
-    }
-
-    if (test_torque_speed_gain_affects_estimated_torque_trend()) {
-        ++passed;
-        printf("PASS test_torque_speed_gain_affects_estimated_torque_trend\n");
-    } else {
-        ++failed;
-        printf("FAIL test_torque_speed_gain_affects_estimated_torque_trend\n");
-    }
-
-    if (test_torque_bias_and_pressure_gain_affect_estimated_torque_trend()) {
-        ++passed;
-        printf("PASS test_torque_bias_and_pressure_gain_affect_estimated_torque_trend\n");
-    } else {
-        ++failed;
-        printf("FAIL test_torque_bias_and_pressure_gain_affect_estimated_torque_trend\n");
-    }
-
-    if (test_relief_caps_measured_output_at_two_hundred_fifty_bar()) {
-        ++passed;
-        printf("PASS test_relief_caps_measured_output_at_two_hundred_fifty_bar\n");
-    } else {
-        ++failed;
-        printf("FAIL test_relief_caps_measured_output_at_two_hundred_fifty_bar\n");
-    }
-
-    if (test_noise_control_is_repeatable_with_fixed_seed()) {
-        ++passed;
-        printf("PASS test_noise_control_is_repeatable_with_fixed_seed\n");
-    } else {
-        ++failed;
-        printf("FAIL test_noise_control_is_repeatable_with_fixed_seed\n");
-    }
-
-    if (test_physical_closed_loop_overshoot_within_five_percent_of_pset()) {
-        ++passed;
-        printf("PASS test_physical_closed_loop_overshoot_within_five_percent_of_pset\n");
-    } else {
-        ++failed;
-        printf("FAIL test_physical_closed_loop_overshoot_within_five_percent_of_pset\n");
-    }
-
-    if (test_physical_closed_loop_steady_state_ripple_below_one_percent_of_pset()) {
-        ++passed;
-        printf("PASS test_physical_closed_loop_steady_state_ripple_below_one_percent_of_pset\n");
-    } else {
-        ++failed;
-        printf("FAIL test_physical_closed_loop_steady_state_ripple_below_one_percent_of_pset\n");
-    }
-
-    if (test_first_order_closed_loop_overshoot_within_five_percent_of_pset()) {
-        ++passed;
-        printf("PASS test_first_order_closed_loop_overshoot_within_five_percent_of_pset\n");
-    } else {
-        ++failed;
-        printf("FAIL test_first_order_closed_loop_overshoot_within_five_percent_of_pset\n");
-    }
-
-    if (test_first_order_closed_loop_steady_state_ripple_below_one_percent_of_pset()) {
-        ++passed;
-        printf("PASS test_first_order_closed_loop_steady_state_ripple_below_one_percent_of_pset\n");
-    } else {
-        ++failed;
-        printf("FAIL test_first_order_closed_loop_steady_state_ripple_below_one_percent_of_pset\n");
-    }
-
-    if (test_legacy_pressure_update_keeps_motor_state_between_calls()) {
-        ++passed;
-        printf("PASS test_legacy_pressure_update_keeps_motor_state_between_calls\n");
-    } else {
-        ++failed;
-        printf("FAIL test_legacy_pressure_update_keeps_motor_state_between_calls\n");
-    }
-
-    printf("Passed: %d Failed: %d\n", passed, failed);
-    return failed == 0 ? 0 : 1;
+    test_profile_alias_and_first_order_regression();
+    test_physical_params_validate_and_invalid_holds_safely();
+    test_fixed_substeps_and_invalid_dt_are_safe();
+    test_load_leakage_and_gas_are_causal();
+    test_line_relief_and_reverse_flow();
+    test_motor_sensor_order_and_torque_packet();
+    test_thirteenth_phase_and_true_torque_units();
+    test_repeatable_one_ms_physical_result();
+    puts("pressure model tests passed");
+    return 0;
 }

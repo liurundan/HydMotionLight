@@ -103,6 +103,9 @@ target_link_libraries(test_hydro_sim_fb PRIVATE HydroSimLib)
 add_executable(test_pressure_model tests/test_pressure_model.c)
 target_link_libraries(test_pressure_model PRIVATE HydroMotionLib HydroSimLib)
 
+add_executable(pressure_model_replay tests/pressure_model_replay.c)
+target_link_libraries(pressure_model_replay PRIVATE HydroSimLib)
+
 add_executable(test_pressure_hold_diagnosis tests/test_pressure_hold_diagnosis.c)
 target_link_libraries(test_pressure_hold_diagnosis PRIVATE HydroMotionLib HydroSimLib)
 

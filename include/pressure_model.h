@@ -2,6 +2,7 @@
 #define PRESSURE_MODEL_H
 
 #include <stdint.h>
+
 #include "common_types.h"
 
 #ifdef __cplusplus
@@ -9,13 +10,65 @@ extern "C" {
 #endif
 
 #define PRESSURE_MODEL_FIRST_ORDER_MAX_DELAY_STEPS 1000
+#define PRESSURE_MODEL_PHYSICAL_MAX_DELAY_STEPS 64
 
 typedef enum {
-    PRESSURE_MODEL_TYPE_PHYSICAL = 0u,
+    PRESSURE_MODEL_TYPE_PHYSICAL_CALIBRATED = 0u,
+    PRESSURE_MODEL_TYPE_PHYSICAL = PRESSURE_MODEL_TYPE_PHYSICAL_CALIBRATED,
     PRESSURE_MODEL_TYPE_FIRST_ORDER = 1u
 } PressureModelType;
 
 typedef struct {
+    float atmospheric_pressure_pa;
+    float suction_pressure_pa;
+    float outlet_volume_m3;
+    float chamber_volume_m3;
+    float line_inertance_pa_s2_per_m3;
+    float line_resistance_pa_s_per_m3;
+    float line_quadratic_resistance_pa_s2_per_m6;
+    float beta_oil_pa;
+    float gas_fraction;
+    float gas_transition_pa;
+    float beta_min_pa;
+    float pump_leak_c0_m3_pa_s;
+    float pump_leak_speed_m3_pa_s_per_rpm;
+    float outlet_leak_m3_pa_s;
+    float cylinder_leak_m3_pa_s;
+    float eta_v_min;
+    float eta_m_nominal;
+    float eta_m_pressure_loss_per_pa;
+    float eta_m_speed_loss_per_rpm;
+    float eta_m_min;
+    float rated_motor_torque_nm;
+    float torque_ripple13_peak;
+    float torque_ripple13_phase_rad;
+    float ripple13_peak;
+    float ripple26_peak;
+    float ripple39_peak;
+    float ripple13_phase_rad;
+    float ripple26_phase_rad;
+    float ripple39_phase_rad;
+    float motor_natural_freq_hz;
+    float motor_damping;
+    float motor_delay_s;
+    float motor_accel_limit_rpm_s;
+    float motor_torque_limit_permille;
+    float relief_set_pa;
+    float relief_deadband_pa;
+    float relief_orifice_coeff_m3_s_sqrt_pa;
+    float relief_hysteresis_pa;
+    float sensor_delay_s;
+    float sensor_quantization_bar;
+} PressureModelPhysicalParams;
+
+typedef struct {
+    float target_rpm;
+    float load_flow_m3_s;
+    float dt_s;
+} PressureModelInput;
+
+typedef struct {
+    /* Compatibility fields retained for existing first-order callers. */
     float pump_displacement_m3_rev;
     float bulk_modulus_pa;
     float chamber_volume_m3;
@@ -51,6 +104,7 @@ typedef struct {
     float first_order_k_bar_per_rpm;
     float first_order_tau_s;
     float first_order_delay_s;
+    PressureModelPhysicalParams physical;
 } PressureModelParams;
 
 typedef struct {
@@ -65,6 +119,14 @@ typedef struct {
     float first_order_prev_pressure_bar;
     int first_order_buffer_index;
     float first_order_delay_buffer[PRESSURE_MODEL_FIRST_ORDER_MAX_DELAY_STEPS];
+    float outlet_pressure_pa;
+    float line_flow_m3_s;
+    float motor_accel_rpm_s;
+    unsigned char relief_latched;
+    unsigned char motor_delay_index;
+    unsigned char sensor_delay_index;
+    float motor_delay_ring[PRESSURE_MODEL_PHYSICAL_MAX_DELAY_STEPS];
+    float sensor_delay_ring[PRESSURE_MODEL_PHYSICAL_MAX_DELAY_STEPS];
 } PressureModelState;
 
 typedef struct {
@@ -73,6 +135,7 @@ typedef struct {
     float actual_motor_rpm;
     float pump_flow_m3_s;
     float net_flow_m3_s;
+    float relief_flow_m3_s;
     int relief_active;
     float estimated_torque_trend;
     HYD_PumpFeedback pumpFeedback;
@@ -80,6 +143,13 @@ typedef struct {
 
 void PressureModel_InitParams(PressureModelParams *params);
 void PressureModel_Reset(PressureModelState *state, uint32_t seed);
+int PressureModel_ValidatePhysicalParams(const PressureModelPhysicalParams *params);
+float PressureModel_EffectiveBulkModulusPa(const PressureModelPhysicalParams *params,
+                                           float absolute_pressure_pa);
+void PressureModel_StepInput(const PressureModelParams *params,
+                             PressureModelState *state,
+                             const PressureModelInput *input,
+                             PressureModelOutput *out);
 void PressureModel_Step(const PressureModelParams *params,
                         PressureModelState *state,
                         float target_rpm,
