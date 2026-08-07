@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Deterministic angle-synchronous analysis for the open-loop recording."""
 import csv
+import hashlib
 import json
 import math
 import statistics
@@ -136,8 +137,11 @@ def analyze(path):
         raise ValueError("no positive set-rpm segments found")
     return {
         "schema_version": 1,
+        "calibration_id": None,
+        "calibration_status": "unidentified",
         "analysis": "angle_synchronous_open_loop",
         "source": str(path),
+        "source_sha256": hashlib.sha256(Path(path).read_bytes()).hexdigest(),
         "timestamp_period_ms": 1,
         "open_loop_target_pressure_bar": 0,
         "discard_prefix_s": 2,

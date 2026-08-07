@@ -39,8 +39,10 @@ DEFAULTS = {
     "sensor_delay_s": 0.0, "sensor_quantization_bar": 0.0,
 }
 
-def canonical_lines(parameters):
-    return "schema_version=1\n" + "".join("%s=%.17g\n" % (key, parameters[key])
+def canonical_lines(parameters, status, source_hash, manifest_hash):
+    return ("schema_version=1\ncalibration_status=%s\nsource_sha256=%s\n"
+            "manifest_provenance_sha256=%s\n" % (status, source_hash, manifest_hash)) + \
+        "".join("%s=%.17g\n" % (key, parameters[key])
                                            for key in sorted(parameters))
 
 def clamp(value, bounds): return max(bounds[0], min(bounds[1], value))
@@ -153,11 +155,17 @@ def main(argv):
                                                    for k in steps)})
         train_metrics = objective(training, params); heldout_metrics = objective(heldout, params)
         source_hash = hashlib.sha256(source.read_bytes()).hexdigest()
-        cid = hashlib.sha256(canonical_lines(params).encode("ascii")).hexdigest()
+        manifest_parameters = {key: {"value": value, "unit": "SI", "source": "unprovenanced",
+                               "acquisition_window": None} for key, value in params.items()
+                               if key not in PARAM_BOUNDS}
+        manifest_hash = hashlib.sha256(json.dumps(manifest_parameters, sort_keys=True,
+                                                  separators=(",", ":")).encode("utf-8")).hexdigest()
+        status = "model not calibrated"
+        cid = hashlib.sha256(canonical_lines(params, status, source_hash, manifest_hash).encode("ascii")).hexdigest()
         gates = {"mean_pressure_error": False, "order13_amplitude_error": False,
                  "order13_phase_error": False, "order26_amplitude_error": False,
                  "provenance_complete": False, "heldout_report_present": False}
-        artifact = {"schema_version": 1, "calibration_id": cid, "calibration_status": "model not calibrated",
+        artifact = {"schema_version": 1, "calibration_id": cid, "calibration_status": status,
                     "source_csv": str(source), "source_sha256": source_hash, "seed": 324478056,
                     "parameter_bounds": PARAM_BOUNDS, "parameters": params,
                     "training_windows": [item["id"] for item in training],
@@ -166,12 +174,17 @@ def main(argv):
                     "coordinate_descent_trace": trace, "gates": gates}
         output = Path(argv[3]); output.parent.mkdir(parents=True, exist_ok=True)
         output.write_text(json.dumps(artifact, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-        output.with_suffix(".kv").write_text("schema_version=1\ncalibration_id=%s\ncalibration_status=model not calibrated\n%s" %
-                                             (cid, canonical_lines(params).split("\n", 1)[1]), encoding="ascii")
-        manifest = {"schema_version": 1, "calibration_id": cid, "calibration_status": "model not calibrated",
-                    "source_sha256": source_hash, "parameters": {key: {"value": value, "unit": "SI",
-                    "source": "unprovenanced", "acquisition_window": None} for key, value in params.items()
-                    if key not in PARAM_BOUNDS}, "missing_provenance": sorted(k for k in DEFAULTS if k not in PARAM_BOUNDS)}
+        output.with_suffix(".kv").write_text("schema_version=1\ncalibration_id=%s\n%s" %
+                                             (cid, canonical_lines(params, status, source_hash, manifest_hash)
+                                              .split("\n", 1)[1]), encoding="ascii")
+        manifest = {"schema_version": 1, "calibration_id": cid, "calibration_status": status,
+                    "source_sha256": source_hash, "manifest_provenance_sha256": manifest_hash,
+                    "parameters": manifest_parameters,
+                    "missing_provenance": sorted(k for k in DEFAULTS if k not in PARAM_BOUNDS)}
+        summary["calibration_id"] = cid
+        summary["calibration_status"] = status
+        summary["source_sha256"] = source_hash
+        Path(argv[2]).write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         (output.parent / "physical_parameter_manifest.json").write_text(
             json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         print("model not calibrated: manifest provenance and held-out validation report are required")

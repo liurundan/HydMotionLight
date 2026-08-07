@@ -122,7 +122,21 @@ static int kv_load(const char *path, PressureModelParams *params, char *calibrat
         if (strcmp(line, "calibration_status") == 0) {
             if (seen & 4u) { fclose(file); return 0; }
             seen |= 4u;
-            status_ok = strcmp(value, "calibrated") == 0; continue;
+            status_ok = strcmp(value, "calibrated") == 0;
+            if (!sha_update_kv_line(&sha, line, value)) { fclose(file); return 0; }
+            continue;
+        }
+        if (strcmp(line, "source_sha256") == 0 ||
+            strcmp(line, "manifest_provenance_sha256") == 0) {
+            if ((strcmp(line, "source_sha256") == 0 && (seen & 8u)) ||
+                (strcmp(line, "manifest_provenance_sha256") == 0 && (seen & 16u)) ||
+                strlen(value) != 64u) { fclose(file); return 0; }
+            for (i = 0; i < 64u; ++i) {
+                if (!isxdigit((unsigned char)value[i])) { fclose(file); return 0; }
+            }
+            seen |= strcmp(line, "source_sha256") == 0 ? 8u : 16u;
+            if (!sha_update_kv_line(&sha, line, value)) { fclose(file); return 0; }
+            continue;
         }
         {
             float parsed;
@@ -160,7 +174,7 @@ static int kv_load(const char *path, PressureModelParams *params, char *calibrat
         }
     }
     fclose(file);
-    if ((seen & 7u) != 7u || !status_ok || field_count != 40u) return 0;
+    if ((seen & 31u) != 31u || !status_ok || field_count != 40u) return 0;
     sha_final(&sha, digest);
     for (i = 0; i < sizeof(digest); ++i) sprintf(computed + i * 2u, "%02x", digest[i]);
     computed[64] = '\0';

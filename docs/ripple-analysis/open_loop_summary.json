@@ -1,5 +1,7 @@
 {
   "analysis": "angle_synchronous_open_loop",
+  "calibration_id": "e615634bcdf42cf13210faff493260cdbf146a785d0199652a343b0d41897872",
+  "calibration_status": "model not calibrated",
   "discard_prefix_s": 2,
   "open_loop_target_pressure_bar": 0,
   "orders": [
@@ -515,6 +517,7 @@
     }
   ],
   "source": "open10203040-positive.csv",
+  "source_sha256": "7890a25fe2e0690f5d4e700c89e61d433712195df30859b148ba6a643680e695",
   "tail_samples": 5000,
   "timestamp_period_ms": 1
 }
