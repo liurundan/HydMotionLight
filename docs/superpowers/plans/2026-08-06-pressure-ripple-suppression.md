@@ -333,11 +333,23 @@ integrated tooth phases. `PressureModelOutput.real_pressure_bar` is chamber gaug
 `measured_pressure_bar` is the delayed/quantized/bias/noise sensor image of that chamber
 pressure. Outlet pressure is only a pump/line/relief diagnostic in this task.
 
-Expose `PressureModel_ValidatePhysicalParams()` for physical tests and host replay. It
-must reject invalid/nonfinite calibrated parameters rather than quietly clamping them:
+Expose `PressureModel_ValidatePhysicalParams()` as the intrinsic physical-block validator
+and `PressureModel_ValidateParams()` as the full runtime-admission validator used by host
+replay before physical integration. The intrinsic validator must reject invalid/nonfinite
+calibrated parameters rather than quietly clamping them:
 positive finite volumes/inertance/modulus/rated torque, `beta_min <= beta_oil`, efficiencies
 in `(0, 1]`, nonnegative leak/resistance/ripple values, delays no greater than 64 ms, and
 the fixed-1-ms hydraulic stiffness ratio must satisfy the documented stability bound.
+The physical HIL admission envelope is part of the full runtime contract: `abs(rpm) <= 2000`, pump
+displacement `<= 50e-6 m3/rev`, absolute load flow `<= 1.666667e-3 m3/s`, motor natural
+frequency `<= 50 Hz`, damping `<= 2`, and acceleration limit `<= 100000 RPM/s`. The
+calibration tools must search only this envelope; values outside it are not usable by the
+1 ms embedded-equivalent model. Runtime admission also evaluates the complete 1 ms
+envelope before integration: with a peak ripple factor of `1.8`, the worst opposing
+load, `beta_oil`, and the smaller hydraulic volume, the pressure increment must not
+exceed `25 MPa` per scan. It rejects the parameter bundle rather than clamping a
+corrupted pressure state; an unexpected nonfinite state rolls back to the preceding
+finite state and emits the normal zero-flow safe-hold output.
 
 Retain and complete the `PressureModelOutput.pumpFeedback` packet introduced by Task 1;
 keep `estimated_torque_trend` as a compatibility diagnostic only. Legacy and first-order
@@ -376,12 +388,15 @@ Pout_dot = beta_e(Pout_abs) / Vout * (Qpump - Qline - Qleak_outlet - Qrelief)
 Pchamber_dot = beta_e(Pchamber_abs) / Vchamber * (Qline - Qload - Qleak_cylinder)
 ```
 
-Use a bounded asymmetric lookup/Fourier waveform for 13th, 26th, and optional measured
-39th order. `ripple_waveform` is a multiplier clamped to a positive bounded interval and
-is applied to delivered pump flow, never to visible pressure after integration. The pump
-leakage is already represented by `eta_v`, so it is not subtracted a second time from the
-outlet balance. Use a nonlinear relief deadband/orifice relation and a second-order/delayed
-motor response with an acceleration limit. `motor_torque_limit_permille` limits the
+Use separately gated, unit-peak sinusoidal 13th, 26th, and optional measured 39th terms.
+An asymmetric waveform is only permitted after its Fourier components are represented as
+separate, independently order-gated terms, so disabling 26th or 39th cannot leak a hidden
+aliased harmonic through the 13th term. `ripple_waveform` is a multiplier clamped to a
+positive bounded interval and is applied to delivered pump flow, never to visible pressure
+after integration. The pump leakage is already represented by `eta_v`, so it is not
+subtracted a second time from the outlet balance. Use a nonlinear relief deadband/orifice
+relation and a second-order/delayed motor response with an acceleration limit.
+`motor_torque_limit_permille` limits the
 reported torque packet only in this phase; it cannot be called a motor-dynamics limit until
 measured torque-to-acceleration data supports a rotor-inertia extension. Do not multiply a
 cosmetic pressure drop after the fluid integration.
@@ -399,7 +414,8 @@ At a 1 ms output interval, enable an order only when
 `order * abs(rpm) / 60 < 0.45 / dt_s`; otherwise disable that unresolved component in the
 embedded-equivalent model and record it in the replay report. This gates 26th order before
 the nominal 500 Hz Nyquist boundaries (about 1154 RPM for 26th and 769 RPM for 39th) with
-a 10% guard band; a model must not silently alias them into an apparently calibrated
+a 10% guard band. The implemented 0.45/dt thresholds are about 1038 RPM for 26th and
+692 RPM for 39th; a model must not silently alias them into an apparently calibrated
 pressure wave.
 
 Generate true torque feedback as:
@@ -522,7 +538,7 @@ parameters observable in the
 recorded speed/pressure/angle/torque windows:
 
 ```text
-motor_natural_freq_hz [1.0, 200.0]
+motor_natural_freq_hz [1.0, 50.0]
 motor_damping         [0.2, 2.0]
 motor_delay_s     [0.000, 0.050]
 outlet_volume_m3  [1e-5, 5e-3]

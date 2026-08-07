@@ -377,13 +377,15 @@ alpha_g(Pabs) = clamp(alpha_g0 * Ptransition / max(Pabs, Ptransition), 0, alpha_
 `alpha_g` may depend on pressure and is bounded. Temperature is not a runtime state in
 this plan; any temperature effect is a calibrated offline parameter.
 
-Pump ripple uses calibrated asymmetric waveforms for trapped-volume and relief-window
-effects. `w13` and `w26` can be Fourier representations or a bounded lookup waveform,
-but their amplitudes are relative-to-mean **peak** flow amplitudes, not pressure p-p.
-The total delivered-flow multiplier is clamped to a positive bounded interval. Pump
-leakage is accounted for once through volumetric efficiency; outlet and cylinder leakage
-are separate pressure-difference-driven paths. The model must not multiply a cosmetic
-tooth drop only onto visible pressure.
+Pump ripple begins with separately gated, unit-peak sinusoidal 13th, 26th, and 39th
+components. Their amplitudes are relative-to-mean **peak** flow amplitudes, not pressure
+p-p. A calibrated asymmetric trapped-volume or relief-window waveform may be introduced
+only by expanding it into explicit independently gated Fourier terms; otherwise a disabled
+26th or 39th component can leak through an enabled 13th waveform and alias at 1 ms. The
+total delivered-flow multiplier is clamped to a positive bounded interval. Pump leakage is
+accounted for once through volumetric efficiency; outlet and cylinder leakage are separate
+pressure-difference-driven paths. The model must not multiply a cosmetic tooth drop only
+onto visible pressure.
 
 The servo speed model has a measured delay, a second-order or otherwise identified speed
 response, and acceleration limiting. It must not retain an arbitrary fixed 60 ms
@@ -437,7 +439,8 @@ have no dynamic allocation.
 
 At the observable 1 ms sampling interval, an `m`th tooth order is enabled only when
 `m * abs(rpm) / 60 < 0.45 / dt`. This gives a 10% guard below the nominal 1 ms Nyquist
-limits of approximately 1154 RPM for 26th and 769 RPM for 39th, rather than silently
+limits of approximately 1154 RPM for 26th and 769 RPM for 39th. The implemented guard
+thresholds are approximately 1038 RPM for 26th and 692 RPM for 39th, rather than silently
 aliasing either flow wave.
 An unresolved order is omitted from embedded-equivalent output and reported by replay;
 it is not turned into a fictitious low-frequency pressure component.
@@ -449,16 +452,28 @@ and is prohibited from being claimed as closed-loop plant validation before then
 
 ### 8.4 Parameter Admissibility and Replay Calibration
 
-`PressureModel_ValidatePhysicalParams()` is a deterministic C99 contract used by physical
-tests and the host replay before a calibrated run. It rejects nonfinite values; nonpositive
-volumes, inertance, oil modulus, or rated torque; `beta_min_pa > beta_oil_pa`; efficiencies
-outside `(0, 1]`; negative leakage/resistance/ripple limits; delays outside `[0, 64 ms]`;
-and a 1 ms hydraulic stiffness ratio
+`PressureModel_ValidatePhysicalParams()` is the intrinsic deterministic C99 physical-block
+contract. It rejects nonfinite values; nonpositive volumes, inertance, oil modulus, or rated
+torque; `beta_min_pa > beta_oil_pa`; efficiencies outside `(0, 1]`; negative
+leakage/resistance/ripple limits; delays outside `[0, 64 ms]`; and a 1 ms hydraulic stiffness ratio
 `beta_oil_pa * (0.001 s)^2 / (line_inertance * min(outlet_volume, chamber_volume)) > 0.25`.
-The line update uses its semi-implicit resistance denominator; a nonpositive denominator
-is also invalid. Invalid physical settings do not receive broad silent clamping: replay
-fails, and the physical step holds its last finite chamber pressure with zero flow and an
-invalid torque packet.
+`PressureModel_ValidateParams()` is the full runtime-admission contract used by physical
+tests and host replay before a calibrated run. It also rejects pump displacement above
+`50e-6 m3/rev`, configured RPM ranges outside `[-2000, 2000]`, load-flow magnitude above
+`1.666667e-3 m3/s`, motor natural frequency above `50 Hz`, motor damping above `2`, or
+motor acceleration limit above `100000 RPM/s`. The line update uses its semi-implicit
+resistance denominator; a nonpositive denominator is also invalid. Invalid physical
+settings do not receive broad silent clamping: replay fails, and the physical step holds
+its last finite chamber pressure with zero flow and an invalid torque packet.
+
+Before each physical integration, runtime admission also evaluates the combined worst-case
+1 ms pressure increment using `beta_oil`, the smaller outlet/chamber volume, the maximum
+configured displacement and RPM, the `1.8` peak ripple multiplier, and the maximum
+opposing load. The result must not exceed `25 MPa` per scan. This rejects finite but
+physically/numerically unusable parameter combinations that can pass the hydraulic
+stiffness-ratio test alone. A defensive post-step check restores the previous finite state
+and emits a zero-flow invalid-torque safe hold if an unforeseen arithmetic failure occurs;
+it never clamps an overflowed pressure trajectory into a plausible result.
 
 Task 2 host-only `pressure_model_replay` emits only an explicitly uncalibrated deterministic
 stream and rejects any supplied KV file. Task 3 adds the strict versioned calibration-file

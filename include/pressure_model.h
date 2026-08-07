@@ -169,6 +169,7 @@ typedef struct {
 void PressureModel_InitParams(PressureModelParams *params);
 void PressureModel_Reset(PressureModelState *state, uint32_t seed);
 int PressureModel_ValidatePhysicalParams(const PressureModelPhysicalParams *params);
+int PressureModel_ValidateParams(const PressureModelParams *params);
 float PressureModel_EffectiveBulkModulusPa(const PressureModelPhysicalParams *params,
                                            float absolute_pressure_pa);
 void PressureModel_StepInput(const PressureModelParams *params,

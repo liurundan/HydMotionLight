@@ -299,6 +299,22 @@ static int pressure_model_physical_pressure_increment_is_safe(
            pressure_increment_pa <= PRESSURE_MODEL_PHYSICAL_MAX_PRESSURE_INCREMENT_PA;
 }
 
+static float pressure_model_physical_max_net_flow(const PressureModelParams *params) {
+    float max_abs_rpm = pressure_model_maxf(pressure_model_absf(params->min_rpm),
+                                            pressure_model_absf(params->max_rpm));
+
+    return params->pump_displacement_m3_rev * max_abs_rpm / 60.0f *
+               PRESSURE_MODEL_PHYSICAL_MAX_FLOW_RIPPLE_FACTOR +
+           PRESSURE_MODEL_PHYSICAL_MAX_FLOW_M3_S;
+}
+
+static int pressure_model_physical_state_is_admissible(
+    const PressureModelParams *params,
+    const PressureModelState *state) {
+    return pressure_model_absf(state->line_flow_m3_s) <=
+           pressure_model_physical_max_net_flow(params);
+}
+
 static int pressure_model_validate_runtime_params(const PressureModelParams *params) {
     return params != NULL &&
            PressureModel_ValidatePhysicalParams(&params->physical) &&
@@ -314,6 +330,10 @@ static int pressure_model_validate_runtime_params(const PressureModelParams *par
            pressure_model_is_finite_nonnegative(params->sensor_noise_std_bar) &&
            isfinite(params->sensor_bias_bar) &&
            pressure_model_physical_pressure_increment_is_safe(params);
+}
+
+int PressureModel_ValidateParams(const PressureModelParams *params) {
+    return pressure_model_validate_runtime_params(params);
 }
 
 void PressureModel_InitParams(PressureModelParams *params) {
@@ -468,11 +488,11 @@ static float pressure_model_order_waveform(float phase) {
     return sinf(phase);
 }
 
-static void pressure_model_step_physical_substep(const PressureModelParams *params,
-                                                  PressureModelState *state,
-                                                  float target_rpm,
-                                                  float load_flow_m3_s,
-                                                  PressureModelOutput *out) {
+static int pressure_model_step_physical_substep(const PressureModelParams *params,
+                                                 PressureModelState *state,
+                                                 float target_rpm,
+                                                 float load_flow_m3_s,
+                                                 PressureModelOutput *out) {
     const PressureModelPhysicalParams *p = &params->physical;
     float delayed_target;
     float wn;
@@ -500,8 +520,15 @@ static void pressure_model_step_physical_substep(const PressureModelParams *para
     float q_outlet_net;
     float q_chamber_net;
     float eta_m;
+    float eta_m_unclamped;
     float torque_nm;
+    float torque_raw_permille;
     float torque_permille;
+    float line_numerator;
+    float outlet_pressure_delta;
+    float chamber_pressure_delta;
+    float next_outlet_pressure;
+    float next_pressure;
     int torque_valid;
     int order13_active;
     int order26_active;
@@ -555,6 +582,12 @@ static void pressure_model_step_physical_substep(const PressureModelParams *para
     q_outlet_leak = p->outlet_leak_m3_pa_s * delta_p_pump;
     q_cylinder_leak = p->cylinder_leak_m3_pa_s *
                       pressure_model_maxf(p_chamber_abs - p->suction_pressure_pa, 0.0f);
+    if (!isfinite(p_out_abs) || !isfinite(p_chamber_abs) ||
+        !isfinite(delta_p_pump) || !isfinite(q_theoretical) ||
+        !isfinite(q_pump_leak) || !isfinite(eta_v) || !isfinite(q_pump) ||
+        !isfinite(q_outlet_leak) || !isfinite(q_cylinder_leak)) {
+        return 0;
+    }
 
     if (!state->relief_latched &&
         state->outlet_pressure_pa >= p->relief_set_pa + p->relief_deadband_pa) {
@@ -569,25 +602,49 @@ static void pressure_model_step_physical_substep(const PressureModelParams *para
                                               (p->relief_set_pa + p->relief_deadband_pa),
                                               0.0f));
     }
+    if (!isfinite(q_relief)) return 0;
     line_denominator = p->line_inertance_pa_s2_per_m3 + PRESSURE_MODEL_DT_S *
                        (p->line_resistance_pa_s_per_m3 +
                         p->line_quadratic_resistance_pa_s2_per_m6 *
                             pressure_model_absf(state->line_flow_m3_s));
-    state->line_flow_m3_s = (p->line_inertance_pa_s2_per_m3 * state->line_flow_m3_s +
-                             PRESSURE_MODEL_DT_S *
-                                 (state->outlet_pressure_pa - state->pressure_pa)) /
-                            line_denominator;
+    line_numerator = p->line_inertance_pa_s2_per_m3 * state->line_flow_m3_s +
+                     PRESSURE_MODEL_DT_S *
+                         (state->outlet_pressure_pa - state->pressure_pa);
+    if (!isfinite(line_denominator) || line_denominator <= 0.0f ||
+        !isfinite(line_numerator)) {
+        return 0;
+    }
+    state->line_flow_m3_s = line_numerator / line_denominator;
+    if (!isfinite(state->line_flow_m3_s)) return 0;
+    if (!pressure_model_physical_state_is_admissible(params, state)) return 0;
     beta_outlet = PressureModel_EffectiveBulkModulusPa(p, p_out_abs);
     q_outlet_net = q_pump - state->line_flow_m3_s - q_outlet_leak - q_relief;
-    state->outlet_pressure_pa = pressure_model_maxf(
-        0.0f, state->outlet_pressure_pa +
-                  beta_outlet / p->outlet_volume_m3 * q_outlet_net * PRESSURE_MODEL_DT_S);
+    if (!isfinite(beta_outlet) || !isfinite(q_outlet_net)) return 0;
+    outlet_pressure_delta = beta_outlet / p->outlet_volume_m3 *
+                            q_outlet_net * PRESSURE_MODEL_DT_S;
+    next_outlet_pressure = state->outlet_pressure_pa + outlet_pressure_delta;
+    if (!isfinite(outlet_pressure_delta) || !isfinite(next_outlet_pressure) ||
+        pressure_model_absf(outlet_pressure_delta) >
+            PRESSURE_MODEL_PHYSICAL_MAX_PRESSURE_INCREMENT_PA) {
+        return 0;
+    }
+    state->outlet_pressure_pa = pressure_model_maxf(0.0f, next_outlet_pressure);
     p_chamber_abs = p->atmospheric_pressure_pa + pressure_model_maxf(state->pressure_pa, 0.0f);
     beta_chamber = PressureModel_EffectiveBulkModulusPa(p, p_chamber_abs);
     q_chamber_net = state->line_flow_m3_s - load_flow_m3_s - q_cylinder_leak;
-    state->pressure_pa = pressure_model_maxf(
-        0.0f, state->pressure_pa +
-                  beta_chamber / p->chamber_volume_m3 * q_chamber_net * PRESSURE_MODEL_DT_S);
+    if (!isfinite(p_chamber_abs) || !isfinite(beta_chamber) ||
+        !isfinite(q_chamber_net)) {
+        return 0;
+    }
+    chamber_pressure_delta = beta_chamber / p->chamber_volume_m3 *
+                             q_chamber_net * PRESSURE_MODEL_DT_S;
+    next_pressure = state->pressure_pa + chamber_pressure_delta;
+    if (!isfinite(chamber_pressure_delta) || !isfinite(next_pressure) ||
+        pressure_model_absf(chamber_pressure_delta) >
+            PRESSURE_MODEL_PHYSICAL_MAX_PRESSURE_INCREMENT_PA) {
+        return 0;
+    }
+    state->pressure_pa = pressure_model_maxf(0.0f, next_pressure);
 
     out->actual_motor_rpm = rpm;
     out->real_pressure_bar = state->pressure_pa / PRESSURE_MODEL_PA_PER_BAR;
@@ -615,20 +672,24 @@ static void pressure_model_step_physical_substep(const PressureModelParams *para
     out->relief_active = state->relief_latched != 0u;
     out->estimated_torque_trend = 0.0f;
 
-    eta_m = pressure_model_clampf(p->eta_m_nominal -
-                                  p->eta_m_pressure_loss_per_pa * delta_p_pump -
-                                  p->eta_m_speed_loss_per_rpm * abs_rpm,
-                                  p->eta_m_min, 1.0f);
+    eta_m_unclamped = p->eta_m_nominal -
+                      p->eta_m_pressure_loss_per_pa * delta_p_pump -
+                      p->eta_m_speed_loss_per_rpm * abs_rpm;
+    if (!isfinite(eta_m_unclamped)) return 0;
+    eta_m = pressure_model_clampf(eta_m_unclamped, p->eta_m_min, 1.0f);
     torque_nm = pressure_model_signf(rpm) * delta_p_pump * params->pump_displacement_m3_rev /
                 (2.0f * PRESSURE_MODEL_PI * eta_m);
     torque_nm *= 1.0f + p->torque_ripple13_peak *
                  sinf(phase13 + p->torque_ripple13_phase_rad);
-    torque_permille = pressure_model_clampf(1000.0f * torque_nm / p->rated_motor_torque_nm,
+    torque_raw_permille = 1000.0f * torque_nm / p->rated_motor_torque_nm;
+    if (!isfinite(torque_nm) || !isfinite(torque_raw_permille)) return 0;
+    torque_permille = pressure_model_clampf(torque_raw_permille,
                                             -p->motor_torque_limit_permille,
                                             p->motor_torque_limit_permille);
     torque_valid = isfinite(torque_permille) && isfinite(phase13) &&
                    isfinite(delta_p_pump) && isfinite(eta_m) && p->rated_motor_torque_nm > 0.0f;
     pressure_model_fill_feedback(state, out, torque_valid, torque_permille);
+    return 1;
 }
 
 void PressureModel_StepInput(const PressureModelParams *params,
@@ -696,10 +757,25 @@ void PressureModel_StepInput(const PressureModelParams *params,
     for (i = 0; i < substeps; ++i) {
         PressureModelState previous_state = *state;
 
-        pressure_model_step_physical_substep(params, state, input->target_rpm,
-                                              input->load_flow_m3_s,
-                                              out);
         if (!pressure_model_physical_state_is_finite(state)) {
+            state->pressure_pa = 0.0f;
+            state->outlet_pressure_pa = 0.0f;
+            state->line_flow_m3_s = 0.0f;
+            state->motor_accel_rpm_s = 0.0f;
+            state->timestamp_s += PRESSURE_MODEL_DT_S;
+            pressure_model_write_hold_output(state, out);
+            return;
+        }
+        if (!pressure_model_physical_state_is_admissible(params, state)) {
+            state->line_flow_m3_s = 0.0f;
+            state->timestamp_s += PRESSURE_MODEL_DT_S;
+            pressure_model_write_hold_output(state, out);
+            return;
+        }
+        if (!pressure_model_step_physical_substep(params, state, input->target_rpm,
+                                                  input->load_flow_m3_s,
+                                                  out) ||
+            !pressure_model_physical_state_is_finite(state)) {
             *state = previous_state;
             state->timestamp_s += PRESSURE_MODEL_DT_S;
             pressure_model_write_hold_output(state, out);
