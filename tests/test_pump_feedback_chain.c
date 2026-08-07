@@ -122,6 +122,20 @@ static void test_pressure_model_packet_survives_simulator_refresh(void) {
     assert(handle->pumpFeedback.angleDeg == model_feedback.angleDeg);
     assert(handle->pumpFeedback.torquePermille == model_feedback.torquePermille);
     assert(handle->pumpFeedback.timestamp == model_feedback.timestamp);
+
+    model_cmd.ENABLE.value = false;
+    __mcl_cmd_updatePressureModel(&model_cmd);
+    assert(!HYD_PumpFeedback_HasValid(handle->pumpFeedback.validFlags,
+                                      HYD_PUMP_FEEDBACK_VALID_ANGLE));
+    assert(handle->pumpFeedback.validFlags == 0u);
+    __HydSimulator_framework_Publish();
+    HYD_HydraulicSimFB_Cycle(handle);
+    assert(!HYD_PumpFeedback_HasValid(handle->pumpFeedback.validFlags,
+                                      HYD_PUMP_FEEDBACK_VALID_ANGLE));
+    assert(HYD_PumpFeedback_HasValid(handle->pumpFeedback.validFlags,
+                                     HYD_PUMP_FEEDBACK_VALID_RPM |
+                                     HYD_PUMP_FEEDBACK_VALID_TIMESTAMP));
+    assert(handle->pumpFeedback.rpm == 0.0f);
 }
 
 int main(void) {

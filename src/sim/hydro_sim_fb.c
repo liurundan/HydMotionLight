@@ -17,6 +17,8 @@ static float g_pressure_model_last_time_s = 0.0f;
 static HYD_PumpFeedback g_pressure_model_feedback;
 static const unsigned int kPressureModelSeed = 0x13572468u;
 
+static void PressureModelFb_ClearAxisFeedback(void);
+
 static void PressureModelFb_ResetOutputs(HYD_PRESSUREMODEL *data__) {
     __SET_VAR(data__->, REAL_PRESSURE_BAR,, 0.0f);
     __SET_VAR(data__->, MEASURED_PRESSURE_BAR,, 0.0f);
@@ -29,6 +31,7 @@ static void PressureModelFb_ResetState(void) {
     g_pressure_model_have_time = 0;
     g_pressure_model_last_time_s = 0.0f;
     memset(&g_pressure_model_feedback, 0, sizeof(g_pressure_model_feedback));
+    PressureModelFb_ClearAxisFeedback();
 }
 
 static void PressureModelFb_EnsureInitialized(void) {
@@ -76,6 +79,27 @@ static void Hyd_CopyAxisFeedbackToHandle(HYD_HydraulicSimFB* fb) {
     fb->pressure_bar = feedback.pressure_bar;
     fb->pumpFeedback = feedback.pumpFeedback;
     fb->active = fb->enable && (fb->_env->pump_owner_axis_id == fb->axis_id);
+}
+
+static void PressureModelFb_ClearAxisFeedback(void) {
+    int i;
+
+    for (i = 0; i < HYD_MAX_HYDRAULIC_SIM_FB; ++i) {
+        int slot;
+
+        if (!g_shared_env.axes[i].allocated) {
+            continue;
+        }
+        memset(&g_shared_env.axes[i].pump_feedback, 0,
+               sizeof(g_shared_env.axes[i].pump_feedback));
+        g_shared_env.axes[i].pump_feedback_from_pressure_model = false;
+        g_shared_env.axes[i].last_feedback.pumpFeedback =
+            g_shared_env.axes[i].pump_feedback;
+        slot = Hyd_GetSlotByAxisId(g_shared_env.axes[i].axis_id);
+        if (slot >= 0) {
+            Hyd_CopyAxisFeedbackToHandle(&_sim_fb[slot]);
+        }
+    }
 }
 
 static void Hyd_InitSharedHandle(HYD_HydraulicSimFB* fb,
