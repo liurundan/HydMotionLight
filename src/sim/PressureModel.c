@@ -83,7 +83,9 @@ static int pressure_model_physical_state_is_finite(const PressureModelState *sta
     if (!isfinite(state->motor_rpm) || !isfinite(state->pressure_pa) ||
         !isfinite(state->pump_phase_rev) || !isfinite(state->timestamp_s) ||
         !isfinite(state->spare_gauss) || !isfinite(state->outlet_pressure_pa) ||
-        !isfinite(state->line_flow_m3_s) || !isfinite(state->motor_accel_rpm_s)) {
+        !isfinite(state->line_flow_m3_s) || !isfinite(state->motor_accel_rpm_s) ||
+        state->motor_delay_index >= PRESSURE_MODEL_PHYSICAL_DELAY_SLOTS ||
+        state->sensor_delay_index >= PRESSURE_MODEL_PHYSICAL_DELAY_SLOTS) {
         return 0;
     }
     for (i = 0; i < PRESSURE_MODEL_PHYSICAL_DELAY_SLOTS; ++i) {
@@ -164,6 +166,7 @@ static float pressure_model_delay_write_read(float ring[PRESSURE_MODEL_PHYSICAL_
                                              float value) {
     int read_index;
 
+    if (*index >= PRESSURE_MODEL_PHYSICAL_DELAY_SLOTS) return value;
     ring[*index] = value;
     read_index = ((int)*index + PRESSURE_MODEL_PHYSICAL_DELAY_SLOTS - delay_steps) %
                  PRESSURE_MODEL_PHYSICAL_DELAY_SLOTS;
@@ -311,8 +314,15 @@ static float pressure_model_physical_max_net_flow(const PressureModelParams *par
 static int pressure_model_physical_state_is_admissible(
     const PressureModelParams *params,
     const PressureModelState *state) {
-    return pressure_model_absf(state->line_flow_m3_s) <=
-           pressure_model_physical_max_net_flow(params);
+    return state->motor_rpm >= params->min_rpm &&
+           state->motor_rpm <= params->max_rpm &&
+           pressure_model_absf(state->motor_accel_rpm_s) <=
+               params->physical.motor_accel_limit_rpm_s &&
+           state->pump_phase_rev >= 0.0f && state->pump_phase_rev < 1.0f &&
+           state->motor_delay_index < PRESSURE_MODEL_PHYSICAL_DELAY_SLOTS &&
+           state->sensor_delay_index < PRESSURE_MODEL_PHYSICAL_DELAY_SLOTS &&
+           pressure_model_absf(state->line_flow_m3_s) <=
+               pressure_model_physical_max_net_flow(params);
 }
 
 static int pressure_model_validate_runtime_params(const PressureModelParams *params) {
@@ -340,6 +350,8 @@ int PressureModel_ValidateInput(const PressureModelParams *params,
                                 const PressureModelInput *input) {
     return PressureModel_ValidateParams(params) && input != NULL &&
            isfinite(input->target_rpm) && isfinite(input->load_flow_m3_s) &&
+           input->target_rpm >= params->min_rpm &&
+           input->target_rpm <= params->max_rpm &&
            pressure_model_absf(input->load_flow_m3_s) <=
                PRESSURE_MODEL_PHYSICAL_MAX_FLOW_M3_S;
 }
@@ -471,11 +483,10 @@ static void pressure_model_step_first_order(const PressureModelParams *params,
     pressure_model_fill_feedback(state, out, 0, 0.0f);
 }
 
-static void pressure_model_write_hold_output(PressureModelState *state,
+static void pressure_model_write_hold_output(const PressureModelState *state,
                                              PressureModelOutput *out) {
     float pressure_bar = isfinite(state->pressure_pa) ? state->pressure_pa / PRESSURE_MODEL_PA_PER_BAR
                                                        : 0.0f;
-    if (!isfinite(state->pressure_pa)) state->pressure_pa = 0.0f;
     out->actual_motor_rpm = isfinite(state->motor_rpm) ? state->motor_rpm : 0.0f;
     out->real_pressure_bar = pressure_bar;
     out->measured_pressure_bar = pressure_bar;
@@ -727,6 +738,13 @@ void PressureModel_StepInput(const PressureModelParams *params,
         pressure_model_write_hold_output(state, out);
         return;
     }
+    if (requested_type == PRESSURE_MODEL_TYPE_PHYSICAL_CALIBRATED &&
+        (!pressure_model_physical_state_is_finite(state) ||
+         !pressure_model_physical_state_is_admissible(params, state))) {
+        state->timestamp_s += substeps * PRESSURE_MODEL_DT_S;
+        pressure_model_write_hold_output(state, out);
+        return;
+    }
     pressure_bar = isfinite(state->pressure_pa) ? state->pressure_pa / PRESSURE_MODEL_PA_PER_BAR : 0.0f;
     if (requested_type != state->active_model_type) {
         if (pressure_bar <= 0.0f) {
@@ -763,17 +781,8 @@ void PressureModel_StepInput(const PressureModelParams *params,
     for (i = 0; i < substeps; ++i) {
         PressureModelState previous_state = *state;
 
-        if (!pressure_model_physical_state_is_finite(state)) {
-            state->pressure_pa = 0.0f;
-            state->outlet_pressure_pa = 0.0f;
-            state->line_flow_m3_s = 0.0f;
-            state->motor_accel_rpm_s = 0.0f;
-            state->timestamp_s += PRESSURE_MODEL_DT_S;
-            pressure_model_write_hold_output(state, out);
-            return;
-        }
-        if (!pressure_model_physical_state_is_admissible(params, state)) {
-            state->line_flow_m3_s = 0.0f;
+        if (!pressure_model_physical_state_is_finite(state) ||
+            !pressure_model_physical_state_is_admissible(params, state)) {
             state->timestamp_s += PRESSURE_MODEL_DT_S;
             pressure_model_write_hold_output(state, out);
             return;

@@ -462,9 +462,10 @@ tests and host replay before a calibrated run. It rejects pump displacement abov
 `50e-6 m3/rev`, configured RPM ranges outside `[-2000, 2000]`, motor natural frequency
 above `50 Hz`, motor damping above `2`, or motor acceleration limit above `100000 RPM/s`.
 `PressureModel_ValidateInput()` validates each physical scan and rejects nonfinite target
-or load flow, and load-flow magnitude above `1.666667e-3 m3/s`; it intentionally does not
-reject an irregular `dt_s`, because `PressureModel_StepInput()` normalizes that case to one
-safe 1 ms substep. The line update uses its semi-implicit
+or load flow, target RPM outside the configured `[min_rpm, max_rpm]` range, and load-flow
+magnitude above `1.666667e-3 m3/s`. It intentionally does not reject an irregular `dt_s`,
+because `PressureModel_StepInput()` normalizes only that case to one safe 1 ms substep;
+physical target RPM is rejected rather than normalized. The line update uses its semi-implicit
 resistance denominator; a nonpositive denominator is also invalid. Invalid physical
 settings do not receive broad silent clamping: replay fails, and the physical step holds
 its last finite chamber pressure with zero flow and an invalid torque packet.
@@ -476,7 +477,9 @@ opposing load. The result must not exceed `25 MPa` per scan. This rejects finite
 physically/numerically unusable parameter combinations that can pass the hydraulic
 stiffness-ratio test alone. A defensive post-step check restores the previous finite state
 and emits a zero-flow invalid-torque safe hold if an unforeseen arithmetic failure occurs;
-it never clamps an overflowed pressure trajectory into a plausible result.
+it never clamps an overflowed pressure trajectory into a plausible result. Invalid current
+physical state is rejected before delay-ring access and preserved unchanged except for the
+normal finite scan timestamp advance.
 
 Task 2 host-only `pressure_model_replay` emits only an explicitly uncalibrated deterministic
 stream and rejects any supplied KV file. Task 3 adds the strict versioned calibration-file
