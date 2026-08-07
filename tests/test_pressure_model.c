@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "common_types.h"
+#include "fixtures/open10203040_measurement_reference.h"
 #include "fixtures/pressure_model_open_loop_reference.h"
 #include "pressure_model.h"
 
@@ -93,6 +94,12 @@ static void test_physical_params_validate_and_invalid_holds_safely(void) {
     assert(!PressureModel_ValidatePhysicalParams(&invalid_motor_delay.physical));
     assert(!PressureModel_ValidatePhysicalParams(&invalid_sensor_delay.physical));
     invalid_eta = physical_params();
+    invalid_eta.physical.motor_torque_limit_permille = -1.0f;
+    assert(!PressureModel_ValidatePhysicalParams(&invalid_eta.physical));
+    invalid_eta.physical.motor_torque_limit_permille = 1000.0f;
+    invalid_eta.physical.torque_ripple13_peak = 1.01f;
+    assert(!PressureModel_ValidatePhysicalParams(&invalid_eta.physical));
+    invalid_eta = physical_params();
     invalid_eta.physical.eta_m_min = invalid_eta.physical.eta_m_nominal + 0.01f;
     assert(!PressureModel_ValidatePhysicalParams(&invalid_eta.physical));
     invalid_eta.physical.eta_v_min = NAN;
@@ -114,6 +121,60 @@ static void test_physical_params_validate_and_invalid_holds_safely(void) {
     assert(out.pump_flow_m3_s == 0.0f);
     assert(!HYD_PumpFeedback_HasValid(out.pumpFeedback.validFlags,
                                       HYD_PUMP_FEEDBACK_VALID_TORQUE));
+}
+
+static void test_nonfinite_step_input_holds_physical_state(void) {
+    PressureModelParams params = physical_params();
+    PressureModelState state;
+    PressureModelOutput out;
+    PressureModelInput input;
+    float held_pressure;
+    float held_motor_rpm;
+
+    PressureModel_Reset(&state, 3u);
+    step_n(&params, &state, 100.0f, 0.0f, 3000, &out);
+    held_pressure = out.real_pressure_bar;
+    held_motor_rpm = out.actual_motor_rpm;
+
+    input.target_rpm = NAN;
+    input.load_flow_m3_s = 0.0f;
+    input.dt_s = DT_S;
+    PressureModel_StepInput(&params, &state, &input, &out);
+    assert(fabsf(out.real_pressure_bar - held_pressure) < 1.0e-5f);
+    assert(fabsf(out.actual_motor_rpm - held_motor_rpm) < 1.0e-5f);
+    assert(out.pump_flow_m3_s == 0.0f);
+    assert(out.net_flow_m3_s == 0.0f);
+    assert(!HYD_PumpFeedback_HasValid(out.pumpFeedback.validFlags,
+                                      HYD_PUMP_FEEDBACK_VALID_TORQUE));
+
+    input.target_rpm = 100.0f;
+    input.load_flow_m3_s = NAN;
+    PressureModel_StepInput(&params, &state, &input, &out);
+    assert(fabsf(out.real_pressure_bar - held_pressure) < 1.0e-5f);
+    assert(fabsf(out.actual_motor_rpm - held_motor_rpm) < 1.0e-5f);
+    assert(out.pump_flow_m3_s == 0.0f);
+    assert(out.net_flow_m3_s == 0.0f);
+    assert(!HYD_PumpFeedback_HasValid(out.pumpFeedback.validFlags,
+                                      HYD_PUMP_FEEDBACK_VALID_TORQUE));
+}
+
+static void test_measured_open_loop_reference_contract(void) {
+    int i;
+
+    assert(OPEN10203040_MEASUREMENT_TIMESTAMP_DELTA_MS == 1);
+    assert(OPEN10203040_MEASUREMENT_TARGET_PRESSURE_BAR == 0);
+    assert(OPEN10203040_MEASUREMENT_REFERENCE_COUNT == 4);
+    for (i = 0; i < OPEN10203040_MEASUREMENT_REFERENCE_COUNT; ++i) {
+        const Open10203040MeasurementReference *reference =
+            &kOpen10203040MeasurementReference[i];
+
+        assert(reference->timestamp_start_ms < reference->timestamp_end_ms);
+        assert(reference->command_rpm == 10.0f * (float)(i + 1));
+        assert(reference->mean_feedback_rpm > 0.0f);
+        assert(reference->mean_feedback_pressure_bar > 0.0f);
+        assert(reference->tail_pressure_peak_to_peak_bar > 0.0f);
+        assert(reference->angle_synchronous_order13_amplitude_bar > 0.0f);
+    }
 }
 
 static void test_fixed_substeps_and_invalid_dt_are_safe(void) {
@@ -394,6 +455,8 @@ static void test_repeatable_one_ms_physical_result(void) {
 int main(void) {
     test_profile_alias_and_first_order_regression();
     test_physical_params_validate_and_invalid_holds_safely();
+    test_nonfinite_step_input_holds_physical_state();
+    test_measured_open_loop_reference_contract();
     test_fixed_substeps_and_invalid_dt_are_safe();
     test_load_leakage_and_gas_are_causal();
     test_model_baseline_speed_sections_are_ordered();

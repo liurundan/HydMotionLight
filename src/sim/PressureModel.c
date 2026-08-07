@@ -232,6 +232,7 @@ int PressureModel_ValidatePhysicalParams(const PressureModelPhysicalParams *para
         !pressure_model_is_finite_nonnegative(params->sensor_quantization_bar) ||
         !pressure_model_is_finite_nonnegative(params->motor_damping) ||
         !pressure_model_is_finite_nonnegative(params->torque_ripple13_peak) ||
+        params->torque_ripple13_peak > 1.0f ||
         !pressure_model_is_finite_nonnegative(params->ripple13_peak) ||
         !pressure_model_is_finite_nonnegative(params->ripple26_peak) ||
         !pressure_model_is_finite_nonnegative(params->ripple39_peak) ||
@@ -240,6 +241,7 @@ int PressureModel_ValidatePhysicalParams(const PressureModelPhysicalParams *para
         params->eta_m_min <= 0.0f || params->eta_m_min > params->eta_m_nominal ||
         params->motor_delay_s < 0.0f || params->motor_delay_s > 0.064f ||
         params->sensor_delay_s < 0.0f || params->sensor_delay_s > 0.064f ||
+        params->motor_torque_limit_permille < 0.0f ||
         params->eta_m_pressure_loss_per_pa < 0.0f ||
         params->eta_m_speed_loss_per_rpm < 0.0f) {
         return 0;
@@ -458,8 +460,7 @@ static void pressure_model_step_physical_substep(const PressureModelParams *para
     delayed_target = pressure_model_delay_write_read(
         state->motor_delay_ring, &state->motor_delay_index,
         pressure_model_delay_steps(p->motor_delay_s),
-        pressure_model_clampf(isfinite(target_rpm) ? target_rpm : 0.0f,
-                              params->min_rpm, params->max_rpm));
+        pressure_model_clampf(target_rpm, params->min_rpm, params->max_rpm));
     wn = 2.0f * PRESSURE_MODEL_PI * p->motor_natural_freq_hz;
     accel_derivative = wn * wn * (delayed_target - state->motor_rpm) -
                        2.0f * p->motor_damping * wn * state->motor_accel_rpm_s;
@@ -598,6 +599,11 @@ void PressureModel_StepInput(const PressureModelParams *params,
     } else {
         substeps = (int)roundf(dt_s / PRESSURE_MODEL_DT_S);
     }
+    if (!isfinite(input->target_rpm) || !isfinite(input->load_flow_m3_s)) {
+        state->timestamp_s += substeps * PRESSURE_MODEL_DT_S;
+        pressure_model_write_hold_output(state, out);
+        return;
+    }
     requested_type = pressure_model_normalize_type(params->model_type);
     pressure_bar = isfinite(state->pressure_pa) ? state->pressure_pa / PRESSURE_MODEL_PA_PER_BAR : 0.0f;
     if (requested_type != state->active_model_type) {
@@ -637,18 +643,13 @@ void PressureModel_StepInput(const PressureModelParams *params,
     }
     for (i = 0; i < substeps; ++i) {
         pressure_model_step_physical_substep(params, state, input->target_rpm,
-                                              isfinite(input->load_flow_m3_s)
-                                                  ? input->load_flow_m3_s : 0.0f,
+                                              input->load_flow_m3_s,
                                               out);
         state->timestamp_s += PRESSURE_MODEL_DT_S;
         pressure_model_fill_feedback(state, out,
             HYD_PumpFeedback_HasValid(out->pumpFeedback.validFlags,
                                       HYD_PUMP_FEEDBACK_VALID_TORQUE),
             out->pumpFeedback.torquePermille);
-    }
-    if (!isfinite(input->target_rpm)) {
-        out->pumpFeedback.torquePermille = 0.0f;
-        out->pumpFeedback.validFlags &= ~HYD_PUMP_FEEDBACK_VALID_TORQUE;
     }
 }
 

@@ -1,5 +1,6 @@
 #include <errno.h>
 #include <limits.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -11,7 +12,7 @@ static int parse_float(const char *text, float *value) {
 
     errno = 0;
     *value = strtof(text, &end);
-    return errno == 0 && end != text && *end == '\0';
+    return errno == 0 && end != text && *end == '\0' && isfinite(*value);
 }
 
 static int parse_count(const char *text, int *value) {
