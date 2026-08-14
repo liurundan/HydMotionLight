@@ -315,6 +315,10 @@ static HYD_MotionSegment buildPressureSegment(
     seg.flowTolerance = fb->_params.flowTolerance;
     seg.timeoutLimit = fb->_params.timeoutLimit;
 
+//    seg.pressureRbfConfig.minKi = 15.0f;
+//    seg.pressureRbfConfig.maxKi = 20.0f;
+//    seg.pressureRbfConfig.minKp = 40.0f;
+//    seg.pressureRbfConfig.maxKp = 45.0f;
     return seg;
 }
 

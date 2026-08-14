@@ -18,12 +18,12 @@
 /* PID 参数限幅默认窗。
  * Task 2 要求初始化/复位恢复到确定性的内置窗口，后续可通过
  * RBF_PID_SetParamLimits() 覆盖。 */
-#define PID_MIN_KP          0.4f
-#define PID_MAX_KP          0.6f
-#define PID_MIN_KI          0.0018f // 0.0008
-#define PID_MAX_KI          0.0056f
-#define PID_MIN_KD          0.015f
-#define PID_MAX_KD          0.035f
+#define PID_MIN_KP          1.0f
+#define PID_MAX_KP          1.5f
+#define PID_MIN_KI          0.01f // 0.0008
+#define PID_MAX_KI          0.03f
+#define PID_MIN_KD          0.05f
+#define PID_MAX_KD          0.09f
 
 #define HYD_DEFAULT_RBF_W_LEARNING_RATE 0.005f
 #define HYD_DEFAULT_RBF_C_LEARNING_RATE 0.005f

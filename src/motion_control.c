@@ -1266,6 +1266,11 @@ static HYD_BOOL HYD_ApplyLiveUpdateOverrides(const HYD_LiveUpdateRequest* reques
             return false;
         }
         seg->targetPressure = request->targetPressure;
+        seg->targetFlow = seg->targetPressure / 80.0f;  // Example conversion factor, adjust as needed
+//        seg->maxFlow = seg->targetPressure /5.f;  // Example safety margin, adjust as needed
+//        if(seg->maxFlow < 0.1f) {
+//			seg->maxFlow = 0.1f;  // Ensure a minimum flow limit
+//		}
     }
 
     if ((request->flags & HYD_LIVE_UPDATE_PRESSURE_RAMP_RATE) != 0U) {
@@ -3404,7 +3409,7 @@ void HYD_MotionControlFB_Init(HYD_MotionControlFB* fb) {
     fb->_params.flowToPumpSpeedGain = 20.0f;
     fb->_params.pumpSpeedLimit = 1800.0f;
     fb->_params.pressureControllerType = (HYD_REAL)HYD_PRESSURE_CONTROLLER_PI;
-    fb->_params.defaultTargetFlow = 5.0f;
+    fb->_params.defaultTargetFlow = 0.0f; // 5.0f; // default target flow for continuous absolute move
     fb->_params.useSimulation = false;
 
     /* Legacy defaults — used when pumpConfig/cylinderConfig are not configured.
