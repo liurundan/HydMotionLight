@@ -860,29 +860,45 @@ fbMoveProfile(EXECUTE := segStart,
 
 | 错误码 | 常量名 | 说明 |
 |--------|--------|------|
-| 0 | `HYD_DIAG_CODE_NONE` | 无错误 |
-| 1 | `HYD_DIAG_CODE_RECIPE_EMPTY` | 配方为空 |
-| 2 | `HYD_DIAG_CODE_RECIPE_TOO_LARGE` | 配方段数超限 |
-| 3 | `HYD_DIAG_CODE_SEGMENT_INVALID` | 段参数无效 |
-| 4 | `HYD_DIAG_CODE_RUNTIME_CONFIG_INVALID` | 运行时配置无效 |
-| 5 | `HYD_DIAG_CODE_START_CONTEXT_INVALID` | 启动上下文非法（轴ID无效或状态不允许） |
-| 6 | `HYD_DIAG_CODE_COMMAND_NOT_ALLOWED` | 命令在当前状态不允许 |
-| 7 | `HYD_DIAG_CODE_NO_RECIPE` | 无配方可执行 |
-| 8 | `HYD_DIAG_CODE_NO_DIRECT_SEGMENT` | 无直接段可执行 |
-| 11 | `HYD_DIAG_CODE_SEGMENT_NOT_COMPLETED` | 段未完成 |
-| 12 | `HYD_DIAG_CODE_RECIPE_ALREADY_FINISHED` | 配方已全部完成 |
-| 13 | `HYD_DIAG_CODE_ABORTED` | 被中止 |
-| 14 | `HYD_DIAG_CODE_TIMEOUT` | 运行超时 |
-| 15 | `HYD_DIAG_CODE_OVER_PRESSURE` | 超压 |
-| 16 | `HYD_DIAG_CODE_UNDER_PRESSURE` | 低压 |
-| 17 | `HYD_DIAG_CODE_FLOW_DEVIATION` | 流量偏差 |
-| 18 | `HYD_DIAG_CODE_POSITION_DEVIATION` | 位置偏差 |
-| 19 | `HYD_DIAG_CODE_VELOCITY_DEVIATION` | 速度偏差 |
-| 20 | `HYD_DIAG_CODE_SENSOR_FAULT` | 传感器故障 |
-| 21 | `HYD_DIAG_CODE_TIMESTAMP_ROLLBACK` | 时间戳回滚 |
-| 22 | `HYD_DIAG_CODE_INTERNAL_ERROR` | 内部错误 |
+| 0 | `HYD_DIAG_CODE_NONE` | 无错误。 |
+| 1 | `HYD_DIAG_CODE_RECIPE_EMPTY` | 配方为空；重新加载有效配方。 |
+| 2 | `HYD_DIAG_CODE_RECIPE_TOO_LARGE` | 配方段数超过 `HYD_MAX_SEGMENTS`。 |
+| 3 | `HYD_DIAG_CODE_SEGMENT_INVALID` | 配方段参数无效；检查位置、速度、压力及限值参数。 |
+| 4 | `HYD_DIAG_CODE_RUNTIME_CONFIG_INVALID` | 运行时配置无效；控制器进入停止保护，修正配置后复位。 |
+| 5 | `HYD_DIAG_CODE_START_CONTEXT_INVALID` | 启动上下文无效（轴引用、轴 ID 或当前状态不满足启动条件）。 |
+| 6 | `HYD_DIAG_CODE_COMMAND_NOT_ALLOWED` | 当前状态不允许执行该命令；检查状态机和命令时序。 |
+| 7 | `HYD_DIAG_CODE_NO_RECIPE` | 未加载配方，无法执行配方运动。 |
+| 8 | `HYD_DIAG_CODE_NO_DIRECT_SEGMENT` | 未配置可执行的直接段。 |
+| 9 | `HYD_DIAG_CODE_SEGMENT_INDEX_OUT_OF_RANGE` | 请求的段索引超出配方范围。 |
+| 10 | `HYD_DIAG_CODE_SEGMENT_NOT_COMPLETED` | 前置段尚未完成，不能切换或执行后续段。 |
+| 11 | `HYD_DIAG_CODE_RECIPE_ALREADY_FINISHED` | 配方已执行完毕；重新装载或复位后才能开始新的执行周期。 |
+| 12 | `HYD_DIAG_CODE_ABORTED` | 调用方主动中止当前执行。 |
+| 13 | `HYD_DIAG_CODE_TIMEOUT` | 段执行超过超时限制；停止当前运动并按配置重启段或复位。 |
+| 14 | `HYD_DIAG_CODE_OVER_PRESSURE` | 实测压力超过段压力容差上限；执行降额保护。 |
+| 15 | `HYD_DIAG_CODE_UNDER_PRESSURE` | 实测压力低于段压力容差下限；检查压力建立和工艺参数。 |
+| 16 | `HYD_DIAG_CODE_FLOW_DEVIATION` | 实测流量偏离参考值；执行流量降额或检查泵/阀反馈。 |
+| 17 | `HYD_DIAG_CODE_POSITION_DEVIATION` | 实测位置偏离目标位置。 |
+| 18 | `HYD_DIAG_CODE_VELOCITY_DEVIATION` | 实测速度偏离参考速度。 |
+| 19 | `HYD_DIAG_CODE_SENSOR_FAULT` | 轴反馈无效；停止运动并检查传感器及反馈时间戳。 |
+| 20 | `HYD_DIAG_CODE_TIMESTAMP_ROLLBACK` | 轴时间戳倒退；停止运动并检查时基或反馈数据。 |
+| 21 | `HYD_DIAG_CODE_PRESSURE_CEILING_EXCEEDED` | 实测压力首次超过段软压力上限；启动降额保护。 |
+| 22 | `HYD_DIAG_CODE_PRESSURE_CEILING_VIOLATED` | 压力持续超过软上限并达到升级条件；故障停机。 |
+| 23 | `HYD_DIAG_CODE_OVER_PRESSURE_LIMIT` | 达到最大压力限制；比例降低流量，属于警告状态。 |
+| 24 | `HYD_DIAG_CODE_OVER_PRESSURE_LIMIT_FAULT` | 持续违反最大压力限制；故障停机。 |
+| 25 | `HYD_DIAG_CODE_SOFT_LIMIT_REACHED` | 到达位置软限位边界；比例降低流量，属于警告状态。 |
+| 26 | `HYD_DIAG_CODE_SOFT_LIMIT_VIOLATED` | 超出位置软限位；故障停机。 |
+| 27 | `HYD_DIAG_CODE_PUMP_DIRECTION_CONFLICT` | 同一油泵的活动轴请求相反方向；接口报告冲突，需由 PLC 决定降级或中止。 |
+| 28 | `HYD_DIAG_CODE_INTERNAL_ERROR` | 控制器内部错误；停止运动并复位控制器。 |
+| 29 | `HYD_DIAG_CODE_BUFFER_FULL` | 命令缓冲区已满；已有待执行/缓冲段，当前命令被拒绝。 |
+| 30 | `HYD_DIAG_CODE_MECHANISM_TYPE_INVALID` | 机构类型无效；仅支持直接机构或五点曲肘机构。 |
+| 31 | `HYD_DIAG_CODE_MECHANISM_POOL_EXHAUSTED` | 五点曲肘机构实例池已耗尽；释放实例或减少并发轴数量。 |
+| 32 | `HYD_DIAG_CODE_MECHANISM_VALIDATION_BUSY` | 五点曲肘机构校验工作区忙；等待当前校验事务完成。 |
+| 33 | `HYD_DIAG_CODE_MECHANISM_CONFIG_BUSY` | 轴处于活动状态时禁止修改机构配置。 |
+| 34 | `HYD_DIAG_CODE_MECHANISM_CONFIG_INVALID` | 五点曲肘机构几何配置无效；检查杆长、固定三角形和分支参数。 |
+| 35 | `HYD_DIAG_CODE_KINEMATICS_POSITION_OUT_OF_RANGE` | 模板位置超出已校验的运动学范围；故障停机。 |
+| 36 | `HYD_DIAG_CODE_KINEMATICS_RUNTIME_INVALID` | 循环执行期间五点曲肘运动学计算失败；故障停机并复位。 |
 
-> 完整定义参见 [common_types.h](include/common_types.h#L117-L139)
+说明：上述数值是 `HYD_DiagnosticCode` 的实际枚举值，`ERRORID`（WORD）按此值输出。警告/信息类诊断通常通过诊断数据或专用输出报告，不一定使运动功能块的 `ERROR` 置位；故障类诊断会触发停止或复位保护。完整定义参见 [common_types.h](include/common_types.h#L159-L195)，诊断等级、来源、恢复方式和保护动作参见 `src/diagnostics.c`。
 
 ---
 
