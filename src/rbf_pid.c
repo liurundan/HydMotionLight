@@ -487,29 +487,29 @@ static void rbf_pid_step_incremental_output(RBF_PID_Handle *pid, float error, fl
 //			 pid->KP, pid->KI, pid->KD);
 
      float actual_press = pid->P_actual;
-//    float setpoint_scale = clamp_positive_or_default(fabsf(pid->P_set), 1.0f);
-//    float pressure_scale = rbf_pid_effective_pressure_scale(pid);
-//    float actual_press_n = actual_press / pressure_scale;
-//    float last_press_n = history->fLastActPress / pressure_scale;
-//    float last_press2_n = history->fLastActPress2 / pressure_scale;
-//    float f_delta_press = actual_press_n - last_press_n;
-//    float f_dd_press = f_delta_press - (last_press_n - last_press2_n);
-//    bool near_target = fabsf(raw_error) <= RBF_PID_NEAR_TARGET_RATIO * setpoint_scale;
-//    bool boost_or_relief = (pid->control_state == RBF_PID_CONTROL_STATE_BOOST) ||
-//        (pid->control_state == RBF_PID_CONTROL_STATE_RELIEF);
-//    float f_uff = (pid->pressure_accel_ff_enabled &&
-//                   boost_or_relief &&
-//                   !near_target &&
-//                   fabsf(f_dd_press) > HYD_THRESH_RBF_FF_ACCEL_DEAD_BAND)
-//        ? (RBF_PID_ACCEL_FF_GAIN * f_dd_press) : 0.0f;
-//
-//    float ref_change = pid->P_set - history->last_ref;
-//    float ref_rate = clampf(-10.0f, ref_change, 10.0f);
-//    float dynamic_ff = (pid->control_state == RBF_PID_CONTROL_STATE_HOLD)
-//        ? 0.0f
-//        : (RBF_PID_DYNAMIC_FF_GAIN * ref_rate);
-//
-//    du += dynamic_ff + f_uff;
+    float setpoint_scale = clamp_positive_or_default(fabsf(pid->P_set), 1.0f);
+    float pressure_scale = rbf_pid_effective_pressure_scale(pid);
+    float actual_press_n = actual_press / pressure_scale;
+    float last_press_n = history->fLastActPress / pressure_scale;
+    float last_press2_n = history->fLastActPress2 / pressure_scale;
+    float f_delta_press = actual_press_n - last_press_n;
+    float f_dd_press = f_delta_press - (last_press_n - last_press2_n);
+    bool near_target = fabsf(raw_error) <= RBF_PID_NEAR_TARGET_RATIO * setpoint_scale;
+    bool boost_or_relief = (pid->control_state == RBF_PID_CONTROL_STATE_BOOST) ||
+        (pid->control_state == RBF_PID_CONTROL_STATE_RELIEF);
+    float f_uff = (pid->pressure_accel_ff_enabled &&
+                   boost_or_relief &&
+                   !near_target &&
+                   fabsf(f_dd_press) > HYD_THRESH_RBF_FF_ACCEL_DEAD_BAND)
+        ? (RBF_PID_ACCEL_FF_GAIN * f_dd_press) : 0.0f;
+
+    float ref_change = pid->P_set - history->last_ref;
+    float ref_rate = clampf(-10.0f, ref_change, 10.0f);
+    float dynamic_ff = (pid->control_state == RBF_PID_CONTROL_STATE_HOLD)
+        ? 0.0f
+        : (RBF_PID_DYNAMIC_FF_GAIN * ref_rate);
+
+    du += dynamic_ff + f_uff;
 
     pid->du = (pid->control_mode == RBF_PID_CONTROL_MODE_PI && !isfinite(du))
         ? 0.0f : du;
