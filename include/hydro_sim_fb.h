@@ -37,6 +37,7 @@ typedef struct {
     HYD_REAL pos_mm;
     HYD_REAL vel_mm_s;
     HYD_REAL pressure_bar;
+    HYD_PumpFeedback pumpFeedback;
 
     HydraulicSimEnv* _env;
     HYD_BOOL _isSharedEnv;

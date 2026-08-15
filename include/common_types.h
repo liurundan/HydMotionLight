@@ -18,6 +18,25 @@ typedef uint8_t HYD_UINT8;
 typedef uint16_t HYD_UINT16;
 typedef uint16_t HYD_UINT;
 
+enum {
+    HYD_PUMP_FEEDBACK_VALID_RPM = 1u << 0,
+    HYD_PUMP_FEEDBACK_VALID_ANGLE = 1u << 1,
+    HYD_PUMP_FEEDBACK_VALID_TORQUE = 1u << 2,
+    HYD_PUMP_FEEDBACK_VALID_TIMESTAMP = 1u << 3
+};
+
+typedef struct {
+    HYD_REAL rpm;
+    HYD_REAL angleDeg;
+    HYD_REAL torquePermille;
+    HYD_TIME timestamp;
+    uint32_t validFlags;
+} HYD_PumpFeedback;
+
+static inline HYD_BOOL HYD_PumpFeedback_HasValid(uint32_t flags, uint32_t required) {
+    return (flags & required) == required;
+}
+
 /* ============================================================================
  * 常量定义
  * 从hdy_config.h继承各MAX值，支持平台裁剪
@@ -231,8 +250,25 @@ typedef struct {
     HYD_REAL etaP;
     HYD_REAL etaI;
     HYD_REAL etaD;
-    HYD_REAL disablePressureAccelFeedforward; /* >0 disables the internal -0.5 * d2P term, 0 keeps the default enabled */
+    /*
+     * RBF-PID: >0 disables the internal -0.5 * d2P term.
+     * RBF-PI: this legacy slot is interpreted as output slew rate in L/min/s.
+     */
+    HYD_REAL disablePressureAccelFeedforward;
 } HYD_RbfPidConfig;
+
+static inline HYD_REAL HYD_RbfPidConfig_GetRbfPiOutputSlewRate(
+    const HYD_RbfPidConfig* config) {
+    return (config != NULL) ? config->disablePressureAccelFeedforward : 0.0;
+}
+
+static inline void HYD_RbfPidConfig_SetRbfPiOutputSlewRate(
+    HYD_RbfPidConfig* config,
+    HYD_REAL outputSlewRate) {
+    if (config != NULL) {
+        config->disablePressureAccelFeedforward = outputSlewRate;
+    }
+}
 
 typedef struct {
     HYD_REAL targetPressure;

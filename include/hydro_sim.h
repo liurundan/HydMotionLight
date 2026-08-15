@@ -74,6 +74,8 @@ typedef struct {
 
     float branch_pressure_bar;
     float last_cmd_rpm;
+    HYD_PumpFeedback pump_feedback;
+    bool pump_feedback_from_pressure_model;
     int direction_cmd;
     bool enabled;
 

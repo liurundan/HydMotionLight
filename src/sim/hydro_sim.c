@@ -42,6 +42,8 @@ static void Sim_InitAxisByType(SimAxisState* axis) {
     memset(&axis->cylinder, 0, sizeof(axis->cylinder));
     axis->branch_pressure_bar = 0.0f;
     axis->last_cmd_rpm = 0.0f;
+    memset(&axis->pump_feedback, 0, sizeof(axis->pump_feedback));
+    axis->pump_feedback_from_pressure_model = false;
     axis->direction_cmd = 0;
     axis->enabled = false;
     axis->valve_cmd.valve_fwd = false;
@@ -138,6 +140,11 @@ static void Sim_UpdateAxisFeedback(SimAxisState* axis) {
     axis->last_feedback.velocity_mm_s = axis->cylinder.current_vel_mm_s;
     axis->last_feedback.interlock_ok = axis->feedback_inj.interlock_ok;
     axis->last_feedback.servo_ready = axis->feedback_inj.servo_ready;
+    if (!axis->pump_feedback_from_pressure_model) {
+        axis->pump_feedback.rpm = axis->last_cmd_rpm;
+        axis->pump_feedback.validFlags = HYD_PUMP_FEEDBACK_VALID_RPM;
+    }
+    axis->last_feedback.pumpFeedback = axis->pump_feedback;
 
     if (axis->feedback_inj.pressure_invalid) {
         axis->last_feedback.pressure_bar = NAN;
@@ -153,6 +160,16 @@ static void Sim_UpdateAxisFeedback(SimAxisState* axis) {
     }
 
     axis->last_feedback.pressure_bar = pressure_bar;
+}
+
+static void Sim_AdoptCommandFeedback(SimAxisState* axis) {
+    if (axis == NULL) return;
+
+    memset(&axis->pump_feedback, 0, sizeof(axis->pump_feedback));
+    axis->pump_feedback.rpm = axis->last_cmd_rpm;
+    axis->pump_feedback.validFlags = HYD_PUMP_FEEDBACK_VALID_RPM;
+    axis->pump_feedback_from_pressure_model = false;
+    axis->last_feedback.pumpFeedback = axis->pump_feedback;
 }
 
 static SimAxisState* Sim_FindFreeAxisSlot(HydraulicSimEnv* env) {
@@ -228,15 +245,20 @@ static void Sim_WritePump(void* ctx, HydroPump* pump) {
     axis = HydraulicSim_FindAxisById(env, Sim_GetAxisId(ctx));
     if (env == NULL || axis == NULL || pump == NULL) return;
 
+    pump->feedback = axis->pump_feedback;
+    pump->feedback_rpm = pump->feedback.rpm;
+
     if (pump->grant_valid && pump->granted_rpm > 0.0f) {
         env->cmd_rpm = pump->granted_rpm;
         env->pump_owner_axis_id = axis->axis_id;
         axis->last_cmd_rpm = pump->granted_rpm;
         axis->enabled = true;
+        Sim_AdoptCommandFeedback(axis);
     } else if (env->pump_owner_axis_id == axis->axis_id) {
         env->cmd_rpm = 0.0f;
         env->pump_owner_axis_id = -1;
         axis->last_cmd_rpm = 0.0f;
+        Sim_AdoptCommandFeedback(axis);
     }
 }
 
@@ -373,6 +395,7 @@ int HydraulicSim_SetAxisCommand(HydraulicSimEnv* env,
     axis->direction_cmd = HydraulicSim_NormalizeDirection(direction);
     axis->valve_cmd.valve_fwd = (axis->direction_cmd > 0);
     axis->valve_cmd.valve_bwd = (axis->direction_cmd < 0);
+    Sim_AdoptCommandFeedback(axis);
 
     if (enable) {
         env->cmd_rpm = axis->last_cmd_rpm;
@@ -523,6 +546,12 @@ void HydraulicSim_Step(HydraulicSimEnv* env, float dt_s) {
     for (i = 0; i < HYD_MAX_HYDRAULIC_SIM_FB; ++i) {
         if (!env->axes[i].allocated) continue;
         Sim_UpdateAxisFeedback(&env->axes[i]);
+        if (!env->axes[i].pump_feedback_from_pressure_model) {
+            env->axes[i].pump_feedback.timestamp =
+                (HYD_TIME)(env->sim_time_s + effective_dt_s);
+            env->axes[i].pump_feedback.validFlags |= HYD_PUMP_FEEDBACK_VALID_TIMESTAMP;
+        }
+        env->axes[i].last_feedback.pumpFeedback = env->axes[i].pump_feedback;
     }
 
     env->sim_time_s += effective_dt_s;

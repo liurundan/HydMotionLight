@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include "common_types.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -64,6 +65,7 @@ typedef struct {
     float requested_rpm;     // 轴/策略侧请求转速
     float granted_rpm;       // 协调器最终授予转速
     float feedback_rpm;      // 实际反馈转速（预留给真机 HAL）
+    HYD_PumpFeedback feedback; // 统一泵反馈包
 
     // 用于系统内部资源仲裁的请求状态
     float req_flow_lpm;      // 轴请求的流量 (L/min)
