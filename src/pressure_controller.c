@@ -186,8 +186,8 @@ static void HYD_ResolveRbfPidConfig(const HYD_MotionSegment* segment,
     config->minKd = (HYD_REAL)PID_MIN_KD;
     config->maxKd = (HYD_REAL)PID_MAX_KD;
     config->etaW = (HYD_REAL)HYD_DEFAULT_RBF_W_LEARNING_RATE;
-    config->etaC = (HYD_REAL)HYD_DEFAULT_RBF_B_LEARNING_RATE;
-    config->etaB = (HYD_REAL)HYD_DEFAULT_RBF_C_LEARNING_RATE;
+    config->etaC = (HYD_REAL)HYD_DEFAULT_RBF_C_LEARNING_RATE;
+    config->etaB = (HYD_REAL)HYD_DEFAULT_RBF_B_LEARNING_RATE;
     config->etaP = (HYD_REAL)HYD_DEFAULT_PID_P_LEARNING_RATE;
     config->etaI = (HYD_REAL)HYD_DEFAULT_PID_I_LEARNING_RATE;
     config->etaD = (HYD_REAL)HYD_DEFAULT_PID_D_LEARNING_RATE;
