@@ -337,7 +337,28 @@ static void test_invalid_axisid_is_safe_and_does_not_pollute_other_axes(void) {
 }
 
 /* ==================================================================
- * Test 9: PressureModel FB 必须跨拍保持状态，并在 disable 时复位
+ * Test 9: HYD_MOVESIMAXIS 使用 PLC 方向枚举 1=正向、0=停止、2=负向
+ * ================================================================== */
+static void test_move_maps_direction_two_to_negative(void) {
+    HYD_HydraulicSimFB* fb;
+    const SimAxisState* axis;
+    int axis_id;
+
+    __HydSimulator_framework_Init();
+
+    axis_id = create_axis((unsigned char)SIM_AXIS_CLAMP, 120.0, 0.0, 0.0);
+    fb = __MK_GetPublic_HydraulicSimFB(axis_id);
+    move_axis(axis_id, true, 1500.0, 2);
+    axis = HydraulicSim_FindAxisByIdConst(fb->_env, axis_id);
+
+    ASSERT_TRUE(fb->direction == -1,
+                "HYD_MOVESIMAXIS DIRECTION=2 should map to internal negative direction");
+    ASSERT_TRUE(axis != NULL && axis->direction_cmd == -1,
+                "HYD_MOVESIMAXIS DIRECTION=2 should command the simulator negative direction");
+}
+
+/* ==================================================================
+ * Test 10: PressureModel FB 必须跨拍保持状态，并在 disable 时复位
  * ================================================================== */
 static void test_pressure_model_fb_persists_state_and_resets_on_disable(void) {
     HYD_PRESSUREMODEL cmd;
@@ -599,6 +620,7 @@ int main(void) {
     test_publish_steps_shared_env_once_per_scan();
     test_fault_injection_is_isolated_per_axis();
     test_invalid_axisid_is_safe_and_does_not_pollute_other_axes();
+    test_move_maps_direction_two_to_negative();
     test_pressure_model_fb_persists_state_and_resets_on_disable();
     test_pressure_model_fb_exposes_first_order_inputs();
     test_pressure_model_fb_negative_speed_depressurizes_without_reset();

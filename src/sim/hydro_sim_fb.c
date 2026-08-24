@@ -244,6 +244,7 @@ void __mcl_cmd_createSimAxis(HYD_CREATESIMAXIS *data__) {
 
 void __mcl_cmd_moveSimAxis(HYD_MOVESIMAXIS *data__) {
     int axis_id;
+    int direction;
     HYD_HydraulicSimFB* fb;
 
     if (data__ == NULL) return;
@@ -256,7 +257,12 @@ void __mcl_cmd_moveSimAxis(HYD_MOVESIMAXIS *data__) {
 
     fb->enable = __GET_VAR(data__->ENABLE);
     fb->cmd_rpm = (HYD_REAL)__GET_VAR(data__->CMD_RPM);
-    fb->direction = HydraulicSim_NormalizeDirection((int)__GET_VAR(data__->DIRECTION));
+    direction = (int)__GET_VAR(data__->DIRECTION);
+    /* PLC interface: 1=positive, 0=hold, 2=negative. */
+    if (direction == 2) {
+        direction = -1;
+    }
+    fb->direction = HydraulicSim_NormalizeDirection(direction);
 
     HydraulicSim_SetAxisCommand(&g_shared_env,
                                 axis_id,
