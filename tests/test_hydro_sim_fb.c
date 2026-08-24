@@ -215,7 +215,41 @@ static void test_move_only_target_axis_under_single_pump_owner(void) {
 }
 
 /* ==================================================================
- * Test 5: read 必须严格按 AXISID 返回各自反馈
+ * Test 5: HYD_MOVESIMAXIS 使用 2 表示负方向
+ * ================================================================== */
+static void test_move_direction_code_two_maps_to_negative(void) {
+    HYD_HydraulicSimFB* fb;
+    HYD_READSIMAXIS read;
+    double positive_position;
+    int axis_id;
+    int i;
+
+    __HydSimulator_framework_Init();
+
+    axis_id = create_axis((unsigned char)SIM_AXIS_INJECT, 120.0, 0.0, 0.0);
+    fb = __MK_GetPublic_HydraulicSimFB(axis_id);
+
+    move_axis(axis_id, true, 1500.0, 1);
+    for (i = 0; i < 10; ++i) {
+        __HydSimulator_framework_Publish();
+    }
+    read_axis(&read, axis_id, true);
+    positive_position = read.POS_MM.value;
+
+    move_axis(axis_id, true, 1500.0, 2);
+    __HydSimulator_framework_Publish();
+    read_axis(&read, axis_id, true);
+
+    ASSERT_TRUE(fb != NULL && fb->direction == -1,
+                "DIRECTION=2 should be stored as the internal negative direction");
+    ASSERT_TRUE(read.POS_MM.value < positive_position,
+                "DIRECTION=2 should move the axis toward the negative direction");
+    ASSERT_TRUE(read.VEL_MM_S.value < 0.0,
+                "DIRECTION=2 should produce negative axis velocity while moving");
+}
+
+/* ==================================================================
+ * Test 6: read 必须严格按 AXISID 返回各自反馈
  * ================================================================== */
 static void test_read_uses_axisid_not_current_pump_owner(void) {
     HYD_READSIMAXIS clamp_read;
@@ -248,7 +282,7 @@ static void test_read_uses_axisid_not_current_pump_owner(void) {
 }
 
 /* ==================================================================
- * Test 6: 多轴存在时，每次 publish 只能步进共享 env 一次
+ * Test 7: 多轴存在时，每次 publish 只能步进共享 env 一次
  * ================================================================== */
 static void test_publish_steps_shared_env_once_per_scan(void) {
     HYD_HydraulicSimFB* clamp_fb;
@@ -277,7 +311,7 @@ static void test_publish_steps_shared_env_once_per_scan(void) {
 }
 
 /* ==================================================================
- * Test 7: 每轴故障注入必须独立
+ * Test 8: 每轴故障注入必须独立
  * ================================================================== */
 static void test_fault_injection_is_isolated_per_axis(void) {
     HYD_HydraulicSimFB* clamp_fb;
@@ -312,7 +346,7 @@ static void test_fault_injection_is_isolated_per_axis(void) {
 }
 
 /* ==================================================================
- * Test 8: 非法 AXISID 调用必须安全且不污染其他轴
+ * Test 9: 非法 AXISID 调用必须安全且不污染其他轴
  * ================================================================== */
 static void test_invalid_axisid_is_safe_and_does_not_pollute_other_axes(void) {
     HYD_READSIMAXIS clamp_read;
@@ -337,7 +371,7 @@ static void test_invalid_axisid_is_safe_and_does_not_pollute_other_axes(void) {
 }
 
 /* ==================================================================
- * Test 9: PressureModel FB 必须跨拍保持状态，并在 disable 时复位
+ * Test 10: PressureModel FB 必须跨拍保持状态，并在 disable 时复位
  * ================================================================== */
 static void test_pressure_model_fb_persists_state_and_resets_on_disable(void) {
     HYD_PRESSUREMODEL cmd;
@@ -595,6 +629,7 @@ int main(void) {
     test_create_two_axes_assigns_unique_ids_and_keeps_config();
     test_create_rejects_invalid_axis_type();
     test_move_only_target_axis_under_single_pump_owner();
+    test_move_direction_code_two_maps_to_negative();
     test_read_uses_axisid_not_current_pump_owner();
     test_publish_steps_shared_env_once_per_scan();
     test_fault_injection_is_isolated_per_axis();

@@ -48,6 +48,14 @@ static int Hyd_IsValidAxisType(int axis_type) {
     return (axis_type == (int)SIM_AXIS_CLAMP) || (axis_type == (int)SIM_AXIS_INJECT);
 }
 
+/* PLC-facing HYD_MOVESIMAXIS uses 2 for the negative direction. */
+static int Hyd_NormalizeMoveSimAxisDirection(int direction) {
+    if (direction == 2) {
+        return -1;
+    }
+    return HydraulicSim_NormalizeDirection(direction);
+}
+
 static void Hyd_ResetAxisMapping(void) {
     int i;
     for (i = 0; i < HYD_MAX_HYDRAULIC_SIM_FB; ++i) {
@@ -256,7 +264,7 @@ void __mcl_cmd_moveSimAxis(HYD_MOVESIMAXIS *data__) {
 
     fb->enable = __GET_VAR(data__->ENABLE);
     fb->cmd_rpm = (HYD_REAL)__GET_VAR(data__->CMD_RPM);
-    fb->direction = HydraulicSim_NormalizeDirection((int)__GET_VAR(data__->DIRECTION));
+    fb->direction = Hyd_NormalizeMoveSimAxisDirection((int)__GET_VAR(data__->DIRECTION));
 
     HydraulicSim_SetAxisCommand(&g_shared_env,
                                 axis_id,
