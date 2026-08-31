@@ -295,6 +295,7 @@ static HYD_MotionSegment buildPressureSegment(
     /* Preserve the established PressureHandle limit; recipe/profile paths use
      * the configurable maxFlow parameter independently. */
     seg.maxFlow = 20.0;
+
     seg.duration = duration;
     seg.pressureRampRate = rampRate;
     seg.pressureCeiling  = MAX_PRESSURE;
@@ -643,6 +644,9 @@ static HYD_BOOL applyMoveVelocityLiveUpdate(HYD_MotionControlFB* fb,
     request.maxDeceleration = __GET_VAR(data__->DECELERATION);
     request.maxPressure = pressureLimit;
     request.direction = dir;
+
+    fb->_activeSegment.maxFlow = 11;
+
     return HYD_MotionControlFB_ApplyLiveUpdate(fb, &request);
 }
 
@@ -664,6 +668,17 @@ static HYD_BOOL applyPressureHandleLiveUpdate(HYD_MotionControlFB* fb,
     request.ownerTicket = (uint16_t)execId;
     request.targetPressure = __GET_VAR(data__->PRESSURE);
     request.pressureRampRate = __GET_VAR(data__->PRESSURERAMPRATE);
+
+    // liurundan: fix overshoot bug in low target pressure
+    if(fb->DIRECT_SEGMENT.targetPressure < 0.1f) {
+    	fb->DIRECT_SEGMENT.maxFlow = 5;
+	}
+    else {
+    	fb->DIRECT_SEGMENT.maxFlow = fb->DIRECT_SEGMENT.targetPressure * 0.3f;
+    }
+    if(fb->DIRECT_SEGMENT.maxFlow > 20.0f) {
+    	fb->DIRECT_SEGMENT.maxFlow = 20.0f;
+    }
     return HYD_MotionControlFB_ApplyLiveUpdate(fb, &request);
 }
 

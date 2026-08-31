@@ -263,7 +263,10 @@ static void HYD_ResolvePressureControllerConfig(const HYD_MotionSegment* segment
         }
     }
     config->samplingPeriod = HYD_ResolveAdaptiveSamplingPeriod(state, config->dt);
+
+
     HYD_ResolveRbfPidConfig(segment, &config->rbf);
+
 }
 
 static void HYD_EnsureRbfPidInitialized(HYD_PressureControllerState* state,
@@ -379,6 +382,8 @@ static void HYD_ApplyRbfPidConfig(HYD_PressureControllerState* state,
     } else {
         RBF_PID_SetGainCompensation(&state->rbfPid, 0.0f);
     }
+
+
 }
 
 static void HYD_SynchronizeRbfPidState(HYD_PressureControllerState* state,
@@ -405,7 +410,7 @@ static void HYD_SynchronizeRbfPidState(HYD_PressureControllerState* state,
 
     state->rbfPid.Output = (float)seededFlow;
     state->rbfPid.u_prev = (float)seededFlow;
-    state->rbfPid.n_out = (float)seededFlow;
+
     state->rbfPid.P_set = (float)targetPressure;
     state->rbfPid.P_actual = (float)measuredPressure;
     state->rbfPid.Error = (float)error;
@@ -500,8 +505,7 @@ void HYD_PressureController_Execute(const HYD_MotionSegment* segment,
 
     HYD_ResolvePressureControllerConfig(segment, state, input, &config);
 
-    filteredPressure = state->previousFilteredPressure +
-        config.filterAlpha * (input->measuredPressure - state->previousFilteredPressure);
+    filteredPressure = input->measuredPressure ;
     filteredPressureRate = state->previousFilteredPressureRate;
     if (config.dt > 0.0) {
         rawPressureRate = (filteredPressure - state->previousFilteredPressure) / config.dt;
@@ -510,9 +514,6 @@ void HYD_PressureController_Execute(const HYD_MotionSegment* segment,
     }
 
     error = input->targetPressure - filteredPressure;
-    if (fabs(error) <= config.deadband) {
-        error = 0.0;
-    }
 
     trackingRequested = state->trackingRequested ||
         ((state->activeStrategy != HYD_PRESSURE_CONTROLLER_NONE) &&
@@ -535,9 +536,8 @@ void HYD_PressureController_Execute(const HYD_MotionSegment* segment,
         HYD_BOOL needsAdaptiveReset;
         HYD_BOOL internalSaturated;
 
-        needsAdaptiveReset = trackingRequested ||
-            !state->rbfInitialized ||
-            (input->targetPressure + 1e-6 < (HYD_REAL)state->rbfPid.P_set);
+        needsAdaptiveReset =  !state->rbfInitialized|| trackingRequested;
+        		//|| (input->targetPressure + 1e-6 < (HYD_REAL)state->rbfPid.P_set) ;
         HYD_ApplyRbfPidConfig(state, &config, segment,
                               input->flowToPumpSpeedGain, input->pumpSpeedLimit);
 
@@ -582,7 +582,6 @@ void HYD_PressureController_Execute(const HYD_MotionSegment* segment,
         state->rbfPid.output_saturated = output->saturated ? true : false;
         state->rbfPid.Output = (float)outputFlow;
         state->rbfPid.u_prev = (float)outputFlow;
-        state->rbfPid.n_out = (float)outputFlow;
 
         state->initialized = true;
         state->trackingRequested = false;

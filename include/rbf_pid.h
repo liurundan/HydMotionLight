@@ -20,15 +20,15 @@
  * RBF_PID_SetParamLimits() 覆盖。 */
 #define PID_MIN_KP          0.4f
 #define PID_MAX_KP          0.6f
-#define PID_MIN_KI          0.0018f // 0.0008
+#define PID_MIN_KI          0.0013f // 0.0008
 #define PID_MAX_KI          0.0056f
 #define PID_MIN_KD          0.015f
 #define PID_MAX_KD          0.035f
 
-#define HYD_DEFAULT_RBF_W_LEARNING_RATE 0.005f
-#define HYD_DEFAULT_RBF_C_LEARNING_RATE 0.005f
-#define HYD_DEFAULT_RBF_B_LEARNING_RATE 0.005f
-#define HYD_DEFAULT_PID_P_LEARNING_RATE 0.00025f
+#define HYD_DEFAULT_RBF_W_LEARNING_RATE 0.002f
+#define HYD_DEFAULT_RBF_C_LEARNING_RATE 0.002f
+#define HYD_DEFAULT_RBF_B_LEARNING_RATE 0.002f
+#define HYD_DEFAULT_PID_P_LEARNING_RATE 0.01f
 #define HYD_DEFAULT_PID_I_LEARNING_RATE 0.00025f
 #define HYD_DEFAULT_PID_D_LEARNING_RATE 0.00025f
 
@@ -95,7 +95,6 @@ typedef struct {
     float max_KD;
     int32_t Status;
     int32_t TuneResult;
-    float n_out;                    /* mirrored flow-domain command [L/min] */
 
     /* RBF神经网络参数 */
     float c[RBF_HNUM][RBF_INPUT_DIM];   // 中心向量

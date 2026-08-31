@@ -3326,7 +3326,7 @@ void HYD_MotionControlFB_Init(HYD_MotionControlFB* fb) {
     fb->_params.positionTolerance = 0.0001f; 
     fb->_params.velocityTolerance = 0.0f; // default diabled, igore velocity deviation alarm
     fb->_params.flowTolerance = 0.0f;// default diabled
-    fb->_params.pressureTolerance = 0.5f;
+    fb->_params.pressureTolerance = 0.0f;
     fb->_params.timeoutLimit = 0.0f; // default diabled, since not all recipes may have a meaningful timeout condition
     fb->_params.velocityToFlowGain = 0.2f;
     fb->_params.maxVelocity = 100.0f;
@@ -4342,6 +4342,8 @@ HYD_BOOL HYD_MotionControlFB_ApplyLiveUpdate(HYD_MotionControlFB* fb,
          * FB-level ERROR output. */
         return false;
     }
+
+
 
     HYD_StateReporter_ReportDiagnostic(fb,
                                        HYD_DIAG_CODE_COMMAND_NOT_ALLOWED,
