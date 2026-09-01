@@ -674,7 +674,7 @@ static HYD_BOOL applyPressureHandleLiveUpdate(HYD_MotionControlFB* fb,
     	fb->DIRECT_SEGMENT.maxFlow = 5;
 	}
     else {
-    	fb->DIRECT_SEGMENT.maxFlow = fb->DIRECT_SEGMENT.targetPressure * 0.3f;
+    	fb->DIRECT_SEGMENT.maxFlow = fb->DIRECT_SEGMENT.targetPressure * 0.3f;//0.13
     }
     if(fb->DIRECT_SEGMENT.maxFlow > 20.0f) {
     	fb->DIRECT_SEGMENT.maxFlow = 20.0f;

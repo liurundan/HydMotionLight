@@ -81,6 +81,7 @@ typedef struct {
 
     /* 最近一次控制结果 */
     float Output;                   /* last commanded flow [L/min] */
+    float Output_total;
     float KP;
     float KI;
     float KD;

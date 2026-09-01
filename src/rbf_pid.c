@@ -336,6 +336,7 @@ static int rbf_pid_step_rbf_nn(RBF_PID_Handle *pid,float error) {
 		}
 
 		for (i = 0; i < RBF_HNUM; ++i) {
+			float w_old = pid->w[i];
 			float delta_w = pid->eta_w * error_rbf_n * h[i]
 					+ pid->alpha * (pid->w[i] - pid->w_1[i]);
 			float width = pid->b_rbf[i];
@@ -519,7 +520,7 @@ static void rbf_pid_step_incremental_output(RBF_PID_Handle *pid, float error, fl
     float ref_rate = clampf(-10.0f, ref_change, 10.0f);
     float dynamic_ff = RBF_PID_DYNAMIC_FF_GAIN * ref_rate;
 
-    du += dynamic_ff + f_uff;
+    //du += dynamic_ff + f_uff;
     du = clampf( -0.5, du, 0.5 );
 //    printf("output_min: %.3f, output_max: %.3f,  kp:%.3f,k:%.3f,kd:%.3f,du:%.6f\n", output_min, output_max,
 //    		pid->KP, pid->KI, pid->KD, du);
@@ -527,11 +528,19 @@ static void rbf_pid_step_incremental_output(RBF_PID_Handle *pid, float error, fl
     pid->du = (pid->control_mode == RBF_PID_CONTROL_MODE_PI && !isfinite(du))
         ? 0.0f : du;
 
-    pid->Output = clampf(output_min, pid->u_prev + pid->du, soft_output_max);
-    pid->output_saturated = (pid->Output <= output_min + 1.0e-6f) ||
-        (pid->Output >= soft_output_max - 1.0e-6f);
+    pid->Output = pid->u_prev + pid->du;
+
+    // 4. 计算前馈总合（绝对量）
+    float ff_rpm = 0.6626f * pid->P_set;
+    float Kff = 0.0002f; // 前馈增益，可根据实际系统调节
+    float ff_flow = Kff * ff_rpm;     // 可根据需要滤波
+
+    pid->Output_total = clampf(output_min, pid->Output + dynamic_ff + f_uff, soft_output_max);
+
+    pid->output_saturated = (pid->Output_total <= output_min + 1.0e-6f) || (pid->Output_total >= soft_output_max - 1.0e-6f);
     if (pid->P_set < 0.1f && actual_press < 0.5f) {
         pid->Output = 0.0f;
+        pid->Output_total = 0.0f;
         pid->output_saturated = false;
     }
 
@@ -633,7 +642,7 @@ float RBF_PID_Update(RBF_PID_Handle *pid, float setpoint, float feedback) {
     rbf_pid_step_steady_state(pid);
     pid->Status = pid->steady_state ? 3 : 2;
 
-    return pid->Output;
+    return pid->Output_total;
 }
 
 void RBF_PID_Reset(RBF_PID_Handle *pid) {
