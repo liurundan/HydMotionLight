@@ -292,7 +292,7 @@ static void test_rbf_pid_strategy_executes_within_limits_and_adapts(void) {
         assert(state.rbfInitialized);
         assert(state.rbfPid.Status == 2 || state.rbfPid.Status == 3);
         assert(fabs((double)state.rbfPid.Output - (double)output.outputFlow) < 1e-6);
-        assert(fabs((double)state.rbfPid.n_out - (double)output.outputFlow) < 1e-6);
+        assert(fabs((double)state.rbfPid.Output_total - (double)output.outputFlow) < 1e-6);
         assert(fabs((double)state.rbfPid.u_prev - (double)output.outputFlow) < 1.0);
         assert(state.rbfPid.flow_normalization_scale > 0.0f);
         assert(state.rbfPid.pressure_normalization_scale > 0.0f);
@@ -447,7 +447,7 @@ static void test_rbf_pid_strategy_switch_tracks_previous_output_bumplessly(void)
     assert(output1.appliedStrategy == HYD_PRESSURE_CONTROLLER_RBF_PID);
     assert(fabs(output1.outputFlow - output0.outputFlow) < 0.05);
     assert(fabs((double)state.rbfPid.Output - (double)output1.outputFlow) < 0.05);
-    assert(fabs((double)state.rbfPid.n_out - (double)output1.outputFlow) < 0.05);
+    assert(fabs((double)state.rbfPid.Output_total - (double)output1.outputFlow) < 0.05);
     assert(state.activeStrategy == HYD_PRESSURE_CONTROLLER_RBF_PID);
     assert(state.rbfInitialized);
     assert(state.rbfPid.Status == 2 || state.rbfPid.Status == 3);

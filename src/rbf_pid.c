@@ -130,9 +130,9 @@ static void rbf_pid_apply_default_learning_rates(RBF_PID_Handle *pid) {
 }
 
 static void rbf_pid_apply_default_gains(RBF_PID_Handle *pid) {
-    pid->KP = 0.04f;
+    pid->KP = PID_MIN_KP;
     pid->KI = PID_MIN_KI;
-    pid->KD = 0.020f;
+    pid->KD = PID_MIN_KD;
 }
 
 static void rbf_pid_refresh_gain_compensation(RBF_PID_Handle *pid) {
@@ -288,12 +288,11 @@ static int rbf_pid_step_rbf_nn(RBF_PID_Handle *pid,float error) {
     float error_rbf_n;
     int i;
 
-    if (pid->control_mode == RBF_PID_CONTROL_MODE_PI) {
-        rbf_pid_sanitize_network(pid);
-        for (i = 0; i < RBF_INPUT_DIM; ++i) {
-            if (!isfinite(x[i])) {
-                x[i] = 0.0f;
-            }
+    /* P0-1修复：统一数值防护，模式无关 */
+    rbf_pid_sanitize_network(pid);
+    for (i = 0; i < RBF_INPUT_DIM; ++i) {
+        if (!isfinite(x[i])) {
+            x[i] = 0.0f;
         }
     }
     memcpy(pid->last_rbf_input, x, sizeof(x));
@@ -330,47 +329,50 @@ static int rbf_pid_step_rbf_nn(RBF_PID_Handle *pid,float error) {
 	if (!is_steady) {
 		error_rbf_n = y_n - y_hat_n;
 
-		if (pid->control_mode == RBF_PID_CONTROL_MODE_PI
-				&& rbf_pid_same_direction_saturation(pid, pid->Error)) {
-			return 0;
+		/* P0-2修复：权重饱和抑制应模式无关 */
+		bool skip_learning = false;
+		if (pid->control_mode == RBF_PID_CONTROL_MODE_PI) {
+			skip_learning = rbf_pid_same_direction_saturation(pid, pid->Error);
 		}
 
-		for (i = 0; i < RBF_HNUM; ++i) {
-			float w_old = pid->w[i];
-			float delta_w = pid->eta_w * error_rbf_n * h[i]
-					+ pid->alpha * (pid->w[i] - pid->w_1[i]);
-			float width = pid->b_rbf[i];
-			float width_sq = width * width;
-			float width_cu = width_sq * width;
-			float norm_val = 0.0f;
-			int j;
+		if (!skip_learning) {
+			for (i = 0; i < RBF_HNUM; ++i) {
+				float w_old = pid->w[i];
+				float delta_w = pid->eta_w * error_rbf_n * h[i]
+						+ pid->alpha * (pid->w[i] - pid->w_1[i]);
+				float width = pid->b_rbf[i];
+				float width_sq = width * width;
+				float width_cu = width_sq * width;
+				int j;
 
-			if (pid->control_mode == RBF_PID_CONTROL_MODE_PI) {
+				/* Step 1: Compute norm_val BEFORE updating c[i][j] */
+				float norm_val = 0.0f;
+				for (j = 0; j < RBF_INPUT_DIM; ++j) {
+					float diff = x[j] - pid->c[i][j];
+					norm_val += diff * diff;
+				}
+
+				/* Step 2: Update c[i][j] using w_old */
+				for (j = 0; j < RBF_INPUT_DIM; ++j) {
+					float delta_center = pid->eta_c * error_rbf_n * w_old * h[i]
+							* (x[j] - pid->c[i][j]) / width_sq
+							+ pid->alpha * (pid->ci_1[i][j] - pid->ci_2[i][j]);
+					pid->c[i][j] = rbf_pid_clamp_adaptive_value(pid, -2.0f,
+							pid->c[i][j] + delta_center, 2.0f, pid->c[i][j]);
+				}
+
+				/* Step 3: Update b_rbf[i] using norm_val computed with OLD centers */
+				pid->b_rbf[i] = rbf_pid_clamp_adaptive_value(pid, 0.2f,
+						pid->b_rbf[i]
+								+ pid->eta_b * error_rbf_n * w_old * h[i]
+										* norm_val / width_cu
+								+ pid->alpha * (pid->bi_1[i] - pid->bi_2[i]), 5.0f,
+						pid->b_rbf[i]);
+
+				/* Step 4: Update w[i] with WEIGHT_LIMIT clamping (P0-2修复：统一钳位) */
 				pid->w[i] = clamp_finite(-RBF_PID_WEIGHT_LIMIT,
 						pid->w[i] + delta_w, RBF_PID_WEIGHT_LIMIT, pid->w[i]);
-			} else {
-				pid->w[i] += delta_w;
 			}
-
-			for (j = 0; j < RBF_INPUT_DIM; ++j) {
-				float delta_center = pid->eta_c * error_rbf_n * pid->w[i] * h[i]
-						* (x[j] - pid->c[i][j]) / width_sq
-						+ pid->alpha * (pid->ci_1[i][j] - pid->ci_2[i][j]);
-				pid->c[i][j] = rbf_pid_clamp_adaptive_value(pid, -2.0f,
-						pid->c[i][j] + delta_center, 2.0f, pid->c[i][j]);
-			}
-
-			for (j = 0; j < RBF_INPUT_DIM; ++j) {
-				float diff = x[j] - pid->c[i][j];
-				norm_val += diff * diff;
-			}
-
-			pid->b_rbf[i] = rbf_pid_clamp_adaptive_value(pid, 0.2f,
-					pid->b_rbf[i]
-							+ pid->eta_b * error_rbf_n * pid->w[i] * h[i]
-									* norm_val / width_cu
-							+ pid->alpha * (pid->bi_1[i] - pid->bi_2[i]), 5.0f,
-					pid->b_rbf[i]);
 		}
 
 		for (i = 0; i < RBF_HNUM; ++i) {
@@ -469,10 +471,7 @@ static void rbf_pid_step_adaptive_gains(RBF_PID_Handle *pid, float error, float 
 			}
 		}
 		pid->KD += delta_Kd;
-		// 软限幅：不直接砍到下限，留微小弹性
-		if (pid->KD < pid->min_KD) {
-			pid->KD = pid->min_KD + 0.01f * (pid->max_KD - pid->min_KD);
-		}
+		pid->KD = clampf(pid->min_KD, pid->KD, pid->max_KD);
 
 	}
 }
@@ -512,10 +511,16 @@ static void rbf_pid_step_incremental_output(RBF_PID_Handle *pid, float error, fl
     float f_delta_press = actual_press_n - last_press_n;
     float f_dd_press = f_delta_press - (last_press_n - last_press2_n);
 
-    float f_uff = RBF_PID_ACCEL_FF_GAIN * f_dd_press;
+    float f_uff = 0.0f;
+    if (pid->pressure_accel_ff_enabled) {
+        float near_target_threshold = pid->P_set * RBF_PID_NEAR_TARGET_RATIO;
+        float pressure_error = fabsf(pid->P_set - actual_press);
 
-    f_uff = -0.15 * f_dd_press;
-//
+        if (pressure_error >= near_target_threshold) {
+            f_uff = -0.15f * f_dd_press;
+        }
+    }
+
     float ref_change = pid->P_set - pid->last_ref;
     float ref_rate = clampf(-10.0f, ref_change, 10.0f);
     float dynamic_ff = RBF_PID_DYNAMIC_FF_GAIN * ref_rate;
@@ -525,8 +530,7 @@ static void rbf_pid_step_incremental_output(RBF_PID_Handle *pid, float error, fl
 //    printf("output_min: %.3f, output_max: %.3f,  kp:%.3f,k:%.3f,kd:%.3f,du:%.6f\n", output_min, output_max,
 //    		pid->KP, pid->KI, pid->KD, du);
 
-    pid->du = (pid->control_mode == RBF_PID_CONTROL_MODE_PI && !isfinite(du))
-        ? 0.0f : du;
+    pid->du = !isfinite(du) ? 0.0f : du;
 
     pid->Output = pid->u_prev + pid->du;
 
@@ -611,14 +615,12 @@ float RBF_PID_Update(RBF_PID_Handle *pid, float setpoint, float feedback) {
     float raw_error;
     float error;
 
-    if (pid->control_mode == RBF_PID_CONTROL_MODE_PI) {
-        pid->P_set = isfinite(setpoint) ? setpoint : 0.0f;
-        pid->P_actual = isfinite(feedback) ? feedback : 0.0f;
-        rbf_pid_sanitize_runtime_state(pid);
-    } else {
-        pid->P_set = setpoint;
-        pid->P_actual = feedback;
-    }
+    pid->P_set = isfinite(setpoint) ? setpoint : 0.0f;
+    pid->P_actual = isfinite(feedback) ? feedback : 0.0f;
+
+    /* P0-1修复：统一数值防护，移到enforce之前，模式无关 */
+    rbf_pid_sanitize_runtime_state(pid);
+
     rbf_pid_enforce_control_mode(pid);
     raw_error = pid->P_set - pid->P_actual;
     error = rbf_pid_apply_deadband(raw_error);
@@ -626,18 +628,20 @@ float RBF_PID_Update(RBF_PID_Handle *pid, float setpoint, float feedback) {
     pid->control_state = rbf_pid_resolve_control_state(pid, raw_error);
 
     int is_steady = rbf_pid_step_rbf_nn(pid,error);
-    if( !is_steady ) {
-    	rbf_pid_step_adaptive_gains(pid, error, raw_error);
-    }
 
     rbf_pid_step_incremental_output(pid, error, raw_error);
 
     pid->y_prev2 = pid->y_prev1;
     pid->y_prev1 = pid->P_actual;
-    pid->e_prev2 = pid->e_prev1;
-    pid->e_prev1 = error;
     pid->u_prev = pid->Output;
     pid->du_prev = pid->du;
+
+    if( !is_steady ) {
+    	rbf_pid_step_adaptive_gains(pid, error, raw_error);
+    }
+
+    pid->e_prev2 = pid->e_prev1;
+    pid->e_prev1 = error;
 
     rbf_pid_step_steady_state(pid);
     pid->Status = pid->steady_state ? 3 : 2;
@@ -665,6 +669,9 @@ void RBF_PID_SetParamLimits(RBF_PID_Handle *pid,
     sort_pair(&pid->min_KI, &pid->max_KI);
     sort_pair(&pid->min_KD, &pid->max_KD);
     pid->pid_mode_kd = clampf(pid->min_KD, pid->pid_mode_kd, pid->max_KD);
+    pid->KP = clampf(pid->min_KP, pid->KP, pid->max_KP);
+    pid->KI = clampf(pid->min_KI, pid->KI, pid->max_KI);
+    pid->KD = clampf(pid->min_KD, pid->KD, pid->max_KD);
 }
 
 void RBF_PID_SetLearningRates(RBF_PID_Handle *pid,

@@ -26,9 +26,9 @@ static void test_init_sets_ready_defaults(void) {
     assert(fabsf(pid.flow_normalization_scale - 90.0f) < 1e-6f);
     assert(!pid.gain_compensation_enabled);
     assert(fabsf(pid.gain_compensation_factor - 1.0f) < 1e-6f);
-    assert(fabsf(pid.KP - 0.04f) < 1e-6f);
+    assert(fabsf(pid.KP - PID_MIN_KP) < 1e-6f);
     assert(fabsf(pid.KI - PID_MIN_KI) < 1e-6f);
-    assert(fabsf(pid.KD - 0.020f) < 1e-6f);
+    assert(fabsf(pid.KD - PID_MIN_KD) < 1e-6f);
     assert(fabsf(pid.Output) < 1e-6f);
     assert(fabsf(pid.u_prev) < 1e-6f);
     assert(fabsf(pid.e_prev1) < 1e-6f);
@@ -106,12 +106,12 @@ static void test_enabled_controller_respects_limits_and_drives_feedback(void) {
 
     for (step = 0; step < 20; ++step) {
         output = RBF_PID_Update(&pid, 100.0f, feedback);
-        assert(fabsf(output - pid.Output) < 1e-6f);
-        assert(fabsf(pid.n_out - output) < 1e-6f);
+        assert(fabsf(output - pid.Output_total) < 1e-6f);
+        assert(fabsf(pid.Output_total - output) < 1e-6f);
         assert(output >= MIN_OUTPUT - 1e-3f);
         assert(output <= pid.fMaxFlow * pid.fFlowRateLimit + 1e-3f);
-        assert(pid.n_out >= MIN_OUTPUT - 1e-6f);
-        assert(pid.n_out <= max_flow_output + 1e-6f);
+        assert(pid.Output_total >= MIN_OUTPUT - 1e-6f);
+        assert(pid.Output_total <= max_flow_output + 1e-6f);
         assert(pid.KP >= pid.min_KP - 1e-6f && pid.KP <= pid.max_KP + 1e-6f);
         assert(pid.KI >= pid.min_KI - 1e-6f && pid.KI <= pid.max_KI + 1e-6f);
         assert(pid.KD >= pid.min_KD - 1e-6f && pid.KD <= pid.max_KD + 1e-6f);
@@ -135,7 +135,7 @@ static void test_explicit_reset_restores_runtime_state(void) {
     RBF_PID_SetPressureNormalization(&pid, 800.0f);
     RBF_PID_SetGainCompensation(&pid, 2.0f);
     (void)RBF_PID_Update(&pid, 100.0f, 0.0f);
-    assert(fabsf(pid.u_prev) > 1e-6f || fabsf(pid.du_prev) > 1e-6f || fabsf(pid.n_out) > 1e-6f);
+    assert(fabsf(pid.u_prev) > 1e-6f || fabsf(pid.du_prev) > 1e-6f || fabsf(pid.Output_total) > 1e-6f);
 
     RBF_PID_Reset(&pid);
     assert(pid.Status == 1);
@@ -143,7 +143,7 @@ static void test_explicit_reset_restores_runtime_state(void) {
     assert(fabsf(pid.du_prev) < 1e-6f);
     assert(fabsf(pid.e_prev1) < 1e-6f);
     assert(fabsf(pid.e_prev2) < 1e-6f);
-    assert(fabsf(pid.n_out) < 1e-6f);
+    assert(fabsf(pid.Output_total) < 1e-6f);
     assert(fabsf(pid.sampling_period - 0.01f) < 1e-6f);
     assert(fabsf(pid.fMaxFlow - 90.0f) < 1e-6f);
     assert(fabsf(pid.fFlowRateLimit - 1.0f) < 1e-6f);
@@ -219,10 +219,11 @@ static void test_default_gain_window_allows_adaptation(void) {
     RBF_PID_Init(&pid, 0.01f, 90.0f, 1.0f);
     kp_initial = pid.KP;
 
-    /* Drive a step error scenario for 50 steps */
-    for (step = 0; step < 50; step++) {
-        float feedback = (step < 25) ? 0.0f : 50.0f;
-        (void)RBF_PID_Update(&pid, 100.0f, feedback);
+    /* Drive with varying error to trigger gradient-based adaptation */
+    for (step = 0; step < 100; step++) {
+        /* Oscillate feedback to create non-zero de */
+        float feedback = 50.0f + 30.0f * sinf(step * 0.3f);
+        (void)RBF_PID_Update(&pid, 150.0f, feedback);
     }
     kp_final = pid.KP;
 
@@ -379,8 +380,8 @@ static void test_flow_domain_output_is_independent_from_pump_gain(void) {
     out_altered = RBF_PID_Update(&altered, 80.0f, 25.0f);
 
     assert(fabsf(out_base - out_altered) < 1e-6f);
-    assert(fabsf(base.n_out - out_base) < 1e-6f);
-    assert(fabsf(altered.n_out - out_altered) < 1e-6f);
+    assert(fabsf(base.Output_total - out_base) < 1e-6f);
+    assert(fabsf(altered.Output_total - out_altered) < 1e-6f);
     printf("PASS flow-domain controller independence test\n");
 }
 
