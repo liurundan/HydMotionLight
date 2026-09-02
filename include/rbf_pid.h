@@ -2,6 +2,12 @@
  * @file rbf_pid.h
  * @brief RBF神经网络自适应PID控制器 - 嵌入式C实现
  * @note 基于ST代码转换，适用于ARM Cortex-M等平台
+ *
+ * 评审修复 v2：新增结构体字段（追加在末尾，保持既有字段偏移不变）：
+ *   - du_normalization_scale [P0-2]：Δu 单独归一化尺度
+ *   - P_filtered             [P2]：压力测量一阶低通值
+ *   - error_in_deadband      [P1-6]：迟滞死区状态标志
+ * 新增接口：RBF_PID_SetDuNormalization()
  */
 
 #ifndef RBF_PID_H
@@ -19,7 +25,7 @@
  * Task 2 要求初始化/复位恢复到确定性的内置窗口，后续可通过
  * RBF_PID_SetParamLimits() 覆盖。 */
 #define PID_MIN_KP          0.4f
-#define PID_MAX_KP          0.6f
+#define PID_MAX_KP          0.9f
 #define PID_MIN_KI          0.0013f // 0.0008
 #define PID_MAX_KI          0.0056f
 #define PID_MIN_KD          0.015f
@@ -145,6 +151,11 @@ typedef struct {
     float pid_mode_eta_d;
     bool pressure_accel_ff_requested;
     RBF_PID_ControlMode control_mode; /* Appended to preserve existing field offsets. */
+
+    /* ===== 评审修复 v2 新增字段（追加在末尾，保持既有字段偏移不变） ===== */
+    float du_normalization_scale;   /* [P0-2] Δu 归一化尺度（默认 5.0，0/负值回落默认） */
+    float P_filtered;               /* [P2] 压力测量一阶低通值（微分/前馈/辨识器用） */
+    bool  error_in_deadband;        /* [P1-6] 迟滞死区状态标志 */
 } RBF_PID_Handle;
 
 /**
@@ -203,6 +214,15 @@ void RBF_PID_SetLearningRates(RBF_PID_Handle *pid,
  */
 void RBF_PID_SetPressureNormalization(RBF_PID_Handle *pid, float scale);
 void RBF_PID_SetFlowNormalization(RBF_PID_Handle *pid, float scale);
+
+/**
+ * @brief 配置 Δu 归一化标量（评审修复 v2 新增）
+ * @param pid RBF_PID句柄指针
+ * @param scale Δu 归一化尺度 [L/min]，默认 5.0；传 0 或负值回落默认。
+ * @note 标定目标：使单步 Δu/尺度 大致落在 ±0.5 以内。
+ *       若采样周期相对 1ms 变化超过 5 倍，建议按实际 Δu 幅度重新标定。
+ */
+void RBF_PID_SetDuNormalization(RBF_PID_Handle *pid, float scale);
 
 /**
  * @brief 设置系统物理增益兼容参数

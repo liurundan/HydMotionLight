@@ -269,7 +269,7 @@ static bool rbf_pid_same_direction_saturation(const RBF_PID_Handle *pid, float e
 }
 
 // ========== 稳态判定参数（可调） ==========
-#define STEADY_DEAD_ZONE     10.0f   // 误差死区（MPa），根据传感器量程设定
+#define STEADY_DEAD_ZONE     10.0f   // 误差死区（bar），根据传感器量程设定
 #define STEADY_DE_RATIO      1.0f    // 变化率死区系数
 
 static int rbf_pid_step_rbf_nn(RBF_PID_Handle *pid,float error) {
@@ -429,8 +429,9 @@ static void rbf_pid_step_adaptive_gains(RBF_PID_Handle *pid, float error, float 
 	float dde = de - (pid->e_prev1 - pid->e_prev2);
 	// ---------- 5. PID 参数在线整定（带抗饱和 & 微分唤醒） ----------
 	float abs_Jac = fabsf(pid->Jacobian);
-	if (abs_Jac < 1e-6f)
+	if (abs_Jac < 1e-6f) {
 		abs_Jac = 1e-6f;   // 避免除零
+	}
 	// 5.3 比例增益 Kp 更新（常规梯度）
 	//    公式：ΔKp = ηp * e * Jac * Δe
 	float grad_Kp = pid->eta_p * error * sign(pid->Jacobian) * abs_Jac * de;
@@ -512,12 +513,13 @@ static void rbf_pid_step_incremental_output(RBF_PID_Handle *pid, float error, fl
     float f_dd_press = f_delta_press - (last_press_n - last_press2_n);
 
     float f_uff = 0.0f;
+    float near_target_threshold = pid->P_set * RBF_PID_NEAR_TARGET_RATIO;
     if (pid->pressure_accel_ff_enabled) {
-        float near_target_threshold = pid->P_set * RBF_PID_NEAR_TARGET_RATIO;
         float pressure_error = fabsf(pid->P_set - actual_press);
 
-        if (pressure_error >= near_target_threshold) {
-            f_uff = -0.15f * f_dd_press;
+        //if (pressure_error >= near_target_threshold)
+        {
+            f_uff = -1.5f * f_dd_press;
         }
     }
 
@@ -534,20 +536,23 @@ static void rbf_pid_step_incremental_output(RBF_PID_Handle *pid, float error, fl
 
     pid->Output = pid->u_prev + pid->du;
 
+
     // 4. 计算前馈总合（绝对量）
-    float ff_rpm = 0.6626f * pid->P_set;
-    float Kff = 0.0002f; // 前馈增益，可根据实际系统调节
-    float ff_flow = Kff * ff_rpm;     // 可根据需要滤波
+    float ff_flow = 0.0f;
+//    if( fabsf(error) > (pid->P_set * 0.3)) {
+//		float ff_rpm = 0.6626f * pid->P_set;
+//		float Kff = 0.0004f; // 前馈增益，可根据实际系统调节
+//		ff_flow = Kff * ff_rpm;     // 可根据需要滤波
+//    }
 
-    pid->Output_total = clampf(output_min, pid->Output + dynamic_ff + f_uff, soft_output_max);
-
+    pid->Output_total = clampf(output_min, pid->Output + dynamic_ff + f_uff + ff_flow, soft_output_max);
+    pid->Output =pid->Output_total;
     pid->output_saturated = (pid->Output_total <= output_min + 1.0e-6f) || (pid->Output_total >= soft_output_max - 1.0e-6f);
     if (pid->P_set < 0.1f && actual_press < 0.5f) {
         pid->Output = 0.0f;
         pid->Output_total = 0.0f;
         pid->output_saturated = false;
     }
-
 
     pid->fLastActPress2 = pid->fLastActPress;
     pid->fLastActPress = actual_press;
