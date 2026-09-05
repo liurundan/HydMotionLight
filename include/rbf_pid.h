@@ -87,7 +87,6 @@ typedef struct {
 
     /* 最近一次控制结果 */
     float Output;                   /* last commanded flow [L/min] */
-    float Output_total;
     float KP;
     float KI;
     float KD;
@@ -152,10 +151,9 @@ typedef struct {
     bool pressure_accel_ff_requested;
     RBF_PID_ControlMode control_mode; /* Appended to preserve existing field offsets. */
 
-    /* ===== 评审修复 v2 新增字段（追加在末尾，保持既有字段偏移不变） ===== */
-    float du_normalization_scale;   /* [P0-2] Δu 归一化尺度（默认 5.0，0/负值回落默认） */
-    float P_filtered;               /* [P2] 压力测量一阶低通值（微分/前馈/辨识器用） */
-    bool  error_in_deadband;        /* [P1-6] 迟滞死区状态标志 */
+    float f_dd_press_prev;                /* 反馈压力的加速度估算只能作为慢速扰动补偿通道辅助使用 */
+    float v_ref_k1;
+
 } RBF_PID_Handle;
 
 /**

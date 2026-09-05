@@ -14,7 +14,7 @@ static const float RBF_PID_LEARNING_RATIO_MID = 0.10f;
 static const float RBF_PID_LEARNING_SCALE_TIGHT = 0.02f;
 static const float RBF_PID_LEARNING_SCALE_NEAR = 0.10f;
 static const float RBF_PID_LEARNING_SCALE_MID = 0.25f;
-static const float RBF_PID_NEAR_TARGET_RATIO = 0.15f;
+static const float RBF_PID_NEAR_TARGET_RATIO = 0.08f;
 static const float RBF_PID_ACCEL_FF_GAIN = -0.15f;
 static const float RBF_PID_DYNAMIC_FF_GAIN = 0.001f;
 static const float RBF_PID_WEIGHT_LIMIT = 5.0f;
@@ -507,62 +507,56 @@ static void rbf_pid_step_incremental_output(RBF_PID_Handle *pid, float error, fl
     float actual_press = pid->P_actual;
 
     float actual_press_n = actual_press;
-    float last_press_n = pid->fLastActPress;
-    float last_press2_n = pid->fLastActPress2;
-    float f_delta_press = actual_press_n - last_press_n;
-    float f_dd_press = f_delta_press - (last_press_n - last_press2_n);
+    float last_press_n   = pid->fLastActPress;
+    float last_press2_n  = pid->fLastActPress2;
+    float f_delta_press  = actual_press_n - last_press_n;
+    float f_dd_press_raw = f_delta_press - (last_press_n - last_press2_n);
+    float f_dd_press     = 0.15f*f_dd_press_raw + 0.85f*pid->f_dd_press_prev;  // LPF≈15Hz
 
-    float f_uff = 0.0f;
-    float f_deltaff = 0.0f;
+    float K_dob  = -5.0f; // DOB增益，可根据实际系统调节
+    float du_dob = K_dob*(f_dd_press - pid->f_dd_press_prev);
+
+    float f_accfb = 0.0f;
+    float f_velfb = 0.0f;
     float near_target_threshold = pid->P_set * RBF_PID_NEAR_TARGET_RATIO;
-    if (pid->pressure_accel_ff_enabled && 0) {
+    if (pid->pressure_accel_ff_enabled && 1) {
         float pressure_error = fabsf(pid->P_set - actual_press);
 
         if (pressure_error < near_target_threshold)
         {
-        	f_uff = -0.25f * f_dd_press;
+        	f_accfb = 1? du_dob : -0.25f * f_dd_press;
         }
 
         if (pressure_error > near_target_threshold)
         {
-           f_deltaff = -0.15f * f_delta_press;
+            f_velfb = -0.15f * f_delta_press;
         }
     }
 
-    float ref_change = pid->P_set - pid->last_ref;
-    float ref_rate = clampf(-10.0f, ref_change, 10.0f);
-    float dynamic_ff = RBF_PID_DYNAMIC_FF_GAIN * ref_rate;
+    float vel_ref  = pid->P_set - pid->last_ref;
+    vel_ref  = clampf( -10.0f, vel_ref, 10.0f );
+    float f_du_ff  = RBF_PID_DYNAMIC_FF_GAIN * ( vel_ref -  pid->v_ref_k1 );
 
-    //du += dynamic_ff + f_uff;
-    du = clampf( -0.5, du, 0.5 );
+   // du = clampf( -0.5, du, 0.5 );
 //    printf("output_min: %.3f, output_max: %.3f,  kp:%.3f,k:%.3f,kd:%.3f,du:%.6f\n", output_min, output_max,
 //    		pid->KP, pid->KI, pid->KD, du);
 
     pid->du = !isfinite(du) ? 0.0f : du;
 
-    pid->Output = pid->u_prev + pid->du;
+    pid->Output = pid->u_prev + pid->du + f_du_ff + f_accfb + f_velfb;
 
-
-    // 4. 计算前馈总合（绝对量）
-    float ff_flow = 0.0f;
-//    if( fabsf(error) > (pid->P_set * 0.3)) {
-//		float ff_rpm = 0.6626f * pid->P_set;
-//		float Kff = 0.0004f; // 前馈增益，可根据实际系统调节
-//		ff_flow = Kff * ff_rpm;     // 可根据需要滤波
-//    }
-
-    pid->Output_total = clampf(output_min, pid->Output + dynamic_ff + f_uff + ff_flow + f_deltaff, soft_output_max);
-    //pid->Output = pid->Output_total;
-    pid->output_saturated = (pid->Output_total <= output_min + 1.0e-6f) || (pid->Output_total >= soft_output_max - 1.0e-6f);
+    pid->Output =  clampf( output_min, pid->Output, soft_output_max );
+    pid->output_saturated = (pid->Output <= output_min + 1.0e-6f) || (pid->Output >= soft_output_max - 1.0e-6f);
     if (pid->P_set < 0.1f && actual_press < 0.5f) {
         pid->Output = 0.0f;
-        pid->Output_total = 0.0f;
         pid->output_saturated = false;
     }
 
     pid->fLastActPress2 = pid->fLastActPress;
     pid->fLastActPress = actual_press;
     pid->last_ref = pid->P_set;
+    pid->f_dd_press_prev = f_dd_press;
+    pid->v_ref_k1 = vel_ref;
 }
 
 static void rbf_pid_step_steady_state(RBF_PID_Handle *pid) {
@@ -657,7 +651,7 @@ float RBF_PID_Update(RBF_PID_Handle *pid, float setpoint, float feedback) {
     rbf_pid_step_steady_state(pid);
     pid->Status = pid->steady_state ? 3 : 2;
 
-    return pid->Output_total;
+    return pid->Output;
 }
 
 void RBF_PID_Reset(RBF_PID_Handle *pid) {
