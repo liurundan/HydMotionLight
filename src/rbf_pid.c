@@ -14,7 +14,7 @@ static const float RBF_PID_LEARNING_RATIO_MID = 0.10f;
 static const float RBF_PID_LEARNING_SCALE_TIGHT = 0.02f;
 static const float RBF_PID_LEARNING_SCALE_NEAR = 0.10f;
 static const float RBF_PID_LEARNING_SCALE_MID = 0.25f;
-static const float RBF_PID_NEAR_TARGET_RATIO = 0.02f;
+static const float RBF_PID_NEAR_TARGET_RATIO = 0.15f;
 static const float RBF_PID_ACCEL_FF_GAIN = -0.15f;
 static const float RBF_PID_DYNAMIC_FF_GAIN = 0.001f;
 static const float RBF_PID_WEIGHT_LIMIT = 5.0f;
@@ -513,13 +513,19 @@ static void rbf_pid_step_incremental_output(RBF_PID_Handle *pid, float error, fl
     float f_dd_press = f_delta_press - (last_press_n - last_press2_n);
 
     float f_uff = 0.0f;
+    float f_deltaff = 0.0f;
     float near_target_threshold = pid->P_set * RBF_PID_NEAR_TARGET_RATIO;
-    if (pid->pressure_accel_ff_enabled) {
+    if (pid->pressure_accel_ff_enabled && 0) {
         float pressure_error = fabsf(pid->P_set - actual_press);
 
-        //if (pressure_error >= near_target_threshold)
+        if (pressure_error < near_target_threshold)
         {
-            f_uff = -1.5f * f_dd_press;
+        	f_uff = -0.25f * f_dd_press;
+        }
+
+        if (pressure_error > near_target_threshold)
+        {
+           f_deltaff = -0.15f * f_delta_press;
         }
     }
 
@@ -545,8 +551,8 @@ static void rbf_pid_step_incremental_output(RBF_PID_Handle *pid, float error, fl
 //		ff_flow = Kff * ff_rpm;     // 可根据需要滤波
 //    }
 
-    pid->Output_total = clampf(output_min, pid->Output + dynamic_ff + f_uff + ff_flow, soft_output_max);
-    pid->Output =pid->Output_total;
+    pid->Output_total = clampf(output_min, pid->Output + dynamic_ff + f_uff + ff_flow + f_deltaff, soft_output_max);
+    //pid->Output = pid->Output_total;
     pid->output_saturated = (pid->Output_total <= output_min + 1.0e-6f) || (pid->Output_total >= soft_output_max - 1.0e-6f);
     if (pid->P_set < 0.1f && actual_press < 0.5f) {
         pid->Output = 0.0f;

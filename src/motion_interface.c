@@ -670,15 +670,15 @@ static HYD_BOOL applyPressureHandleLiveUpdate(HYD_MotionControlFB* fb,
     request.pressureRampRate = __GET_VAR(data__->PRESSURERAMPRATE);
 
     // liurundan: fix overshoot bug in low target pressure
-    if(fb->DIRECT_SEGMENT.targetPressure < 0.1f) {
-    	fb->DIRECT_SEGMENT.maxFlow = 5;
-	}
-    else {
-    	fb->DIRECT_SEGMENT.maxFlow = fb->DIRECT_SEGMENT.targetPressure * 0.3f;//0.13
-    }
-    if(fb->DIRECT_SEGMENT.maxFlow > 20.0f) {
-    	fb->DIRECT_SEGMENT.maxFlow = 20.0f;
-    }
+//    if(fb->DIRECT_SEGMENT.targetPressure < 0.1f) {
+//    	fb->DIRECT_SEGMENT.maxFlow = 5;
+//	}
+//    else {
+//    	fb->DIRECT_SEGMENT.maxFlow = fb->DIRECT_SEGMENT.targetPressure * 0.3f;//0.13
+//    }
+//    if(fb->DIRECT_SEGMENT.maxFlow > 20.0f) {
+//    	fb->DIRECT_SEGMENT.maxFlow = 20.0f;
+//    }
     return HYD_MotionControlFB_ApplyLiveUpdate(fb, &request);
 }
 
