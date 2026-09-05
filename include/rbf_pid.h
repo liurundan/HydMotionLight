@@ -3,11 +3,8 @@
  * @brief RBF神经网络自适应PID控制器 - 嵌入式C实现
  * @note 基于ST代码转换，适用于ARM Cortex-M等平台
  *
- * 评审修复 v2：新增结构体字段（追加在末尾，保持既有字段偏移不变）：
- *   - du_normalization_scale [P0-2]：Δu 单独归一化尺度
- *   - P_filtered             [P2]：压力测量一阶低通值
- *   - error_in_deadband      [P1-6]：迟滞死区状态标志
- * 新增接口：RBF_PID_SetDuNormalization()
+ * 评审修复 v2：补充 Δu 单独归一化接口；为保持嵌入式结构体大小，复用
+ * 既有兼容状态槽保存该标尺。压力滤波和死区状态由外层控制器维护。
  */
 
 #ifndef RBF_PID_H
@@ -151,7 +148,7 @@ typedef struct {
     bool pressure_accel_ff_requested;
     RBF_PID_ControlMode control_mode; /* Appended to preserve existing field offsets. */
 
-    float f_dd_press_prev;                /* 反馈压力的加速度估算只能作为慢速扰动补偿通道辅助使用 */
+    float f_dd_press_prev;                /* 兼容存储槽：当前用于 Δu 归一化标尺 */
     float v_ref_k1;
 
 } RBF_PID_Handle;

@@ -139,6 +139,14 @@ static HYD_REAL HYD_ResolveDeadband(const HYD_MotionSegment* segment) {
     return segment->pressureDeadband;
 }
 
+static HYD_REAL HYD_ApplyPressureDeadband(HYD_REAL error, HYD_REAL deadband) {
+    if (deadband <= 0.0 || fabs(error) <= deadband) {
+        return deadband > 0.0 ? 0.0 : error;
+    }
+
+    return error > 0.0 ? error - deadband : error + deadband;
+}
+
 static HYD_REAL HYD_ResolveTrackedIntegralOutput(const HYD_MotionSegment* segment,
                                                  const HYD_PressureControllerInput* input,
                                                  HYD_REAL proportionalTerm,
@@ -505,7 +513,8 @@ void HYD_PressureController_Execute(const HYD_MotionSegment* segment,
 
     HYD_ResolvePressureControllerConfig(segment, state, input, &config);
 
-    filteredPressure = input->measuredPressure ;
+    filteredPressure = state->previousFilteredPressure +
+        config.filterAlpha * (input->measuredPressure - state->previousFilteredPressure);
     filteredPressureRate = state->previousFilteredPressureRate;
     if (config.dt > 0.0) {
         rawPressureRate = (filteredPressure - state->previousFilteredPressure) / config.dt;
@@ -513,7 +522,8 @@ void HYD_PressureController_Execute(const HYD_MotionSegment* segment,
             config.derivativeFilterAlpha * (rawPressureRate - state->previousFilteredPressureRate);
     }
 
-    error = input->targetPressure - filteredPressure;
+    error = HYD_ApplyPressureDeadband(input->targetPressure - filteredPressure,
+                                      config.deadband);
 
     trackingRequested = state->trackingRequested ||
         ((state->activeStrategy != HYD_PRESSURE_CONTROLLER_NONE) &&
@@ -553,7 +563,8 @@ void HYD_PressureController_Execute(const HYD_MotionSegment* segment,
                                        input->pumpSpeedLimit);
         }
 
-        effectiveTargetPressure = input->targetPressure; //(error == 0.0) ? filteredPressure :
+        effectiveTargetPressure = input->targetPressure -
+            ((input->targetPressure - filteredPressure) - error);
         rawOutputFlow = (HYD_REAL)RBF_PID_Update(&state->rbfPid,
                                                  (float)effectiveTargetPressure,
                                                  (float)filteredPressure);
