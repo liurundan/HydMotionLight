@@ -267,7 +267,7 @@ static void test_read_status_reports_mechanism_state(void) {
                 "Disabled ReadStatus should clear limit causes");
 }
 
-static void test_pressure_handle_preserves_legacy_max_flow(void) {
+static void test_pressure_handle_maps_percent_to_its_absolute_flow_limit(void) {
     HYD_PRESSUREHANDLE ph;
     HYD_MotionControlFB* fb;
 
@@ -281,12 +281,103 @@ static void test_pressure_handle_preserves_legacy_max_flow(void) {
     IEC_VAL(ph.EN) = true;
     IEC_VAL(ph.EXECUTE) = true;
     IEC_VAL(ph.AXISID) = 0;
-    IEC_VAL(ph.PRESSURE) = 10.0;
-    IEC_VAL(ph.DURATION) = 1.0;
+    IEC_VAL(ph.PRESSURE) = 10.0f;
+    IEC_VAL(ph.DURATION) = 1.0f;
+    IEC_VAL(ph.FLOWLIMITPERCENT) = 25.0f;
     __mcl_cmd_PressureHandle(&ph);
 
-    ASSERT_TRUE(fabsf((float)(fb->_activeSegment.maxFlow - 20.0)) < 0.001f,
-                "PressureHandle should preserve its established 20 L/min limit");
+    ASSERT_FLOAT_EQ(fb->_activeSegment.maxFlow, 5.0f, 0.001f,
+                    "PressureHandle should convert 25 percent to 5 L/min");
+    ASSERT_FLOAT_EQ(fb->DIRECT_SEGMENT.maxFlow, 5.0f, 0.001f,
+                    "PressureHandle should persist the converted direct flow limit");
+    __HydMotion_framework_Publish();
+    ASSERT_TRUE((fb->STATE.limitFlags & HYD_LIMIT_FLAG_FLOW) != 0u,
+                "PressureHandle should report its process flow limit when saturated");
+    ASSERT_TRUE(fb->STATE.pressureLoop.feedforwardFlow <= 5.001f,
+                "PressureHandle feedforward flow should not exceed its converted flow limit");
+}
+
+static void test_pressure_handle_rejects_invalid_flow_limit_percents(void) {
+    const HYD_REAL invalidPercents[] = {0.0f, -1.0f, 100.1f, NAN};
+    HYD_MotionControlFB* fb;
+    size_t index;
+
+    __HydMotion_framework_Init();
+    ensure_axis_allocated();
+    fb = __MK_GetPublic_MotionControlFB(0);
+
+    for (index = 0U; index < sizeof(invalidPercents) / sizeof(invalidPercents[0]); ++index) {
+        HYD_PRESSUREHANDLE ph;
+
+        memset(&ph, 0, sizeof(ph));
+        IEC_VAL(ph.EN) = true;
+        IEC_VAL(ph.EXECUTE) = true;
+        IEC_VAL(ph.AXISID) = 0;
+        IEC_VAL(ph.PRESSURE) = 10.0f;
+        IEC_VAL(ph.DURATION) = 1.0f;
+        IEC_VAL(ph.FLOWLIMITPERCENT) = invalidPercents[index];
+        __mcl_cmd_PressureHandle(&ph);
+
+        ASSERT_TRUE(IEC_VAL(ph.ERROR) == true,
+                    "PressureHandle should reject an invalid flow limit percent");
+        ASSERT_TRUE(IEC_VAL(ph.ERRORID) == HYD_DIAG_CODE_COMMAND_NOT_ALLOWED,
+                    "Invalid flow limit percent should report command-not-allowed");
+        ASSERT_TRUE(fb->_activeSegmentValid == false,
+                    "Rejected flow limit percent should not start a pressure segment");
+    }
+}
+
+static void test_pressure_handle_respects_the_lower_pump_flow_cap(void) {
+    HYD_PRESSUREHANDLE ph;
+    HYD_MotionControlFB* fb;
+
+    __HydMotion_framework_Init();
+    ensure_axis_allocated();
+    fb = __MK_GetPublic_MotionControlFB(0);
+    fb->PUMP_SPEED_LIMIT = 40.0f;  /* 40 rpm / 20 rpm/(L/min) = 2 L/min */
+
+    memset(&ph, 0, sizeof(ph));
+    IEC_VAL(ph.EN) = true;
+    IEC_VAL(ph.EXECUTE) = true;
+    IEC_VAL(ph.AXISID) = 0;
+    IEC_VAL(ph.PRESSURE) = 10.0f;
+    IEC_VAL(ph.DURATION) = 1.0f;
+    IEC_VAL(ph.FLOWLIMITPERCENT) = 100.0f;
+    __mcl_cmd_PressureHandle(&ph);
+    __HydMotion_framework_Publish();
+
+    ASSERT_FLOAT_EQ(fb->_activeSegment.maxFlow, 20.0f, 0.001f,
+                    "PressureHandle 100 percent should retain its 20 L/min process cap");
+    ASSERT_TRUE(fb->_lastCommandedFlow <= 2.001f,
+                "PressureHandle output should not exceed the lower pump flow capability");
+    ASSERT_TRUE(fb->_pressureController.previousOutput <= 2.001f,
+                "Pressure controller state should use the lower pump flow capability");
+}
+
+static void test_pressure_handle_caps_feedforward_at_low_percentage(void) {
+    HYD_PRESSUREHANDLE ph;
+    HYD_MotionControlFB* fb;
+
+    __HydMotion_framework_Init();
+    ensure_axis_allocated();
+    fb = __MK_GetPublic_MotionControlFB(0);
+
+    memset(&ph, 0, sizeof(ph));
+    IEC_VAL(ph.EN) = true;
+    IEC_VAL(ph.EXECUTE) = true;
+    IEC_VAL(ph.AXISID) = 0;
+    IEC_VAL(ph.PRESSURE) = 10.0f;
+    IEC_VAL(ph.DURATION) = 1.0f;
+    IEC_VAL(ph.FLOWLIMITPERCENT) = 5.0f;  /* 1 L/min */
+    __mcl_cmd_PressureHandle(&ph);
+    __HydMotion_framework_Publish();
+
+    ASSERT_FLOAT_EQ(fb->_activeSegment.maxFlow, 1.0f, 0.001f,
+                    "PressureHandle 5 percent should produce a 1 L/min cap");
+    ASSERT_TRUE(fb->_lastCommandedFlow <= 1.001f,
+                "PressureHandle output should respect a low process cap");
+    ASSERT_TRUE(fb->_pressureController.previousOutput <= 1.001f,
+                "PressureHandle feedforward should be capped with the process limit");
 }
 
 int main(void) {
@@ -297,7 +388,10 @@ int main(void) {
     test_segment_builder_uses_fb_params();
     test_read_status_reports_applied_pressure_controller();
     test_read_status_reports_mechanism_state();
-    test_pressure_handle_preserves_legacy_max_flow();
+    test_pressure_handle_maps_percent_to_its_absolute_flow_limit();
+    test_pressure_handle_rejects_invalid_flow_limit_percents();
+    test_pressure_handle_respects_the_lower_pump_flow_cap();
+    test_pressure_handle_caps_feedforward_at_low_percentage();
 
     printf("IEC parameter FB tests: %d/%d passed\n", tests_passed, tests_run);
     return (tests_passed == tests_run) ? 0 : 1;

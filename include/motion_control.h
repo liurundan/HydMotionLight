@@ -201,7 +201,8 @@ typedef enum {
     HYD_LIVE_UPDATE_PRESSURE_RAMP_RATE = 1U << 5,
     HYD_LIVE_UPDATE_CONTINUOUS_UPDATE  = 1U << 6,
     HYD_LIVE_UPDATE_DIRECTION          = 1U << 7,
-    HYD_LIVE_UPDATE_MAX_PRESSURE       = 1U << 8
+    HYD_LIVE_UPDATE_MAX_PRESSURE       = 1U << 8,
+    HYD_LIVE_UPDATE_MAX_FLOW           = 1U << 9
 } HYD_LiveUpdateFlags;
 
 #define HYD_DIRECT_PREEMPTED_HISTORY_CAPACITY 2U
@@ -229,6 +230,9 @@ typedef struct {
     HYD_REAL targetPressure;
     HYD_REAL pressureRampRate;
     HYD_MotionDirection direction;
+    /* Absolute pressure-segment flow cap [L/min]; only used with
+     * HYD_LIVE_UPDATE_MAX_FLOW. Kept at the end to preserve legacy offsets. */
+    HYD_REAL maxFlow;
 } HYD_LiveUpdateRequest;
 
 typedef struct {

@@ -92,20 +92,28 @@ static HYD_REAL HYD_ResolveGain(HYD_REAL configuredGain, HYD_REAL fallbackGain) 
     return HYD_ResolvePositiveOrDefault(configuredGain, fallbackGain);
 }
 
-static HYD_REAL HYD_ResolveIntegralLimit(const HYD_MotionSegment* segment) {
+static HYD_REAL HYD_ResolveIntegralLimit(const HYD_MotionSegment* segment,
+                                         const HYD_PressureControllerInput* input) {
+    HYD_REAL limit;
+
     if (segment == NULL) {
         return 0.0;
     }
 
     if (segment->pressureIntegralLimit > 0.0) {
-        return segment->pressureIntegralLimit;
+        limit = segment->pressureIntegralLimit;
+    } else if (segment->maxFlow > 0.0) {
+        limit = segment->maxFlow;
+    } else {
+        limit = 0.0;
     }
 
-    if (segment->maxFlow > 0.0) {
-        return segment->maxFlow;
+    if (input != NULL && input->outputMax > 0.0 &&
+        (limit <= 0.0 || input->outputMax < limit)) {
+        limit = input->outputMax;
     }
 
-    return 0.0;
+    return limit;
 }
 
 static HYD_REAL HYD_ResolveFilterAlpha(const HYD_MotionSegment* segment) {
@@ -160,7 +168,7 @@ static HYD_REAL HYD_ResolveTrackedIntegralOutput(const HYD_MotionSegment* segmen
     }
 
     trackedIntegral = trackedOutputFlow - input->feedforwardFlow - proportionalTerm - derivativeTerm;
-    integralLimit = HYD_ResolveIntegralLimit(segment);
+    integralLimit = HYD_ResolveIntegralLimit(segment, input);
     if (integralLimit > 0.0) {
         trackedIntegral = HYD_ClampReal(trackedIntegral, -integralLimit, integralLimit);
     }
@@ -247,7 +255,7 @@ static void HYD_ResolvePressureControllerConfig(const HYD_MotionSegment* segment
     config->kd = strategySpec->supportsDerivative
         ? HYD_ResolveGain((segment != NULL) ? segment->pressureKd : 0.0, 0.0)
         : 0.0;
-    config->integralLimit = HYD_ResolveIntegralLimit(segment);
+    config->integralLimit = HYD_ResolveIntegralLimit(segment, input);
     config->deadband = HYD_ResolveDeadband(segment);
     config->filterAlpha = HYD_ResolveFilterAlpha(segment);
     config->derivativeFilterAlpha = HYD_ResolveDerivativeFilterAlpha(segment);

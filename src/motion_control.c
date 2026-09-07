@@ -171,6 +171,23 @@ static HYD_REAL HYD_GetPumpFlowLimit(const HYD_MotionControlFB *fb)
     return (gain > 0.0f && speed_limit >= 0.0f) ? speed_limit / gain : 0.0f;
 }
 
+static HYD_REAL HYD_ResolvePressureOutputMax(const HYD_MotionControlFB* fb,
+                                              const HYD_MotionSegment* segment) {
+    HYD_REAL pumpFlowLimit;
+    HYD_REAL outputMax;
+
+    if (segment == NULL) {
+        return 0.0f;
+    }
+
+    outputMax = segment->maxFlow;
+    pumpFlowLimit = HYD_GetPumpFlowLimit(fb);
+    if (pumpFlowLimit > 0.0f && pumpFlowLimit < outputMax) {
+        outputMax = pumpFlowLimit;
+    }
+    return outputMax;
+}
+
 static void HYD_ReportKinematicsRuntimeFault(
     HYD_MotionControlFB *fb,
     HYD_DiagnosticCode code,
@@ -1250,6 +1267,14 @@ static HYD_BOOL HYD_ApplyLiveUpdateOverrides(const HYD_LiveUpdateRequest* reques
         seg->maxPressure = request->maxPressure;
     }
 
+    if ((request->flags & HYD_LIVE_UPDATE_MAX_FLOW) != 0U) {
+        if (seg->mode != HYD_MODE_PRESSURE_CLOSED_LOOP ||
+            !isfinite(request->maxFlow) || request->maxFlow <= 0.0f) {
+            return false;
+        }
+        seg->maxFlow = request->maxFlow;
+    }
+
     if ((request->flags & HYD_LIVE_UPDATE_TARGET_PRESSURE) != 0U) {
         if (seg->mode != HYD_MODE_PRESSURE_CLOSED_LOOP) {
             return false;
@@ -1475,7 +1500,15 @@ static HYD_BOOL HYD_PrimeSegmentControllers(HYD_MotionControlFB* fb,
     if (segment->mode == HYD_MODE_PRESSURE_CLOSED_LOOP && trackingFlowReference > 0.0) {
         initialPressureControlOutput = trackingFlowReference;
     }
-    initialPressureControlOutput = HYD_MotionUtils_MinReal(initialPressureControlOutput, segment->maxFlow);
+    if (segment->mode == HYD_MODE_PRESSURE_CLOSED_LOOP) {
+        initialPressureControlOutput = HYD_MotionUtils_MinReal(
+            initialPressureControlOutput,
+            HYD_ResolvePressureOutputMax(fb, segment));
+    } else {
+        initialPressureControlOutput = HYD_MotionUtils_MinReal(
+            initialPressureControlOutput,
+            segment->maxFlow);
+    }
     if (initialPressureControlOutput < 0.0) {
         initialPressureControlOutput = 0.0;
     }
@@ -2119,12 +2152,17 @@ static HYD_BOOL HYD_ExecuteActiveSegmentControl(HYD_MotionControlFB* fb,
     pressureOutput->appliedStrategy = HYD_PRESSURE_CONTROLLER_NONE;
 
     if (segment->mode == HYD_MODE_PRESSURE_CLOSED_LOOP) {
+        HYD_REAL pumpFlowLimit;
+
+        pressureInput.outputMax = HYD_ResolvePressureOutputMax(fb, segment);
+        pumpFlowLimit = HYD_GetPumpFlowLimit(fb);
         pressureInput.targetPressure = rampOutput->rampedPressure;
         pressureInput.measuredPressure = fb->AXIS_REF.pressure;
-        pressureInput.feedforwardFlow = segment->targetFlow;
+        /* Feedforward is a nominal holding flow, but it must not bypass the
+         * active process/pump cap when a low percentage is selected. */
+        pressureInput.feedforwardFlow = HYD_ClampReal(
+            segment->targetFlow, 0.0f, pressureInput.outputMax);
         pressureInput.outputMin = -5.0;
-
-        pressureInput.outputMax = segment->maxFlow;
         if (HYD_PumpConfig_IsValid(&fb->pumpConfig)) {
             pressureInput.flowToPumpSpeedGain = HYD_PumpConfig_GetFlowToSpeedGain(&fb->pumpConfig);
             pressureInput.pumpSpeedLimit = HYD_PumpConfig_GetSpeedLimit(&fb->pumpConfig);
@@ -2139,6 +2177,13 @@ static HYD_BOOL HYD_ExecuteActiveSegmentControl(HYD_MotionControlFB* fb,
                                        pressureOutput);
         plannerOutput->targetFlow = pressureOutput->outputFlow;
         plannerOutput->direction = segment->direction;
+        if (pressureOutput->unsaturatedOutputFlow > segment->maxFlow) {
+            fb->STATE.limitFlags |= HYD_LIMIT_FLAG_FLOW;
+        }
+        if (pumpFlowLimit > 0.0f &&
+            pressureOutput->unsaturatedOutputFlow > pumpFlowLimit) {
+            fb->STATE.limitFlags |= HYD_LIMIT_FLAG_PUMP_SPEED;
+        }
     } else {
         memset(&plannerInput, 0, sizeof(plannerInput));
         memset(&localContinuousBlend, 0, sizeof(localContinuousBlend));

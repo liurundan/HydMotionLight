@@ -27,6 +27,7 @@ static HYD_AxisSlotState HYD_AxisSlots[HYD_MAX_AXIS_MOTION];
 static HYD_UINT16 HYD_FrameworkGeneration;
 
 static const HYD_REAL HYD_CONTABS_DIRECTION_VELOCITY_THRESHOLD = 0.01f;
+static const HYD_REAL HYD_PRESSURE_HANDLE_BASE_MAX_FLOW = 20.0f;
 
 static int allocMotionControlFB(void)
 {
@@ -279,6 +280,7 @@ static HYD_MotionSegment buildPressureSegment(
     HYD_REAL targetPressure,
     HYD_REAL rampRate,
     HYD_REAL duration,
+    HYD_REAL maxFlow,
     const HYD_MotionControlFB* fb)
 {
     HYD_MotionSegment seg;
@@ -292,9 +294,7 @@ static HYD_MotionSegment buildPressureSegment(
 
     seg.targetPressure = targetPressure;
     seg.targetFlow = fb->_params.defaultTargetFlow;
-    /* Preserve the established PressureHandle limit; recipe/profile paths use
-     * the configurable maxFlow parameter independently. */
-    seg.maxFlow = 20.0;
+    seg.maxFlow = maxFlow;
 
     seg.duration = duration;
     seg.pressureRampRate = rampRate;
@@ -569,6 +569,25 @@ static HYD_BOOL resolvePressureLimit(HYD_REAL requestedLimit,
     return true;
 }
 
+/* PressureHandle is intentionally based on its fixed 20 L/min process
+ * envelope. The IEC percentage is converted once here; the core only sees
+ * absolute L/min through HYD_MotionSegment.maxFlow. */
+static HYD_BOOL resolvePressureHandleFlowLimit(HYD_REAL requestedPercent,
+                                               HYD_REAL* resolvedLimit,
+                                               IEC_WORD* errorId)
+{
+    if (resolvedLimit == NULL || !isfinite(requestedPercent) ||
+        requestedPercent <= 0.0f || requestedPercent > 100.0f) {
+        if (errorId != NULL) {
+            *errorId = (IEC_WORD)HYD_DIAG_CODE_COMMAND_NOT_ALLOWED;
+        }
+        return false;
+    }
+
+    *resolvedLimit = HYD_PRESSURE_HANDLE_BASE_MAX_FLOW * requestedPercent / 100.0f;
+    return true;
+}
+
 static HYD_BOOL applyMoveAbsoluteLiveUpdate(HYD_MotionControlFB* fb,
                                             IEC_WORD execId,
                                             HYD_MOVEABSOLUTE* data__)
@@ -652,33 +671,32 @@ static HYD_BOOL applyMoveVelocityLiveUpdate(HYD_MotionControlFB* fb,
 
 static HYD_BOOL applyPressureHandleLiveUpdate(HYD_MotionControlFB* fb,
                                               IEC_WORD execId,
-                                              HYD_PRESSUREHANDLE* data__)
+                                              HYD_PRESSUREHANDLE* data__,
+                                              IEC_WORD* errorId)
 {
     HYD_LiveUpdateRequest request;
+    HYD_REAL maxFlow;
 
     if (fb == NULL || data__ == NULL || !__GET_VAR(data__->CONTINUOUSUPDATE)) {
         return true;
     }
 
+    if (!resolvePressureHandleFlowLimit(__GET_VAR(data__->FLOWLIMITPERCENT),
+                                        &maxFlow,
+                                        errorId)) {
+        return false;
+    }
+
     memset(&request, 0, sizeof(request));
     request.flags = HYD_LIVE_UPDATE_TARGET_PRESSURE |
                     HYD_LIVE_UPDATE_PRESSURE_RAMP_RATE |
+                    HYD_LIVE_UPDATE_MAX_FLOW |
                     HYD_LIVE_UPDATE_CONTINUOUS_UPDATE;
     request.ownerKind = HYD_DIRECT_CMD_PRESSURE_HANDLE;
     request.ownerTicket = (uint16_t)execId;
     request.targetPressure = __GET_VAR(data__->PRESSURE);
     request.pressureRampRate = __GET_VAR(data__->PRESSURERAMPRATE);
-
-    // liurundan: fix overshoot bug in low target pressure
-//    if(fb->DIRECT_SEGMENT.targetPressure < 0.1f) {
-//    	fb->DIRECT_SEGMENT.maxFlow = 5;
-//	}
-//    else {
-//    	fb->DIRECT_SEGMENT.maxFlow = fb->DIRECT_SEGMENT.targetPressure * 0.3f;//0.13
-//    }
-//    if(fb->DIRECT_SEGMENT.maxFlow > 20.0f) {
-//    	fb->DIRECT_SEGMENT.maxFlow = 20.0f;
-//    }
+    request.maxFlow = maxFlow;
     return HYD_MotionControlFB_ApplyLiveUpdate(fb, &request);
 }
 
@@ -2512,7 +2530,16 @@ void __mcl_cmd_PressureHandle(HYD_PRESSUREHANDLE *data__)
     if (execRising)
     {
         IEC_WORD errorId = 0;
+        HYD_REAL maxFlow;
         if (!validateSupportedBufferMode(bufferMode, &errorId)) {
+            __SET_VAR(data__->, ERROR, , true);
+            __SET_VAR(data__->, ERRORID, , errorId);
+            __SET_VAR(data__->, EXECUTE0, , execute);
+            return;
+        }
+        if (!resolvePressureHandleFlowLimit(__GET_VAR(data__->FLOWLIMITPERCENT),
+                                            &maxFlow,
+                                            &errorId)) {
             __SET_VAR(data__->, ERROR, , true);
             __SET_VAR(data__->, ERRORID, , errorId);
             __SET_VAR(data__->, EXECUTE0, , execute);
@@ -2525,6 +2552,7 @@ void __mcl_cmd_PressureHandle(HYD_PRESSUREHANDLE *data__)
             targetPressure,
             __GET_VAR(data__->PRESSURERAMPRATE),
             __GET_VAR(data__->DURATION),
+            maxFlow,
             fb);
 
         HYD_DirectStartResult startResult =
@@ -2584,9 +2612,12 @@ void __mcl_cmd_PressureHandle(HYD_PRESSUREHANDLE *data__)
             __SET_VAR(data__->, INPRESSURE, , false);
             __SET_VAR(data__->, DONE, , false);
         } else if (directExecutionIsCurrentOwner(fb, myExecId, HYD_DIRECT_CMD_PRESSURE_HANDLE)) {
-            if (!applyPressureHandleLiveUpdate(fb, myExecId, data__)) {
+            IEC_WORD errorId = 0;
+
+            if (!applyPressureHandleLiveUpdate(fb, myExecId, data__, &errorId)) {
                 __SET_VAR(data__->, ERROR, , true);
-                __SET_VAR(data__->, ERRORID, , commandFailureErrorId(fb));
+                __SET_VAR(data__->, ERRORID, ,
+                          errorId != 0 ? errorId : commandFailureErrorId(fb));
                 __SET_VAR(data__->, BUSY, , false);
                 __SET_VAR(data__->, ACTIVE, , false);
                 __SET_VAR(data__->, INPRESSURE, , false);

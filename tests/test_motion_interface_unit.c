@@ -1533,6 +1533,7 @@ static void test_pressurehandle_execute_rising_starts_pressure_control(void) {
     IEC_VAL(ph.PRESSURE) = 10.0f;
     IEC_VAL(ph.PRESSURERAMPRATE) = 2.0f;
     IEC_VAL(ph.DURATION) = 5.0f;
+    IEC_VAL(ph.FLOWLIMITPERCENT) = 100.0f;
 
     __mcl_cmd_PressureHandle(&ph);
 
@@ -1560,6 +1561,7 @@ static void test_pressurehandle_accepts_continuousupdate_and_updates_active_targ
     IEC_VAL(ph.PRESSURERAMPRATE) = 2.0f;
     IEC_VAL(ph.DURATION) = 1.0f;
     IEC_VAL(ph.CONTINUOUSUPDATE) = true;
+    IEC_VAL(ph.FLOWLIMITPERCENT) = 100.0f;
 
     __mcl_cmd_PressureHandle(&ph);
 
@@ -1576,6 +1578,7 @@ static void test_pressurehandle_accepts_continuousupdate_and_updates_active_targ
 
     IEC_VAL(ph.PRESSURE) = 12.0f;
     IEC_VAL(ph.PRESSURERAMPRATE) = 4.0f;
+    IEC_VAL(ph.FLOWLIMITPERCENT) = 25.0f;
     __mcl_cmd_PressureHandle(&ph);
 
     ASSERT_TRUE(IEC_VAL(ph.ERROR) == false,
@@ -1584,6 +1587,22 @@ static void test_pressurehandle_accepts_continuousupdate_and_updates_active_targ
                "PressureHandle continuous update should update active targetPressure");
     ASSERT_TRUE(fabs(fb->_activeSegment.pressureRampRate - 4.0f) < 0.001f,
                "PressureHandle continuous update should update active pressureRampRate");
+    ASSERT_TRUE(fabs(fb->_activeSegment.maxFlow - 5.0f) < 0.001f,
+               "PressureHandle continuous update should convert 25 percent to 5 L/min");
+    ASSERT_TRUE(fabs(fb->DIRECT_SEGMENT.maxFlow - 5.0f) < 0.001f,
+               "PressureHandle continuous update should persist the converted flow limit");
+
+    IEC_VAL(ph.FLOWLIMITPERCENT) = 0.0f;
+    __mcl_cmd_PressureHandle(&ph);
+
+    ASSERT_TRUE(IEC_VAL(ph.ERROR) == true,
+               "PressureHandle continuous update should reject zero flow limit percent");
+    ASSERT_TRUE(IEC_VAL(ph.ERRORID) == HYD_DIAG_CODE_COMMAND_NOT_ALLOWED,
+               "Rejected continuous update should report command-not-allowed");
+    ASSERT_TRUE(fabs(fb->_activeSegment.maxFlow - 5.0f) < 0.001f,
+               "Rejected continuous update should preserve the active flow limit");
+    ASSERT_TRUE(fabs(fb->DIRECT_SEGMENT.maxFlow - 5.0f) < 0.001f,
+               "Rejected continuous update should preserve the direct flow limit");
 }
 
 static void test_pressurehandle_latches_controller_until_next_execute(void) {
@@ -1608,6 +1627,7 @@ static void test_pressurehandle_latches_controller_until_next_execute(void) {
     IEC_VAL(ph.PRESSURERAMPRATE) = 10.0f;
     IEC_VAL(ph.DURATION) = 5.0f;
     IEC_VAL(ph.CONTINUOUSUPDATE) = true;
+    IEC_VAL(ph.FLOWLIMITPERCENT) = 100.0f;
     __mcl_cmd_PressureHandle(&ph);
 
     ASSERT_TRUE(fb->_activeSegment.pressureController ==
@@ -1663,6 +1683,7 @@ static void test_pressurehandle_en_false_clears_outputs(void) {
     ph.EXECUTE0.value = false;
     IEC_VAL(ph.AXISID) = 0;
     IEC_VAL(ph.PRESSURE) = 10.0f;
+    IEC_VAL(ph.FLOWLIMITPERCENT) = 100.0f;
 
     __mcl_cmd_PressureHandle(&ph);
 
@@ -1725,6 +1746,7 @@ static void test_pressurehandle_completion_keeps_completion_semantics(void) {
     IEC_VAL(ph.PRESSURE) = 10.0f;
     IEC_VAL(ph.PRESSURERAMPRATE) = 2.0f;
     IEC_VAL(ph.DURATION) = 0.05f;
+    IEC_VAL(ph.FLOWLIMITPERCENT) = 100.0f;
 
     __mcl_cmd_PressureHandle(&ph);
     __HydMotion_framework_Publish();
