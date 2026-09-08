@@ -1545,6 +1545,92 @@ static void test_pressurehandle_execute_rising_starts_pressure_control(void) {
                "COMMANDABORTED should be false initially");
 }
 
+static void test_sim_pressurehandle_crawls_toward_zero(void) {
+    HYD_PRESSUREHANDLE ph;
+    HYD_MotionControlFB* fb;
+    HYD_REAL previousPosition;
+    int axisId;
+
+    __HydMotion_framework_Init();
+    axisId = create_sim_axis();
+    fb = __MK_GetPublic_MotionControlFB(axisId);
+
+    ASSERT_TRUE(fb != NULL, "Pressure creep test should resolve the simulation FB");
+    if (fb == NULL) {
+        return;
+    }
+
+    fb->AXIS_REF.position = 0.01f;
+    memset(&ph, 0, sizeof(ph));
+    IEC_VAL(ph.EN) = true;
+    IEC_VAL(ph.EXECUTE) = true;
+    ph.EXECUTE0.value = false;
+    IEC_VAL(ph.AXISID) = axisId;
+    IEC_VAL(ph.PRESSURE) = 10.0f;
+    IEC_VAL(ph.PRESSURERAMPRATE) = 2.0f;
+    IEC_VAL(ph.DURATION) = 1.0f;
+    IEC_VAL(ph.FLOWLIMITPERCENT) = 100.0f;
+
+    __mcl_cmd_PressureHandle(&ph);
+    ph.EXECUTE0.value = true;
+    previousPosition = fb->AXIS_REF.position;
+
+    for (int step = 0; step < 3; ++step) {
+        __HydMotion_framework_Publish();
+        __mcl_cmd_PressureHandle(&ph);
+        ASSERT_TRUE(fb->AXIS_REF.position < previousPosition,
+                    "Simulation pressure segment should creep toward zero");
+        ASSERT_TRUE(fb->AXIS_REF.velocity < -0.9f && fb->AXIS_REF.velocity > -1.1f,
+                    "Simulation pressure creep velocity should be -1 mm/s");
+        previousPosition = fb->AXIS_REF.position;
+    }
+
+    for (int step = 0; step < 20; ++step) {
+        __HydMotion_framework_Publish();
+        __mcl_cmd_PressureHandle(&ph);
+    }
+
+    ASSERT_TRUE(fabsf(fb->AXIS_REF.position) < 1e-6f,
+                "Simulation pressure creep should clamp position at zero");
+    ASSERT_TRUE(fabsf(fb->AXIS_REF.velocity) < 1e-6f,
+                "Simulation pressure creep should stop at zero position");
+}
+
+static void test_pressurehandle_does_not_move_non_simulation_feedback(void) {
+    HYD_PRESSUREHANDLE ph;
+    HYD_MotionControlFB* fb;
+    int axisId;
+
+    __HydMotion_framework_Init();
+    ensure_axes_allocated(1);
+    axisId = 0;
+    fb = __MK_GetPublic_MotionControlFB(axisId);
+
+    ASSERT_TRUE(fb != NULL, "Non-simulation pressure test should resolve the FB");
+    if (fb == NULL) {
+        return;
+    }
+
+    fb->AXIS_REF.position = 10.0f;
+    memset(&ph, 0, sizeof(ph));
+    IEC_VAL(ph.EN) = true;
+    IEC_VAL(ph.EXECUTE) = true;
+    ph.EXECUTE0.value = false;
+    IEC_VAL(ph.AXISID) = axisId;
+    IEC_VAL(ph.PRESSURE) = 10.0f;
+    IEC_VAL(ph.PRESSURERAMPRATE) = 2.0f;
+    IEC_VAL(ph.DURATION) = 1.0f;
+    IEC_VAL(ph.FLOWLIMITPERCENT) = 100.0f;
+
+    __mcl_cmd_PressureHandle(&ph);
+    ph.EXECUTE0.value = true;
+    __HydMotion_framework_Publish();
+    __mcl_cmd_PressureHandle(&ph);
+
+    ASSERT_TRUE(fabsf(fb->AXIS_REF.position - 10.0f) < 1e-6f,
+                "Non-simulation pressure segment should not auto-move position");
+}
+
 static void test_pressurehandle_accepts_continuousupdate_and_updates_active_target(void) {
     HYD_PRESSUREHANDLE ph;
     HYD_MotionControlFB* fb;
@@ -3341,6 +3427,8 @@ int main(void) {
     test_reset_immediate_done_on_uninitialized_axis();
     test_reset_preserves_direct_segment_configuration();
     test_pressurehandle_execute_rising_starts_pressure_control();
+    test_sim_pressurehandle_crawls_toward_zero();
+    test_pressurehandle_does_not_move_non_simulation_feedback();
     test_pressurehandle_accepts_continuousupdate_and_updates_active_target();
     test_pressurehandle_latches_controller_until_next_execute();
     test_pressurehandle_en_false_clears_outputs();

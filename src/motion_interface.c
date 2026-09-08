@@ -28,6 +28,7 @@ static HYD_UINT16 HYD_FrameworkGeneration;
 
 static const HYD_REAL HYD_CONTABS_DIRECTION_VELOCITY_THRESHOLD = 0.01f;
 static const HYD_REAL HYD_PRESSURE_HANDLE_BASE_MAX_FLOW = 20.0f;
+static const HYD_REAL HYD_SIM_PRESSURE_CREEP_VELOCITY = 1.0f;
 
 static int allocMotionControlFB(void)
 {
@@ -852,14 +853,26 @@ void __HydMotion_framework_Publish()
             HYD_TIME simDeltaTime = (fb->_simulationCycleTime > 0.0f)
                 ? fb->_simulationCycleTime
                 : (HYD_TIME)dfCycleTime;
+            HYD_REAL simVelocity = fb->_simFeedback.targetVelocity;
+
+            /* Pressure mode commands flow rather than a template velocity.
+             * Simulate the residual low-speed mold-closing motion without
+             * changing pressure-loop flow or real-axis feedback behavior. */
+            if (fb->STATE.active && fb->_activeSegmentValid &&
+                fb->_activeSegment.mode == HYD_MODE_PRESSURE_CLOSED_LOOP) {
+                simVelocity = (fb->AXIS_REF.position > 0.0f)
+                    ? -HYD_SIM_PRESSURE_CREEP_VELOCITY
+                    : 0.0f;
+            }
 
             if (simDeltaTime > 0.0) {
-                fb->AXIS_REF.position += fb->_simFeedback.targetVelocity * simDeltaTime;
-                if(fb->AXIS_REF.position < 0.0f) {
-					fb->AXIS_REF.position = 0.0f;
-				}
+                fb->AXIS_REF.position += simVelocity * simDeltaTime;
+                if (fb->AXIS_REF.position < 0.0f) {
+                    fb->AXIS_REF.position = 0.0f;
+                    simVelocity = 0.0f;
+                }
             }
-            fb->AXIS_REF.velocity  = fb->_simFeedback.targetVelocity;
+            fb->AXIS_REF.velocity  = simVelocity;
             fb->AXIS_REF.flow      = fb->_simFeedback.targetFlow;
             fb->AXIS_REF.pressure  = fb->_simFeedback.targetPressure;
             fb->AXIS_REF.timestamp += simDeltaTime;
