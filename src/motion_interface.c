@@ -1681,8 +1681,6 @@ void __mcl_cmd_Stop(HYD_STOP *data__)
 
     if (isPending)
     {
-        HYD_MotionControlFB_Cycle(fb);
-
         if (HYD_MotionControlFB_IsError(fb))
         {
             __SET_VAR(data__->, ERROR, , true);
