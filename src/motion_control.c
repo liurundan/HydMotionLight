@@ -1447,10 +1447,12 @@ static HYD_BOOL HYD_PrimeSegmentControllers(HYD_MotionControlFB* fb,
     fb->_lastFeedbackTimestamp = controllerTime;
     fb->_simLastFeedbackTick = fb->_simTick;
     HYD_RampController_Init(&fb->_rampController, fb->AXIS_REF.pressure, controllerTime);
-    /* Sprint 2: Carry over velocity state for bumpless transitions only
+    /* Sprint 2/3: Carry over velocity/flow state for bumpless transitions only
      * when the caller explicitly allows continuity seeding.
      * P->V: invert the current actuator flow through the mechanism mapping
      * S->S: retain lastTargetVelocity from previous segment
+     * V->P: preserve flow for pressure controller initialization (Sprint 3)
+     * Position->P: preserve flow for pressure controller initialization (Sprint 3)
      *
      * Fresh starts after Stop / restart / direction-flip pass
      * allowFlowCarryover=false and must begin from zero. */
@@ -1479,21 +1481,81 @@ static HYD_BOOL HYD_PrimeSegmentControllers(HYD_MotionControlFB* fb,
                     carriedFlow = fb->_plannerState.lastTargetFlow;
                     doCarryover = true;
                 }
+            } else if (fb->_previousSegmentMode == HYD_MODE_POSITION) {
+                /* Position->Speed: preserve any active motion state */
+                if (fabs(fb->_plannerState.lastTargetVelocity) > 0.0) {
+                    carriedVelocity = fabs(fb->_plannerState.lastTargetVelocity);
+                    carriedFlow = fb->_plannerState.lastTargetFlow;
+                    doCarryover = true;
+                }
+            }
+        } else if (allowFlowCarryover && segment->mode == HYD_MODE_PRESSURE_CLOSED_LOOP) {
+            /* Sprint 3: V->P and Position->P carryover to prevent pump speed spike */
+            if (fb->_previousSegmentMode == HYD_MODE_SPEED_RAMP ||
+                fb->_previousSegmentMode == HYD_MODE_POSITION) {
+                /* Preserve flow from motion planning state */
+                carriedFlow = fb->_plannerState.lastTargetFlow;
+                if (carriedFlow <= 0.0) {
+                    /* Fallback: use last commanded pump flow */
+                    carriedFlow = fb->_lastCommandedFlow;
+                }
+                if (carriedFlow > 0.0) {
+                    doCarryover = true;
+                }
+            } else if (fb->_previousSegmentMode == HYD_MODE_PRESSURE_CLOSED_LOOP) {
+                /* P->P: preserve pressure controller's last flow */
+                carriedFlow = fb->_lastCommandedFlow;
+                if (carriedFlow > 0.0) {
+                    doCarryover = true;
+                }
+            }
+        } else if (allowFlowCarryover && segment->mode == HYD_MODE_POSITION) {
+            /* Sprint 3: P->Position carryover to prevent pump speed spike during
+             * pressure-to-position transition (e.g., pack to ejection/cooling) */
+            if (fb->_previousSegmentMode == HYD_MODE_PRESSURE_CLOSED_LOOP) {
+                /* Pressure->Position: reverse-map flow to velocity */
+                if (fb->_lastCommandedFlow > 0.0) {
+                    HYD_DiagnosticCode mapCode = HYD_DIAG_CODE_NONE;
+                    if (!HYD_MotionControlFB_MapActuatorFlowToTemplateVelocity(
+                            fb, segment, fb->_lastCommandedFlow,
+                            &carriedVelocity, &mapCode)) {
+                        HYD_ReportKinematicsRuntimeFault(
+                            fb, mapCode, segment, &fb->STATE.references);
+                        return false;
+                    }
+                    carriedFlow = fb->_lastCommandedFlow;
+                    doCarryover = true;
+                }
+            } else if (fb->_previousSegmentMode == HYD_MODE_SPEED_RAMP ||
+                       fb->_previousSegmentMode == HYD_MODE_POSITION) {
+                /* V->Position or Position->Position: preserve velocity state */
+                if (fabs(fb->_plannerState.lastTargetVelocity) > 0.0) {
+                    carriedVelocity = fabs(fb->_plannerState.lastTargetVelocity);
+                    carriedFlow = fb->_plannerState.lastTargetFlow;
+                    doCarryover = true;
+                }
             }
         }
 
         memset(&fb->_plannerState, 0, sizeof(fb->_plannerState));
 
-        if (doCarryover) {
+        if (doCarryover && (segment->mode == HYD_MODE_SPEED_RAMP || segment->mode == HYD_MODE_POSITION)) {
             fb->_plannerState.lastTargetVelocity = carriedVelocity;
             fb->_plannerState.lastTargetFlow = carriedFlow;
             fb->_plannerState.initialized = true;
         }
-    }
 
-    trackingFlowReference = HYD_MotionUtils_AbsReal(fb->AXIS_REF.flow);
-    if (trackingFlowReference <= 0.0 && allowFlowCarryover) {
-        trackingFlowReference = fb->_lastCommandedFlow;
+        /* Sprint 3: Use carried flow to seed trackingFlowReference for pressure mode.
+         * This ensures pressure controller initialization reflects the actual motion
+         * state before the V->P or Position->P transition, preventing pump speed
+         * from dropping to 0 RPM during mode change. */
+        trackingFlowReference = HYD_MotionUtils_AbsReal(fb->AXIS_REF.flow);
+        if (trackingFlowReference <= 0.0 && allowFlowCarryover) {
+            trackingFlowReference = fb->_lastCommandedFlow;
+        }
+        if (doCarryover && segment->mode == HYD_MODE_PRESSURE_CLOSED_LOOP && carriedFlow > 0.0) {
+            trackingFlowReference = carriedFlow;
+        }
     }
 
     initialPressureControlOutput = segment->targetFlow;
