@@ -188,6 +188,37 @@ static HYD_REAL HYD_ResolvePressureOutputMax(const HYD_MotionControlFB* fb,
     return outputMax;
 }
 
+static HYD_REAL HYD_ResolvePumpSpeedSlewRate(const HYD_MotionControlFB* fb,
+                                             const HYD_MotionSegment* segment,
+                                             HYD_BOOL acceleration) {
+    HYD_REAL flowGain;
+    HYD_REAL velocityFlowGain;
+    HYD_REAL rate;
+
+    if (segment == NULL || segment->mode == HYD_MODE_PRESSURE_CLOSED_LOOP) {
+        return acceleration
+            ? HYD_PUMP_DEFAULT_ACCELERATION_RPM_PER_SECOND
+            : HYD_PUMP_DEFAULT_DECELERATION_RPM_PER_SECOND;
+    }
+
+    flowGain = (fb != NULL && HYD_PumpConfig_IsValid(&fb->pumpConfig))
+        ? HYD_PumpConfig_GetFlowToSpeedGain(&fb->pumpConfig)
+        : ((fb != NULL) ? fb->FLOW_TO_PUMP_SPEED_GAIN : 0.0f);
+    velocityFlowGain = (segment->velocityToFlowGain > 0.0f)
+        ? segment->velocityToFlowGain : 1.0f;
+    rate = (acceleration || segment->maxDeceleration <= 0.0f)
+        ? segment->maxAcceleration
+        : segment->maxDeceleration;
+    rate *= velocityFlowGain * flowGain;
+
+    if (!isfinite(rate) || rate <= 0.0f) {
+        rate = acceleration
+            ? HYD_PUMP_DEFAULT_ACCELERATION_RPM_PER_SECOND
+            : HYD_PUMP_DEFAULT_DECELERATION_RPM_PER_SECOND;
+    }
+    return rate;
+}
+
 static void HYD_ReportKinematicsRuntimeFault(
     HYD_MotionControlFB *fb,
     HYD_DiagnosticCode code,
@@ -597,6 +628,7 @@ typedef struct {
     HYD_BOOL valid;
     HYD_MotionPlannerState plannerState;
     HYD_REAL pumpSpeed;
+    HYD_REAL lastCommandedFlow;
     HYD_REAL plannedVelocity;
     HYD_REAL plannedFlow;
     HYD_REAL commandedPumpSpeed;
@@ -670,6 +702,34 @@ static HYD_REAL HYD_ResolveContinuityPumpSpeed(const HYD_MotionControlFB* fb,
     return HYD_ClampReal(flowMagnitude * effectiveGain, 0.0f, effectiveLimit);
 }
 
+static HYD_BOOL HYD_IsPumpContinuityMode(HYD_ControlMode mode) {
+    return mode == HYD_MODE_POSITION ||
+           mode == HYD_MODE_SPEED_RAMP ||
+           mode == HYD_MODE_PRESSURE_CLOSED_LOOP;
+}
+
+static HYD_BOOL HYD_DirectHandoverDirectionsCompatible(
+    const HYD_MotionControlFB* fb,
+    const HYD_MotionSegment* successor) {
+    HYD_MotionDirection previousDirection;
+    HYD_MotionDirection successorDirection;
+
+    if (fb == NULL || successor == NULL || !fb->_activeSegmentValid) {
+        return false;
+    }
+
+    if (fb->_activeSegment.mode == HYD_MODE_PRESSURE_CLOSED_LOOP ||
+        successor->mode == HYD_MODE_PRESSURE_CLOSED_LOOP) {
+        return true;
+    }
+
+    previousDirection = HYD_Segment_ResolveDirection(
+        &fb->_activeSegment, &fb->AXIS_REF, fb->_lastActiveDirection);
+    successorDirection = HYD_Segment_ResolveDirection(
+        successor, &fb->AXIS_REF, fb->_lastActiveDirection);
+    return previousDirection == successorDirection;
+}
+
 static void HYD_CaptureDirectContinuityState(const HYD_MotionControlFB* fb,
                                              HYD_DirectContinuityState* state) {
     HYD_REAL signedVelocity;
@@ -702,6 +762,10 @@ static void HYD_CaptureDirectContinuityState(const HYD_MotionControlFB* fb,
     }
 
     state->pumpSpeed = HYD_ResolveContinuityPumpSpeed(fb, flowMagnitude);
+    state->lastCommandedFlow = fb->_lastCommandedFlow;
+    if (fabs(state->lastCommandedFlow) <= 0.0 && flowMagnitude > 0.0) {
+        state->lastCommandedFlow = flowMagnitude;
+    }
     state->plannedVelocity = signedVelocity;
     state->plannedFlow = flowMagnitude;
     state->commandedPumpSpeed = fb->STATE.commandedPumpSpeed;
@@ -729,6 +793,7 @@ static void HYD_RestoreDirectContinuityState(HYD_MotionControlFB* fb,
 
     fb->_plannerState = state->plannerState;
     fb->PUMP_SPEED = state->pumpSpeed;
+    fb->_lastCommandedFlow = state->lastCommandedFlow;
     fb->STATE.plannedVelocity = state->plannedVelocity;
     fb->STATE.plannedFlow = state->plannedFlow;
     fb->STATE.commandedPumpSpeed = state->commandedPumpSpeed;
@@ -2778,6 +2843,7 @@ static void HYD_MotionControlFB_RunRunningState(HYD_MotionControlFB* fb) {
     HYD_MotionPlannerOutput plannerOutput;
     HYD_PressureControllerOutput pressureOutput;
     HYD_PumpConverterOutput pumpOutput;
+    HYD_PumpConverterInput slewInput;
     HYD_OutputLimiterInput limiterInput;
     HYD_OutputLimiterOutput limiterOutput;
     HYD_ExecutionReference executionReference;
@@ -2936,8 +3002,35 @@ static void HYD_MotionControlFB_RunRunningState(HYD_MotionControlFB* fb) {
     pumpOutput.commandFlow = limiterOutput.commandFlow;
     pumpOutput.pumpSpeed = limiterOutput.pumpSpeed;
 
-    plannerOutput.targetFlow = limiterOutput.commandFlow;
-    executionReference.flowReference = limiterOutput.commandFlow;
+    /* The handover flag is consumed once. It bridges the reset/start boundary
+     * without imposing a second slew loop on steady-state controller output. */
+    if (fb->_segmentChangedFlag &&
+        fb->_activeSegmentSource == HYD_SEGMENT_SOURCE_DIRECT &&
+        fb->_previousSegmentMode != segment->mode &&
+        fb->_lastCommandedFlow > 0.0 &&
+        HYD_IsPumpContinuityMode(fb->_previousSegmentMode) &&
+        HYD_IsPumpContinuityMode(segment->mode) &&
+        fb->DIAGNOSTIC.protectionAction != HYD_PROTECTION_ACTION_STOP &&
+        !fb->STATE.faultActive &&
+        !limiterOutput.derated &&
+        !limiterOutput.pressureLimitActive &&
+        !limiterOutput.softLimitActive) {
+        memset(&slewInput, 0, sizeof(slewInput));
+        slewInput.requestedFlow = limiterOutput.commandFlow;
+        slewInput.flowToPumpSpeedGain = limiterInput.flowToPumpSpeedGain;
+        slewInput.pumpSpeedLimit = limiterInput.pumpSpeedLimit;
+        slewInput.direction = segment->direction;
+        HYD_PumpConverter_ApplySlewLimit(
+            &slewInput,
+            fb->PUMP_SPEED,
+            (deltaTime > 0.0) ? deltaTime : HYD_DEFAULT_SIM_CYCLE_TIME,
+            HYD_ResolvePumpSpeedSlewRate(fb, segment, true),
+            HYD_ResolvePumpSpeedSlewRate(fb, segment, false),
+            &pumpOutput);
+    }
+
+    plannerOutput.targetFlow = pumpOutput.commandFlow;
+    executionReference.flowReference = pumpOutput.commandFlow;
     if (limiterOutput.pressureLimitActive) {
         fb->STATE.limitFlags |= HYD_LIMIT_FLAG_PRESSURE;
     }
@@ -3697,6 +3790,8 @@ HYD_DirectStartResult HYD_MotionControlFB_StartDirectCommand(HYD_MotionControlFB
     HYD_BOOL savedUseRecipe;
     HYD_BOOL activeDirect;
     HYD_BOOL preserveContinuity;
+    HYD_BOOL preserveContinuousAbsolute;
+    HYD_BOOL preserveModeHandover;
     HYD_BOOL shouldAbort;
     HYD_REAL positionTolerance;
     HYD_REAL referencePosition;
@@ -3728,11 +3823,17 @@ HYD_DirectStartResult HYD_MotionControlFB_StartDirectCommand(HYD_MotionControlFB
     activeDirect = fb->STATE.active &&
                    fb->_activeSegmentValid &&
                    fb->_activeSegmentSource == HYD_SEGMENT_SOURCE_DIRECT;
-    preserveContinuity = activeDirect &&
-                         kind == HYD_DIRECT_CMD_MOVE_CONTINUOUS_ABSOLUTE &&
-                         fb->_directOwnerKind == HYD_DIRECT_CMD_MOVE_CONTINUOUS_ABSOLUTE &&
-                         continuousAbsolute != NULL &&
-                         continuousAbsolute->valid;
+    preserveContinuousAbsolute = activeDirect &&
+                                 kind == HYD_DIRECT_CMD_MOVE_CONTINUOUS_ABSOLUTE &&
+                                 fb->_directOwnerKind == HYD_DIRECT_CMD_MOVE_CONTINUOUS_ABSOLUTE &&
+                                 continuousAbsolute != NULL &&
+                                 continuousAbsolute->valid;
+    preserveModeHandover = activeDirect &&
+                           HYD_IsPumpContinuityMode(fb->_activeSegment.mode) &&
+                           HYD_IsPumpContinuityMode(segment->mode) &&
+                           fb->_activeSegment.mode != segment->mode &&
+                           HYD_DirectHandoverDirectionsCompatible(fb, segment);
+    preserveContinuity = preserveContinuousAbsolute || preserveModeHandover;
     shouldAbort = (bufferMode == HYD_BUFFER_MODE_ABORT &&
                    (fb->STATE.active || HYD_MotionControlFB_IsBusy(fb))) ||
                   (activeDirect &&
@@ -3794,6 +3895,14 @@ HYD_DirectStartResult HYD_MotionControlFB_StartDirectCommand(HYD_MotionControlFB
                                                               &fb->_activeSegment);
         }
         if (preserveContinuity) {
+            HYD_RestoreDirectContinuityState(fb, &continuityState);
+        }
+        if (preserveModeHandover) {
+            if (!HYD_PrimeSegmentControllers(
+                    fb, &fb->_activeSegment, timestamp, true)) {
+                fb->USE_RECIPE = savedUseRecipe;
+                return HYD_DIRECT_START_REJECTED;
+            }
             HYD_RestoreDirectContinuityState(fb, &continuityState);
         }
         fb->USE_RECIPE = savedUseRecipe;
