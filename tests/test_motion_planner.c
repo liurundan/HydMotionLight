@@ -384,7 +384,10 @@ static void test_position_mode_uses_max_deceleration_for_braking(void) {
     HYD_MotionPlanner_Execute(&input, &output);
 
     remainingDistance = segment.targetPosition - axisRef.position;
-    expectedVelocityMagnitude = sqrt(2.0 * segment.maxDeceleration * remainingDistance);
+    expectedVelocityMagnitude = segment.maxDeceleration *
+        (-input.deltaTime +
+         sqrt((input.deltaTime * input.deltaTime) +
+              (2.0 * remainingDistance / segment.maxDeceleration)));
     if (expectedVelocityMagnitude > segment.maxVelocity) {
         expectedVelocityMagnitude = segment.maxVelocity;
     }
@@ -502,6 +505,7 @@ static void test_position_planner_decelerates_with_max_deceleration(void) {
     HYD_MotionPlannerState state;
     HYD_MotionPlannerInput input;
     HYD_MotionPlannerOutput output;
+    HYD_REAL expectedVelocityMagnitude;
 
     printf("Testing position planner deceleration continuity...\n");
 
@@ -532,7 +536,12 @@ static void test_position_planner_decelerates_with_max_deceleration(void) {
 
     assert(output.targetVelocity < 20.0);
     assert(output.targetVelocity >= 0.0);
-    assert(fabs(output.targetVelocity - 19.5) < 0.001);
+    expectedVelocityMagnitude = segment.maxDeceleration *
+        (-input.deltaTime +
+         sqrt((input.deltaTime * input.deltaTime) +
+              (2.0 * (segment.targetPosition - axisRef.position) /
+               segment.maxDeceleration)));
+    assert(fabs(output.targetVelocity - expectedVelocityMagnitude) < 0.001);
 
     printf("✓ Position planner deceleration continuity test passed\n");
 }
@@ -581,6 +590,7 @@ static void test_position_based_online_trapezoid_deceleration_limit(void) {
     HYD_MotionPlannerState state;
     HYD_MotionPlannerInput input;
     HYD_MotionPlannerOutput output;
+    HYD_REAL expectedCap;
 
     printf("Testing position-based online trapezoid deceleration limit...\n");
 
@@ -607,7 +617,12 @@ static void test_position_based_online_trapezoid_deceleration_limit(void) {
     HYD_MotionPlanner_Execute(&input, &output);
 
     assert(output.targetVelocity < 20.0);
-    assert(fabs(output.targetVelocity - 19.5) < 0.001);
+    expectedCap = segment.maxDeceleration *
+        (-input.deltaTime +
+         sqrt((input.deltaTime * input.deltaTime) +
+              (2.0 * (segment.targetPosition - axisRef.position) /
+               segment.maxDeceleration)));
+    assert(fabs(output.targetVelocity - expectedCap) < 0.001);
     printf("✓ Position-based online trapezoid deceleration limit test passed\n");
 }
 
@@ -644,8 +659,11 @@ static void test_position_based_online_trapezoid_braking_cap(void) {
 
     HYD_MotionPlanner_Execute(&input, &output);
 
-    expectedCap = sqrt(2.0 * segment.maxDeceleration *
-                       (segment.targetPosition - axisRef.position));
+    expectedCap = segment.maxDeceleration *
+        (-input.deltaTime +
+         sqrt((input.deltaTime * input.deltaTime) +
+              (2.0 * (segment.targetPosition - axisRef.position) /
+               segment.maxDeceleration)));
     assert(fabs(output.targetVelocity - expectedCap) < 0.001);
     printf("✓ Position-based online trapezoid braking cap test passed\n");
 }
@@ -689,6 +707,88 @@ static void test_position_based_online_trapezoid_short_move_is_triangular(void) 
     assert(output.targetVelocity <= safetyCap + 0.001);
     assert(output.targetVelocity < 1.0);
     printf("✓ Position-based online trapezoid short triangular move test passed\n");
+}
+
+static void test_position_based_braking_reserves_cycle_distance(void) {
+    HYD_AxisRef axisRef;
+    HYD_MotionSegment segment;
+    HYD_MotionPlannerState state;
+    HYD_MotionPlannerInput input;
+    HYD_MotionPlannerOutput output;
+    HYD_REAL safeVelocity;
+
+    printf("Testing position planner response-delay braking envelope...\n");
+
+    memset(&state, 0, sizeof(state));
+    state.initialized = true;
+    state.lastTargetVelocity = 30.0;
+    axisRef = create_test_axis_ref(99.0);
+    segment = create_test_segment();
+    segment.planner = HYD_PLANNER_POSITION_BASED;
+    segment.direction = HYD_DIRECTION_EXTEND;
+    segment.targetPosition = 100.0;
+    segment.positionTolerance = 0.0;
+    segment.maxVelocity = 100.0;
+    segment.maxAcceleration = 500.0;
+    segment.maxDeceleration = 20.0;
+
+    memset(&input, 0, sizeof(input));
+    input.axisRef = &axisRef;
+    input.segment = &segment;
+    input.deltaTime = 0.05;
+    input.elapsedTime = 1.0;
+    input.state = &state;
+
+    HYD_MotionPlanner_Execute(&input, &output);
+
+    safeVelocity = segment.maxDeceleration *
+        (-input.deltaTime +
+         sqrt((input.deltaTime * input.deltaTime) +
+              (2.0 / segment.maxDeceleration)));
+    assert(output.targetVelocity >= 0.0);
+    assert(output.targetVelocity <= safeVelocity + 0.001);
+    assert(output.targetVelocity <
+           sqrt(2.0 * segment.maxDeceleration *
+                1.0) - 0.1);
+    printf("✓ Position planner response-delay braking envelope test passed\n");
+}
+
+static void test_position_based_actual_velocity_forces_deceleration(void) {
+    HYD_AxisRef axisRef;
+    HYD_MotionSegment segment;
+    HYD_MotionPlannerState state;
+    HYD_MotionPlannerInput input;
+    HYD_MotionPlannerOutput output;
+
+    printf("Testing position planner actual-velocity deceleration guard...\n");
+
+    memset(&state, 0, sizeof(state));
+    state.initialized = true;
+    state.lastTargetVelocity = 2.0;
+    axisRef = create_test_axis_ref(99.0);
+    axisRef.velocity = 30.0;
+    segment = create_test_segment();
+    segment.planner = HYD_PLANNER_POSITION_BASED;
+    segment.direction = HYD_DIRECTION_EXTEND;
+    segment.targetPosition = 100.0;
+    segment.positionTolerance = 0.0;
+    segment.maxVelocity = 100.0;
+    segment.maxAcceleration = 500.0;
+    segment.maxDeceleration = 20.0;
+
+    memset(&input, 0, sizeof(input));
+    input.axisRef = &axisRef;
+    input.segment = &segment;
+    input.deltaTime = 0.05;
+    input.elapsedTime = 1.0;
+    input.state = &state;
+
+    HYD_MotionPlanner_Execute(&input, &output);
+
+    assert(output.targetVelocity >= 0.0);
+    assert(output.targetVelocity <= state.lastTargetVelocity + 0.001);
+    assert(output.targetVelocity < 2.0);
+    printf("✓ Position planner actual-velocity deceleration guard test passed\n");
 }
 
 static void test_position_based_online_trapezoid_position_tolerance_decelerates(void) {
@@ -1141,6 +1241,8 @@ int main(void) {
     test_position_based_online_trapezoid_deceleration_limit();
     test_position_based_online_trapezoid_braking_cap();
     test_position_based_online_trapezoid_short_move_is_triangular();
+    test_position_based_braking_reserves_cycle_distance();
+    test_position_based_actual_velocity_forces_deceleration();
     test_position_based_online_trapezoid_position_tolerance_decelerates();
     test_position_based_online_trapezoid_decelerates_inside_position_tolerance();
     test_position_based_online_trapezoid_auto_direction_decelerates_inside_tolerance();
