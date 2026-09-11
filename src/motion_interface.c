@@ -29,6 +29,7 @@ static HYD_UINT16 HYD_FrameworkGeneration;
 static const HYD_REAL HYD_CONTABS_DIRECTION_VELOCITY_THRESHOLD = 0.01f;
 static const HYD_REAL HYD_PRESSURE_HANDLE_BASE_MAX_FLOW = 20.0f;
 static const HYD_REAL HYD_SIM_PRESSURE_CREEP_VELOCITY = 1.0f;
+static const HYD_REAL HYD_SIM_PRESSURE_CREEP_MAX_STROKE = 500.0f;
 
 static int allocMotionControlFB(void)
 {
@@ -856,19 +857,41 @@ void __HydMotion_framework_Publish()
             HYD_REAL simVelocity = fb->_simFeedback.targetVelocity;
 
             /* Pressure mode commands flow rather than a template velocity.
-             * Simulate the residual low-speed mold-closing motion without
-             * changing pressure-loop flow or real-axis feedback behavior. */
+             * Simulate the residual low-speed creep motion for mold protection,
+             * injection-to-holding transfer, and ejector pressure holding phases. */
             if (fb->STATE.active && fb->_activeSegmentValid &&
                 fb->_activeSegment.mode == HYD_MODE_PRESSURE_CLOSED_LOOP) {
-                simVelocity = (fb->AXIS_REF.position > 0.0f)
-                    ? -HYD_SIM_PRESSURE_CREEP_VELOCITY
-                    : 0.0f;
+
+                /* Determine creep direction based on motion history:
+                 * - Default: creep toward zero (negative direction)
+                 * - If prior position/velocity motion exists, creep in that direction */
+                HYD_REAL creepDirection = -1.0f;  /* Default: toward zero */
+
+                if (fb->_lastActiveDirection == HYD_DIRECTION_POSITIVE) {
+                    creepDirection = 1.0f;  /* Forward creep (mold close, injection hold) */
+                } else if (fb->_lastActiveDirection == HYD_DIRECTION_NEGATIVE) {
+                    creepDirection = -1.0f;  /* Backward creep (retraction, ejector) */
+                }
+                /* else: HOLD or uninitialized → use default -1.0f */
+
+                simVelocity = creepDirection * HYD_SIM_PRESSURE_CREEP_VELOCITY;
             }
 
             if (simDeltaTime > 0.0) {
                 fb->AXIS_REF.position += simVelocity * simDeltaTime;
+
+                /* Existing lower bound: always enforce position >= 0 */
                 if (fb->AXIS_REF.position < 0.0f) {
                     fb->AXIS_REF.position = 0.0f;
+                    simVelocity = 0.0f;
+                }
+
+                /* Upper bound for forward pressure-mode creep only */
+                if (fb->STATE.active && fb->_activeSegmentValid &&
+                    fb->_activeSegment.mode == HYD_MODE_PRESSURE_CLOSED_LOOP &&
+                    simVelocity > 0.0f &&
+                    fb->AXIS_REF.position > HYD_SIM_PRESSURE_CREEP_MAX_STROKE) {
+                    fb->AXIS_REF.position = HYD_SIM_PRESSURE_CREEP_MAX_STROKE;
                     simVelocity = 0.0f;
                 }
             }
