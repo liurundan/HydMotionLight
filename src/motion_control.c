@@ -1419,6 +1419,10 @@ static void HYD_ResetCriteriaForSegment(HYD_MotionControlFB* fb,
         if (fb->_timeoutCriteria.switchSuppressTime >= tLim) {
             fb->_timeoutCriteria.switchSuppressTime = 0.0;
         }
+    } else {
+        /* 显式禁用超时检测，避免沿用上一段的超时限制。
+         * 当 duration=0 且无显式 timeoutLimit 时，压力段不应触发超时报警。 */
+        fb->_timeoutCriteria.baseThreshold = 0.0;
     }
 
     fb->_switchSuppressEndTime = fb->_pressureCriteria.startupSuppressTime +
