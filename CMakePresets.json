@@ -27,6 +27,19 @@
                 "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/cmake/coverage_toolchain.cmake",
                 "CMAKE_INSTALL_PREFIX": "${sourceDir}/out/install/${presetName}"
             }
+        },
+        {
+            "name": "mingw-w64",
+            "displayName": "Windows MinGW-w64 GCC",
+            "description": "MinGW-w64 GCC toolchain for Windows",
+            "generator": "MinGW Makefiles",
+            "binaryDir": "${sourceDir}/out/build/${presetName}",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/cmake/mingw_w64_toolchain.cmake",
+                "CMAKE_MAKE_PROGRAM": "D:/mingw64/bin/mingw32-make.exe",
+                "CMAKE_INSTALL_PREFIX": "${sourceDir}/out/install/${presetName}"
+            }
         }
     ],
     "buildPresets": [
@@ -42,6 +55,13 @@
             "name": "coverage",
             "displayName": "Coverage build",
             "configurePreset": "coverage",
+            "targets": ["all"],
+            "configuration": "Debug"
+        },
+        {
+            "name": "mingw-w64",
+            "displayName": "MinGW-w64 Debug",
+            "configurePreset": "mingw-w64",
             "targets": ["all"],
             "configuration": "Debug"
         }
