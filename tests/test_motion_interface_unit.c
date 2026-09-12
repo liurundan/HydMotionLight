@@ -1560,6 +1560,9 @@ static void test_sim_pressurehandle_crawls_toward_zero(void) {
         return;
     }
 
+    /* A fresh axis has no direction history. The pressure-mode simulator
+     * contract uses that HOLD state to select the default crawl toward zero. */
+    fb->_lastActiveDirection = HYD_DIRECTION_HOLD;
     fb->AXIS_REF.position = 0.01f;
     memset(&ph, 0, sizeof(ph));
     IEC_VAL(ph.EN) = true;

@@ -142,6 +142,37 @@ static bool set_axis_feedback(int axisId,
     return IEC_VAL(writeback.DONE) == true && IEC_VAL(writeback.ERROR) == false;
 }
 
+static bool seed_sim_position_with_move_absolute(int axisId, HYD_REAL position) {
+    HYD_MOVEABSOLUTE move;
+
+    memset(&move, 0, sizeof(move));
+    IEC_VAL(move.EN) = true;
+    IEC_VAL(move.AXISID) = axisId;
+    IEC_VAL(move.POSITION) = position;
+    IEC_VAL(move.VELOCITY) = 50.0f;
+    IEC_VAL(move.ACCELERATION) = 200.0f;
+    IEC_VAL(move.DECELERATION) = 200.0f;
+    IEC_VAL(move.DIRECTION) = (position >= 0.0f)
+        ? HYD_DIRECTION_POSITIVE : HYD_DIRECTION_NEGATIVE;
+    IEC_VAL(move.EXECUTE) = true;
+    __mcl_cmd_MoveAbsolute(&move);
+
+    if (IEC_VAL(move.ERROR)) {
+        return false;
+    }
+    for (int step = 0; step < MAX_SIM_STEPS; ++step) {
+        __HydMotion_framework_Publish();
+        __mcl_cmd_MoveAbsolute(&move);
+        if (IEC_VAL(move.DONE)) {
+            return true;
+        }
+        if (IEC_VAL(move.ERROR) || IEC_VAL(move.COMMANDABORTED)) {
+            return false;
+        }
+    }
+    return false;
+}
+
 static void test_plc_pressure_feedback_and_movecontinuousabsolute_limit_use_bar(void) {
     HYD_MOVECONTINUOUSABSOLUTE cmd;
     HYD_MotionControlFB* core;
@@ -217,9 +248,9 @@ static bool seed_negative_velocity_history(int axisId, bool stopToZero) {
     HYD_MOVEVELOCITY mv;
     HYD_STOP stop;
 
-    /* Negative velocity cannot be observed while the simulator is clamped at
-     * its lower position limit. Seed a reachable position before reversing. */
-    if (!set_axis_feedback(axisId, 100.0f, 0.0f, 0.0f, 0.0f, 0.0f)) {
+    /* SetAxisFeedback intentionally targets physical axes only. Seed a
+     * reachable position through the public simulation command path instead. */
+    if (!seed_sim_position_with_move_absolute(axisId, 100.0f)) {
         return false;
     }
 
@@ -652,7 +683,12 @@ static void test_negative_same_direction_latches_inendvelocity_on_target_crossin
         return;
     }
 
-    init_movecontinuousabsolute(&cmd, axisId, -120.0f, 25.0f, 8.0f,
+    /* The simulator clamps position at zero. Seed a reachable positive
+     * position through the public command path before moving down. */
+    ASSERT_TRUE(seed_sim_position_with_move_absolute(axisId, 120.0f),
+                "Public MoveAbsolute should seed a reachable position for the negative-direction case");
+
+    init_movecontinuousabsolute(&cmd, axisId, 60.0f, 25.0f, 8.0f,
                                 HYD_DIRECTION_NEGATIVE,
                                 HYD_DIRECTION_NEGATIVE);
     rising_edge_scan(&cmd);
