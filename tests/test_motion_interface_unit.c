@@ -1599,6 +1599,64 @@ static void test_sim_pressurehandle_crawls_toward_zero(void) {
                 "Simulation pressure creep should stop at zero position");
 }
 
+static void test_stop_pressurehandle_completes_without_timeout(void) {
+    HYD_PRESSUREHANDLE ph;
+    HYD_STOP stop;
+    HYD_MotionControlFB *fb;
+    int axisId;
+    int step;
+
+    __HydMotion_framework_Init();
+    axisId = create_sim_axis();
+    fb = __MK_GetPublic_MotionControlFB(axisId);
+    ASSERT_TRUE(fb != NULL, "Pressure stop test should resolve the simulation FB");
+    if (fb == NULL) {
+        return;
+    }
+
+    memset(&ph, 0, sizeof(ph));
+    IEC_VAL(ph.EN) = true;
+    IEC_VAL(ph.EXECUTE) = true;
+    IEC_VAL(ph.AXISID) = axisId;
+    IEC_VAL(ph.PRESSURE) = 10.0f;
+    IEC_VAL(ph.PRESSURERAMPRATE) = 2.0f;
+    IEC_VAL(ph.DURATION) = 0.0f;
+    IEC_VAL(ph.FLOWLIMITPERCENT) = 100.0f;
+    __mcl_cmd_PressureHandle(&ph);
+    for (step = 0; step < 20; ++step) {
+        __HydMotion_framework_Publish();
+        IEC_VAL(ph.EXECUTE) = true;
+        ph.EXECUTE0.value = true;
+        __mcl_cmd_PressureHandle(&ph);
+    }
+    ASSERT_TRUE(fb->STATE.active, "PressureHandle should be active before Stop");
+
+    memset(&stop, 0, sizeof(stop));
+    IEC_VAL(stop.EN) = true;
+    IEC_VAL(stop.EXECUTE) = true;
+    IEC_VAL(stop.AXISID) = axisId;
+    IEC_VAL(stop.DECELERATION) = 100.0f;
+    __mcl_cmd_Stop(&stop);
+
+    /* The first Stop call queues and executes the command.  The next PLC
+     * cycle must publish zero simulated velocity and expose DONE. */
+    __HydMotion_framework_Publish();
+    IEC_VAL(stop.EXECUTE) = true;
+    stop.EXECUTE0.value = true;
+    __mcl_cmd_Stop(&stop);
+
+    ASSERT_TRUE(IEC_VAL(stop.DONE),
+                "Stop should complete immediately for a pressure-mode creep segment");
+    ASSERT_TRUE(IEC_VAL(stop.ERROR) == false,
+                "Pressure-mode Stop should not report an error");
+    ASSERT_TRUE(fb->DIAGNOSTIC.code != HYD_DIAG_CODE_TIMEOUT,
+                "Pressure-mode Stop should not enter the stop timeout fault path");
+    ASSERT_TRUE(fb->FB_STATE == HYD_FB_STATE_DONE,
+                "Pressure-mode Stop should leave the FB in DONE");
+    ASSERT_TRUE(fb->PUMP_SPEED == 0.0f && fabsf(fb->AXIS_REF.velocity) < 1e-6f,
+                "Pressure-mode Stop should clear pump output and simulated creep velocity");
+}
+
 static void test_pressurehandle_does_not_move_non_simulation_feedback(void) {
     HYD_PRESSUREHANDLE ph;
     HYD_MotionControlFB* fb;
@@ -3431,6 +3489,7 @@ int main(void) {
     test_reset_preserves_direct_segment_configuration();
     test_pressurehandle_execute_rising_starts_pressure_control();
     test_sim_pressurehandle_crawls_toward_zero();
+    test_stop_pressurehandle_completes_without_timeout();
     test_pressurehandle_does_not_move_non_simulation_feedback();
     test_pressurehandle_accepts_continuousupdate_and_updates_active_target();
     test_pressurehandle_latches_controller_until_next_execute();

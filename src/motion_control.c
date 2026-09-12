@@ -3157,6 +3157,23 @@ static HYD_BOOL HYD_RunRunningStateStopping(HYD_MotionControlFB* fb,
                                             HYD_PumpConverterOutput* pumpOutput,
                                             HYD_ExecutionReference* executionReference,
                                             HYD_PressureControllerOutput* pressureOutput) {
+    /* Simulation-only pressure creep has no position/velocity ramp to
+     * decelerate. Stop means removing the simulated pressure-loop flow
+     * command and completing the direct Stop session immediately. Real
+     * hardware keeps the existing feedback/deceleration path below. */
+    if (fb->_useSimulation && segment != NULL &&
+        segment->mode == HYD_MODE_PRESSURE_CLOSED_LOOP) {
+        fb->_lastCommandedFlow = 0.0f;
+        fb->_isStopping = false;
+        fb->_stopStartVel = 0.0f;
+        fb->_stopDeceleration = 0.0f;
+        fb->_directSessionState = HYD_DIRECT_SESSION_DONE;
+        HYD_ClearDirectPendingSlot(fb);
+        HYD_SafetyStateManager_ApplyIdleState(fb, true, false);
+        HYD_StateReporter_SetFbState(fb, HYD_FB_STATE_DONE);
+        return true;
+    }
+
     HYD_REAL stopElapsed = HYD_GetStopElapsedTime(fb);
     HYD_REAL stopMag = fabs(fb->_stopStartVel);
     HYD_REAL stopSign = (fb->_stopStartVel >= 0.0f) ? 1.0f : -1.0f;

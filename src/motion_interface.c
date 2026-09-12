@@ -865,7 +865,7 @@ void __HydMotion_framework_Publish()
             /* Pressure mode commands flow rather than a template velocity.
              * Simulate the residual low-speed creep motion for mold protection,
              * injection-to-holding transfer, and ejector pressure holding phases. */
-            if (fb->STATE.active && fb->_activeSegmentValid &&
+            if (fb->STATE.active && !fb->_isStopping && fb->_activeSegmentValid &&
                 fb->_activeSegment.mode == HYD_MODE_PRESSURE_CLOSED_LOOP) {
 
                 /* Determine creep direction based on motion history:
