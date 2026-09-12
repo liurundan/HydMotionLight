@@ -313,7 +313,9 @@ static HYD_MotionSegment buildPressureSegment(
 
     seg.pressureTolerance = fb->_params.pressureTolerance;
     seg.flowTolerance = fb->_params.flowTolerance;
-    seg.timeoutLimit = fb->_params.timeoutLimit;
+    /* PressureHandle is a pressure hold. A global motion timeout must not
+     * turn its manual/timed hold into a timeout fault. */
+    seg.timeoutLimit = 0.0f;
 
     return seg;
 }
@@ -348,7 +350,11 @@ static HYD_MotionSegment buildSegmentFromMotion(const HYD_AXISMOTION* motion,
     seg.positionTolerance = fb->_params.positionTolerance;
     seg.pressureTolerance = fb->_params.pressureTolerance;
     seg.flowTolerance = fb->_params.flowTolerance;
-    seg.timeoutLimit = fb->_params.timeoutLimit;
+    /* Keep the global timeout for position/speed segments only. Pressure
+     * segments end by their pressure/time/manual condition and never use the
+     * motion completion watchdog. */
+    seg.timeoutLimit = (seg.mode == HYD_MODE_PRESSURE_CLOSED_LOOP)
+        ? 0.0f : fb->_params.timeoutLimit;
 
     seg.pressureController = (HYD_PressureControllerType)(int)fb->_params.pressureControllerType;
     seg.pressureKp = fb->_params.pressureKp;

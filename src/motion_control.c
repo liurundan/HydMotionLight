@@ -1386,7 +1386,11 @@ static void HYD_ResetCriteriaForSegment(HYD_MotionControlFB* fb,
     fTol = HYD_Segment_GetFlowTolerance(segment);
     vTol = HYD_Segment_GetVelocityTolerance(segment);
     posTol = HYD_Segment_GetPositionTolerance(segment);
-    tLim = HYD_Segment_GetTimeoutLimit(segment);
+    /* Timeout is a motion-completion watchdog. Pressure closed-loop segments
+     * are hold/settle phases, so their duration is an end condition and must
+     * never arm HYD_DIAG_CODE_TIMEOUT. */
+    tLim = (segment->mode == HYD_MODE_PRESSURE_CLOSED_LOOP)
+        ? 0.0 : HYD_Segment_GetTimeoutLimit(segment);
 
     if (segment->mode == HYD_MODE_PRESSURE_CLOSED_LOOP && pTol > 0.0) {
         HYD_ConfigureSegmentCriteria(&fb->_pressureCriteria, pTol,
@@ -1420,8 +1424,8 @@ static void HYD_ResetCriteriaForSegment(HYD_MotionControlFB* fb,
             fb->_timeoutCriteria.switchSuppressTime = 0.0;
         }
     } else {
-        /* 显式禁用超时检测，避免沿用上一段的超时限制。
-         * 当 duration=0 且无显式 timeoutLimit 时，压力段不应触发超时报警。 */
+        /* No watchdog is armed for this segment. This also clears a
+         * previously armed position/speed timeout during a pressure handover. */
         fb->_timeoutCriteria.baseThreshold = 0.0;
     }
 
@@ -2754,13 +2758,14 @@ static void HYD_UpdateExecutionDiagnostics(HYD_MotionControlFB* fb,
     {
         HYD_DiagnosticResult timeoutResult;
         HYD_BOOL isStartupPhaseTimeout = HYD_IsStartupSuppressActive(elapsed, fb->_timeoutCriteria.startupSuppressTime);
-        if (HYD_DiagnosticCriteria_CheckTimeout(&timeoutResult,
-                                                  &fb->_timeoutCriteria,
-                                                  &fb->_timeoutCriteriaState,
-                                                  fb->AXIS_REF.timestamp,
-                                                  elapsed,
-                                                  fb->_timeoutCriteria.enableStartupSuppress && isStartupPhaseTimeout,
-                                                  isSwitchPhase)) {
+        if (segment->mode != HYD_MODE_PRESSURE_CLOSED_LOOP &&
+            HYD_DiagnosticCriteria_CheckTimeout(&timeoutResult,
+                                                &fb->_timeoutCriteria,
+                                                &fb->_timeoutCriteriaState,
+                                                fb->AXIS_REF.timestamp,
+                                                elapsed,
+                                                fb->_timeoutCriteria.enableStartupSuppress && isStartupPhaseTimeout,
+                                                isSwitchPhase)) {
             timeout = true;
         }
     }

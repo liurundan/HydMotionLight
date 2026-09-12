@@ -7,6 +7,9 @@ HYD_REAL HYD_Segment_GetPositionTolerance(const HYD_MotionSegment* segment);
 HYD_REAL HYD_Segment_GetPressureTolerance(const HYD_MotionSegment* segment);
 HYD_REAL HYD_Segment_GetFlowTolerance(const HYD_MotionSegment* segment);
 HYD_REAL HYD_Segment_GetVelocityTolerance(const HYD_MotionSegment* segment);
+/* Returns the motion-completion watchdog limit. Pressure closed-loop
+ * segments always return 0 because their time/pressure/manual condition owns
+ * completion. */
 HYD_TIME HYD_Segment_GetTimeoutLimit(const HYD_MotionSegment* segment);
 
 /* Pressure-ceiling accessors (Sprint 1 low-pressure mold-protect primitive).

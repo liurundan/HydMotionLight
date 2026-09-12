@@ -446,7 +446,7 @@ HYD_MotionControlFB_StartSegment(&fb, 0, timestamp); // index 被忽略
 | `SEGMENT_NOT_COMPLETED` | `WARNING` | `COMMAND` | `CHECK_COMMAND` | `WARNING` | 当前段未完成就请求 `NextSegment()` |
 | `RECIPE_ALREADY_FINISHED` | `INFO` | `COMMAND` | `CHECK_COMMAND` | `NONE` | 已完成后再次请求切段 |
 | `ABORTED` | `INFO` | `COMMAND` | `NONE` | `NONE` | 调用 `Abort()` 主动终止 |
-| `TIMEOUT` | `FAULT` | `EXECUTION` | `RESTART_SEGMENT` | `STOP` | 段执行时间超过 `timeoutLimit` |
+| `TIMEOUT` | `FAULT` | `EXECUTION` | `RESTART_SEGMENT` | `STOP` | 位置/速度段执行时间超过 `timeoutLimit`；压力闭环段不适用 |
 | `OVER_PRESSURE` | `WARNING` | `EXECUTION` | `CHECK_COMMAND` | `DERATE` | 实测压力高于参考值加容差 |
 | `UNDER_PRESSURE` | `WARNING` | `EXECUTION` | `CHECK_COMMAND` | `WARNING` | 实测压力低于参考值减容差 |
 | `FLOW_DEVIATION` | `WARNING` | `EXECUTION` | `CHECK_COMMAND` | `DERATE` | 实测流量与参考流量偏差超限 |

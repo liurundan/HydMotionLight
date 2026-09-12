@@ -72,6 +72,7 @@ static void test_holding_profile_is_pressure_closed_loop(void) {
     assert(segment.direction == HYD_DIRECTION_HOLD);
     assert(segment.targetPressure == 80.0);
     assert(segment.duration == 2.0);
+    assert(segment.timeoutLimit == 0.0);
     assert(HYD_RecipeValidator_ValidateSegment(&segment, 0, &code, NULL));
 }
 

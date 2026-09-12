@@ -217,6 +217,12 @@ static bool seed_negative_velocity_history(int axisId, bool stopToZero) {
     HYD_MOVEVELOCITY mv;
     HYD_STOP stop;
 
+    /* Negative velocity cannot be observed while the simulator is clamped at
+     * its lower position limit. Seed a reachable position before reversing. */
+    if (!set_axis_feedback(axisId, 100.0f, 0.0f, 0.0f, 0.0f, 0.0f)) {
+        return false;
+    }
+
     memset(&mv, 0, sizeof(mv));
     IEC_VAL(mv.EN) = true;
     IEC_VAL(mv.AXISID) = axisId;

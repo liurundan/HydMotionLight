@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "motion_control.h"
+#include "segment_limits.h"
 
 static HYD_MotionSegment make_position_segment(void) {
     HYD_MotionSegment segment;
@@ -157,6 +158,78 @@ static void test_explicit_abort_still_zeros_outputs(void) {
     assert(fb._lastCommandedFlow == 0.0);
 }
 
+static void test_pressure_handover_does_not_timeout(void) {
+    HYD_MotionControlFB fb;
+    HYD_MotionSegment position = make_position_segment();
+    HYD_MotionSegment pressure = make_pressure_segment();
+    HYD_TIME timestamp;
+
+    /* A timeout configured for position motion must not leak into pressure hold. */
+    position.timeoutLimit = 0.05;
+    pressure.timeoutLimit = 0.05;
+
+    HYD_MotionControlFB_Init(&fb);
+    fb.USE_RECIPE = false;
+    fb.FLOW_TO_PUMP_SPEED_GAIN = 100.0;
+    fb.PUMP_SPEED_LIMIT = 3000.0;
+    fb.AXIS_REF.position = 0.0;
+    fb.AXIS_REF.velocity = 0.0;
+    fb.AXIS_REF.flow = 0.0;
+    fb.AXIS_REF.pressure = 10.0;
+    fb.AXIS_REF.timestamp = 0.0;
+
+    assert(HYD_MotionControlFB_LoadDirectSegment(&fb, &position));
+    assert(HYD_MotionControlFB_StartSegment(&fb, 0U, 0.0));
+    HYD_MotionControlFB_Cycle(&fb);
+
+    /* Switch while the position segment is active, as the process layer does. */
+    assert(HYD_MotionControlFB_StartDirectCommand(
+        &fb,
+        HYD_DIRECT_CMD_PRESSURE_HANDLE,
+        &pressure,
+        NULL,
+        HYD_BUFFER_MODE_ABORT,
+        0.1));
+
+    for (timestamp = 0.2; timestamp <= 0.5; timestamp += 0.01) {
+        fb.AXIS_REF.timestamp = timestamp;
+        fb.AXIS_REF.pressure = 10.0;
+        HYD_MotionControlFB_Cycle(&fb);
+        assert(!fb.STATE.faultActive);
+        assert(fb.DIAGNOSTIC.code != HYD_DIAG_CODE_TIMEOUT);
+    }
+
+    assert(fb._activeSegment.mode == HYD_MODE_PRESSURE_CLOSED_LOOP);
+    assert(HYD_Segment_GetTimeoutLimit(&pressure) == 0.0);
+}
+
+static void test_position_segment_timeout_remains_enabled(void) {
+    HYD_MotionControlFB fb;
+    HYD_MotionSegment position = make_position_segment();
+
+    position.timeoutLimit = 0.05;
+
+    HYD_MotionControlFB_Init(&fb);
+    fb.USE_RECIPE = false;
+    fb.FLOW_TO_PUMP_SPEED_GAIN = 100.0;
+    fb.PUMP_SPEED_LIMIT = 3000.0;
+    fb.AXIS_REF.position = 0.0;
+    fb.AXIS_REF.velocity = 0.0;
+    fb.AXIS_REF.flow = 0.0;
+    fb.AXIS_REF.pressure = 10.0;
+    fb.AXIS_REF.timestamp = 0.0;
+
+    assert(HYD_MotionControlFB_LoadDirectSegment(&fb, &position));
+    assert(HYD_MotionControlFB_StartSegment(&fb, 0U, 0.0));
+    HYD_MotionControlFB_Cycle(&fb);
+
+    fb.AXIS_REF.timestamp = 0.1;
+    HYD_MotionControlFB_Cycle(&fb);
+
+    assert(fb.STATE.faultActive);
+    assert(fb.DIAGNOSTIC.code == HYD_DIAG_CODE_TIMEOUT);
+}
+
 int main(void) {
     printf("Running bumpless direct mode handover tests...\n");
     test_position_pressure_handover();
@@ -164,6 +237,8 @@ int main(void) {
     test_pressure_position_handover();
     test_pressure_speed_handover();
     test_explicit_abort_still_zeros_outputs();
+    test_pressure_handover_does_not_timeout();
+    test_position_segment_timeout_remains_enabled();
     printf("All bumpless direct mode handover tests passed.\n");
     return 0;
 }
