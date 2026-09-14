@@ -169,6 +169,26 @@
 								<REAL />
 							</type>
 						</variable>
+						<variable name="MODEL_TYPE">
+							<type>
+								<USINT />
+							</type>
+						</variable>
+						<variable name="K_NUM">
+							<type>
+								<REAL />
+							</type>
+						</variable>
+						<variable name="TTAU">
+							<type>
+								<REAL />
+							</type>
+						</variable>
+						<variable name="DELAYTIME">
+							<type>
+								<REAL />
+							</type>
+						</variable>
 					</inputVars>
 					<outputVars>
 						<variable name="ACTIVE">
