@@ -35,7 +35,7 @@ static void assert_rbf_pid_internal_limits(const HYD_PressureControllerState* st
 static void test_legacy_default_strategy_matches_fixed_p_behavior(void) {
     HYD_MotionSegment segment;
     HYD_PressureControllerState state;
-    HYD_PressureControllerInput input;
+    HYD_PressureControllerInput input = {0};
     HYD_PressureControllerOutput output;
 
     printf("Testing legacy default pressure strategy behavior...\n");
@@ -62,7 +62,7 @@ static void test_legacy_default_strategy_matches_fixed_p_behavior(void) {
 static void test_pi_strategy_accumulates_integral_output(void) {
     HYD_MotionSegment segment;
     HYD_PressureControllerState state;
-    HYD_PressureControllerInput input;
+    HYD_PressureControllerInput input = {0};
     HYD_PressureControllerOutput output0;
     HYD_PressureControllerOutput output1;
 
@@ -98,7 +98,7 @@ static void test_pi_strategy_accumulates_integral_output(void) {
 static void test_deadband_filter_and_anti_windup(void) {
     HYD_MotionSegment segment;
     HYD_PressureControllerState state;
-    HYD_PressureControllerInput input;
+    HYD_PressureControllerInput input = {0};
     HYD_PressureControllerOutput output0;
     HYD_PressureControllerOutput output1;
 
@@ -142,7 +142,7 @@ static void test_deadband_filter_and_anti_windup(void) {
 static void test_output_tracking_back_calculates_integral_term(void) {
     HYD_MotionSegment segment;
     HYD_PressureControllerState state;
-    HYD_PressureControllerInput input;
+    HYD_PressureControllerInput input = {0};
     HYD_PressureControllerOutput output0;
     HYD_PressureControllerOutput output1;
 
@@ -178,7 +178,7 @@ static void test_output_tracking_back_calculates_integral_term(void) {
 static void test_pid_derivative_uses_measurement_rate_and_filter(void) {
     HYD_MotionSegment segment;
     HYD_PressureControllerState state;
-    HYD_PressureControllerInput input;
+    HYD_PressureControllerInput input = {0};
     HYD_PressureControllerOutput output0;
     HYD_PressureControllerOutput output1;
 
@@ -216,7 +216,7 @@ static void test_pid_derivative_uses_measurement_rate_and_filter(void) {
 static void test_strategy_switch_uses_descriptor_based_tracking(void) {
     HYD_MotionSegment segment;
     HYD_PressureControllerState state;
-    HYD_PressureControllerInput input;
+    HYD_PressureControllerInput input = {0};
     HYD_PressureControllerOutput output0;
     HYD_PressureControllerOutput output1;
 
@@ -253,7 +253,7 @@ static void test_strategy_switch_uses_descriptor_based_tracking(void) {
 static void test_rbf_pid_strategy_executes_within_limits_and_adapts(void) {
     HYD_MotionSegment segment;
     HYD_PressureControllerState state;
-    HYD_PressureControllerInput input;
+    HYD_PressureControllerInput input = {0};
     HYD_PressureControllerOutput output;
     HYD_REAL feedback;
     int step;
@@ -292,7 +292,7 @@ static void test_rbf_pid_strategy_executes_within_limits_and_adapts(void) {
         assert(state.rbfInitialized);
         assert(state.rbfPid.Status == 2 || state.rbfPid.Status == 3);
         assert(fabs((double)state.rbfPid.Output - (double)output.outputFlow) < 1e-6);
-        assert(fabs((double)state.rbfPid.n_out - (double)output.outputFlow) < 1e-6);
+        assert(fabs((double)state.rbfPid.Output - (double)output.outputFlow) < 1e-6);
         assert(fabs((double)state.rbfPid.u_prev - (double)output.outputFlow) < 1.0);
         assert(state.rbfPid.flow_normalization_scale > 0.0f);
         assert(state.rbfPid.pressure_normalization_scale > 0.0f);
@@ -313,7 +313,7 @@ static void test_rbf_pid_strategy_executes_within_limits_and_adapts(void) {
 static void test_rbf_pid_strategy_uses_library_default_tuning_profile(void) {
     HYD_MotionSegment segment;
     HYD_PressureControllerState state;
-    HYD_PressureControllerInput input;
+    HYD_PressureControllerInput input = {0};
     HYD_PressureControllerOutput output;
 
     printf("Testing RBF-PID library default tuning profile mapping...\n");
@@ -334,12 +334,12 @@ static void test_rbf_pid_strategy_uses_library_default_tuning_profile(void) {
 
     HYD_PressureController_Execute(&segment, &state, &input, &output);
 
-    assert(fabsf(state.rbfPid.eta_w - 0.005f) < 1e-6f);
-    assert(fabsf(state.rbfPid.eta_c - 0.005f) < 1e-6f);
-    assert(fabsf(state.rbfPid.eta_b - 0.005f) < 1e-6f);
-    assert(fabsf(state.rbfPid.eta_p - 0.00025f) < 1e-6f);
-    assert(fabsf(state.rbfPid.eta_i - 0.00025f) < 1e-6f);
-    assert(fabsf(state.rbfPid.eta_d - 0.00025f) < 1e-6f);
+    assert(fabsf(state.rbfPid.eta_w - HYD_DEFAULT_RBF_W_LEARNING_RATE) < 1e-6f);
+    assert(fabsf(state.rbfPid.eta_c - HYD_DEFAULT_RBF_C_LEARNING_RATE) < 1e-6f);
+    assert(fabsf(state.rbfPid.eta_b - HYD_DEFAULT_RBF_B_LEARNING_RATE) < 1e-6f);
+    assert(fabsf(state.rbfPid.eta_p - HYD_DEFAULT_PID_P_LEARNING_RATE) < 1e-6f);
+    assert(fabsf(state.rbfPid.eta_i - HYD_DEFAULT_PID_I_LEARNING_RATE) < 1e-6f);
+    assert(fabsf(state.rbfPid.eta_d - HYD_DEFAULT_PID_D_LEARNING_RATE) < 1e-6f);
     assert(output.adaptiveActive);
     printf("✓ RBF-PID library default tuning profile test passed\n");
 }
@@ -347,7 +347,7 @@ static void test_rbf_pid_strategy_uses_library_default_tuning_profile(void) {
 static void test_rbf_pid_strategy_uses_segment_level_tuning_profile(void) {
     HYD_MotionSegment segment;
     HYD_PressureControllerState state;
-    HYD_PressureControllerInput input;
+    HYD_PressureControllerInput input = {0};
     HYD_PressureControllerOutput output;
 
     printf("Testing RBF-PID segment-level tuning profile mapping...\n");
@@ -410,7 +410,7 @@ static void test_rbf_pid_strategy_uses_segment_level_tuning_profile(void) {
 static void test_rbf_pid_strategy_switch_tracks_previous_output_bumplessly(void) {
     HYD_MotionSegment segment;
     HYD_PressureControllerState state;
-    HYD_PressureControllerInput input;
+    HYD_PressureControllerInput input = {0};
     HYD_PressureControllerOutput output0;
     HYD_PressureControllerOutput output1;
 
@@ -447,7 +447,7 @@ static void test_rbf_pid_strategy_switch_tracks_previous_output_bumplessly(void)
     assert(output1.appliedStrategy == HYD_PRESSURE_CONTROLLER_RBF_PID);
     assert(fabs(output1.outputFlow - output0.outputFlow) < 0.05);
     assert(fabs((double)state.rbfPid.Output - (double)output1.outputFlow) < 0.05);
-    assert(fabs((double)state.rbfPid.n_out - (double)output1.outputFlow) < 0.05);
+    assert(fabs((double)state.rbfPid.Output - (double)output1.outputFlow) < 0.05);
     assert(state.activeStrategy == HYD_PRESSURE_CONTROLLER_RBF_PID);
     assert(state.rbfInitialized);
     assert(state.rbfPid.Status == 2 || state.rbfPid.Status == 3);
@@ -458,7 +458,7 @@ static void test_rbf_pid_strategy_switch_tracks_previous_output_bumplessly(void)
 static void test_rbf_pi_strategy_disables_derivative_behavior(void) {
     HYD_MotionSegment segment;
     HYD_PressureControllerState state;
-    HYD_PressureControllerInput input;
+    HYD_PressureControllerInput input = {0};
     HYD_PressureControllerOutput output;
 
     printf("Testing adaptive RBF-PI derivative suppression...\n");
@@ -496,7 +496,7 @@ static void test_rbf_pi_strategy_disables_derivative_behavior(void) {
 static void test_rbf_pi_strategy_switch_tracks_previous_output_bumplessly(void) {
     HYD_MotionSegment segment;
     HYD_PressureControllerState state;
-    HYD_PressureControllerInput input;
+    HYD_PressureControllerInput input = {0};
     HYD_PressureControllerOutput output0;
     HYD_PressureControllerOutput output1;
 
@@ -543,7 +543,7 @@ static void test_rbf_pi_strategy_switch_tracks_previous_output_bumplessly(void) 
 static void test_rbf_pid_deadzone_clamp_marks_internal_saturation(void) {
     HYD_MotionSegment segment;
     HYD_PressureControllerState state;
-    HYD_PressureControllerInput input;
+    HYD_PressureControllerInput input = {0};
     HYD_PressureControllerOutput output;
     HYD_REAL measured_pressures[] = {10.1, 10.2, 10.4, 10.6, 10.8, 11.0, 11.2, 11.5};
     int num_pressures = (int)(sizeof(measured_pressures) / sizeof(measured_pressures[0]));
@@ -592,7 +592,7 @@ static void test_rbf_pid_deadzone_clamp_marks_internal_saturation(void) {
 static void test_rbf_pi_soft_cap_saturation_survives_outer_wrapper(void) {
     HYD_MotionSegment segment;
     HYD_PressureControllerState state;
-    HYD_PressureControllerInput input;
+    HYD_PressureControllerInput input = {0};
     HYD_PressureControllerOutput output;
     HYD_BOOL sawSoftCap = false;
     int step;
@@ -631,7 +631,7 @@ static void test_rbf_pi_soft_cap_saturation_survives_outer_wrapper(void) {
 static void test_rbf_pid_soft_cap_preserves_legacy_wrapper_state(void) {
     HYD_MotionSegment segment;
     HYD_PressureControllerState state;
-    HYD_PressureControllerInput input;
+    HYD_PressureControllerInput input = {0};
     HYD_PressureControllerOutput output;
     HYD_BOOL reachedSoftCap = false;
     int step;
@@ -673,7 +673,7 @@ static void test_cross_controller_switch_seeds_rbf_within_clamp_window(void) {
     HYD_MotionSegment segmentA;
     HYD_MotionSegment segmentB;
     HYD_PressureControllerState state;
-    HYD_PressureControllerInput input;
+    HYD_PressureControllerInput input = {0};
     HYD_PressureControllerOutput output;
 
     printf("Testing cross-controller PI->RBF switch clamp seeding...\n");
@@ -736,7 +736,7 @@ static void test_cross_controller_switch_seeds_rbf_within_clamp_window(void) {
 static void test_pi_integral_saturates_and_back_calculates_on_recovery(void) {
     HYD_MotionSegment segment;
     HYD_PressureControllerState state;
-    HYD_PressureControllerInput input;
+    HYD_PressureControllerInput input = {0};
     HYD_PressureControllerOutput output;
     int step;
 
@@ -783,7 +783,7 @@ static void test_pi_integral_saturates_and_back_calculates_on_recovery(void) {
 static void test_p_to_pi_strategy_switch_preinitializes_integral(void) {
     HYD_MotionSegment segment;
     HYD_PressureControllerState state;
-    HYD_PressureControllerInput input;
+    HYD_PressureControllerInput input = {0};
     HYD_PressureControllerOutput output0;
     HYD_PressureControllerOutput output1;
 
@@ -826,7 +826,7 @@ static void test_p_to_pi_strategy_switch_preinitializes_integral(void) {
 static void test_long_run_integral_stability(void) {
     HYD_MotionSegment segment;
     HYD_PressureControllerState state;
-    HYD_PressureControllerInput input;
+    HYD_PressureControllerInput input = {0};
     HYD_PressureControllerOutput output;
     int step;
     HYD_REAL lastOutput = 0.0;
@@ -875,7 +875,7 @@ static void test_long_run_integral_stability(void) {
 static void test_small_kp_produces_proportional_output(void) {
     HYD_MotionSegment segment;
     HYD_PressureControllerState state;
-    HYD_PressureControllerInput input;
+    HYD_PressureControllerInput input = {0};
     HYD_PressureControllerOutput output;
     HYD_REAL expectedProportional;
     HYD_REAL expectedOutput;
@@ -909,7 +909,7 @@ static void test_small_kp_produces_proportional_output(void) {
 static void test_default_filter_applies_smoothing(void) {
     HYD_MotionSegment segment;
     HYD_PressureControllerState state;
-    HYD_PressureControllerInput input;
+    HYD_PressureControllerInput input = {0};
     HYD_PressureControllerOutput output;
 
     printf("Testing default filter alpha applies smoothing...\n");
@@ -947,7 +947,7 @@ static void test_default_filter_applies_smoothing(void) {
 static void test_gain_scheduling_with_error_magnitude(void) {
     HYD_MotionSegment segment;
     HYD_PressureControllerState state;
-    HYD_PressureControllerInput input;
+    HYD_PressureControllerInput input = {0};
     HYD_PressureControllerOutput outputLow;
     HYD_PressureControllerOutput outputHigh;
 
@@ -1132,7 +1132,7 @@ static void test_rbf_pid_single_setpoint_plant_convergence(void) {
         HYD_REAL target = targets[ti];
         HYD_MotionSegment segment = make_rbf_pid_segment(target);
         HYD_PressureControllerState state;
-        HYD_PressureControllerInput input;
+        HYD_PressureControllerInput input = {0};
         HYD_PressureControllerOutput output;
         HYD_REAL pressure_bar = 0.0;
         HYD_REAL pump_speed;
@@ -1223,7 +1223,7 @@ static void test_rbf_pid_setpoint_switching_plant(void) {
     int num_targets = 4;
     int steps_per_target = 4000;  /* increased for gain-compensated plant dynamics */
     HYD_PressureControllerState state;
-    HYD_PressureControllerInput input;
+    HYD_PressureControllerInput input = {0};
     HYD_PressureControllerOutput output;
     HYD_REAL pressure_bar = 0.0;
     HYD_REAL prev_flow = 0.0;
@@ -1291,7 +1291,7 @@ static void test_rbf_pid_setpoint_switching_plant(void) {
 static void test_rbf_pi_single_setpoint_plant_convergence(void) {
     HYD_MotionSegment segment = make_rbf_pi_segment(100.0);
     HYD_PressureControllerState state;
-    HYD_PressureControllerInput input;
+    HYD_PressureControllerInput input = {0};
     HYD_PressureControllerOutput output;
     HYD_REAL pressure_bar = 0.0;
     PlantStepMetrics metrics;
@@ -1333,7 +1333,7 @@ static void test_rbf_pi_single_setpoint_plant_convergence(void) {
 static void test_rbf_pi_setpoint_switching_plant(void) {
     const HYD_REAL sequence[] = {50.0, 200.0, 50.0};
     HYD_PressureControllerState state;
-    HYD_PressureControllerInput input;
+    HYD_PressureControllerInput input = {0};
     HYD_PressureControllerOutput output;
     HYD_REAL pressure_bar = 0.0;
     HYD_REAL previous_flow = 0.0;

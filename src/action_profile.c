@@ -143,6 +143,9 @@ HYD_BOOL HYD_ActionProfile_BuildHoldingPressure(HYD_MotionSegment* segment,
     segment->direction = HYD_DIRECTION_HOLD;
     segment->targetPressure = targetPressure;
     segment->duration = duration;
+    /* Pressure holding is completed by its time/pressure condition. Do not
+     * inherit the global motion watchdog used by position/speed segments. */
+    segment->timeoutLimit = 0.0;
     return true;
 }
 

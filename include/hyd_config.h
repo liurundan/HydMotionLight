@@ -482,6 +482,15 @@ typedef HYD_REAL HYD_TIME;
  * ============================================================================ */
 #define HYD_PUMP_NEGATIVE_SPEED_RATIO      0.05f
 
+/* Default normal-operation pump speed slew rates (rpm/s). Protected STOP and
+ * FAULT paths bypass these limits and retain immediate zero output. */
+#ifndef HYD_PUMP_DEFAULT_ACCELERATION_RPM_PER_SECOND
+#define HYD_PUMP_DEFAULT_ACCELERATION_RPM_PER_SECOND 20000.0f
+#endif
+#ifndef HYD_PUMP_DEFAULT_DECELERATION_RPM_PER_SECOND
+#define HYD_PUMP_DEFAULT_DECELERATION_RPM_PER_SECOND 40000.0f
+#endif
+
 /* ============================================================================
  * 15. 配置导出接口
  * ============================================================================ */

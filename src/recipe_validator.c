@@ -38,13 +38,21 @@ static HYD_BOOL HYD_IsLinearMotionDirection(HYD_MotionDirection direction) {
            (direction == HYD_DIRECTION_CURRENT);
 }
 
+/* 策略白名单。
+ *
+ * 【v13 必改点，勿遗漏】新增 HYD_PRESSURE_CONTROLLER_FF_PI 后若不同步这里，
+ * 所有压力段会在 ValidateSegment 被判 HYD_DIAG_CODE_SEGMENT_INVALID（ERRORID=3）
+ * → 段根本不启动（_activeSegment.maxFlow 恒 0），表现为"压力毫无响应"。
+ * 实测踩过一次（test_parameter_iec / motion_interface 系列 5 项同时失败），
+ * 症状离根因很远，故在此显式标注：**加新策略必须改这下面两个函数**。 */
 static HYD_BOOL HYD_IsValidPressureControllerType(HYD_PressureControllerType strategy) {
     return (strategy == HYD_PRESSURE_CONTROLLER_NONE) ||
            (strategy == HYD_PRESSURE_CONTROLLER_P) ||
            (strategy == HYD_PRESSURE_CONTROLLER_PI) ||
            (strategy == HYD_PRESSURE_CONTROLLER_PID) ||
            (strategy == HYD_PRESSURE_CONTROLLER_RBF_PID) ||
-           (strategy == HYD_PRESSURE_CONTROLLER_RBF_PI);
+           (strategy == HYD_PRESSURE_CONTROLLER_RBF_PI) ||
+           (strategy == HYD_PRESSURE_CONTROLLER_FF_PI);
 }
 
 static HYD_BOOL HYD_IsSupportedPressureControllerType(HYD_PressureControllerType strategy) {
@@ -53,7 +61,8 @@ static HYD_BOOL HYD_IsSupportedPressureControllerType(HYD_PressureControllerType
            (strategy == HYD_PRESSURE_CONTROLLER_PI) ||
            (strategy == HYD_PRESSURE_CONTROLLER_PID) ||
            (strategy == HYD_PRESSURE_CONTROLLER_RBF_PID) ||
-           (strategy == HYD_PRESSURE_CONTROLLER_RBF_PI);
+           (strategy == HYD_PRESSURE_CONTROLLER_RBF_PI) ||
+           (strategy == HYD_PRESSURE_CONTROLLER_FF_PI);
 }
 
 static HYD_BOOL HYD_RecipeValidator_Fail(HYD_DiagnosticCode* code,

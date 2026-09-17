@@ -78,6 +78,32 @@ typedef HYD_UINT16 HYD_FbStateMask;
 #define HYD_FB_STATE_MASK_BIT(state) ((HYD_FbStateMask)(1U << (state)))
 #define HYD_DEFAULT_SIM_CYCLE_TIME 0.001f
 
+/* v12：压力闭环过程增益 K 的推导用机器常数。
+ *
+ * Ksys = P_chamber[bar] / n[rpm]（稳态建压增益），是"过程层已知的机器常数"
+ * （PressureModel 的泄漏闭式标定即以它为锚点，见 src/sim/PressureModel.c:469）。
+ * 整机增益 K = Ksys / (D[mL/rev]/1000)  [bar/(L/min)]。
+ *
+ * 25cc/rev 机型：K = 5.0 / 0.025 = 200 bar/(L/min)。
+ *
+ * 为什么需要这个默认值（v12 的核心修复）：
+ *   K 是 RBF-PID 的**核心过程增益** —— Jacobian 限幅中心(K*0.2~K*5)、
+ *   稳态前馈 P_set/K、过驱动软上限、可达性下界四处都依赖它。
+ *   `_params.pressureSystemGain` 旧默认 = 0（不启用补偿）→ RBF 退化为"盲学"。
+ *   实测（真实链 gain=42.105、Ksys=5，闭环入口 Execute）：
+ *     K = 0   → 0/3 达标（Mp +22.18%, ess -4.693, σ 8.030）
+ *     K = 200 → 3/3 达标（Mp  +3.43%, ess +0.317, σ 0.447）
+ *   因此现场不配 K 时，库必须自行推导出一个可用值，否则默认不可用。
+ *   现场可用 HYD_PARAM_PRESSURE_SYSTEM_GAIN 显式覆盖（优先级高于此推导）。 */
+#define HYD_DEFAULT_PRESSURE_KSYS_BAR_PER_RPM 5.0f
+
+/* v12：升压限流默认值推导系数（未显式配置 HYD_PARAM_PRESSURE_BOOST_FLOW_LIMIT 时）。
+ *   q_boost = clamp(0.30 * Q_max, 3 * P_ceiling / K, Q_max)
+ * 下界取可达性要求(P_ceiling/K)的 3 倍，避免 §12.3 D11（限流低于维持流量 →
+ * 目标压力永不可达）。实测 25cc 机型 → 0.30*40.375 = 12.1 L/min，与现场值 12 吻合。 */
+#define HYD_DEFAULT_BOOST_FLOW_FRACTION   0.30f
+#define HYD_DEFAULT_BOOST_REACH_SAFETY    3.0f
+
 static HYD_BOOL HYD_UseSimulationFixedStep(const HYD_MotionControlFB* fb) {
     return (fb != NULL) && (fb->_useSimulation || fb->_useFixedCycleTime);
 }
@@ -153,6 +179,32 @@ static HYD_DiagnosticCode HYD_ToggleErrorToRuntimeDiagnostic(
         : HYD_DIAG_CODE_KINEMATICS_RUNTIME_INVALID;
 }
 
+HYD_REAL HYD_MotionControlFB_ResolveMaxFlowLmin(const HYD_MotionControlFB *fb)
+{
+    HYD_REAL derived;
+
+    if (fb == NULL) {
+        return 0.0f;
+    }
+
+    /* 1. 铭牌参数优先：排量 × 容积效率 × 最高转速 */
+    derived = HYD_PumpConfig_GetMaxFlowLmin(&fb->pumpConfig);
+    if (derived > 0.0f) {
+        return derived;
+    }
+
+    /* 2. 回退到旧版 gain/limit 直接配置 */
+    if (fb->FLOW_TO_PUMP_SPEED_GAIN > 0.0f && fb->PUMP_SPEED_LIMIT >= 0.0f) {
+        derived = fb->PUMP_SPEED_LIMIT / fb->FLOW_TO_PUMP_SPEED_GAIN;
+        if (derived > 0.0f) {
+            return derived;
+        }
+    }
+
+    /* 3. 回退到手填最大流量 */
+    return fb->_params.maxFlow;
+}
+
 static HYD_REAL HYD_GetPumpFlowLimit(const HYD_MotionControlFB *fb)
 {
     HYD_REAL gain;
@@ -169,6 +221,54 @@ static HYD_REAL HYD_GetPumpFlowLimit(const HYD_MotionControlFB *fb)
         speed_limit = fb->PUMP_SPEED_LIMIT;
     }
     return (gain > 0.0f && speed_limit >= 0.0f) ? speed_limit / gain : 0.0f;
+}
+
+static HYD_REAL HYD_ResolvePressureOutputMax(const HYD_MotionControlFB* fb,
+                                              const HYD_MotionSegment* segment) {
+    HYD_REAL pumpFlowLimit;
+    HYD_REAL outputMax;
+
+    if (segment == NULL) {
+        return 0.0f;
+    }
+
+    outputMax = segment->maxFlow;
+    pumpFlowLimit = HYD_GetPumpFlowLimit(fb);
+    if (pumpFlowLimit > 0.0f && pumpFlowLimit < outputMax) {
+        outputMax = pumpFlowLimit;
+    }
+    return outputMax;
+}
+
+static HYD_REAL HYD_ResolvePumpSpeedSlewRate(const HYD_MotionControlFB* fb,
+                                             const HYD_MotionSegment* segment,
+                                             HYD_BOOL acceleration) {
+    HYD_REAL flowGain;
+    HYD_REAL velocityFlowGain;
+    HYD_REAL rate;
+
+    if (segment == NULL || segment->mode == HYD_MODE_PRESSURE_CLOSED_LOOP) {
+        return acceleration
+            ? HYD_PUMP_DEFAULT_ACCELERATION_RPM_PER_SECOND
+            : HYD_PUMP_DEFAULT_DECELERATION_RPM_PER_SECOND;
+    }
+
+    flowGain = (fb != NULL && HYD_PumpConfig_IsValid(&fb->pumpConfig))
+        ? HYD_PumpConfig_GetFlowToSpeedGain(&fb->pumpConfig)
+        : ((fb != NULL) ? fb->FLOW_TO_PUMP_SPEED_GAIN : 0.0f);
+    velocityFlowGain = (segment->velocityToFlowGain > 0.0f)
+        ? segment->velocityToFlowGain : 1.0f;
+    rate = (acceleration || segment->maxDeceleration <= 0.0f)
+        ? segment->maxAcceleration
+        : segment->maxDeceleration;
+    rate *= velocityFlowGain * flowGain;
+
+    if (!isfinite(rate) || rate <= 0.0f) {
+        rate = acceleration
+            ? HYD_PUMP_DEFAULT_ACCELERATION_RPM_PER_SECOND
+            : HYD_PUMP_DEFAULT_DECELERATION_RPM_PER_SECOND;
+    }
+    return rate;
 }
 
 static void HYD_ReportKinematicsRuntimeFault(
@@ -580,6 +680,7 @@ typedef struct {
     HYD_BOOL valid;
     HYD_MotionPlannerState plannerState;
     HYD_REAL pumpSpeed;
+    HYD_REAL lastCommandedFlow;
     HYD_REAL plannedVelocity;
     HYD_REAL plannedFlow;
     HYD_REAL commandedPumpSpeed;
@@ -653,6 +754,34 @@ static HYD_REAL HYD_ResolveContinuityPumpSpeed(const HYD_MotionControlFB* fb,
     return HYD_ClampReal(flowMagnitude * effectiveGain, 0.0f, effectiveLimit);
 }
 
+static HYD_BOOL HYD_IsPumpContinuityMode(HYD_ControlMode mode) {
+    return mode == HYD_MODE_POSITION ||
+           mode == HYD_MODE_SPEED_RAMP ||
+           mode == HYD_MODE_PRESSURE_CLOSED_LOOP;
+}
+
+static HYD_BOOL HYD_DirectHandoverDirectionsCompatible(
+    const HYD_MotionControlFB* fb,
+    const HYD_MotionSegment* successor) {
+    HYD_MotionDirection previousDirection;
+    HYD_MotionDirection successorDirection;
+
+    if (fb == NULL || successor == NULL || !fb->_activeSegmentValid) {
+        return false;
+    }
+
+    if (fb->_activeSegment.mode == HYD_MODE_PRESSURE_CLOSED_LOOP ||
+        successor->mode == HYD_MODE_PRESSURE_CLOSED_LOOP) {
+        return true;
+    }
+
+    previousDirection = HYD_Segment_ResolveDirection(
+        &fb->_activeSegment, &fb->AXIS_REF, fb->_lastActiveDirection);
+    successorDirection = HYD_Segment_ResolveDirection(
+        successor, &fb->AXIS_REF, fb->_lastActiveDirection);
+    return previousDirection == successorDirection;
+}
+
 static void HYD_CaptureDirectContinuityState(const HYD_MotionControlFB* fb,
                                              HYD_DirectContinuityState* state) {
     HYD_REAL signedVelocity;
@@ -685,6 +814,10 @@ static void HYD_CaptureDirectContinuityState(const HYD_MotionControlFB* fb,
     }
 
     state->pumpSpeed = HYD_ResolveContinuityPumpSpeed(fb, flowMagnitude);
+    state->lastCommandedFlow = fb->_lastCommandedFlow;
+    if (fabs(state->lastCommandedFlow) <= 0.0 && flowMagnitude > 0.0) {
+        state->lastCommandedFlow = flowMagnitude;
+    }
     state->plannedVelocity = signedVelocity;
     state->plannedFlow = flowMagnitude;
     state->commandedPumpSpeed = fb->STATE.commandedPumpSpeed;
@@ -712,6 +845,7 @@ static void HYD_RestoreDirectContinuityState(HYD_MotionControlFB* fb,
 
     fb->_plannerState = state->plannerState;
     fb->PUMP_SPEED = state->pumpSpeed;
+    fb->_lastCommandedFlow = state->lastCommandedFlow;
     fb->STATE.plannedVelocity = state->plannedVelocity;
     fb->STATE.plannedFlow = state->plannedFlow;
     fb->STATE.commandedPumpSpeed = state->commandedPumpSpeed;
@@ -1250,6 +1384,14 @@ static HYD_BOOL HYD_ApplyLiveUpdateOverrides(const HYD_LiveUpdateRequest* reques
         seg->maxPressure = request->maxPressure;
     }
 
+    if ((request->flags & HYD_LIVE_UPDATE_MAX_FLOW) != 0U) {
+        if (seg->mode != HYD_MODE_PRESSURE_CLOSED_LOOP ||
+            !isfinite(request->maxFlow) || request->maxFlow <= 0.0f) {
+            return false;
+        }
+        seg->maxFlow = request->maxFlow;
+    }
+
     if ((request->flags & HYD_LIVE_UPDATE_TARGET_PRESSURE) != 0U) {
         if (seg->mode != HYD_MODE_PRESSURE_CLOSED_LOOP) {
             return false;
@@ -1296,7 +1438,11 @@ static void HYD_ResetCriteriaForSegment(HYD_MotionControlFB* fb,
     fTol = HYD_Segment_GetFlowTolerance(segment);
     vTol = HYD_Segment_GetVelocityTolerance(segment);
     posTol = HYD_Segment_GetPositionTolerance(segment);
-    tLim = HYD_Segment_GetTimeoutLimit(segment);
+    /* Timeout is a motion-completion watchdog. Pressure closed-loop segments
+     * are hold/settle phases, so their duration is an end condition and must
+     * never arm HYD_DIAG_CODE_TIMEOUT. */
+    tLim = (segment->mode == HYD_MODE_PRESSURE_CLOSED_LOOP)
+        ? 0.0 : HYD_Segment_GetTimeoutLimit(segment);
 
     if (segment->mode == HYD_MODE_PRESSURE_CLOSED_LOOP && pTol > 0.0) {
         HYD_ConfigureSegmentCriteria(&fb->_pressureCriteria, pTol,
@@ -1329,6 +1475,10 @@ static void HYD_ResetCriteriaForSegment(HYD_MotionControlFB* fb,
         if (fb->_timeoutCriteria.switchSuppressTime >= tLim) {
             fb->_timeoutCriteria.switchSuppressTime = 0.0;
         }
+    } else {
+        /* No watchdog is armed for this segment. This also clears a
+         * previously armed position/speed timeout during a pressure handover. */
+        fb->_timeoutCriteria.baseThreshold = 0.0;
     }
 
     fb->_switchSuppressEndTime = fb->_pressureCriteria.startupSuppressTime +
@@ -1422,10 +1572,12 @@ static HYD_BOOL HYD_PrimeSegmentControllers(HYD_MotionControlFB* fb,
     fb->_lastFeedbackTimestamp = controllerTime;
     fb->_simLastFeedbackTick = fb->_simTick;
     HYD_RampController_Init(&fb->_rampController, fb->AXIS_REF.pressure, controllerTime);
-    /* Sprint 2: Carry over velocity state for bumpless transitions only
+    /* Sprint 2/3: Carry over velocity/flow state for bumpless transitions only
      * when the caller explicitly allows continuity seeding.
      * P->V: invert the current actuator flow through the mechanism mapping
      * S->S: retain lastTargetVelocity from previous segment
+     * V->P: preserve flow for pressure controller initialization (Sprint 3)
+     * Position->P: preserve flow for pressure controller initialization (Sprint 3)
      *
      * Fresh starts after Stop / restart / direction-flip pass
      * allowFlowCarryover=false and must begin from zero. */
@@ -1454,28 +1606,96 @@ static HYD_BOOL HYD_PrimeSegmentControllers(HYD_MotionControlFB* fb,
                     carriedFlow = fb->_plannerState.lastTargetFlow;
                     doCarryover = true;
                 }
+            } else if (fb->_previousSegmentMode == HYD_MODE_POSITION) {
+                /* Position->Speed: preserve any active motion state */
+                if (fabs(fb->_plannerState.lastTargetVelocity) > 0.0) {
+                    carriedVelocity = fabs(fb->_plannerState.lastTargetVelocity);
+                    carriedFlow = fb->_plannerState.lastTargetFlow;
+                    doCarryover = true;
+                }
+            }
+        } else if (allowFlowCarryover && segment->mode == HYD_MODE_PRESSURE_CLOSED_LOOP) {
+            /* Sprint 3: V->P and Position->P carryover to prevent pump speed spike */
+            if (fb->_previousSegmentMode == HYD_MODE_SPEED_RAMP ||
+                fb->_previousSegmentMode == HYD_MODE_POSITION) {
+                /* Preserve flow from motion planning state */
+                carriedFlow = fb->_plannerState.lastTargetFlow;
+                if (carriedFlow <= 0.0) {
+                    /* Fallback: use last commanded pump flow */
+                    carriedFlow = fb->_lastCommandedFlow;
+                }
+                if (carriedFlow > 0.0) {
+                    doCarryover = true;
+                }
+            } else if (fb->_previousSegmentMode == HYD_MODE_PRESSURE_CLOSED_LOOP) {
+                /* P->P: preserve pressure controller's last flow */
+                carriedFlow = fb->_lastCommandedFlow;
+                if (carriedFlow > 0.0) {
+                    doCarryover = true;
+                }
+            }
+        } else if (allowFlowCarryover && segment->mode == HYD_MODE_POSITION) {
+            /* Sprint 3: P->Position carryover to prevent pump speed spike during
+             * pressure-to-position transition (e.g., pack to ejection/cooling) */
+            if (fb->_previousSegmentMode == HYD_MODE_PRESSURE_CLOSED_LOOP) {
+                /* Pressure->Position: reverse-map flow to velocity */
+                if (fb->_lastCommandedFlow > 0.0) {
+                    HYD_DiagnosticCode mapCode = HYD_DIAG_CODE_NONE;
+                    if (!HYD_MotionControlFB_MapActuatorFlowToTemplateVelocity(
+                            fb, segment, fb->_lastCommandedFlow,
+                            &carriedVelocity, &mapCode)) {
+                        HYD_ReportKinematicsRuntimeFault(
+                            fb, mapCode, segment, &fb->STATE.references);
+                        return false;
+                    }
+                    carriedFlow = fb->_lastCommandedFlow;
+                    doCarryover = true;
+                }
+            } else if (fb->_previousSegmentMode == HYD_MODE_SPEED_RAMP ||
+                       fb->_previousSegmentMode == HYD_MODE_POSITION) {
+                /* V->Position or Position->Position: preserve velocity state */
+                if (fabs(fb->_plannerState.lastTargetVelocity) > 0.0) {
+                    carriedVelocity = fabs(fb->_plannerState.lastTargetVelocity);
+                    carriedFlow = fb->_plannerState.lastTargetFlow;
+                    doCarryover = true;
+                }
             }
         }
 
         memset(&fb->_plannerState, 0, sizeof(fb->_plannerState));
 
-        if (doCarryover) {
+        if (doCarryover && (segment->mode == HYD_MODE_SPEED_RAMP || segment->mode == HYD_MODE_POSITION)) {
             fb->_plannerState.lastTargetVelocity = carriedVelocity;
             fb->_plannerState.lastTargetFlow = carriedFlow;
             fb->_plannerState.initialized = true;
         }
-    }
 
-    trackingFlowReference = HYD_MotionUtils_AbsReal(fb->AXIS_REF.flow);
-    if (trackingFlowReference <= 0.0 && allowFlowCarryover) {
-        trackingFlowReference = fb->_lastCommandedFlow;
+        /* Sprint 3: Use carried flow to seed trackingFlowReference for pressure mode.
+         * This ensures pressure controller initialization reflects the actual motion
+         * state before the V->P or Position->P transition, preventing pump speed
+         * from dropping to 0 RPM during mode change. */
+        trackingFlowReference = HYD_MotionUtils_AbsReal(fb->AXIS_REF.flow);
+        if (trackingFlowReference <= 0.0 && allowFlowCarryover) {
+            trackingFlowReference = fb->_lastCommandedFlow;
+        }
+        if (doCarryover && segment->mode == HYD_MODE_PRESSURE_CLOSED_LOOP && carriedFlow > 0.0) {
+            trackingFlowReference = carriedFlow;
+        }
     }
 
     initialPressureControlOutput = segment->targetFlow;
     if (segment->mode == HYD_MODE_PRESSURE_CLOSED_LOOP && trackingFlowReference > 0.0) {
         initialPressureControlOutput = trackingFlowReference;
     }
-    initialPressureControlOutput = HYD_MotionUtils_MinReal(initialPressureControlOutput, segment->maxFlow);
+    if (segment->mode == HYD_MODE_PRESSURE_CLOSED_LOOP) {
+        initialPressureControlOutput = HYD_MotionUtils_MinReal(
+            initialPressureControlOutput,
+            HYD_ResolvePressureOutputMax(fb, segment));
+    } else {
+        initialPressureControlOutput = HYD_MotionUtils_MinReal(
+            initialPressureControlOutput,
+            segment->maxFlow);
+    }
     if (initialPressureControlOutput < 0.0) {
         initialPressureControlOutput = 0.0;
     }
@@ -2100,6 +2320,12 @@ static HYD_BOOL HYD_ExecuteActiveSegmentControl(HYD_MotionControlFB* fb,
     memset(pressureOutput, 0, sizeof(*pressureOutput));
     memset(pumpOutput, 0, sizeof(*pumpOutput));
     memset(executionReference, 0, sizeof(*executionReference));
+    /* v10: 输入结构也必须清零。此前 pressureInput 的所有字段在每个分支里
+     * 都被显式赋值，因此未清零也没有暴露问题；但"新增字段忘了赋值"会立刻
+     * 变成读栈垃圾的静默缺陷（本轮 test_pressure_controller 就因此失败）。
+     * 清零后新增字段默认是"未启用"，与既有语义一致。 */
+    memset(&pressureInput, 0, sizeof(pressureInput));
+    memset(&pumpInput, 0, sizeof(pumpInput));
     fb->STATE.limitFlags = 0u;
 
     {
@@ -2119,12 +2345,17 @@ static HYD_BOOL HYD_ExecuteActiveSegmentControl(HYD_MotionControlFB* fb,
     pressureOutput->appliedStrategy = HYD_PRESSURE_CONTROLLER_NONE;
 
     if (segment->mode == HYD_MODE_PRESSURE_CLOSED_LOOP) {
+        HYD_REAL pumpFlowLimit;
+
+        pressureInput.outputMax = HYD_ResolvePressureOutputMax(fb, segment);
+        pumpFlowLimit = HYD_GetPumpFlowLimit(fb);
         pressureInput.targetPressure = rampOutput->rampedPressure;
         pressureInput.measuredPressure = fb->AXIS_REF.pressure;
-        pressureInput.feedforwardFlow = segment->targetFlow;
+        /* Feedforward is a nominal holding flow, but it must not bypass the
+         * active process/pump cap when a low percentage is selected. */
+        pressureInput.feedforwardFlow = HYD_ClampReal(
+            segment->targetFlow, 0.0f, pressureInput.outputMax);
         pressureInput.outputMin = -5.0;
-
-        pressureInput.outputMax = segment->maxFlow;
         if (HYD_PumpConfig_IsValid(&fb->pumpConfig)) {
             pressureInput.flowToPumpSpeedGain = HYD_PumpConfig_GetFlowToSpeedGain(&fb->pumpConfig);
             pressureInput.pumpSpeedLimit = HYD_PumpConfig_GetSpeedLimit(&fb->pumpConfig);
@@ -2132,6 +2363,56 @@ static HYD_BOOL HYD_ExecuteActiveSegmentControl(HYD_MotionControlFB* fb,
             pressureInput.flowToPumpSpeedGain = fb->FLOW_TO_PUMP_SPEED_GAIN;
             pressureInput.pumpSpeedLimit = fb->PUMP_SPEED_LIMIT;
         }
+        /* v10: 泵电机反馈（rpm/torque/angle）→ 压力控制器 → RBF-PID。
+         * 这是 IEC __mcl_cmd_SetPumpFeedback 写入的同一份数据，
+         * 此前只被存储从未被算法消费；此处把它接进控制回路。 */
+        pressureInput.pumpSpeedFeedbackRpm = fb->_pumpFeedback.rpm;
+        pressureInput.pumpTorquePermille = fb->_pumpFeedback.torquePermille;
+        pressureInput.pumpAngleDeg = fb->_pumpFeedback.angleDeg;
+        pressureInput.pumpFeedbackValidFlags = fb->_pumpFeedback.validFlags;
+        pressureInput.pumpFeedbackAntiWindup = fb->_params.pumpFeedbackAntiWindup;
+        pressureInput.pumpTorqueOverloadPermille = fb->_params.pumpTorqueOverloadPermille;
+        /* v10: 系统增益（IEC 初始化配置）→ 段级未显式指定时作为全机默认值。
+         * v12: 未显式配置时由泵铭牌推导 K = Ksys/(D/1000)。
+         *   K 是 RBF-PID 的核心过程增益（Jacobian 限幅中心 / 稳态前馈 P_set/K /
+         *   过驱动软上限 / 可达性下界四处都依赖它）。旧默认 0 → RBF "盲学"，
+         *   实测在真实机上 0/3 达标；推导出 K≈200 后 3/3。 */
+        pressureInput.systemGain = fb->_params.pressureSystemGain;
+        if (pressureInput.systemGain <= 0.0 &&
+            HYD_PumpConfig_IsValid(&fb->pumpConfig) &&
+            fb->pumpConfig.displacementMlRev > 0.0) {
+            pressureInput.systemGain =
+                (HYD_REAL)HYD_DEFAULT_PRESSURE_KSYS_BAR_PER_RPM /
+                (fb->pumpConfig.displacementMlRev / 1000.0);
+        }
+
+        /* v11: 升压段限流（IEC 初始化配置）→ RBF-PID 升压软上限。
+         * v12: 未显式配置时按 Q_max 推导，并用可达性下界兜底：
+         *        q_boost = clamp(0.30*Q_max, 3*P_ceiling/K, Q_max)
+         *      下界是 §12.3 D11 可达性要求(P_ceiling/K)的 3 倍安全裕度。 */
+        pressureInput.boostFlowLimitLmin = fb->_params.pressureBoostFlowLimit;
+        if (pressureInput.boostFlowLimitLmin <= 0.0 &&
+            pressureInput.systemGain > 0.0) {
+            HYD_REAL qMax = HYD_MotionControlFB_ResolveMaxFlowLmin(fb);
+            if (qMax > 0.0) {
+                HYD_REAL pCeiling = (segment->pressureCeiling > 0.0)
+                    ? segment->pressureCeiling : 250.0;
+                HYD_REAL qBoost = HYD_DEFAULT_BOOST_FLOW_FRACTION * qMax;
+                HYD_REAL qReach = HYD_DEFAULT_BOOST_REACH_SAFETY *
+                    (pCeiling / pressureInput.systemGain);
+                if (qBoost < qReach) {
+                    qBoost = qReach;
+                }
+                if (qBoost > qMax) {
+                    qBoost = qMax;
+                }
+                pressureInput.boostFlowLimitLmin = qBoost;
+            }
+        }
+        pressureInput.boostBrakeFrac = fb->_params.pressureBoostBrakeFrac;
+        /* v13: FF_PI 解析整定参数（0 → 控制器内部用库默认） */
+        pressureInput.plantTauS = fb->_params.pressurePlantTauS;
+        pressureInput.loopOmega = fb->_params.pressureLoopOmega;
         pressureInput.timestamp = HYD_GetCurrentSegmentTime(fb);
         HYD_PressureController_Execute(segment,
                                        &fb->_pressureController,
@@ -2139,6 +2420,13 @@ static HYD_BOOL HYD_ExecuteActiveSegmentControl(HYD_MotionControlFB* fb,
                                        pressureOutput);
         plannerOutput->targetFlow = pressureOutput->outputFlow;
         plannerOutput->direction = segment->direction;
+        if (pressureOutput->unsaturatedOutputFlow > segment->maxFlow) {
+            fb->STATE.limitFlags |= HYD_LIMIT_FLAG_FLOW;
+        }
+        if (pumpFlowLimit > 0.0f &&
+            pressureOutput->unsaturatedOutputFlow > pumpFlowLimit) {
+            fb->STATE.limitFlags |= HYD_LIMIT_FLAG_PUMP_SPEED;
+        }
     } else {
         memset(&plannerInput, 0, sizeof(plannerInput));
         memset(&localContinuousBlend, 0, sizeof(localContinuousBlend));
@@ -2578,13 +2866,14 @@ static void HYD_UpdateExecutionDiagnostics(HYD_MotionControlFB* fb,
     {
         HYD_DiagnosticResult timeoutResult;
         HYD_BOOL isStartupPhaseTimeout = HYD_IsStartupSuppressActive(elapsed, fb->_timeoutCriteria.startupSuppressTime);
-        if (HYD_DiagnosticCriteria_CheckTimeout(&timeoutResult,
-                                                  &fb->_timeoutCriteria,
-                                                  &fb->_timeoutCriteriaState,
-                                                  fb->AXIS_REF.timestamp,
-                                                  elapsed,
-                                                  fb->_timeoutCriteria.enableStartupSuppress && isStartupPhaseTimeout,
-                                                  isSwitchPhase)) {
+        if (segment->mode != HYD_MODE_PRESSURE_CLOSED_LOOP &&
+            HYD_DiagnosticCriteria_CheckTimeout(&timeoutResult,
+                                                &fb->_timeoutCriteria,
+                                                &fb->_timeoutCriteriaState,
+                                                fb->AXIS_REF.timestamp,
+                                                elapsed,
+                                                fb->_timeoutCriteria.enableStartupSuppress && isStartupPhaseTimeout,
+                                                isSwitchPhase)) {
             timeout = true;
         }
     }
@@ -2671,6 +2960,7 @@ static void HYD_MotionControlFB_RunRunningState(HYD_MotionControlFB* fb) {
     HYD_MotionPlannerOutput plannerOutput;
     HYD_PressureControllerOutput pressureOutput;
     HYD_PumpConverterOutput pumpOutput;
+    HYD_PumpConverterInput slewInput;
     HYD_OutputLimiterInput limiterInput;
     HYD_OutputLimiterOutput limiterOutput;
     HYD_ExecutionReference executionReference;
@@ -2829,8 +3119,35 @@ static void HYD_MotionControlFB_RunRunningState(HYD_MotionControlFB* fb) {
     pumpOutput.commandFlow = limiterOutput.commandFlow;
     pumpOutput.pumpSpeed = limiterOutput.pumpSpeed;
 
-    plannerOutput.targetFlow = limiterOutput.commandFlow;
-    executionReference.flowReference = limiterOutput.commandFlow;
+    /* The handover flag is consumed once. It bridges the reset/start boundary
+     * without imposing a second slew loop on steady-state controller output. */
+    if (fb->_segmentChangedFlag &&
+        fb->_activeSegmentSource == HYD_SEGMENT_SOURCE_DIRECT &&
+        fb->_previousSegmentMode != segment->mode &&
+        fb->_lastCommandedFlow > 0.0 &&
+        HYD_IsPumpContinuityMode(fb->_previousSegmentMode) &&
+        HYD_IsPumpContinuityMode(segment->mode) &&
+        fb->DIAGNOSTIC.protectionAction != HYD_PROTECTION_ACTION_STOP &&
+        !fb->STATE.faultActive &&
+        !limiterOutput.derated &&
+        !limiterOutput.pressureLimitActive &&
+        !limiterOutput.softLimitActive) {
+        memset(&slewInput, 0, sizeof(slewInput));
+        slewInput.requestedFlow = limiterOutput.commandFlow;
+        slewInput.flowToPumpSpeedGain = limiterInput.flowToPumpSpeedGain;
+        slewInput.pumpSpeedLimit = limiterInput.pumpSpeedLimit;
+        slewInput.direction = segment->direction;
+        HYD_PumpConverter_ApplySlewLimit(
+            &slewInput,
+            fb->PUMP_SPEED,
+            (deltaTime > 0.0) ? deltaTime : HYD_DEFAULT_SIM_CYCLE_TIME,
+            HYD_ResolvePumpSpeedSlewRate(fb, segment, true),
+            HYD_ResolvePumpSpeedSlewRate(fb, segment, false),
+            &pumpOutput);
+    }
+
+    plannerOutput.targetFlow = pumpOutput.commandFlow;
+    executionReference.flowReference = pumpOutput.commandFlow;
     if (limiterOutput.pressureLimitActive) {
         fb->STATE.limitFlags |= HYD_LIMIT_FLAG_PRESSURE;
     }
@@ -2948,6 +3265,23 @@ static HYD_BOOL HYD_RunRunningStateStopping(HYD_MotionControlFB* fb,
                                             HYD_PumpConverterOutput* pumpOutput,
                                             HYD_ExecutionReference* executionReference,
                                             HYD_PressureControllerOutput* pressureOutput) {
+    /* Simulation-only pressure creep has no position/velocity ramp to
+     * decelerate. Stop means removing the simulated pressure-loop flow
+     * command and completing the direct Stop session immediately. Real
+     * hardware keeps the existing feedback/deceleration path below. */
+    if (fb->_useSimulation && segment != NULL &&
+        segment->mode == HYD_MODE_PRESSURE_CLOSED_LOOP) {
+        fb->_lastCommandedFlow = 0.0f;
+        fb->_isStopping = false;
+        fb->_stopStartVel = 0.0f;
+        fb->_stopDeceleration = 0.0f;
+        fb->_directSessionState = HYD_DIRECT_SESSION_DONE;
+        HYD_ClearDirectPendingSlot(fb);
+        HYD_SafetyStateManager_ApplyIdleState(fb, true, false);
+        HYD_StateReporter_SetFbState(fb, HYD_FB_STATE_DONE);
+        return true;
+    }
+
     HYD_REAL stopElapsed = HYD_GetStopElapsedTime(fb);
     HYD_REAL stopMag = fabs(fb->_stopStartVel);
     HYD_REAL stopSign = (fb->_stopStartVel >= 0.0f) ? 1.0f : -1.0f;
@@ -3326,7 +3660,7 @@ void HYD_MotionControlFB_Init(HYD_MotionControlFB* fb) {
     fb->_params.positionTolerance = 0.0001f; 
     fb->_params.velocityTolerance = 0.0f; // default diabled, igore velocity deviation alarm
     fb->_params.flowTolerance = 0.0f;// default diabled
-    fb->_params.pressureTolerance = 0.5f;
+    fb->_params.pressureTolerance = 0.0f;
     fb->_params.timeoutLimit = 0.0f; // default diabled, since not all recipes may have a meaningful timeout condition
     fb->_params.velocityToFlowGain = 0.2f;
     fb->_params.maxVelocity = 100.0f;
@@ -3341,16 +3675,76 @@ void HYD_MotionControlFB_Init(HYD_MotionControlFB* fb) {
     fb->_params.pressureKd = 0.01f;
     fb->_params.pressureIntegralLimit = 10.0f;
     fb->_params.pressureDeadband = 0.0001f;
-    fb->_params.pressureFilterAlpha = 1.0f;
+    /* v11: 出厂默认 α=0.1（不是 1.0=不滤波）。
+     * 实测（真实链 25cc/1700rpm、K=200、管路 3.5m）保压 ess：
+     *   α=1.0（旧默认）→ +3.763 bar FAIL（合格线 1 bar）
+     *   α=0.3         → +1.875 bar FAIL
+     *   α=0.1         → +0.654 bar PASS
+     * 根因是增量式 RBF-PID 会把 σ=0.4bar 传感器噪声经 kp·Δe 与 KD·Δ²e 放大成
+     * 流量随机游走并整流成系统性偏置（详见 docs §13.3 D12）。
+     * 1.0 是"最危险"的默认值：现象是保压压力静默偏高约 3.8 bar，且无任何报警。 */
+    fb->_params.pressureFilterAlpha = 0.1f;
     fb->_params.pressureDerivativeFilterAlpha = 0.5f;
     fb->_params.velocityKp = 0.0f;
     fb->_params.velocityDeadband = 0.0f;
     fb->_params.velocityCorrectionLimit = 0.0f;
     fb->_params.flowToPumpSpeedGain = 20.0f;
     fb->_params.pumpSpeedLimit = 1800.0f;
-    fb->_params.pressureControllerType = (HYD_REAL)HYD_PRESSURE_CONTROLLER_PI;
+    /* v13: 出厂默认策略 = FF_PI（前馈 + 解析整定 PI）。
+     *
+     * 变更履历：v12 由 PI 改为 RBF_PID；v13 由 RBF_PID 改为 FF_PI。
+     *
+     * 为什么 v13 要再改一次（实测，见 docs/RBF-PID压力闭环算法工程实用性评估-2026-09-17.md）：
+     *   - RBF-PID 的神经网络对输出**零贡献**：Jacobian 被限幅钉死在 [0.2K,5K] 边界
+     *     （真实一步灵敏度 0.113 vs 下界 40，膨胀 354×），3000/3000 采样全在边界，
+     *     KP/KI/KD 撞限幅 96~99.8%，符号逐拍随机翻转。
+     *   - 它"看起来能用"是因为软上限把输出范围从 20 压到 0.525 L/min（38×），
+     *     用钳位掩盖了增益本身的不稳定 —— 稳定依赖"K 标定正确"这个隐式前提。
+     *   - 同一植物、同一指标下，正确整定的前馈+PI 全面更优：
+     *     tr 321→87ms、ts 508→309ms、扰动 2.69→1.11bar、恢复 117→0ms。
+     *
+     * 因此默认落在**物理可解释、可解析验证、行为确定**的策略上。
+     * 现场仍可用 HYD_PARAM_PRESSURE_CONTROLLER_TYPE 显式切回 PI / PID / RBF_PID。 */
+    fb->_params.pressureControllerType = (HYD_REAL)HYD_PRESSURE_CONTROLLER_FF_PI;
     fb->_params.defaultTargetFlow = 5.0f;
     fb->_params.useSimulation = false;
+
+    /* v10/v11 IEC 初始化配置扩展的默认值。
+     *
+     * 【v12 语义变更 —— 勿按旧注释理解】0 不再等于"关闭"，而是"未显式配置，
+     *  交由 HYD_ProduceControlOutputs 按泵铭牌推导"。推导优先级（高→低）：
+     *    段级 segment->systemGain > IEC 显式 > 泵铭牌推导 > 0（确实无法推导）
+     *  因此把这两个量保持为 0 是"最保守"的默认：既保留现场显式标定的能力，
+     *  又让"只配泵铭牌"的出厂状态也能拿到有效的 K 与升压限流。
+     *
+     *   systemGain = 0      → 由泵铭牌推导 K = Ksys/(D/1000)；
+     *                         推导不出（泵铭牌未配）才真正为 0。
+     *                         【注意】K 是 RBF-PID 的**核心过程增益**，不是可选补偿：
+     *                         rbf_pid.c 四处依赖它（Jacobian 限幅中心 / 稳态前馈
+     *                         P_set/K / 过驱动软上限 / 可达性下界）。K=0 → 四处全失效
+     *                         → RBF "盲学" → 实测真实机 0/3 达标。
+     *   maxFlowDerived = 0  → 由 pumpConfig 推导，此处仅占位
+     *   antiWindup = false  → 不改控制律
+     *   torqueOverload = 0  → 关闭过载判定
+     *   boostFlowLimit = 0  → 由 Q_max 推导
+     *                         q_boost = clamp(0.30*Q_max, 3*P_ceiling/K, Q_max)
+     *   boostBrakeFrac = 0  → 用 RBF_PID 内置默认窗口
+     *
+     * 需要现场标定的量：Ksys（不同机族不同，写 HYD_PARAM_PRESSURE_SYSTEM_GAIN）、
+     * 升压限流、过载阈值。本机族 Ksys 默认 5.0 bar/rpm。 */
+    fb->_params.pressureSystemGain = 0.0f;
+    fb->_params.maxFlowDerived = 0.0f;
+    fb->_params.pumpFeedbackAntiWindup = false;
+    fb->_params.pumpTorqueOverloadPermille = 0.0f;
+    fb->_params.pressureBoostFlowLimit = 0.0f;
+    fb->_params.pressureBoostBrakeFrac = 0.0f;
+    /* v13: FF_PI 解析整定用的对象参数。0 = 用库默认（pressure_controller.c 的
+     * HYD_DEFAULT_PLANT_TAU_S / HYD_DEFAULT_LOOP_OMEGA）。
+     * 出厂保持 0 是刻意的：τ 与 Ksys 一样是**机族标定值**，现场必须按实测写入
+     * （HYD_PARAM_PRESSURE_PLANT_TAU / HYD_PARAM_PRESSURE_LOOP_OMEGA）。
+     * τ 低估是安全方向（增益偏小→慢但稳），库默认 1.0 s 即取在安全侧。 */
+    fb->_params.pressurePlantTauS = 0.0f;
+    fb->_params.pressureLoopOmega = 0.0f;
 
     /* Legacy defaults — used when pumpConfig/cylinderConfig are not configured.
      * pumpConfig and cylinderConfig are zero after memset — inactive by default. */
@@ -3590,6 +3984,8 @@ HYD_DirectStartResult HYD_MotionControlFB_StartDirectCommand(HYD_MotionControlFB
     HYD_BOOL savedUseRecipe;
     HYD_BOOL activeDirect;
     HYD_BOOL preserveContinuity;
+    HYD_BOOL preserveContinuousAbsolute;
+    HYD_BOOL preserveModeHandover;
     HYD_BOOL shouldAbort;
     HYD_REAL positionTolerance;
     HYD_REAL referencePosition;
@@ -3621,11 +4017,17 @@ HYD_DirectStartResult HYD_MotionControlFB_StartDirectCommand(HYD_MotionControlFB
     activeDirect = fb->STATE.active &&
                    fb->_activeSegmentValid &&
                    fb->_activeSegmentSource == HYD_SEGMENT_SOURCE_DIRECT;
-    preserveContinuity = activeDirect &&
-                         kind == HYD_DIRECT_CMD_MOVE_CONTINUOUS_ABSOLUTE &&
-                         fb->_directOwnerKind == HYD_DIRECT_CMD_MOVE_CONTINUOUS_ABSOLUTE &&
-                         continuousAbsolute != NULL &&
-                         continuousAbsolute->valid;
+    preserveContinuousAbsolute = activeDirect &&
+                                 kind == HYD_DIRECT_CMD_MOVE_CONTINUOUS_ABSOLUTE &&
+                                 fb->_directOwnerKind == HYD_DIRECT_CMD_MOVE_CONTINUOUS_ABSOLUTE &&
+                                 continuousAbsolute != NULL &&
+                                 continuousAbsolute->valid;
+    preserveModeHandover = activeDirect &&
+                           HYD_IsPumpContinuityMode(fb->_activeSegment.mode) &&
+                           HYD_IsPumpContinuityMode(segment->mode) &&
+                           fb->_activeSegment.mode != segment->mode &&
+                           HYD_DirectHandoverDirectionsCompatible(fb, segment);
+    preserveContinuity = preserveContinuousAbsolute || preserveModeHandover;
     shouldAbort = (bufferMode == HYD_BUFFER_MODE_ABORT &&
                    (fb->STATE.active || HYD_MotionControlFB_IsBusy(fb))) ||
                   (activeDirect &&
@@ -3687,6 +4089,14 @@ HYD_DirectStartResult HYD_MotionControlFB_StartDirectCommand(HYD_MotionControlFB
                                                               &fb->_activeSegment);
         }
         if (preserveContinuity) {
+            HYD_RestoreDirectContinuityState(fb, &continuityState);
+        }
+        if (preserveModeHandover) {
+            if (!HYD_PrimeSegmentControllers(
+                    fb, &fb->_activeSegment, timestamp, true)) {
+                fb->USE_RECIPE = savedUseRecipe;
+                return HYD_DIRECT_START_REJECTED;
+            }
             HYD_RestoreDirectContinuityState(fb, &continuityState);
         }
         fb->USE_RECIPE = savedUseRecipe;
@@ -3919,6 +4329,14 @@ HYD_BOOL HYD_MotionControlFB_ReadParameter(const HYD_MotionControlFB* fb, int pa
         case HYD_PARAM_CYLINDER_AREA_EXTEND:           *value = fb->cylinderConfig.areaExtendMm2; break;
         case HYD_PARAM_CYLINDER_AREA_RETRACT:          *value = fb->cylinderConfig.areaRetractMm2; break;
         case HYD_PARAM_CYLINDER_STROKE:                *value = fb->cylinderConfig.strokeMm; break;
+        case HYD_PARAM_PRESSURE_SYSTEM_GAIN:           *value = fb->_params.pressureSystemGain; break;
+        case HYD_PARAM_MAX_FLOW_DERIVED:               *value = HYD_MotionControlFB_ResolveMaxFlowLmin(fb); break;
+        case HYD_PARAM_PUMP_FEEDBACK_ANTI_WINDUP:      *value = fb->_params.pumpFeedbackAntiWindup ? 1.0 : 0.0; break;
+        case HYD_PARAM_PUMP_TORQUE_OVERLOAD:           *value = fb->_params.pumpTorqueOverloadPermille; break;
+        case HYD_PARAM_PRESSURE_BOOST_FLOW_LIMIT:      *value = fb->_params.pressureBoostFlowLimit; break;
+        case HYD_PARAM_PRESSURE_BOOST_BRAKE_FRAC:      *value = fb->_params.pressureBoostBrakeFrac; break;
+        case HYD_PARAM_PRESSURE_PLANT_TAU:             *value = fb->_params.pressurePlantTauS; break;
+        case HYD_PARAM_PRESSURE_LOOP_OMEGA:            *value = fb->_params.pressureLoopOmega; break;
         default: return false;
     }
     return true;
@@ -3967,9 +4385,55 @@ HYD_BOOL HYD_MotionControlFB_WriteParameter(HYD_MotionControlFB* fb, int paramNu
             fb->_params.pressureControllerType = value;
             break;
         case HYD_PARAM_DEFAULT_TARGET_FLOW:            fb->_params.defaultTargetFlow = value; break;
-        case HYD_PARAM_PUMP_DISPLACEMENT:              fb->pumpConfig.displacementMlRev = value; break;
-        case HYD_PARAM_PUMP_VOLUMETRIC_EFF:            fb->pumpConfig.volumetricEfficiency = value; break;
-        case HYD_PARAM_PUMP_MAX_SPEED:                 fb->pumpConfig.maxSpeedRpm = value; break;
+        /* --- IEC 初始化配置扩展 ---
+         * 写 pumpConfig 后立即回填 maxFlowDerived，使"IEC 配泵参数 → 自动算最大流量"
+         * 成为一个可读回的闭环（读 HYD_PARAM_MAX_FLOW_DERIVED 即得结果）。 */
+        case HYD_PARAM_PRESSURE_SYSTEM_GAIN:
+            fb->_params.pressureSystemGain = (isfinite(value) && value > 0.0) ? value : 0.0;
+            break;
+        case HYD_PARAM_MAX_FLOW_DERIVED:
+            return false;   /* 只读：由 pumpConfig 推导，不接受外部写入 */
+        case HYD_PARAM_PUMP_FEEDBACK_ANTI_WINDUP:
+            fb->_params.pumpFeedbackAntiWindup = (value >= 0.5) ? true : false;
+            break;
+        case HYD_PARAM_PUMP_TORQUE_OVERLOAD:
+            fb->_params.pumpTorqueOverloadPermille =
+                (isfinite(value) && value > 0.0) ? value : 0.0;
+            break;
+        case HYD_PARAM_PRESSURE_BOOST_FLOW_LIMIT:
+            fb->_params.pressureBoostFlowLimit =
+                (isfinite(value) && value > 0.0) ? value : 0.0;   /* <=0 = 关闭 */
+            break;
+        case HYD_PARAM_PRESSURE_BOOST_BRAKE_FRAC:
+            fb->_params.pressureBoostBrakeFrac =
+                (isfinite(value) && value > 0.0) ? value : 0.0;   /* <=0 = 库默认 */
+            break;
+        case HYD_PARAM_PRESSURE_PLANT_TAU:
+            /* 对象时间常数 τ [s]。<=0 = 用库默认（1.0 s，取在安全侧）。
+             * KP、KI 均 ∝ τ，因此**低估安全、高估危险**（可能越过稳定边界）。
+             * 现场标定方法：开环给一个固定转速，测压力上升到 63.2% 稳态值的时间即为 τ。 */
+            fb->_params.pressurePlantTauS =
+                (isfinite(value) && value > 0.0) ? value : 0.0;
+            break;
+        case HYD_PARAM_PRESSURE_LOOP_OMEGA:
+            /* 目标闭环带宽 ωn [rad/s]。<=0 = 用库默认（12 rad/s ≈ 实测稳定边界 18~20 的 65%）。
+             * 调大 = 更快，但超过稳定边界会把泵转速纹波放大成压力纹波
+             * （实测 wn=20 时 σ 由 0.5 恶化到 6.5 bar）。换机型必须重扫。 */
+            fb->_params.pressureLoopOmega =
+                (isfinite(value) && value > 0.0) ? value : 0.0;
+            break;
+        case HYD_PARAM_PUMP_DISPLACEMENT:
+            fb->pumpConfig.displacementMlRev = value;
+            fb->_params.maxFlowDerived = HYD_MotionControlFB_ResolveMaxFlowLmin(fb);
+            break;
+        case HYD_PARAM_PUMP_VOLUMETRIC_EFF:
+            fb->pumpConfig.volumetricEfficiency = value;
+            fb->_params.maxFlowDerived = HYD_MotionControlFB_ResolveMaxFlowLmin(fb);
+            break;
+        case HYD_PARAM_PUMP_MAX_SPEED:
+            fb->pumpConfig.maxSpeedRpm = value;
+            fb->_params.maxFlowDerived = HYD_MotionControlFB_ResolveMaxFlowLmin(fb);
+            break;
         case HYD_PARAM_CYLINDER_AREA_EXTEND:           fb->cylinderConfig.areaExtendMm2 = value; break;
         case HYD_PARAM_CYLINDER_AREA_RETRACT:          fb->cylinderConfig.areaRetractMm2 = value; break;
         case HYD_PARAM_CYLINDER_STROKE:                fb->cylinderConfig.strokeMm = value; break;
@@ -3982,9 +4446,12 @@ static HYD_BOOL HYD_IsValidPressureControllerParameter(HYD_REAL value)
 {
     int strategy;
 
+    /* 上界必须跟随 HYD_PressureControllerType 的最后一个枚举值；v13 加入 FF_PI 后
+     * 若仍写 RBF_PI，IEC 侧 WriteParameter 会把新策略判为非法（与 recipe_validator
+     * 的白名单是同一类遗漏，两处必须同步）。 */
     if (!isfinite(value) ||
         value < (HYD_REAL)HYD_PRESSURE_CONTROLLER_NONE ||
-        value > (HYD_REAL)HYD_PRESSURE_CONTROLLER_RBF_PI) {
+        value > (HYD_REAL)HYD_PRESSURE_CONTROLLER_FF_PI) {
         return false;
     }
     strategy = (int)value;
@@ -3997,6 +4464,7 @@ static HYD_BOOL HYD_IsValidPressureControllerParameter(HYD_REAL value)
         case HYD_PRESSURE_CONTROLLER_PID:
         case HYD_PRESSURE_CONTROLLER_RBF_PID:
         case HYD_PRESSURE_CONTROLLER_RBF_PI:
+        case HYD_PRESSURE_CONTROLLER_FF_PI:
             return true;
         default:
             return false;
@@ -4343,6 +4811,8 @@ HYD_BOOL HYD_MotionControlFB_ApplyLiveUpdate(HYD_MotionControlFB* fb,
         return false;
     }
 
+
+
     HYD_StateReporter_ReportDiagnostic(fb,
                                        HYD_DIAG_CODE_COMMAND_NOT_ALLOWED,
                                        HYD_DIAG_SEVERITY_WARNING,
@@ -4350,6 +4820,51 @@ HYD_BOOL HYD_MotionControlFB_ApplyLiveUpdate(HYD_MotionControlFB* fb,
                                        fb->_activeSegmentValid ? &fb->_activeSegment : NULL,
                                        &fb->STATE.references);
     return false;
+}
+
+HYD_BOOL HYD_MotionControlFB_SetPumpFeedback(HYD_MotionControlFB* fb,
+                                             const HYD_PumpFeedback* feedback)
+{
+    float angle;
+
+    if (fb == NULL || feedback == NULL) {
+        return false;
+    }
+
+    fb->_pumpFeedback.rpm = isfinite(feedback->rpm) ? feedback->rpm : 0.0f;
+    fb->_pumpFeedback.torquePermille =
+        isfinite(feedback->torquePermille) ? feedback->torquePermille : 0.0f;
+    fb->_pumpFeedback.timestamp =
+        isfinite(feedback->timestamp) ? feedback->timestamp : 0.0f;
+
+    /* Angle is a mechanical phase: fold into [0, 360) so that downstream
+     * consumers (ripple compensation) always see a canonical value and a
+     * multi-turn or negative reading cannot alias. */
+    angle = isfinite(feedback->angleDeg) ? feedback->angleDeg : 0.0f;
+    angle = fmodf(angle, 360.0f);
+    if (angle < 0.0f) {
+        angle += 360.0f;
+    }
+    fb->_pumpFeedback.angleDeg = angle;
+
+    /* Accept only the defined validity bits. */
+    fb->_pumpFeedback.validFlags =
+        feedback->validFlags & (uint32_t)(HYD_PUMP_FEEDBACK_VALID_RPM |
+                                          HYD_PUMP_FEEDBACK_VALID_ANGLE |
+                                          HYD_PUMP_FEEDBACK_VALID_TORQUE |
+                                          HYD_PUMP_FEEDBACK_VALID_TIMESTAMP);
+    return true;
+}
+
+HYD_BOOL HYD_MotionControlFB_GetPumpFeedback(const HYD_MotionControlFB* fb,
+                                             HYD_PumpFeedback* feedback)
+{
+    if (fb == NULL || feedback == NULL) {
+        return false;
+    }
+
+    *feedback = fb->_pumpFeedback;
+    return true;
 }
 
 HYD_BOOL HYD_MotionControlFB_ReadBoolParameter(const HYD_MotionControlFB* fb, int paramNumber, HYD_BOOL* value)

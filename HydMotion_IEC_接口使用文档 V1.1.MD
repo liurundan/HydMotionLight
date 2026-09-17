@@ -557,6 +557,7 @@ Direct 模式下的压力闭环控制，支持保压和压力斜坡。
 | `PRESSURE` | REAL | IN | 目标压力 |
 | `PRESSURERAMPRATE` | REAL | IN | 压力斜坡速率 |
 | `DURATION` | REAL | IN | 持续时间（0=持续到手动停止） |
+| `FLOWLIMITPERCENT` | REAL | IN | 压力段最大流量限制，占 20.0 L/min 基础上限的百分比；默认 100，有效范围 (0,100] |
 | `BUFFERMODE` | INT | IN | 缓冲模式 |
 | `INPRESSURE` | BOOL | OUT | 已达到目标压力 |
 | `BUSY` | BOOL | OUT | 控制中 |
@@ -574,6 +575,7 @@ fbPressHandle(EN := TRUE,
               PRESSURE := 80.0,          // 目标压力 80MPa
               PRESSURERAMPRATE := 50.0,   // 斜坡速率 50MPa/s
               DURATION := 5.0,            // 保压 5 秒
+              FLOWLIMITPERCENT := 25.0,    // 最大 5.0 L/min，降低建压超调
               BUFFERMODE := 0);
 
 IF fbPressHandle.INPRESSURE THEN
@@ -590,6 +592,7 @@ fbPressHandle(EN := TRUE,
               PRESSURE := 60.0,
               PRESSURERAMPRATE := 30.0,
               DURATION := 0.0,   // 0 = 持续到手动停止
+              FLOWLIMITPERCENT := 100.0,
               BUFFERMODE := 0);
 ```
 
@@ -597,7 +600,9 @@ fbPressHandle(EN := TRUE,
 - `DURATION > 0` → 时间结束条件，`DURATION = 0` → 手动结束条件
 - 内部默认 PI 压力控制器（Kp=0.5, Ki=0.1）
 - 压力容差默认 0.5MPa，超时保护 30s
-- 保压流量默认 5.0 L/min，最大流量限制 20.0 L/min
+- 保压前馈流量默认 5.0 L/min；压力段唯一工艺流量上限为 `FLOWLIMITPERCENT * 20.0 / 100` L/min
+- `FLOWLIMITPERCENT` 仅用于 PressureHandle，必须在 (0,100]；运行中配合 `CONTINUOUSUPDATE=TRUE` 可更新
+- `HYD_PARAM_MAX_FLOW` 继续用于配方、位置和速度段，不参与 PressureHandle
 
 ---
 
@@ -678,6 +683,10 @@ END_IF
 
 读取指定轴的当前控制器状态。
 
+其中 `MAXFLOW` 是由泵转速能力换算出的硬件流量能力；它不表示
+`HYD_PRESSUREHANDLE.FLOWLIMITPERCENT` 换算后的工艺上限。压力段实际正向
+输出上限取两者较小值。
+
 **接口定义**
 
 | 参数 | 类型 | 方向 | 说明 |
@@ -740,6 +749,115 @@ END_IF
 
 ---
 
+### 4.14 HYD_SETPUMPFEEDBACK — 设置伺服泵反馈（转速/转矩/角度）
+
+将伺服驱动器/编码器的**物理反馈**写入运动控制 FB 实例。与 4.2 的轴反馈互补：
+4.2 负责位置/速度/流量/压力，本 FB 负责泵侧转速/转矩/角度。
+
+> **为什么需要单独的泵反馈**：`HYD_GETPUMPREQUEST.PUMPSPEED` 是**指令值**，不是反馈值。
+> 驱动器未跟随（爬坡未完成、堵转、超载）时它仍等于指令，不能用于任何监控或闭环判断。
+
+**接口定义**
+
+| 参数 | 类型 | 方向 | 单位 | 说明 |
+|------|------|------|------|------|
+| `EN` | BOOL | IN | — | 使能 |
+| `ENO` | BOOL | OUT | — | 使能输出 |
+| `AXISID` | SINT | IN | — | 轴 ID（由 CREATEMOTION 分配） |
+| `ENABLE` | BOOL | IN | — | 反馈使能，`TRUE`=写入；`FALSE`=保持上一包不变 |
+| `FB_RPM` | REAL | IN | rpm | 反馈转速，**带符号**（负值 = 泵反转卸压） |
+| `FB_TORQUE` | REAL | IN | 0.1% | 反馈转矩，额定转矩千分比，带符号 |
+| `FB_ANGLE` | REAL | IN | deg | 反馈角度，写入时自动折算到 `[0,360)` |
+| `FB_TIMESTAMP` | REAL | IN | s | 反馈采样时刻，与 `HYD_AXISMOTION.TIMESTAMP` 同一时基 |
+| `VALID_RPM` | BOOL | IN | — | `FB_RPM` 是否可信 |
+| `VALID_TORQUE` | BOOL | IN | — | `FB_TORQUE` 是否可信 |
+| `VALID_ANGLE` | BOOL | IN | — | `FB_ANGLE` 是否可信 |
+| `VALID_TIMESTAMP` | BOOL | IN | — | `FB_TIMESTAMP` 是否可信 |
+| `DONE` | BOOL | OUT | — | 写入完成 |
+| `BUSY` | BOOL | OUT | — | 处理中 |
+| `ERROR` | BOOL | OUT | — | 错误标志（轴 ID 非法时为 `TRUE`） |
+| `ERRORID` | WORD | OUT | — | 错误码 |
+
+**调用示例**
+
+```pascal
+// 驱动器只提供转速与角度（无转矩通道）：只置位对应的 VALID 位
+fbSetPumpFB(EN := TRUE,
+            ENABLE := TRUE,
+            AXISID := axisId,
+            FB_RPM := servo_actual_speed,
+            FB_TORQUE := 0.0,
+            FB_ANGLE := servo_angle,
+            FB_TIMESTAMP := system_time,
+            VALID_RPM := TRUE,
+            VALID_TORQUE := FALSE,      // 转矩不可信 → 库按"未知"处理，不当作 0
+            VALID_ANGLE := TRUE,
+            VALID_TIMESTAMP := TRUE);
+```
+
+**注意事项**
+
+- **部分反馈是正常的**：没有转矩/角度通道的驱动器把对应 `VALID_*` 置 `FALSE` 即可；
+  库把该字段记为"未知"而不是 0，避免把缺通道误读成"转矩为零"。
+- 角度由库统一折算到 `[0,360)`，多圈值与负值不会混叠。
+- `ENABLE=FALSE` 不写入，保留上一包数据（便于数据变化时才刷新的驱动器使用）。
+- **仿真轴（`USE_SIMULATION=TRUE`）下本 FB 的写入被忽略**，泵反馈由植物模型发布，
+  与 4.2 对 `ACT_*` 的处理一致。
+- 当前运行时**仅存储不消费**该数据包，供 HMI/调试通过 4.15 回读，
+  并为泵速监控与泵纹波补偿预留统一入口。
+- 与 4.2 一样，真机部署中每个扫描周期调用一次。
+
+---
+
+### 4.15 HYD_READPUMPFEEDBACK — 读取伺服泵反馈
+
+回读最后一次写入的泵反馈数据包，用于 HMI 显示、调试与 HIL 验证。
+
+**接口定义**
+
+| 参数 | 类型 | 方向 | 单位 | 说明 |
+|------|------|------|------|------|
+| `EN` | BOOL | IN | — | 使能 |
+| `ENO` | BOOL | OUT | — | 使能输出 |
+| `AXISID` | SINT | IN | — | 轴 ID |
+| `ENABLE` | BOOL | IN | — | 读取使能 |
+| `VALID` | BOOL | OUT | — | 至少有一个字段可信 |
+| `FB_RPM` | REAL | OUT | rpm | 反馈转速 |
+| `FB_TORQUE` | REAL | OUT | 0.1% | 反馈转矩 |
+| `FB_ANGLE` | REAL | OUT | deg | 反馈角度 |
+| `FB_TIMESTAMP` | REAL | OUT | s | 反馈采样时刻 |
+| `FLAGS` | WORD | OUT | — | 原始有效位掩码（见下表） |
+| `BUSY` | BOOL | OUT | — | 读取中 |
+| `ERROR` | BOOL | OUT | — | 错误标志 |
+| `ERRORID` | WORD | OUT | — | 错误码 |
+
+**`FLAGS` 位定义**
+
+| 位 | 常量 | 含义 |
+|----|------|------|
+| 0 | `HYD_PUMP_FEEDBACK_VALID_RPM` | `FB_RPM` 有效 |
+| 1 | `HYD_PUMP_FEEDBACK_VALID_ANGLE` | `FB_ANGLE` 有效 |
+| 2 | `HYD_PUMP_FEEDBACK_VALID_TORQUE` | `FB_TORQUE` 有效 |
+| 3 | `HYD_PUMP_FEEDBACK_VALID_TIMESTAMP` | `FB_TIMESTAMP` 有效 |
+
+**调用示例**
+
+```pascal
+fbReadPumpFB(EN := TRUE, ENABLE := TRUE, AXISID := axisId);
+
+IF fbReadPumpFB.VALID AND (fbReadPumpFB.FLAGS AND 16#0002) <> 0 THEN
+    pump_angle_deg := fbReadPumpFB.FB_ANGLE;   // 仅角度可信时才使用
+END_IF
+```
+
+**注意事项**
+
+- `VALID=FALSE` 表示尚未写入过任何泵反馈（`FLAGS=0`），此时各值读出为 0。
+- 判断单个字段请用 `FLAGS` 的对应位，不要用数值是否为 0 来推断。
+- `ENABLE=FALSE` 时各输出清零、`VALID=FALSE`，且不报错。
+
+---
+
 ## 5. 典型注塑周期调用流程
 
 ### 5.1 完整注塑周期（Direct 模式）
@@ -779,7 +897,8 @@ CASE step OF
 
   2: // 高压锁模
      fbPressHandle(EXECUTE := TRUE, PRESSURE := 120.0,
-                   PRESSURERAMPRATE := 100.0, DURATION := 0, ...);
+                   PRESSURERAMPRATE := 100.0, DURATION := 0,
+                   FLOWLIMITPERCENT := 100.0, ...);
      IF fbPressHandle.INPRESSURE THEN step := 3; END_IF
 
   3: // 注射
@@ -789,7 +908,8 @@ CASE step OF
 
   4: // 保压
      fbPressHandle(EXECUTE := TRUE, PRESSURE := 80.0,
-                   PRESSURERAMPRATE := 50.0, DURATION := 5.0, ...);
+                   PRESSURERAMPRATE := 50.0, DURATION := 5.0,
+                   FLOWLIMITPERCENT := 25.0, ...);
      IF fbPressHandle.DONE THEN step := 5; END_IF
 
   5: // 开模
@@ -922,6 +1042,7 @@ fbMoveProfile(EXECUTE := segStart,
 | 版本 | 日期 | 说明 |
 |------|------|------|
 | V1.0 | 2026-06 | 初始版本，覆盖全部 13 个 IEC 功能块接口 |
+| V1.1 | 2026-09-16 | 新增 4.14 `HYD_SETPUMPFEEDBACK`、4.15 `HYD_READPUMPFEEDBACK`：伺服泵反馈（转速/转矩/角度/时间戳）注入与回读接口，补全泵侧物理反馈通路 |
 
 ---
 

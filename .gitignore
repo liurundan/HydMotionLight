@@ -55,3 +55,7 @@ out/
 build/
 .omx/
 .omx/metrics.json
+
+# WorkBuddy 本地智能体工作区（非源码，不入库）
+.workbuddy/
+*.stackdump

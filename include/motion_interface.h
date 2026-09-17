@@ -28,11 +28,28 @@
  *   HYD_AXISMOTION.SETPRESSURE / ACTPRESSURE / PRESSURERAMPRATE,
  *   HYD_MOVECONTINUOUSABSOLUTE.PRESSURELIMIT,
  *   HYD_MOVEVELOCITY.PRESSURELIMIT,
- *   HYD_PRESSUREHANDLE.PRESSURE / PRESSURERAMPRATE,
+ *   HYD_PRESSUREHANDLE.PRESSURE / PRESSURERAMPRATE. PressureHandle's
+ *   FLOWLIMITPERCENT is a separate percentage of its 20 L/min base limit.
  *   HYD_SETAXISFEEDBACK.ACT_PRESSURE,
  *   HYD_READSIMFEEDBACK.PRESSURE.
  * The IEC adapter passes these values into HydroMotionLib without pressure-unit
  * conversion; the pressure closed-loop path consumes the same bar domain.
+ */
+
+/*
+ * IEC pump-feedback-unit contract:
+ * Servo-pump feedback is carried by HYD_SETPUMPFEEDBACK / HYD_READPUMPFEEDBACK
+ * and maps 1:1 onto the native HYD_PumpFeedback packet, which the IEC adapter
+ * passes through without unit conversion:
+ *   FB_RPM       [rpm]     feedback speed, signed (negative = pump reversing)
+ *   FB_TORQUE    [0.1 %]   feedback torque, permille of rated torque, signed
+ *   FB_ANGLE     [deg]     feedback angle, wrapped to [0, 360) by the setter
+ *   FB_TIMESTAMP [s]       feedback capture time (same time base as
+ *                          HYD_AXISMOTION.TIMESTAMP)
+ * Partial feedback is normal: a drive without a torque or angle channel leaves
+ * the matching VALID pin false, and the value is then treated as unknown.
+ * These pins are inputs only -- HydroMotionLib never derives them from
+ * PUMP_SPEED, which stays a commanded magnitude.
  */
 
 /*
@@ -345,6 +362,8 @@ typedef struct {
   __DECLARE_VAR(REAL,PRESSURE)
   __DECLARE_VAR(REAL,PRESSURERAMPRATE)
   __DECLARE_VAR(REAL,DURATION)
+  /* Percentage of the PressureHandle 20 L/min process cap; (0,100], default 100. */
+  __DECLARE_VAR(REAL,FLOWLIMITPERCENT)
   __DECLARE_VAR(INT,BUFFERMODE)
   __DECLARE_VAR(BOOL,INPRESSURE)
   __DECLARE_VAR(BOOL,DONE)
@@ -486,6 +505,38 @@ typedef struct {
 
 } HYD_SETAXISFEEDBACK;
 
+// FUNCTION_BLOCK HYD_SetPumpFeedback
+// Servo-pump feedback ingress: feedback rpm / torque / angle / timestamp.
+// Values are stored only when ENABLE is true and the axis is not in simulation
+// mode; simulation axes get their pump feedback from the plant model instead.
+// Each value is accepted only when its VALID pin is true, so a drive that
+// exposes only rpm can still feed rpm without claiming torque/angle validity.
+// See the "IEC pump-feedback-unit contract" note above for units.
+// Data part
+typedef struct {
+  // FB Interface - IN, OUT, IN_OUT variables
+  __DECLARE_VAR(BOOL,EN)
+  __DECLARE_VAR(BOOL,ENO)
+  __DECLARE_VAR(SINT,AXISID)
+  __DECLARE_VAR(BOOL,ENABLE)
+  __DECLARE_VAR(REAL,FB_RPM)
+  __DECLARE_VAR(REAL,FB_TORQUE)
+  __DECLARE_VAR(REAL,FB_ANGLE)
+  __DECLARE_VAR(REAL,FB_TIMESTAMP)
+  __DECLARE_VAR(BOOL,VALID_RPM)
+  __DECLARE_VAR(BOOL,VALID_TORQUE)
+  __DECLARE_VAR(BOOL,VALID_ANGLE)
+  __DECLARE_VAR(BOOL,VALID_TIMESTAMP)
+  __DECLARE_VAR(BOOL,DONE)
+  __DECLARE_VAR(BOOL,BUSY)
+  __DECLARE_VAR(BOOL,ERROR)
+  __DECLARE_VAR(WORD,ERRORID)
+
+  // FB private variables - TEMP, private and located variables
+  __DECLARE_VAR(BOOL,DONE0)
+
+} HYD_SETPUMPFEEDBACK;
+
 // FUNCTION_BLOCK HYD_GETPUMPREQUEST
 // Data part
 typedef struct {
@@ -579,6 +630,32 @@ typedef struct {
   // FB private variables - TEMP, private and located variables
 
 } HYD_READSIMFEEDBACK;
+
+// FUNCTION_BLOCK HYD_ReadPumpFeedback
+// Read-back of the servo-pump feedback packet for HMI / commissioning.
+// Mirrors whatever was last written through HYD_SetPumpFeedback (or through the
+// native HYD_MotionControlFB_SetPumpFeedback HAL ingress).
+// VALID is true when the packet carries at least one valid field; FLAGS returns
+// the raw HYD_PUMP_FEEDBACK_VALID_* bit mask so a caller can tell which fields
+// are actually trustworthy.
+// Data part
+typedef struct {
+  // FB Interface - IN, OUT, IN_OUT variables
+  __DECLARE_VAR(BOOL,EN)
+  __DECLARE_VAR(BOOL,ENO)
+  __DECLARE_VAR(SINT,AXISID)
+  __DECLARE_VAR(BOOL,ENABLE)
+  __DECLARE_VAR(BOOL,VALID)
+  __DECLARE_VAR(REAL,FB_RPM)
+  __DECLARE_VAR(REAL,FB_TORQUE)
+  __DECLARE_VAR(REAL,FB_ANGLE)
+  __DECLARE_VAR(REAL,FB_TIMESTAMP)
+  __DECLARE_VAR(WORD,FLAGS)
+  __DECLARE_VAR(BOOL,BUSY)
+  __DECLARE_VAR(BOOL,ERROR)
+  __DECLARE_VAR(WORD,ERRORID)
+
+} HYD_READPUMPFEEDBACK;
 
 // FUNCTION_BLOCK HYD_READPARAMETER
 // Data part
@@ -683,11 +760,13 @@ extern void __mcl_cmd_Reset(HYD_RESET *data__);
 extern void __mcl_cmd_MoveVelocity(HYD_MOVEVELOCITY *data__);
 extern void __mcl_cmd_PressureHandle(HYD_PRESSUREHANDLE *data__);
 extern void __mcl_cmd_SetAxisFeedback(HYD_SETAXISFEEDBACK *data__);
+extern void __mcl_cmd_SetPumpFeedback(HYD_SETPUMPFEEDBACK *data__);
 extern void __mcl_cmd_GetPumpRequest(HYD_GETPUMPREQUEST *data__);
 
 extern void __mcl_cmd_ReadStatus(HYD_READSTATUS* data__);
 extern void __mcl_cmd_ReadError(HYD_READERROR* data__);
 extern void __mcl_cmd_ReadSimFeedback(HYD_READSIMFEEDBACK* data__);
+extern void __mcl_cmd_ReadPumpFeedback(HYD_READPUMPFEEDBACK* data__);
 
 extern void __mcl_cmd_ReadParameter(HYD_READPARAMETER* data__);
 extern void __mcl_cmd_WriteParameter(HYD_WRITEPARAMETER* data__);

@@ -65,6 +65,15 @@ target_link_libraries(segment_completion_test PRIVATE HydroMotionLib)
 add_executable(rbf_pid_test tests/rbf_pid_test.c)
 target_link_libraries(rbf_pid_test PRIVATE HydroMotionLib)
 
+add_executable(rbf_pid_p0_fixes_test tests/rbf_pid_p0_fixes_test.c)
+target_link_libraries(rbf_pid_p0_fixes_test PRIVATE HydroMotionLib)
+
+add_executable(test_rbf_pid_contract tests/test_rbf_pid_contract.c)
+target_link_libraries(test_rbf_pid_contract PRIVATE HydroMotionLib HydroSimLib)
+
+add_executable(test_rbf_pid_pressure_benchmark tests/test_rbf_pid_pressure_benchmark.c)
+target_link_libraries(test_rbf_pid_pressure_benchmark PRIVATE HydroMotionLib HydroSimLib)
+
 add_executable(test_negative_flow tests/test_negative_flow.c)
 target_link_libraries(test_negative_flow PRIVATE HydroMotionLib)
 
@@ -106,6 +115,24 @@ target_link_libraries(test_pressure_model PRIVATE HydroMotionLib HydroSimLib)
 add_executable(test_pressure_hold_diagnosis tests/test_pressure_hold_diagnosis.c)
 target_link_libraries(test_pressure_hold_diagnosis PRIVATE HydroMotionLib HydroSimLib)
 
+add_executable(test_pressure_target_verification tests/test_pressure_target_verification.c)
+target_link_libraries(test_pressure_target_verification PRIVATE HydroMotionLib HydroSimLib)
+
+add_executable(test_soft_reset_switch tests/test_soft_reset_switch.c)
+target_link_libraries(test_soft_reset_switch PRIVATE HydroMotionLib HydroSimLib)
+
+add_executable(test_pressure_debug_trace tests/test_pressure_debug_trace.c)
+target_link_libraries(test_pressure_debug_trace PRIVATE HydroMotionLib HydroSimLib)
+
+add_executable(test_openloop_gain_probe tests/test_openloop_gain_probe.c)
+target_link_libraries(test_openloop_gain_probe PRIVATE HydroMotionLib HydroSimLib)
+
+add_executable(test_boost_flow_limit tests/test_boost_flow_limit.c)
+target_link_libraries(test_boost_flow_limit PRIVATE HydroMotionLib HydroSimLib)
+
+add_executable(test_pressure_ab_matrix tests/test_pressure_ab_matrix.c)
+target_link_libraries(test_pressure_ab_matrix PRIVATE HydroMotionLib HydroSimLib)
+
 # ==================================================================
 # IEC FB接口层测试
 # ==================================================================
@@ -117,6 +144,9 @@ target_link_libraries(test_motion_interface_arbitration PRIVATE HydroMotionLib)
 
 add_executable(test_motion_interface_done_signals tests/test_motion_interface_done_signals.c)
 target_link_libraries(test_motion_interface_done_signals PRIVATE HydroMotionLib)
+
+add_executable(test_pump_feedback_iec tests/test_pump_feedback_iec.c)
+target_link_libraries(test_pump_feedback_iec PRIVATE HydroMotionLib)
 
 add_executable(test_movevelocity_stop_reverse_restart
                tests/test_movevelocity_stop_reverse_restart.c)
@@ -176,9 +206,13 @@ target_link_libraries(test_pump_direction_conflict PRIVATE HydroMotionLib)
 add_executable(test_vp_bumpless_reverse tests/test_vp_bumpless_reverse.c)
 target_link_libraries(test_vp_bumpless_reverse PRIVATE HydroMotionLib)
 
+add_executable(test_mode_switch_bumpless tests/test_mode_switch_bumpless.c)
+target_link_libraries(test_mode_switch_bumpless PRIVATE HydroMotionLib)
+
 add_executable(test_pump_cylinder_config tests/test_pump_cylinder_config.c)
 target_link_libraries(test_pump_cylinder_config PRIVATE HydroMotionLib m)
 add_test(NAME test_pump_cylinder_config COMMAND test_pump_cylinder_config)
+add_test(NAME test_mode_switch_bumpless COMMAND test_mode_switch_bumpless)
 
 add_executable(test_toggle_kinematics tests/test_toggle_kinematics.c)
 target_link_libraries(test_toggle_kinematics PRIVATE HydroMotionLib m)
@@ -219,6 +253,8 @@ add_test(NAME test_action_profile COMMAND test_action_profile)
 add_test(NAME test_vp_transfer COMMAND test_vp_transfer)
 add_test(NAME test_segment_completion COMMAND segment_completion_test)
 add_test(NAME test_rbf_pid COMMAND rbf_pid_test)
+add_test(NAME test_rbf_pid_contract COMMAND test_rbf_pid_contract)
+add_test(NAME test_rbf_pid_pressure_benchmark COMMAND test_rbf_pid_pressure_benchmark)
 add_test(NAME test_diagnostic_monitor COMMAND test_diagnostic_monitor)
 add_test(NAME test_diagnostic_criteria COMMAND test_diagnostic_criteria)
 add_test(NAME test_sprint3_integration COMMAND test_sprint3_integration)
@@ -232,9 +268,12 @@ add_test(NAME test_parameter_iec COMMAND test_parameter_iec)
 add_test(NAME test_hydro_sim_fb COMMAND test_hydro_sim_fb)
 add_test(NAME test_pressure_model COMMAND test_pressure_model)
 add_test(NAME test_pressure_hold_diagnosis COMMAND test_pressure_hold_diagnosis)
+add_test(NAME test_pressure_target_verification COMMAND test_pressure_target_verification)
+add_test(NAME test_soft_reset_switch COMMAND test_soft_reset_switch)
 add_test(NAME test_motion_interface_unit COMMAND test_motion_interface_unit)
 add_test(NAME test_motion_interface_arbitration COMMAND test_motion_interface_arbitration)
 add_test(NAME test_motion_interface_done_signals COMMAND test_motion_interface_done_signals)
+add_test(NAME test_pump_feedback_iec COMMAND test_pump_feedback_iec)
 add_test(NAME test_movevelocity_stop_reverse_restart
          COMMAND test_movevelocity_stop_reverse_restart)
 add_test(NAME test_movecontinuousabsolute_integration
@@ -290,6 +329,38 @@ add_test(NAME test_toggle_motion_interface COMMAND test_toggle_motion_interface)
 add_test(NAME test_toggle_motion_integration COMMAND test_toggle_motion_integration)
 add_test(NAME test_toggle_hydraulic_sim COMMAND test_toggle_hydraulic_sim)
 
+# 开环过程增益实测：锁定 Ksys/K 标定，作为 RBF-PID 参数整定的依据
+add_test(NAME test_openloop_gain_probe COMMAND test_openloop_gain_probe)
+
+# 升压段实验限流：真实泵能力(25cc/1700rpm)下验证超调抑制
+add_test(NAME test_boost_flow_limit COMMAND test_boost_flow_limit)
+
 add_executable(test_motion_interface_negative_speed tests/test_motion_interface_negative_speed.c)
 target_link_libraries(test_motion_interface_negative_speed PRIVATE HydroMotionLib)
 add_test(NAME test_motion_interface_negative_speed COMMAND test_motion_interface_negative_speed)
+
+# v10: IEC -> PID 数据链贯通（泵铭牌→最大流量、系统增益、泵转速/转矩反馈→算法）
+add_executable(test_iec_pid_datalink tests/test_iec_pid_datalink.c)
+target_link_libraries(test_iec_pid_datalink PRIVATE HydroMotionLib)
+add_test(NAME test_iec_pid_datalink COMMAND test_iec_pid_datalink)
+
+# v11+（docs §17）：控制器策略 × 升压限流 契约测试。
+# 登记"出厂默认 PI 不达标（B7）+ PI 路径不吃升压限流"这一结构性缺口，
+# 并保护"RBF_PID + 限流12 = 3/3"的成果不回退。
+add_executable(test_strategy_matrix tests/test_strategy_matrix.c)
+target_link_libraries(test_strategy_matrix PRIVATE HydroMotionLib HydroSimLib)
+add_test(NAME test_strategy_matrix COMMAND test_strategy_matrix)
+
+# v12：量产默认验收 —— 只配泵铭牌，其余全走出厂默认，端到端验证 3/3 达标。
+# 钉住"出厂默认即达标"这一 v12 结论，防止默认退化。
+add_executable(test_production_default_acceptance tests/test_production_default_acceptance.c)
+target_link_libraries(test_production_default_acceptance PRIVATE HydroMotionLib HydroSimLib)
+add_test(NAME test_production_default_acceptance COMMAND test_production_default_acceptance)
+
+# v13：FF_PI 结构性契约 + 鲁棒性。
+# 钉住三件事：解析整定公式随 τ/ωn/K 正确变化、升压制动包络对 Mp 有因果作用、
+# 以及最关键的 D4 回归 —— K 高估 1.9× 时不得再出现"静默稳态欠压"
+# （RBF_PID 对照组作为负向断言，证明植物确实能复现该缺陷）。
+add_executable(test_ff_pi_contract tests/test_ff_pi_contract.c)
+target_link_libraries(test_ff_pi_contract PRIVATE HydroMotionLib HydroSimLib)
+add_test(NAME test_ff_pi_contract COMMAND test_ff_pi_contract)

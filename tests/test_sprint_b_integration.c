@@ -112,7 +112,7 @@ static void test_trapezoid_planning_with_short_distance_triangular(void) {
 static void test_gain_scheduling_transitions_smoothly(void) {
     HYD_MotionSegment segment;
     HYD_PressureControllerState state;
-    HYD_PressureControllerInput input;
+    HYD_PressureControllerInput input = {0};
     HYD_PressureControllerOutput outputs[5];
     int i;
     HYD_REAL prevOutput;

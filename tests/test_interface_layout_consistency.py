@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import subprocess
 import sys
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 
@@ -11,6 +12,10 @@ HEADER = ROOT / "include" / "motion_interface.h"
 BAD_XML = ROOT / "tests" / "fixtures" / "pous_layout_bad.xml"
 PLC_SOURCE = ROOT / "tests" / "plcdemo" / "POUS.c"
 PLC_HEADER = ROOT / "tests" / "plcdemo" / "POUS.h"
+
+
+def local_name(tag: str) -> str:
+    return tag.rsplit("}", 1)[-1]
 
 
 def run_check(xml_path: Path, header_path: Path) -> subprocess.CompletedProcess:
@@ -142,6 +147,39 @@ def main() -> int:
         if field not in plc_source[init_start:init_end]:
             print(f"expected generated HYD_READSTATUS initializer to clear {field}")
             return 1
+
+    pressure_pou = next(
+        (pou for pou in ET.parse(XML).getroot().iter()
+         if local_name(pou.tag) == "pou" and
+         pou.attrib.get("name") == "HYD_PressureHandle"),
+        None,
+    )
+    if pressure_pou is None:
+        print("expected XML POU HYD_PressureHandle")
+        return 1
+    flow_percent = next(
+        (variable for variable in pressure_pou.iter()
+         if local_name(variable.tag) == "variable" and
+         variable.attrib.get("name") == "FLOWLIMITPERCENT"),
+        None,
+    )
+    if flow_percent is None:
+        print("expected HYD_PressureHandle FLOWLIMITPERCENT input")
+        return 1
+    initial_value = next(
+        (value for value in flow_percent.iter()
+         if local_name(value.tag) == "simpleValue"),
+        None,
+    )
+    if initial_value is None or initial_value.attrib.get("value") != "100":
+        print("expected FLOWLIMITPERCENT XML initial value 100")
+        return 1
+
+    pressure_init = plc_source[plc_source.find("void HYD_PRESSUREHANDLE_init__"):]
+    pressure_init = pressure_init[:pressure_init.find("// Code part")]
+    if "FLOWLIMITPERCENT,100" not in pressure_init:
+        print("expected generated FLOWLIMITPERCENT initializer 100")
+        return 1
 
     print("interface layout consistency tests passed")
     return 0

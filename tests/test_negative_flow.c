@@ -34,7 +34,7 @@ static HYD_MotionSegment make_pressure_segment(void) {
 static void test_pressure_controller_negative_output(void) {
     HYD_MotionSegment segment;
     HYD_PressureControllerState state;
-    HYD_PressureControllerInput input;
+    HYD_PressureControllerInput input = {0};
     HYD_PressureControllerOutput output;
 
     printf("  M6-Test1: 大偏差负流量输出...\n");
@@ -64,7 +64,7 @@ static void test_pressure_controller_negative_output(void) {
 static void test_pressure_controller_negative_deadband(void) {
     HYD_MotionSegment segment;
     HYD_PressureControllerState state;
-    HYD_PressureControllerInput input;
+    HYD_PressureControllerInput input = {0};
     HYD_PressureControllerOutput output;
 
     printf("  M6-Test2: 小偏差死区禁止负流量...\n");
@@ -93,7 +93,7 @@ static void test_pressure_controller_negative_deadband(void) {
 static void test_pressure_controller_deadband_boundary(void) {
     HYD_MotionSegment segment;
     HYD_PressureControllerState state;
-    HYD_PressureControllerInput input;
+    HYD_PressureControllerInput input = {0};
     HYD_PressureControllerOutput output;
 
     printf("  M6-Test3: 死区边界 (error=-2.0)...\n");
@@ -123,7 +123,7 @@ static void test_pressure_controller_deadband_boundary(void) {
 static void test_pressure_controller_relief_high_feedback_allows_negative_flow(void) {
     HYD_MotionSegment segment;
     HYD_PressureControllerState state;
-    HYD_PressureControllerInput input;
+    HYD_PressureControllerInput input = {0};
     HYD_PressureControllerOutput output;
 
     printf("  M6-Test4: 低目标压但高反馈时允许负流量...\n");
@@ -153,7 +153,7 @@ static void test_pressure_controller_relief_high_feedback_allows_negative_flow(v
 static void test_pressure_controller_relief_clamp_low_feedback(void) {
     HYD_MotionSegment segment;
     HYD_PressureControllerState state;
-    HYD_PressureControllerInput input;
+    HYD_PressureControllerInput input = {0};
     HYD_PressureControllerOutput output;
 
     printf("  M6-Test5: 低目标压且低反馈时禁止负流量...\n");

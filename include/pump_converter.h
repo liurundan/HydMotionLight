@@ -20,6 +20,16 @@ typedef struct {
 void HYD_PumpConverter_Execute(const HYD_PumpConverterInput* input,
                                HYD_PumpConverterOutput* output);
 
+/* Limit a converted pump command to a bounded rpm slew. The caller owns the
+ * previous sample and may bypass this helper for protected stop paths. */
+void HYD_PumpConverter_ApplySlewLimit(
+    const HYD_PumpConverterInput* input,
+    HYD_REAL previousPumpSpeed,
+    HYD_TIME deltaTime,
+    HYD_REAL accelerationRpmPerSecond,
+    HYD_REAL decelerationRpmPerSecond,
+    HYD_PumpConverterOutput* output);
+
 /* Validate runtime configuration for pump conversion. Returns true if the
  * provided gain and limit are finite and within the accepted range.
  * On failure, `code` is populated when provided.

@@ -164,6 +164,11 @@ typedef struct {
     HYD_PumpFeedback pumpFeedback;
     float relief_flow_m3_s;
     uint8_t active_order_mask;
+    /* 1 when the commanded speed / load flow exceeded the drive envelope and was
+     * clamped into [min_rpm, max_rpm]. The plant saturates like a real servo
+     * drive; it does NOT freeze. Lets the process layer distinguish "drive at
+     * its limit" from "pump/line fault". */
+    int command_saturated;
 } PressureModelOutput;
 
 void PressureModel_InitParams(PressureModelParams *params);

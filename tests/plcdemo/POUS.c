@@ -483,6 +483,7 @@ void HYD_PRESSUREHANDLE_init__(HYD_PRESSUREHANDLE *data__, BOOL retain) {
   __INIT_VAR(data__->PRESSURE,0,retain)
   __INIT_VAR(data__->PRESSURERAMPRATE,0,retain)
   __INIT_VAR(data__->DURATION,0,retain)
+  __INIT_VAR(data__->FLOWLIMITPERCENT,100,retain)
   __INIT_VAR(data__->BUFFERMODE,0,retain)
   __INIT_VAR(data__->INPRESSURE,__BOOL_LITERAL(FALSE),retain)
   __INIT_VAR(data__->DONE,__BOOL_LITERAL(FALSE),retain)
@@ -713,6 +714,54 @@ __end:
 } // HYD_SETAXISFEEDBACK_body__() 
 
 
+void HYD_SETPUMPFEEDBACK_init__(HYD_SETPUMPFEEDBACK *data__, BOOL retain) {
+  __INIT_VAR(data__->EN,__BOOL_LITERAL(TRUE),retain)
+  __INIT_VAR(data__->ENO,__BOOL_LITERAL(TRUE),retain)
+  __INIT_VAR(data__->AXISID,0,retain)
+  __INIT_VAR(data__->ENABLE,__BOOL_LITERAL(FALSE),retain)
+  __INIT_VAR(data__->FB_RPM,0,retain)
+  __INIT_VAR(data__->FB_TORQUE,0,retain)
+  __INIT_VAR(data__->FB_ANGLE,0,retain)
+  __INIT_VAR(data__->FB_TIMESTAMP,0,retain)
+  __INIT_VAR(data__->VALID_RPM,__BOOL_LITERAL(FALSE),retain)
+  __INIT_VAR(data__->VALID_TORQUE,__BOOL_LITERAL(FALSE),retain)
+  __INIT_VAR(data__->VALID_ANGLE,__BOOL_LITERAL(FALSE),retain)
+  __INIT_VAR(data__->VALID_TIMESTAMP,__BOOL_LITERAL(FALSE),retain)
+  __INIT_VAR(data__->DONE,__BOOL_LITERAL(FALSE),retain)
+  __INIT_VAR(data__->BUSY,__BOOL_LITERAL(FALSE),retain)
+  __INIT_VAR(data__->ERROR,__BOOL_LITERAL(FALSE),retain)
+  __INIT_VAR(data__->ERRORID,0,retain)
+  __INIT_VAR(data__->DONE0,__BOOL_LITERAL(FALSE),retain)
+}
+
+// Code part
+void HYD_SETPUMPFEEDBACK_body__(HYD_SETPUMPFEEDBACK *data__) {
+  // Control execution
+  if (!__GET_VAR(data__->EN)) {
+    __SET_VAR(data__->,ENO,,__BOOL_LITERAL(FALSE));
+    return;
+  }
+  else {
+    __SET_VAR(data__->,ENO,,__BOOL_LITERAL(TRUE));
+  }
+  // Initialise TEMP variables
+
+  __IL_DEFVAR_T __IL_DEFVAR;
+  __IL_DEFVAR_T __IL_DEFVAR_BACK;
+  #define GetFbVar(var,...) __GET_VAR(data__->var,__VA_ARGS__)
+  #define SetFbVar(var,val,...) __SET_VAR(data__->,var,__VA_ARGS__,val)
+ extern void __mcl_cmd_SetPumpFeedback(HYD_SETPUMPFEEDBACK*); __mcl_cmd_SetPumpFeedback(data__); 
+  #undef GetFbVar
+  #undef SetFbVar
+;
+
+  goto __end;
+
+__end:
+  return;
+} // HYD_SETPUMPFEEDBACK_body__() 
+
+
 
 
 
@@ -904,6 +953,50 @@ void HYD_READSIMFEEDBACK_body__(HYD_READSIMFEEDBACK *data__) {
 __end:
   return;
 } // HYD_READSIMFEEDBACK_body__() 
+
+
+void HYD_READPUMPFEEDBACK_init__(HYD_READPUMPFEEDBACK *data__, BOOL retain) {
+  __INIT_VAR(data__->EN,__BOOL_LITERAL(TRUE),retain)
+  __INIT_VAR(data__->ENO,__BOOL_LITERAL(TRUE),retain)
+  __INIT_VAR(data__->AXISID,0,retain)
+  __INIT_VAR(data__->ENABLE,__BOOL_LITERAL(FALSE),retain)
+  __INIT_VAR(data__->VALID,__BOOL_LITERAL(FALSE),retain)
+  __INIT_VAR(data__->FB_RPM,0,retain)
+  __INIT_VAR(data__->FB_TORQUE,0,retain)
+  __INIT_VAR(data__->FB_ANGLE,0,retain)
+  __INIT_VAR(data__->FB_TIMESTAMP,0,retain)
+  __INIT_VAR(data__->FLAGS,0,retain)
+  __INIT_VAR(data__->BUSY,__BOOL_LITERAL(FALSE),retain)
+  __INIT_VAR(data__->ERROR,__BOOL_LITERAL(FALSE),retain)
+  __INIT_VAR(data__->ERRORID,0,retain)
+}
+
+// Code part
+void HYD_READPUMPFEEDBACK_body__(HYD_READPUMPFEEDBACK *data__) {
+  // Control execution
+  if (!__GET_VAR(data__->EN)) {
+    __SET_VAR(data__->,ENO,,__BOOL_LITERAL(FALSE));
+    return;
+  }
+  else {
+    __SET_VAR(data__->,ENO,,__BOOL_LITERAL(TRUE));
+  }
+  // Initialise TEMP variables
+
+  __IL_DEFVAR_T __IL_DEFVAR;
+  __IL_DEFVAR_T __IL_DEFVAR_BACK;
+  #define GetFbVar(var,...) __GET_VAR(data__->var,__VA_ARGS__)
+  #define SetFbVar(var,val,...) __SET_VAR(data__->,var,__VA_ARGS__,val)
+ extern void __mcl_cmd_ReadPumpFeedback(HYD_READPUMPFEEDBACK*); __mcl_cmd_ReadPumpFeedback(data__); 
+  #undef GetFbVar
+  #undef SetFbVar
+;
+
+  goto __end;
+
+__end:
+  return;
+} // HYD_READPUMPFEEDBACK_body__() 
 
 
 
@@ -1429,6 +1522,7 @@ void FB_HYDAXIS3_body__(FB_HYDAXIS3 *data__) {
   __SET_VAR(data__->FBPRESHDL.,PRESSURE,,__GET_VAR(data__->RPRES,));
   __SET_VAR(data__->FBPRESHDL.,PRESSURERAMPRATE,,__GET_VAR(data__->RACC,));
   __SET_VAR(data__->FBPRESHDL.,DURATION,,0.0);
+  __SET_VAR(data__->FBPRESHDL.,FLOWLIMITPERCENT,,100.0);
   __SET_VAR(data__->FBPRESHDL.,BUFFERMODE,,0);
   HYD_PRESSUREHANDLE_body__(&data__->FBPRESHDL);
   __SET_VAR(data__->FBSTOP.,AXISID,,__GET_VAR(data__->SIAXISID,));
@@ -1773,6 +1867,7 @@ void FB_HYDAXIS1_body__(FB_HYDAXIS1 *data__) {
   __SET_VAR(data__->FBHYD_PRESSUREHANDLE.,PRESSURE,,__GET_VAR(data__->RTARGETPRES,));
   __SET_VAR(data__->FBHYD_PRESSUREHANDLE.,PRESSURERAMPRATE,,__GET_VAR(data__->RTARGETACC,));
   __SET_VAR(data__->FBHYD_PRESSUREHANDLE.,DURATION,,0.0);
+  __SET_VAR(data__->FBHYD_PRESSUREHANDLE.,FLOWLIMITPERCENT,,100.0);
   __SET_VAR(data__->FBHYD_PRESSUREHANDLE.,BUFFERMODE,,0);
   HYD_PRESSUREHANDLE_body__(&data__->FBHYD_PRESSUREHANDLE);
   __SET_VAR(data__->FBHYD_STOP.,AXISID,,__GET_VAR(data__->SIAXISID,));
@@ -2085,6 +2180,7 @@ void FB_HYDAXIS2_body__(FB_HYDAXIS2 *data__) {
   __SET_VAR(data__->FBPRESHDL.,PRESSURE,,__GET_VAR(data__->RPRES,));
   __SET_VAR(data__->FBPRESHDL.,PRESSURERAMPRATE,,__GET_VAR(data__->RACC,));
   __SET_VAR(data__->FBPRESHDL.,DURATION,,0.0);
+  __SET_VAR(data__->FBPRESHDL.,FLOWLIMITPERCENT,,100.0);
   __SET_VAR(data__->FBPRESHDL.,BUFFERMODE,,0);
   HYD_PRESSUREHANDLE_body__(&data__->FBPRESHDL);
   __SET_VAR(data__->FBSTOP.,AXISID,,__GET_VAR(data__->SIAXISID,));
@@ -2758,6 +2854,7 @@ void TESTPRESSURECTRL_body__(TESTPRESSURECTRL *data__) {
       __SET_VAR(data__->FBHYD_PRESSUREHANDLE.,PRESSURE,,__GET_VAR(data__->FSETPRESSURE,));
       __SET_VAR(data__->FBHYD_PRESSUREHANDLE.,PRESSURERAMPRATE,,20.0);
       __SET_VAR(data__->FBHYD_PRESSUREHANDLE.,DURATION,,0);
+      __SET_VAR(data__->FBHYD_PRESSUREHANDLE.,FLOWLIMITPERCENT,,100.0);
       HYD_PRESSUREHANDLE_body__(&data__->FBHYD_PRESSUREHANDLE);
       __SET_VAR(data__->,BINPRESSURE,,__GET_VAR(data__->FBHYD_PRESSUREHANDLE.INPRESSURE));
       __SET_VAR(data__->,BDONE,,__GET_VAR(data__->FBHYD_PRESSUREHANDLE.DONE));

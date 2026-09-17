@@ -6,6 +6,44 @@
 
 #define HYD_BASELINE_MOTION_FB_BYTES 3176U /* host ABI at commit f8bc1b9 */
 
+/* Allowance for ABI growth measured against the baseline above.
+ * - historic slack for the mechanism / telemetry work: 48 B;
+ * - v8 boost-phase flow limit adds 8 B: RBF_PID_Handle gained two floats
+ *   (boost_flow_limit_lmin + boost_flow_brake_frac) and HYD_MotionControlFB
+ *   embeds the handle, so the size went 3240 -> 3248 B. That is 4 B past the
+ *   old budget (3176+48+20 = 3244), hence 48 -> 56. The budget test is here to
+ *   catch *accidental* growth; this growth is deliberate and documented, and
+ *   the new headroom is exactly 4 B -- do not spend it casually.
+ * - HYD_ENABLE_FLOW_DIAGNOSTIC_TELEMETRY adds 16 B (measured), not the 8 B the
+ *   guard originally assumed -- that branch was already 4 B over budget before
+ *   the pump feedback landed, so the real figure is used here;
+ * - servo-pump feedback ingress adds sizeof(HYD_PumpFeedback) = 20 B per axis
+ *   FB (rpm + angleDeg + torquePermille + timestamp + validFlags). With all
+ *   HYD_MAX_AXIS_MOTION (20) axes populated that is 400 B. Accepted so the
+ *   drive can report real speed/torque/angle; fb->PUMP_SPEED only ever holds
+ *   the *commanded* value and must not be mistaken for feedback.
+ * - v10 IEC data-link work adds 32 B (measured, 3240 -> 3272) to
+ *   HYD_MotionFBParams: pressureSystemGain + maxFlowDerived +
+ *   pumpTorqueOverloadPermille (3 x 8 B) plus pumpFeedbackAntiWindup (1 B,
+ *   padded to 8). These let the PLC push the system gain, the pump nameplate
+ *   figures and the feedback policy in through HYD_WriteParameter.
+ * - v13 FF_PI 重构 adds 8 B to HYD_MotionFBParams (pressurePlantTauS +
+ *   pressureLoopOmega, both HYD_REAL) that carry the plant time constant and
+ *   the target loop bandwidth FF_PI turns into KP/KI analytically; without
+ *   them the new strategy cannot be tuned from the PLC.
+ * - v13 可观测性 adds 16 B measured (32 B logical: resolvedKp / resolvedKi /
+ *   resolvedSteadyStateFF / resolvedBoostFlowLimitLmin in
+ *   HYD_PressureControllerState; half was absorbed by existing tail padding).
+ *   RBF 路径的教训是"算法内部发生什么对外完全不可见"，这四项让"K/τ/ωn 有没有
+ *   真的到达算法"从推断变成可断言的事实，是量产诊断的刚需，不是顺手加的字段。
+ *   sizeof 轨迹：3176 基线 -> 3280 (v10/v11) -> 3288 (FF_PI 参数) -> 3304 (+可观测性)。 */
+#define HYD_FB_HISTORIC_SLACK_BYTES   56U
+#define HYD_FB_TELEMETRY_SLACK_BYTES  16U
+#define HYD_PUMP_FEEDBACK_FB_BYTES    20U
+#define HYD_PARAM_EXT_FB_BYTES        32U
+#define HYD_FF_PI_PARAM_FB_BYTES       8U
+#define HYD_FF_PI_OBSERVABILITY_BYTES 16U
+
 static HYD_TogglePreparedConfig validated_default(void)
 {
     HYD_ToggleGeometryConfig raw = HYD_ToggleKinematics_DefaultConfig();
@@ -173,11 +211,14 @@ static void test_resource_budget(void)
     assert(slot_bytes <= 112U);
     assert(validation_bytes <= 160U);
     assert(motion_fb_bytes <= HYD_BASELINE_MOTION_FB_BYTES +
+           HYD_FB_HISTORIC_SLACK_BYTES +
 #if HYD_ENABLE_FLOW_DIAGNOSTIC_TELEMETRY
-           56U
-#else
-           32U
+           HYD_FB_TELEMETRY_SLACK_BYTES +
 #endif
+           HYD_PUMP_FEEDBACK_FB_BYTES +
+           HYD_PARAM_EXT_FB_BYTES +
+           HYD_FF_PI_PARAM_FB_BYTES +
+           HYD_FF_PI_OBSERVABILITY_BYTES
     );
 }
 

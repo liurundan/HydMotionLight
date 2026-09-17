@@ -201,7 +201,8 @@ typedef enum {
     HYD_LIVE_UPDATE_PRESSURE_RAMP_RATE = 1U << 5,
     HYD_LIVE_UPDATE_CONTINUOUS_UPDATE  = 1U << 6,
     HYD_LIVE_UPDATE_DIRECTION          = 1U << 7,
-    HYD_LIVE_UPDATE_MAX_PRESSURE       = 1U << 8
+    HYD_LIVE_UPDATE_MAX_PRESSURE       = 1U << 8,
+    HYD_LIVE_UPDATE_MAX_FLOW           = 1U << 9
 } HYD_LiveUpdateFlags;
 
 #define HYD_DIRECT_PREEMPTED_HISTORY_CAPACITY 2U
@@ -229,6 +230,9 @@ typedef struct {
     HYD_REAL targetPressure;
     HYD_REAL pressureRampRate;
     HYD_MotionDirection direction;
+    /* Absolute pressure-segment flow cap [L/min]; only used with
+     * HYD_LIVE_UPDATE_MAX_FLOW. Kept at the end to preserve legacy offsets. */
+    HYD_REAL maxFlow;
 } HYD_LiveUpdateRequest;
 
 typedef struct {
@@ -394,6 +398,13 @@ typedef struct {
     HYD_BOOL _configuredUseRecipe;
     HYD_MotionFBParams _params;
 
+    /* --- Servo-pump feedback ingress --- */
+    /* Owned by the HAL / IEC HYD_SetPumpFeedback FB, written through
+     * HYD_MotionControlFB_SetPumpFeedback(). Never written by the runtime.
+     * Zeroed by Init() and by SoftReset() — same lifetime rule as AXIS_REF,
+     * i.e. the HAL re-populates feedback on the next scan. */
+    HYD_PumpFeedback _pumpFeedback;
+
     /* --- Simulation feedback (test only) --- */
     struct {
         HYD_REAL targetPosition;
@@ -524,6 +535,65 @@ void HYD_MotionControlFB_Scan(HYD_MotionControlFB* fb);
 
 /* Compatibility cyclic entry; currently equivalent to Scan(). */
 void HYD_MotionControlFB_Execute(HYD_MotionControlFB* fb);
+
+/*
+ * Servo-pump feedback ingress — 反馈转速 / 反馈转矩 / 反馈角度。
+ *
+ * fb->PUMP_SPEED is the COMMANDED pump speed in rpm. It must never be used as
+ * feedback: a stalled or not-yet-ramped drive still reports the commanded value.
+ * The physical drive state lives in this packet instead, named to mirror
+ * HYD_PumpFeedback so it maps 1:1 onto the IEC HYD_SetPumpFeedback FB pins.
+ *
+ *   rpm            [rpm]        feedback speed from the servo drive
+ *   torquePermille [0.1 %]      feedback torque, permille of rated torque
+ *   angleDeg       [deg]        feedback electrical/mechanical angle, [0, 360)
+ *   timestamp      [s]          feedback capture time
+ *   validFlags                  bit mask of HYD_PUMP_FEEDBACK_VALID_*
+ *
+ * Producers (both funnel into HYD_MotionControlFB_SetPumpFeedback):
+ *   - hardware layer / HAL, called once per scan before the FB is executed;
+ *   - IEC programs, via the HYD_SetPumpFeedback function block.
+ *
+ * The runtime currently stores the packet without consuming it in any control
+ * path. It is provided so that
+ *   - HMI / commissioning code can read back the real drive state
+ *     (IEC HYD_ReadPumpFeedback FB), and
+ *   - the pump-speed monitor and pump-ripple compensation have a defined,
+ *     hardware-independent ingress to build on.
+ *
+ * Usage contract:
+ *   - partial feedback is expected: a drive without a torque or angle channel
+ *     simply leaves that VALID bit clear, and the corresponding value is
+ *     treated as "unknown", not as zero;
+ *   - angle is canonicalised by the setter: wrapped into [0, 360);
+ *   - validFlags is masked to HYD_PUMP_FEEDBACK_VALID_*; unknown bits are
+ *     dropped so a driver cannot smuggle state through the mask;
+ *   - the packet is cleared by Init() and SoftReset(), exactly like the
+ *     AXIS_REF ACT_* half. Producers must refresh it every scan.
+ *
+ * Both return false when fb / feedback is NULL.
+ */
+HYD_BOOL HYD_MotionControlFB_SetPumpFeedback(HYD_MotionControlFB* fb,
+                                             const HYD_PumpFeedback* feedback);
+HYD_BOOL HYD_MotionControlFB_GetPumpFeedback(const HYD_MotionControlFB* fb,
+                                             HYD_PumpFeedback* feedback);
+
+/**
+ * @brief 解析当前生效的最大流量 [L/min]（IEC 配泵参数 → 最大流量的唯一真源）
+ *
+ * 优先级（高 → 低）：
+ *   1. pumpConfig（由 IEC HYD_PARAM_PUMP_DISPLACEMENT / VOLUMETRIC_EFF / MAX_SPEED 写入）
+ *      → Q_max = maxSpeedRpm * displacementMlRev * volumetricEfficiency / 1000
+ *   2. 旧版直接配置的 FLOW_TO_PUMP_SPEED_GAIN / PUMP_SPEED_LIMIT
+ *      → Q_max = PUMP_SPEED_LIMIT / FLOW_TO_PUMP_SPEED_GAIN
+ *   3. HYD_PARAM_MAX_FLOW 手填值
+ *   4. 0（调用方按需兜底）
+ *
+ * @note 之所以把 pumpConfig 放最高优先级：排量/效率/最高转速是电机的物理铭牌参数，
+ *       由 IEC 在初始化阶段一次性下发；而 gain/limit 是派生量，手填容易与铭牌不一致。
+ *       同一台机器只允许一个真源，避免"配置改了但限幅没跟着变"的静默失配。
+ */
+HYD_REAL HYD_MotionControlFB_ResolveMaxFlowLmin(const HYD_MotionControlFB* fb);
 
 /* Maps platen-side velocity planning to actuator-side hydraulic demand. */
 HYD_BOOL HYD_MotionControlFB_MapTemplateVelocity(

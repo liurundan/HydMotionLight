@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <math.h>
 #include "hyd_config.h"
 #include "accessor.h"
 #include "iec_types_all.h"
@@ -35,6 +36,24 @@ typedef struct {
 
 static inline HYD_BOOL HYD_PumpFeedback_HasValid(uint32_t flags, uint32_t required) {
     return (flags & required) == required;
+}
+
+/* 泵转速反馈 → 实际输出流量 [L/min]
+ * 公式: Q = rpm / flowToPumpSpeedGain,  flowToPumpSpeedGain [rpm/(L/min)]
+ * 符号保留：rpm < 0（泵反转泄压）→ Q < 0。
+ * rpm valid 位未置位时返回 0（无反馈，不做假设）。 */
+static inline HYD_REAL HYD_PumpFeedback_GetActualFlowLmin(const HYD_PumpFeedback* fb,
+                                                          HYD_REAL flowToPumpSpeedGain) {
+    if (fb == NULL || flowToPumpSpeedGain <= 0.0f) {
+        return 0.0f;
+    }
+    if (!HYD_PumpFeedback_HasValid(fb->validFlags, HYD_PUMP_FEEDBACK_VALID_RPM)) {
+        return 0.0f;
+    }
+    if (!isfinite(fb->rpm)) {
+        return 0.0f;
+    }
+    return fb->rpm / flowToPumpSpeedGain;
 }
 
 /* ============================================================================
@@ -220,7 +239,21 @@ typedef enum {
     HYD_PRESSURE_CONTROLLER_PID,
     HYD_PRESSURE_CONTROLLER_RBF_PID,
     /* Appended to preserve the numeric values used by existing PLC recipes. */
-    HYD_PRESSURE_CONTROLLER_RBF_PI
+    HYD_PRESSURE_CONTROLLER_RBF_PI,
+    /* v13（2026-09-17 架构重构）：前馈 + 解析整定 PI。
+     *
+     * 【为什么增加这个策略】实测（docs/RBF-PID压力闭环算法工程实用性评估-2026-09-17.md）
+     * 证明 RBF-PID 的神经网络对输出**零贡献**：Jacobian 被限幅钉死在边界（膨胀 354×），
+     * 增益恒撞限幅，稳定性实际来自"输出被软上限钳位"而非整定。
+     * 本策略用物理可解释的方式达到同样甚至更好的指标：
+     *   - 稳态前馈   Q_ff = P_set / K        （吃掉绝大部分稳态流量）
+     *   - 解析整定   KP = (2ζωn·τ − 1)/K
+     *               KI = ωn²·τ / K           （位置式：∫ += KI·e·dt）
+     *               ζ = 1（压力闭环不希望有超调）
+     *   - 升压制动包络，**且在 |e| <= 5%·P_set 的窄带内完全解除**
+     *     （修复"K 高估 → 软上限变成硬天花板 → 静默稳态欠压"的缺陷）
+     * 没有学习率、没有网络初值、没有随机性 —— 行为确定、可复现、可解析验证。 */
+    HYD_PRESSURE_CONTROLLER_FF_PI
 } HYD_PressureControllerType;
 
 /* BufferMode values follow Beckhoff / PLCopen MC2 ordering.
@@ -341,7 +374,7 @@ typedef struct {
     HYD_REAL pressureTolerance;  /* bar */
     HYD_REAL flowTolerance;      /* L/min */
     HYD_REAL velocityTolerance;  /* mm/s */
-    HYD_TIME timeoutLimit;       /* s, 0 means disabled or auto-derived for time-ended segments */
+    HYD_TIME timeoutLimit;       /* s, motion watchdog; 0 disables and pressure mode ignores it */
     HYD_TIME stableWindow;       /* s, 0 means immediate completion */
     HYD_REAL stableVelocityLimit; /* mm/s, 0 disables velocity-settled gate */
     HYD_REAL vpTransferPosition;        /* mm, 0 disables position transfer observation */
@@ -591,6 +624,20 @@ typedef enum {
     HYD_PARAM_CYLINDER_AREA_EXTEND,     /* mm² */
     HYD_PARAM_CYLINDER_AREA_RETRACT,    /* mm² */
     HYD_PARAM_CYLINDER_STROKE,          /* mm */
+    /* --- 以下为 IEC 初始化配置扩展（追加，既有编号保持不变） --- */
+    HYD_PARAM_PRESSURE_SYSTEM_GAIN,     /* 系统稳态增益 K [bar/(L/min)]，供 RBF-PID 增益补偿 */
+    HYD_PARAM_MAX_FLOW_DERIVED,         /* 只读：由泵参数推导的最大流量 [L/min] */
+    HYD_PARAM_PUMP_FEEDBACK_ANTI_WINDUP,/* 0/1，泵转速实测饱和时冻结积分 */
+    HYD_PARAM_PUMP_TORQUE_OVERLOAD,     /* ‰ 额定转矩，超过判定过载（0 = 关闭） */
+    HYD_PARAM_PRESSURE_BOOST_FLOW_LIMIT,/* 升压段限流上限 [L/min]，0 = 关闭（默认） */
+    HYD_PARAM_PRESSURE_BOOST_BRAKE_FRAC,/* 升压限流的制动窗口 = frac×P_set，0 = 用库默认 */
+    /* --- v13：FF_PI 解析整定所需的对象参数 --- */
+    HYD_PARAM_PRESSURE_PLANT_TAU,       /* 对象一阶时间常数 τ [s]；0 = 用库默认。
+                                         * 注意：整定式中 KP、KI 均 ∝ τ，因此**低估 τ 是安全方向**
+                                         * （增益偏小 → 慢但稳），高估 τ 可能越过稳定边界。 */
+    HYD_PARAM_PRESSURE_LOOP_OMEGA,      /* 目标闭环带宽 ωn [rad/s]；0 = 用库默认。
+                                         * 增大 = 更快，但超过稳定边界会放大纹波（实测边界 wn≈18~20，
+                                         * 见评估报告 §2.2）。默认值取边界的 ~70%。 */
     HYD_PARAM_COUNT
 } HYD_ParameterNumber;
 
@@ -623,6 +670,25 @@ typedef struct {
     HYD_REAL pressureControllerType;
     HYD_REAL defaultTargetFlow;
     HYD_BOOL useSimulation;
+    /* --- IEC 初始化配置扩展 ---
+     * 【v12 语义】0 不再等于"关闭/不启用"，而是"未显式配置 → 按泵铭牌推导"。
+     * 升压限流与 K 的推导优先级（高→低）：
+     *   段级 segment 显式 > IEC 显式 > 泵铭牌推导 > 0（确实推导不出）
+     * 推导公式（HYD_ProduceControlOutputs）：
+     *   K      = Ksys_default / (displacementMlRev/1000)  [bar/(L/min)]
+     *   q_boost= clamp(0.30·Q_max, 3·P_ceiling/K, Q_max)  [L/min] */
+    HYD_REAL pressureSystemGain;         /* bar/(L/min)，0 = 按泵铭牌推导 K */
+    HYD_REAL maxFlowDerived;             /* 只读缓存：由 pumpConfig 推导的最大流量 */
+    HYD_BOOL pumpFeedbackAntiWindup;     /* 泵转速实测饱和 → 冻结积分 */
+    HYD_REAL pumpTorqueOverloadPermille; /* 0 = 关闭 */
+    /* 升压段限流（v11 接线 / v12 自动推导）：
+     * 现场经验"升压段必须限流"，否则前置滤波滞后会造成 30% 级超调。 */
+    HYD_REAL pressureBoostFlowLimit;     /* L/min，0 = 按 Q_max 推导 */
+    HYD_REAL pressureBoostBrakeFrac;     /* 制动窗口 = frac×P_set，0 = 用库默认 */
+    /* v13：FF_PI 解析整定参数。0 = 用库默认（见 HYD_PARAM_PRESSURE_PLANT_TAU /
+     * HYD_PARAM_PRESSURE_LOOP_OMEGA 注释，以及 motion_control.c 的出厂默认）。 */
+    HYD_REAL pressurePlantTauS;          /* τ [s]，对象一阶时间常数 */
+    HYD_REAL pressureLoopOmega;          /* ωn [rad/s]，目标闭环带宽 */
 } HYD_MotionFBParams;
 
 /* ============================================================================
@@ -672,6 +738,24 @@ static inline HYD_REAL HYD_PumpConfig_GetSpeedLimit(const HYD_PumpConfig* cfg) {
 /* 判断泵配置是否有效（displacement > 0 且 efficiency > 0） */
 static inline HYD_BOOL HYD_PumpConfig_IsValid(const HYD_PumpConfig* cfg) {
     return (cfg != NULL && cfg->displacementMlRev > 0.0f && cfg->volumetricEfficiency > 0.0f);
+}
+
+/* 从泵物理参数推导最大流量 [L/min]
+ * 公式: Q_max = maxSpeedRpm [rpm] * displacementMlRev [mL/rev] * volumetricEfficiency / 1000
+ *       等价于 maxSpeedRpm / flowToPumpSpeedGain
+ * 返回 0 表示无法推导（排量/效率/最高转速任一未配置）。
+ * 这是"IEC 配置泵参数 → 自动算出最大流量"链路的终点量。 */
+static inline HYD_REAL HYD_PumpConfig_GetMaxFlowLmin(const HYD_PumpConfig* cfg) {
+    HYD_REAL gain;
+
+    if (!HYD_PumpConfig_IsValid(cfg) || cfg->maxSpeedRpm <= 0.0f) {
+        return 0.0f;
+    }
+    gain = HYD_PumpConfig_GetFlowToSpeedGain(cfg);
+    if (gain <= 0.0f) {
+        return 0.0f;
+    }
+    return cfg->maxSpeedRpm / gain;
 }
 
 /* --- 油缸配置辅助函数 --- */

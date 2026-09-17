@@ -833,6 +833,14 @@
 								<REAL />
 							</type>
 						</variable>
+						<variable name="FLOWLIMITPERCENT">
+							<type>
+								<REAL />
+							</type>
+							<initialValue>
+								<simpleValue value="100" />
+							</initialValue>
+						</variable>
 						<variable name="BUFFERMODE">
 							<type>
 								<INT />
@@ -907,7 +915,7 @@
 				<body>
 					<ST><![CDATA[{{ extern void __mcl_cmd_PressureHandle(HYD_PRESSUREHANDLE*); __mcl_cmd_PressureHandle(data__); }} ]]></ST>
 				</body>
-				<documentation><![CDATA[This Function Block commands pressure closed control. ]]></documentation>
+				<documentation><![CDATA[This Function Block commands pressure closed control. FLOWLIMITPERCENT is the pressure-segment flow cap as a percentage of 20 L/min; valid range is (0,100], default 100. ]]></documentation>
 			</pou>
 			<pou name="HYD_CreateMotion" pouType="functionBlock">
 				<interface>
@@ -1161,6 +1169,97 @@
 				</body>
 				<documentation><![CDATA[set feedback to motion.]]></documentation>
 			</pou>
+			<pou name="HYD_SetPumpFeedback" pouType="functionBlock">
+				<interface>
+					<inputVars>
+						<variable name="AXISID">
+							<type>
+								<SINT />
+							</type>
+						</variable>
+						<variable name="ENABLE">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="FB_RPM">
+							<type>
+								<REAL />
+							</type>
+						</variable>
+						<variable name="FB_TORQUE">
+							<type>
+								<REAL />
+							</type>
+						</variable>
+						<variable name="FB_ANGLE">
+							<type>
+								<REAL />
+							</type>
+						</variable>
+						<variable name="FB_TIMESTAMP">
+							<type>
+								<REAL />
+							</type>
+						</variable>
+						<variable name="VALID_RPM">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="VALID_TORQUE">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="VALID_ANGLE">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="VALID_TIMESTAMP">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+					</inputVars>
+					<outputVars>
+						<variable name="DONE">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="BUSY">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="ERROR">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="ERRORID">
+							<type>
+								<WORD />
+							</type>
+						</variable>
+					</outputVars>
+					<localVars>
+						<variable name="DONE0">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+					</localVars>
+				</interface>
+				<body>
+					<ST>
+						<xhtml:p><![CDATA[{{ extern void __mcl_cmd_SetPumpFeedback(HYD_SETPUMPFEEDBACK*); __mcl_cmd_SetPumpFeedback(data__); }]]></xhtml:p>
+					</ST>
+				</body>
+				<documentation><![CDATA[set servo pump feedback (rpm/torque/angle) to motion.]]></documentation>
+			</pou>
 			<pou name="HYD_GetPumpRequest" pouType="functionBlock">
 				<interface>
 					<inputVars>
@@ -1226,6 +1325,75 @@
 					</ST>
 				</body>
 				<documentation><![CDATA[get only one pump speed command from motion.]]></documentation>
+			</pou>
+			<pou name="HYD_ReadPumpFeedback" pouType="functionBlock">
+				<interface>
+					<inputVars>
+						<variable name="AXISID">
+							<type>
+								<SINT />
+							</type>
+						</variable>
+						<variable name="ENABLE">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+					</inputVars>
+					<outputVars>
+						<variable name="VALID">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="FB_RPM">
+							<type>
+								<REAL />
+							</type>
+						</variable>
+						<variable name="FB_TORQUE">
+							<type>
+								<REAL />
+							</type>
+						</variable>
+						<variable name="FB_ANGLE">
+							<type>
+								<REAL />
+							</type>
+						</variable>
+						<variable name="FB_TIMESTAMP">
+							<type>
+								<REAL />
+							</type>
+						</variable>
+						<variable name="FLAGS">
+							<type>
+								<WORD />
+							</type>
+						</variable>
+						<variable name="BUSY">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="ERROR">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="ERRORID">
+							<type>
+								<WORD />
+							</type>
+						</variable>
+					</outputVars>
+				</interface>
+				<body>
+					<ST>
+						<xhtml:p><![CDATA[{{ extern void __mcl_cmd_ReadPumpFeedback(HYD_READPUMPFEEDBACK*); __mcl_cmd_ReadPumpFeedback(data__); }]]></xhtml:p>
+					</ST>
+				</body>
+				<documentation><![CDATA[read servo pump feedback (rpm/torque/angle) from motion.]]></documentation>
 			</pou>
 			<pou name="HYD_ReadStatus" pouType="functionBlock">
 				<interface>

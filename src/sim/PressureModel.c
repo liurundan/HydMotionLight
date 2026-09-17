@@ -365,7 +365,9 @@ void PressureModel_InitParams(PressureModelParams *params) {
 
     if (params == NULL) return;
     memset(params, 0, sizeof(*params));
-    params->pump_displacement_m3_rev = 20.0e-6f;
+    /* Servo pump: 25 cm^3/rev, rated 1700 rpm (user-confirmed 2026-09-16).
+     * Rated flow = 25e-6 * 1700 / 60 = 7.083e-4 m^3/s = 42.5 L/min. */
+    params->pump_displacement_m3_rev = 25.0e-6f;
     params->bulk_modulus_pa = 1.6e9f;
     params->chamber_volume_m3 = 5.0e-4f;
     params->leak_coeff_m3_pa_s = 8.333333e-13f;
@@ -379,11 +381,28 @@ void PressureModel_InitParams(PressureModelParams *params) {
     params->tooth_drop_depth_ratio = 0.10f;
     params->tooth_drop_width_ratio = 0.20f;
     params->min_rpm = -100.0f;
-    params->max_rpm = 2000.0f;
+    params->max_rpm = 1700.0f;   /* 额定转速；模型校验上限仍为 2000 rpm */
     params->enable_sensor_noise = 1u;
     params->enable_motor_noise = 1u;
-    params->model_type = PRESSURE_MODEL_TYPE_FIRST_ORDER;
-    params->first_order_k_bar_per_rpm = 5.4f;
+
+    /* ------------------------------------------------------------------
+     * Plant model selection (校准 2026-09-16).
+     *
+     * The physical-calibrated branch is the DEFAULT: the first-order lag was
+     * only ever valid for the pressure-hold case, while the library must also
+     * serve charge / load-clamped segments. Production code therefore runs
+     * dP/dt = (beta_e/V) * (Q_pump(n,P) - Q_load - Q_leak(P)) with no load
+     * clamp on the plant itself.
+     *
+     * PRESSURE_MODEL_TYPE_FIRST_ORDER is kept as an explicit opt-in for the
+     * legacy regression suite (tests set params.model_type themselves); it is
+     * never selected implicitly.
+     * ------------------------------------------------------------------ */
+    params->model_type = PRESSURE_MODEL_TYPE_PHYSICAL_CALIBRATED;
+
+    /* Retained for the opt-in first-order branch. Set to the same Ksys as the
+     * calibration below so the two branches cannot disagree about the machine. */
+    params->first_order_k_bar_per_rpm = 5.0f;
     params->first_order_tau_s = 1.0f;
     params->first_order_delay_s = 0.0f;
 
@@ -392,17 +411,112 @@ void PressureModel_InitParams(PressureModelParams *params) {
     physical->suction_pressure_pa = 101325.0f;
     physical->outlet_volume_m3 = 5.0e-4f;
     physical->chamber_volume_m3 = 5.0e-4f;
-    physical->line_inertance_pa_s2_per_m3 = 1.0e8f;
-    physical->line_resistance_pa_s_per_m3 = 2.0e12f;
+    /* ------------------------------------------------------------------
+     * Pressure line calibration -- L = 3.5 m (user-supplied estimate
+     * 2026-09-16: "管道长度未知，需实际测量，大概 3 米或 4 米"; 3.5 m is the
+     * midpoint and will be replaced once measured).
+     *
+     * Derived from geometry, NOT hand-tuned:
+     *   inertance  I = rho * L / A                 [Pa*s^2/m^3]
+     *   laminar R  = 128 * mu * L / (pi * d^4)     [Pa*s/m^3]
+     * with ISO VG46 at 40 degC (rho = 870 kg/m^3, mu = 0.041 Pa*s) and an
+     * assumed bore d = 12 mm (the pump outlet port size; the only assumption
+     * left, and the one real measurement will fix):
+     *   A = 1.131e-4 m^2
+     *   I = 870 * 3.5 / 1.131e-4        = 2.69e7  Pa*s^2/m^3
+     *   R = 128*0.041*3.5/(pi*0.012^4)  = 2.82e8  Pa*s/m^3
+     *
+     * Sensitivity on the bore (L = 3.5 m fixed):
+     *   d=10 mm -> I=3.88e7, R=5.85e8, line resonance 56 Hz
+     *   d=12 mm -> I=2.69e7, R=2.82e8, line resonance 67 Hz   <-- adopted
+     *   d=16 mm -> I=1.51e7, R=8.92e7, line resonance 90 Hz
+     * The line's LC frequency is 1/(2*pi*sqrt(I*C_series)); with the pump-side
+     * and chamber capacitances in series C_series = 2.08e-13 m^3/Pa this lands
+     * at 56..90 Hz, i.e. exactly the classic quarter-wave pipe resonance
+     * a/(4L) = 1200/(4*3.5) = 86 Hz. Both the physics and the numbers agree.
+     *
+     * Why NOT the old quasi-static values (I=1.0e8, R=2.0e11):
+     * the old pair was picked so dt*R = 2e8 > I = 1e8 made the line algebraic,
+     * a numerical convenience rather than a physical statement. R = 2.0e11
+     * implies a 1417 bar drop at the rated 42.5 L/min -- impossible -- and it
+     * made the line carry no dynamics at all. Closed-loop measurement
+     * (tests/test_boost_flow_limit + the 3.5 m sweep) shows the physical pair
+     * is also the BETTER behaved one: residual overshoot 1.11% -> 0.13% and
+     * hold-band pk-pk 1.43 -> 0.63 bar, with a bounded 0.63 bar ring.
+     *
+     * Numerical safety (both guards are in PressureModel_ValidatePhysicalParams):
+     *   stiffness_ratio = beta*dt^2/(I*min(V)) = 2.4e6/I = 0.089 <= 0.25  OK
+     *   zeta = R/(2*sqrt(I/C_series)) = 0.0124 (lightly damped, as real lines
+     *   are); the explicit-Euler step is stable (omega*dt = 0.42 < 2) and the
+     *   observed ring stays bounded. If measurement later gives a different L,
+     *   re-run the two formulas above -- the guards will flag an unsafe pair.
+     * ------------------------------------------------------------------ */
+    physical->line_inertance_pa_s2_per_m3 = 2.69e7f;
+    physical->line_resistance_pa_s_per_m3 = 2.82e8f;
     physical->line_quadratic_resistance_pa_s2_per_m6 = 0.0f;
     physical->beta_oil_pa = 1.2e9f;
     physical->gas_fraction = 0.002f;
     physical->gas_transition_pa = 1.0e6f;
     physical->beta_min_pa = 5.0e7f;
-    physical->pump_leak_c0_m3_pa_s = 2.0e-13f;
-    physical->pump_leak_speed_m3_pa_s_per_rpm = 1.0e-15f;
-    physical->outlet_leak_m3_pa_s = 1.0e-13f;
-    physical->cylinder_leak_m3_pa_s = 1.0e-13f;
+
+    /* ------------------------------------------------------------------
+     * Leakage calibration -> open-loop DC gain Ksys = 5.0 bar/rpm.
+     *
+     * Machine under calibration (user-confirmed 2026-09-16):
+     *   pump displacement 25 cm^3/rev, rated speed 1700 rpm
+     *   -> rated flow 25e-6*1700/60 = 7.083e-4 m^3/s (42.5 L/min)
+     *
+     * Ksys is the machine constant the process layer already knows:
+     *   P_chamber[bar] = Ksys * n[rpm]   (valid up to the relief valve)
+     * and it is the direct inverse of the lumped leakage characteristic
+     * ("K = 稳态压力/流量"), which is exactly the K the RBF-PID feedforward
+     * P_set/K consumes. Calibrating the plant to it makes the simulated
+     * steady state and the controller's own model agree by construction.
+     *
+     * Do NOT hand-pick the coefficients: the line resistance makes the pump
+     * outlet pressure higher than the chamber pressure, which scales BOTH the
+     * pump leak and the outlet leak. Ignoring the R term under-estimates the
+     * gain (it cost ~29% back when R was the unphysical 2.0e11, where
+     * c_cyl*R = 4.2e-2; with the physical R = 2.82e8 it is only 5.6e-5, but the
+     * closed form below stays exact either way and re-derives itself when L,
+     * d or Ksys change).
+     *
+     * Steady state, zero load flow:
+     *   Q_line   = C_cyl * P_c
+     *   P_out    = P_c + Q_line * R = P_c * (1 + C_cyl*R)
+     *   Q_pump   = Q_line + C_out * P_out
+     *   Q_pump   = D*n/60 - C_pump * P_out          (volumetric loss)
+     * =>
+     *   D/60 = P_c * [ C_cyl + (C_pump + C_out) * (1 + C_cyl*R) ]
+     * => with P_c = Ksys*1e5*n the bracket is fixed; C_pump is set from a
+     *    stated volumetric efficiency on that same line, and C_out is solved.
+     *
+     * eta_v on the DC line = 1 - C_pump*P_out/(D*n/60). Sizing C_pump from
+     * eta_v_dc_target keeps it comfortably above eta_v_min = 0.60; if the floor
+     * were reached the realised gain would silently drop (e.g. to 3.0 bar/rpm)
+     * while the code still looked calibrated.
+     *
+     * pump_leak_speed is zeroed on purpose: a speed-dependent term would make
+     * Ksys drift with rpm and break the constant-gain calibration.
+     * ------------------------------------------------------------------ */
+    {
+        const float ksys_bar_per_rpm = 5.0f;
+        const float eta_v_dc_target = 0.75f;   /* volumetric eff. on the DC line */
+        const float c_cyl = 2.0e-13f;
+        const float r_line = physical->line_resistance_pa_s_per_m3;
+        const float q_per_rpm = params->pump_displacement_m3_rev / 60.0f;
+        const float p_c_per_rpm_pa = ksys_bar_per_rpm * PRESSURE_MODEL_PA_PER_BAR;
+        const float p_o_per_rpm_pa = p_c_per_rpm_pa * (1.0f + c_cyl * r_line);
+        /* Bracket in the derivation above; C_out is what is left to solve. */
+        const float bracket = q_per_rpm / p_c_per_rpm_pa;
+        const float c_pump = (1.0f - eta_v_dc_target) * q_per_rpm / p_o_per_rpm_pa;
+
+        physical->pump_leak_c0_m3_pa_s = c_pump;
+        physical->cylinder_leak_m3_pa_s = c_cyl;
+        physical->outlet_leak_m3_pa_s =
+            (bracket - c_cyl) / (1.0f + c_cyl * r_line) - c_pump;
+    }
+    physical->pump_leak_speed_m3_pa_s_per_rpm = 0.0f;
     physical->eta_v_min = 0.60f;
     physical->eta_m_nominal = 0.90f;
     physical->eta_m_pressure_loss_per_pa = 1.0e-9f;
@@ -723,6 +837,7 @@ void PressureModel_StepInput(const PressureModelParams *params,
     float dt_s;
     float pressure_bar;
     PressureModelState call_start;
+    PressureModelInput effective;
     int substeps;
     int i;
 
@@ -738,11 +853,55 @@ void PressureModel_StepInput(const PressureModelParams *params,
     requested_type = pressure_model_normalize_type(params->model_type);
     if (!isfinite(input->target_rpm) || !isfinite(input->load_flow_m3_s) ||
         (requested_type == PRESSURE_MODEL_TYPE_PHYSICAL_CALIBRATED &&
-         !PressureModel_ValidateInput(params, input))) {
+         !PressureModel_ValidateParams(params))) {
         state->timestamp_s += substeps * PRESSURE_MODEL_DT_S;
         pressure_model_write_hold_output(state, out);
         return;
     }
+
+    /* ------------------------------------------------------------------
+     * Saturation, not rejection: the drive clamps an out-of-envelope command.
+     *
+     * A target speed outside [min_rpm, max_rpm] means the commanded speed
+     * exceeds the pump/ servo-drive envelope -- typically a reverse-flow
+     * command larger than the drive's reverse limit. The documented design
+     * clamps the target (see
+     * docs/superpowers/plans/2026-06-12-pressure-model-closed-loop.md:
+     * `clamped_target = clampf(target_rpm, min_rpm, max_rpm)`), and the
+     * physical substep already clamps too.
+     *
+     * Rejecting it here instead held the ENTIRE plant state, which silently
+     * FROZE the pressure: the motor kept ramping (its update precedes the
+     * rejection point inside the substep) while pressure / line flow stopped
+     * moving. Observed on the 25cc / 1700 rpm machine with
+     * flowToPumpSpeedGain = 40 rpm/(L/min): Q_cmd = -5 L/min -> -200 rpm, below
+     * min_rpm = -100, so the plant held at 151.58 bar with the pump commanded
+     * to full reverse and never recovered.
+     *
+     * Clamping is both the documented behaviour and what a real servo drive
+     * does. `out->command_saturated` reports it so the process layer can tell
+     * "drive at its limit" apart from "pump/line fault".
+     * ------------------------------------------------------------------ */
+    effective = *input;
+    if (requested_type == PRESSURE_MODEL_TYPE_PHYSICAL_CALIBRATED) {
+        const float max_load_flow = PRESSURE_MODEL_PHYSICAL_MAX_FLOW_M3_S;
+
+        if (effective.target_rpm < params->min_rpm) {
+            effective.target_rpm = params->min_rpm;
+            out->command_saturated = 1;
+        } else if (effective.target_rpm > params->max_rpm) {
+            effective.target_rpm = params->max_rpm;
+            out->command_saturated = 1;
+        }
+        if (effective.load_flow_m3_s > max_load_flow) {
+            effective.load_flow_m3_s = max_load_flow;
+            out->command_saturated = 1;
+        } else if (effective.load_flow_m3_s < -max_load_flow) {
+            effective.load_flow_m3_s = -max_load_flow;
+            out->command_saturated = 1;
+        }
+    }
+
     if (requested_type == PRESSURE_MODEL_TYPE_PHYSICAL_CALIBRATED &&
         (!pressure_model_physical_state_is_finite(state) ||
          !pressure_model_physical_state_is_admissible(params, state))) {
@@ -782,7 +941,7 @@ void PressureModel_StepInput(const PressureModelParams *params,
 
     if (requested_type == PRESSURE_MODEL_TYPE_FIRST_ORDER) {
         state->timestamp_s += substeps * PRESSURE_MODEL_DT_S;
-        pressure_model_step_first_order(params, state, input->target_rpm,
+        pressure_model_step_first_order(params, state, effective.target_rpm,
                                         substeps * PRESSURE_MODEL_DT_S, out);
         return;
     }
@@ -794,8 +953,8 @@ void PressureModel_StepInput(const PressureModelParams *params,
             pressure_model_write_hold_output(state, out);
             return;
         }
-        if (!pressure_model_step_physical_substep(params, state, input->target_rpm,
-                                                  input->load_flow_m3_s,
+        if (!pressure_model_step_physical_substep(params, state, effective.target_rpm,
+                                                  effective.load_flow_m3_s,
                                                   out) ||
             !pressure_model_physical_state_is_finite(state)) {
             *state = call_start;
