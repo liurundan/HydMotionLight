@@ -554,7 +554,7 @@ void HYD_PressureController_Execute(const HYD_MotionSegment* segment,
         HYD_BOOL needsAdaptiveReset;
         HYD_BOOL internalSaturated;
 
-        needsAdaptiveReset =  !state->rbfInitialized|| trackingRequested;
+        needsAdaptiveReset =  !state->rbfInitialized || trackingRequested;
         		//|| (input->targetPressure + 1e-6 < (HYD_REAL)state->rbfPid.P_set) ;
         HYD_ApplyRbfPidConfig(state, &config, segment,
                               input->flowToPumpSpeedGain, input->pumpSpeedLimit);

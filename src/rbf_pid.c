@@ -483,12 +483,12 @@ static void rbf_pid_step_incremental_output(RBF_PID_Handle *pid, float error, fl
     float f_delta_press = actual_press - pid->fLastActPress;
     float f_velfb = 0.0f;
     float near_target_threshold = pid->P_set * RBF_PID_NEAR_TARGET_RATIO;
-    if (pid->pressure_accel_ff_enabled && 1) {
+    if (pid->pressure_accel_ff_enabled ) {
         float pressure_error = fabsf(pid->P_set - actual_press);
 
         if (pressure_error > near_target_threshold)
         {
-            f_velfb = -0.15f * f_delta_press;
+            f_velfb = -0.0f * f_delta_press; // 1:0.15,
         }
     }
 

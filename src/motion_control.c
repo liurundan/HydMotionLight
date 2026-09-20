@@ -2296,7 +2296,7 @@ static HYD_BOOL HYD_ExecuteActiveSegmentControl(HYD_MotionControlFB* fb,
         /* Feedforward is a nominal holding flow, but it must not bypass the
          * active process/pump cap when a low percentage is selected. */
         pressureInput.feedforwardFlow = HYD_ClampReal(
-            segment->targetFlow, 0.0f, pressureInput.outputMax);
+            segment->targetFlow, 0.0f, pressureInput.outputMax) / 3.5f;
         pressureInput.outputMin = -5.0;
         if (HYD_PumpConfig_IsValid(&fb->pumpConfig)) {
             pressureInput.flowToPumpSpeedGain = HYD_PumpConfig_GetFlowToSpeedGain(&fb->pumpConfig);
@@ -3560,10 +3560,10 @@ void HYD_MotionControlFB_Init(HYD_MotionControlFB* fb) {
     fb->_params.maxDeceleration = 500.0f;
     fb->_params.maxFlow = 90.0f; // 1800/20=90L/min
     fb->_params.pressureRampRate = 10.0f;
-    fb->_params.pressureKp = 0.5f;
+    fb->_params.pressureKp = 0.35f;
     fb->_params.pressureKpHigh = 0.0f;
     fb->_params.pressureGainBand = 0.2f;
-    fb->_params.pressureKi = 0.1f;
+    fb->_params.pressureKi = 0.25f;
     fb->_params.pressureKd = 0.01f;
     fb->_params.pressureIntegralLimit = 10.0f;
     fb->_params.pressureDeadband = 0.0001f;
