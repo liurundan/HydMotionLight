@@ -806,8 +806,8 @@ static HYD_REAL HYD_FfPiOutputMax(const HYD_PressureResolvedConfig* config,
     if (targetPressure <= 0.0) {
         return hardMax;
     }
-    /* 窄带内 / 超压方向：完全不收紧 */
-    if (error <= 0.0 || fabsf(error) <= HYD_FF_PI_NARROW_BAND_FRAC * targetPressure) {
+    /* 超压方向：升压包络不收紧，泄压由独立的下限路径处理。 */
+    if (error <= 0.0) {
         return hardMax;
     }
 
@@ -831,8 +831,109 @@ static HYD_REAL HYD_FfPiOutputMax(const HYD_PressureResolvedConfig* config,
 
     {
         HYD_REAL envelope = qss + (qBoost - qss) * frac;
-        return (envelope < hardMax) ? envelope : hardMax;
+        HYD_REAL release = HYD_FF_PI_NARROW_BAND_FRAC * targetPressure;
+        HYD_REAL hysteresis = 0.01f * targetPressure;
+        HYD_REAL transitionStart = release - hysteresis;
+        HYD_REAL transitionEnd = release + hysteresis;
+        HYD_REAL releaseFrac;
+
+        if (hysteresis < 0.5f) {
+            hysteresis = 0.5f;
+            transitionStart = release - hysteresis;
+            transitionEnd = release + hysteresis;
+        }
+        if (error >= transitionEnd) {
+            return (envelope < hardMax) ? envelope : hardMax;
+        }
+        if (error <= transitionStart) {
+            return hardMax;
+        }
+
+        /* Cubic release avoids the old discontinuity at 0.07*Pset. */
+        releaseFrac = (error - transitionStart) / (transitionEnd - transitionStart);
+        releaseFrac = releaseFrac * releaseFrac * (3.0f - 2.0f * releaseFrac);
+        return envelope + (hardMax - envelope) * (1.0f - releaseFrac);
     }
+}
+
+static HYD_REAL HYD_ResolvePumpFlowCap(const HYD_PressureControllerInput* input,
+                                       HYD_REAL hardMax,
+                                       HYD_BOOL* valid) {
+    HYD_PumpFeedback packet;
+    HYD_REAL actualFlow;
+    HYD_BOOL rpmValid;
+
+    if (valid != NULL) {
+        *valid = false;
+    }
+    if (input == NULL || !input->pumpFeedbackAntiWindup ||
+        input->pumpSpeedLimit <= 0.0 ||
+        input->flowToPumpSpeedGain <= 0.0) {
+        return hardMax;
+    }
+
+    rpmValid = HYD_PumpFeedback_HasValid(input->pumpFeedbackValidFlags,
+                                         HYD_PUMP_FEEDBACK_VALID_RPM);
+    if (!rpmValid || fabs(input->pumpSpeedFeedbackRpm) < 0.99 * input->pumpSpeedLimit ||
+        input->pumpSpeedFeedbackRpm < 0.0) {
+        return hardMax;
+    }
+
+    memset(&packet, 0, sizeof(packet));
+    packet.rpm = input->pumpSpeedFeedbackRpm;
+    packet.validFlags = input->pumpFeedbackValidFlags;
+    actualFlow = HYD_PumpFeedback_GetActualFlowLmin(
+        &packet, input->flowToPumpSpeedGain);
+    if (!isfinite(actualFlow) || actualFlow < 0.0) {
+        return hardMax;
+    }
+    if (valid != NULL) {
+        *valid = true;
+    }
+    return (actualFlow < hardMax) ? actualFlow : hardMax;
+}
+
+static HYD_REAL HYD_ResolveEffectiveUpperCap(
+    const HYD_PressureResolvedConfig* config,
+    const HYD_PressureControllerInput* input,
+    HYD_PressureControllerState* state,
+    HYD_REAL targetPressure,
+    HYD_REAL error,
+    HYD_REAL hardMax) {
+    HYD_REAL externalCap;
+    HYD_REAL boostCap;
+    HYD_REAL qss;
+    HYD_BOOL externalValid;
+    HYD_PressureLimitStatus limitStatus = HYD_PRESSURE_LIMIT_NONE;
+
+    externalCap = HYD_ResolvePumpFlowCap(input, hardMax, &externalValid);
+    boostCap = hardMax;
+    qss = (config->systemGain > 0.0 && targetPressure > 0.0)
+        ? targetPressure / config->systemGain : 0.0;
+
+    if (config->boostFlowLimitLmin > 0.0 && qss > 0.0 &&
+        config->boostFlowLimitLmin < qss) {
+        limitStatus = HYD_PRESSURE_LIMIT_CAP_BOUND_UNREACHABLE;
+    }
+    if (qss > hardMax || (externalValid && externalCap < qss)) {
+        limitStatus = HYD_PRESSURE_LIMIT_CAPACITY_INSUFFICIENT;
+    }
+
+    if (limitStatus == HYD_PRESSURE_LIMIT_NONE) {
+        boostCap = HYD_FfPiOutputMax(config, targetPressure, error, hardMax);
+    }
+    if (limitStatus != HYD_PRESSURE_LIMIT_NONE) {
+        boostCap = hardMax;
+    }
+    if (externalValid && externalCap < boostCap) {
+        boostCap = externalCap;
+    }
+
+    if (state != NULL) {
+        state->limitStatus = limitStatus;
+        state->effectiveUpperCap = boostCap;
+    }
+    return boostCap;
 }
 
 void HYD_PressureController_Execute(const HYD_MotionSegment* segment,
@@ -899,12 +1000,11 @@ void HYD_PressureController_Execute(const HYD_MotionSegment* segment,
 
     ffFlow = input->feedforwardFlow;
 
-    /* v13: FF_PI —— 稳态前馈 + 升压包络（窄带解除）。其余策略 effectiveMax == config.outputMax、
-     * ffFlow == input->feedforwardFlow，因此下面 PI 段对既有策略逐位不变。 */
-    effectiveMax = config.outputMax;
+    /* Step 3: one resolved upper cap is shared by PI, FF_PI and RBF. */
+    effectiveMax = HYD_ResolveEffectiveUpperCap(&config, input, state,
+                                                input->targetPressure, error,
+                                                config.outputMax);
     if (config.strategy == HYD_PRESSURE_CONTROLLER_FF_PI) {
-        effectiveMax = HYD_FfPiOutputMax(&config, input->targetPressure, error,
-                                         config.outputMax);
         output->steadyStateFF = config.steadyStateFF;
         /* 【实测踩坑，勿删】FF_PI **取代**而不是叠加 legacy 名义保压流量。
          *
@@ -934,6 +1034,8 @@ void HYD_PressureController_Execute(const HYD_MotionSegment* segment,
     output->feedforwardFlow = ffFlow;   /* v13: FF_PI 下为 0（Q_ff 已取代 legacy 名义流量） */
     output->samplingPeriod = config.dt;
     output->adaptiveActive = config.strategySpec->adaptive;
+    output->effectiveUpperCap = effectiveMax;
+    output->limitStatus = state->limitStatus;
 
     if (config.strategy == HYD_PRESSURE_CONTROLLER_RBF_PID ||
         config.strategy == HYD_PRESSURE_CONTROLLER_RBF_PI) {
@@ -981,6 +1083,7 @@ void HYD_PressureController_Execute(const HYD_MotionSegment* segment,
          * 必须放在复位之后：RBF_PID_Reset() 会 memset 句柄，
          * 把 external_flow_cap 一并清零，因此每拍都在复位后重新注入。 */
         HYD_ApplyPumpFeedbackToRbfPid(state, input, output);
+        RBF_PID_SetEffectiveUpperCap(&state->rbfPid, (float)effectiveMax, true);
 
         effectiveTargetPressure = input->targetPressure -
             ((input->targetPressure - filteredPressure) - error);
@@ -989,7 +1092,7 @@ void HYD_PressureController_Execute(const HYD_MotionSegment* segment,
                                                  (float)filteredPressure);
         internalSaturated = state->rbfPid.output_saturated;
 
-        outputFlow = HYD_ClampReal(rawOutputFlow, config.outputMin, config.outputMax);
+        outputFlow = HYD_ClampReal(rawOutputFlow, config.outputMin, effectiveMax);
 
         /* 负流量死区：仅当压力偏差 <= -2.0 bar（超压 >= 2 bar）时才允许负流量 */
         if (config.outputMin < 0.0 && outputFlow < 0.0 && fabs(error) < 5.0) {

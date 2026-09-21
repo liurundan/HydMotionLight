@@ -364,3 +364,8 @@ add_test(NAME test_production_default_acceptance COMMAND test_production_default
 add_executable(test_ff_pi_contract tests/test_ff_pi_contract.c)
 target_link_libraries(test_ff_pi_contract PRIVATE HydroMotionLib HydroSimLib)
 add_test(NAME test_ff_pi_contract COMMAND test_ff_pi_contract)
+
+# Step 3: shared, continuous boost cap contract across PI/FF_PI/RBF.
+add_executable(test_pressure_cap_contract tests/test_pressure_cap_contract.c)
+target_link_libraries(test_pressure_cap_contract PRIVATE HydroMotionLib)
+add_test(NAME test_pressure_cap_contract COMMAND test_pressure_cap_contract)
