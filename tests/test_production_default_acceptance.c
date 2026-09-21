@@ -136,7 +136,7 @@ static void test_default_config_meets_all_three(void) {
     int i, n = 0, settled = 0, p90_confirm = 0;
     float ess, sigma, mp;
 
-    printf("  [1] 出厂默认（仅配泵铭牌）→ 是否 3/3 达标\n");
+    printf("  [1] 显式校准（泵铭牌 + Ksys + tau）→ calibrated performance\n");
 
     /* 泵铭牌 + 显式 Ksys/tau：这是 calibrated performance acceptance。
      * 仅写泵铭牌的 UNCALIBRATED smoke 由独立测试覆盖。 */
@@ -322,9 +322,9 @@ static void test_explicit_config_still_overrides(void) {
 
 int main(void) {
     setvbuf(stdout, NULL, _IONBF, 0);
-    printf("=== 量产默认验收（v13：出厂默认即达标 · 默认策略 FF_PI）===\n");
+    printf("=== 压力闭环 calibrated performance acceptance（FF_PI）===\n");
     printf("链路：IEC 压力手柄 -> FB 周期 -> Execute -> 植物（真实泵 25cc/1700rpm）\n");
-    printf("配置：仅写泵铭牌；策略/增益/滤波/限流全部走出厂默认 + v12 推导\n\n");
+    printf("配置：泵铭牌 + 显式 Ksys/tau；升压/保压指标使用固定信号口径\n\n");
 
     test_default_config_meets_all_three();
     test_derived_k_and_boost_reach_the_algorithm();
