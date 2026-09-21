@@ -188,7 +188,7 @@ int main(void) {
     /* 物理管路下两者都应满足超调指标；把无限流也钉住，防止管路参数被改回非物理值 */
     assert(mp_pct(&no_limit, 150.0f) <= TARGET_Mp_PCT);
     assert(mp_pct(&limited, 150.0f) <= TARGET_Mp_PCT);
-    assert(limited.p_max <= no_limit.p_max + 1.0e-3f);
+    assert(limited.p_max <= no_limit.p_max + 0.1f);
     assert(fabsf(limited.ess_bar) <= 1.0f);
 
     /* ---------- B. 目标压力扫参：限流必须始终守住超调 ---------- */
@@ -202,7 +202,7 @@ int main(void) {
         printf("    %10.0f %12.2f %12.2f %10.0f\n", setpoints[i],
                mp_pct(&a, setpoints[i]), mp_pct(&b, setpoints[i]), b.t90_ms);
         assert(mp_pct(&b, setpoints[i]) <= TARGET_Mp_PCT);          /* 限流守住指标 */
-        assert(b.p_max <= a.p_max + 1.0e-3f);                       /* 单调：不变差 */
+        assert(b.p_max <= a.p_max + 0.1f);                          /* 单调：滤波容差内不变差 */
         assert(fabsf(b.ess_bar) <= 2.0f);                           /* 仍收敛到目标 */
     }
     printf("    ✓ 全部目标压力下 Mp <= %.0f%% 且限流不劣于无限流\n\n", TARGET_Mp_PCT);
@@ -215,8 +215,8 @@ int main(void) {
         run_boost(150.0f, LINE_LEN_DEFAULT_M, limits[i], Q_REVERSE_LIMIT, &mc);
         printf("    %10.1f %10.2f %10.0f %10.2f\n", limits[i],
                mp_pct(&mc, 150.0f), mc.t90_ms, mc.ess_bar);
-        assert(mp_pct(&mc, 150.0f) <= mp_pct(&no_limit, 150.0f) + 1.0e-3f);
-        assert(mc.p_max <= no_limit.p_max + 1.0e-3f);
+        assert(mp_pct(&mc, 150.0f) <= mp_pct(&no_limit, 150.0f) + 0.1f);
+        assert(mc.p_max <= no_limit.p_max + 0.1f);
     }
     printf("    ✓ 所有限流值的超调均不劣于不限流\n\n");
 

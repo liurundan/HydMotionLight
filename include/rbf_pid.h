@@ -36,6 +36,8 @@
 #define HYD_DEFAULT_PID_D_LEARNING_RATE 0.00025f
 
 #define HYD_DEFAULT_RBF_PID_SAMPLING_PERIOD 0.001
+#define HYD_DEFAULT_RBF_D_FILTER_ALPHA      0.12f
+#define HYD_RBF_VALID_DT_TOLERANCE          0.0001f
 
 
 /* Task 3 增量控制输出限幅 */
@@ -211,6 +213,11 @@ typedef struct {
     float effective_upper_cap;          /* shadow cap [L/min], not consumed in Gate 0 */
     bool effective_upper_cap_valid;     /* shadow cap validity */
 
+    /* Appended runtime-contract state; keep legacy field offsets stable. */
+    float process_time_constant_s;      /* calibrated tau [s] */
+    bool dt_valid;                       /* fixed 1 ms contract gate */
+    bool adaptation_frozen;              /* invalid dt/data gate */
+
 } RBF_PID_Handle;
 
 typedef struct {
@@ -296,6 +303,8 @@ void RBF_PID_SetDuNormalization(RBF_PID_Handle *pid, float scale);
  *       补偿因子会随压力归一化标量变化而同步刷新，避免 setter 调用顺序造成陈旧状态。
  */
 void RBF_PID_SetGainCompensation(RBF_PID_Handle *pid, float systemGain);
+void RBF_PID_SetProcessTimeConstant(RBF_PID_Handle *pid, float tau_s);
+void RBF_PID_SetDtValid(RBF_PID_Handle *pid, bool valid);
 
 /**
  * @brief v10: 设置"执行器实测可达流量上限"（back-calculation anti-windup）

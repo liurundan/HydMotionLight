@@ -54,6 +54,32 @@ static bool rbf_pid_in_boost_phase(const RBF_PID_Handle *pid, float error);
 static float rbf_pid_overdrive_cap(const RBF_PID_Handle *pid, float error);
 static float rbf_pid_boost_flow_cap(const RBF_PID_Handle *pid, float error);
 static float rbf_pid_effective_soft_cap(const RBF_PID_Handle *pid, float error);
+static float clampf(float min_value, float value, float max_value);
+
+static float rbf_pid_discrete_jacobian_min(const RBF_PID_Handle *pid) {
+    float tau = pid->process_time_constant_s;
+    float dt = HYD_DEFAULT_RBF_PID_SAMPLING_PERIOD;
+    float nominal;
+
+    if (!(pid->K > 0.0f) || !(tau > 0.0f) || !isfinite(tau)) {
+        return 0.005f;
+    }
+    nominal = pid->K * dt / fmaxf(tau, 0.1f);
+    return clampf(0.005f, 0.25f * nominal, 0.5f);
+}
+
+static float rbf_pid_discrete_jacobian_max(const RBF_PID_Handle *pid) {
+    float tau = pid->process_time_constant_s;
+    float dt = HYD_DEFAULT_RBF_PID_SAMPLING_PERIOD;
+    float nominal;
+
+    if (!(pid->K > 0.0f) || !(tau > 0.0f) || !isfinite(tau)) {
+        return 2.0f;
+    }
+    nominal = pid->K * dt / fmaxf(tau, 0.1f);
+    return fmaxf(rbf_pid_discrete_jacobian_min(pid),
+                 clampf(0.05f, 4.0f * nominal, 2.0f));
+}
 
 static float sign(float x)
 {
@@ -349,27 +375,25 @@ static int rbf_pid_step_rbf_nn(RBF_PID_Handle *pid,float error) {
             (pid->b_rbf[i] * pid->b_rbf[i]);
     }
 
-    pid->Jacobian = rbf_pid_clamp_adaptive_value(pid, -5.0f,
-        (pressure_scale / du_scale) * jacobian_n,
-        50.0f,
-        0.0f);
+    pid->Jacobian = (pressure_scale / du_scale) * jacobian_n;
 
-    /* v6: Jacobian 以 K 为中心限幅 — 加速 RBF 学习收敛
-     * K = 系统过程增益 [bar/(L/min)]，稳态时 Jacobian ≈ K。
-     * 原固定钳位 [-5,50] 与真实增益无关→网络从远离真值的初值学习→
-     * 升压初始若干拍 KP/KI 自适应方向不可靠。以 K 为中心收窄后，
-     * 即使网络权重尚未收敛，Jacobian 也落在物理合理区间。
-     * 低压段含气量大→有效增益偏低(0.2K)；高压段油液刚性强→有效增益偏高(5K)。
-     * 采用保号限幅：先对 |Jacobian| 限幅再还原符号，避免把噪声负值强制翻正。 */
-    if (pid->K > 0.0f) {
-        float jac_lo = pid->K * 0.2f;
-        float jac_hi = pid->K * 5.0f;
-        if (jac_lo < 0.1f) jac_lo = 0.1f;
-        float abs_jac = fabsf(pid->Jacobian);
-        if (abs_jac > 0.0f) {
-            pid->Jacobian = sign(pid->Jacobian) *
-                clampf(jac_lo, abs_jac, jac_hi);
+    /*
+     * x0 is du_prev / du_scale, so this is the one-sample discrete
+     * sensitivity g_du, not the steady-state process gain K.  For a
+     * calibrated first-order plant its nominal value is K*dt/tau.
+     * Keep the shadow-only range when no process calibration is available.
+     */
+    {
+        float jac_lo = rbf_pid_discrete_jacobian_min(pid);
+        float jac_hi = rbf_pid_discrete_jacobian_max(pid);
+        float jac = pid->Jacobian;
+
+        if (!isfinite(jac) || jac <= 0.0f) {
+            jac = (pid->K > 0.0f) ? pid->K *
+                HYD_DEFAULT_RBF_PID_SAMPLING_PERIOD /
+                fmaxf(pid->process_time_constant_s, 0.1f) : jac_lo;
         }
+        pid->Jacobian = clampf(jac_lo, jac, jac_hi);
     }
 
     // ---------- 4. 稳态判定（冻结条件） ----------
@@ -378,7 +402,7 @@ static int rbf_pid_step_rbf_nn(RBF_PID_Handle *pid,float error) {
     int is_steady = (fabsf(error) < STEADY_DEAD_ZONE) &&
                         (fabsf(de) < STEADY_DEAD_ZONE * STEADY_DE_RATIO);
 
-	if (!is_steady) {
+	if (!is_steady && !pid->adaptation_frozen && pid->dt_valid) {
 		error_rbf_n = y_n - y_hat_n;
 
 		/* P0-2修复：权重饱和抑制 — PI 模式冻结学习防 Jacobian 偏估 */
@@ -657,6 +681,8 @@ static void rbf_pid_step_adaptive_gains(RBF_PID_Handle *pid, float error, float 
 	// 5.3 比例增益 Kp 更新（常规梯度）
 	//    公式：ΔKp = ηp * e * Jac * Δe
 	float grad_Kp = pid->eta_p * error * sign(pid->Jacobian) * abs_Jac * de;
+	if (grad_Kp > 0.005f) grad_Kp = 0.005f;
+	if (grad_Kp < -0.005f) grad_Kp = -0.005f;
 	pid->KP += grad_Kp;
 	pid->KP = clampf(pid->min_KP, pid->KP, pid->max_KP);
 
@@ -664,6 +690,8 @@ static void rbf_pid_step_adaptive_gains(RBF_PID_Handle *pid, float error, float 
 	float grad_Ki = pid->eta_i * error * sign(pid->Jacobian) * abs_Jac * error;
 	float decay_Ki = LAMBDA_KI * (pid->KI - KI_CENTER);
 	float delta_Ki = grad_Ki - decay_Ki;
+	if (delta_Ki > 0.00005f) delta_Ki = 0.00005f;
+	if (delta_Ki < -0.00005f) delta_Ki = -0.00005f;
 	pid->KI += delta_Ki;
 	pid->KI = clampf(pid->min_KI, pid->KI, pid->max_KI);
 
@@ -693,6 +721,8 @@ static void rbf_pid_step_adaptive_gains(RBF_PID_Handle *pid, float error, float 
 				delta_Kd = grad_Kd_base;
 			}
 		}
+		if (delta_Kd > 0.0002f) delta_Kd = 0.0002f;
+		if (delta_Kd < -0.0002f) delta_Kd = -0.0002f;
 		pid->KD += delta_Kd;
 		pid->KD = clampf(pid->min_KD, pid->KD, pid->max_KD);
 
@@ -734,9 +764,9 @@ static void rbf_pid_step_incremental_output(RBF_PID_Handle *pid, float error, fl
         pid->prev_d_term = 0.0f;
     } else {
         float raw_d_term = (error - 2.0f * pid->e_prev1 + pid->e_prev2);
-        //float flt_alpha = HYD_THRESH_RBF_DERIV_FILTER_ALPHA;
-        //d_term = flt_alpha * raw_d_term + (1.0f - flt_alpha) * pid->prev_d_term;
-        d_term = raw_d_term;
+        const float flt_alpha = HYD_DEFAULT_RBF_D_FILTER_ALPHA;
+        d_term = flt_alpha * raw_d_term +
+            (1.0f - flt_alpha) * pid->prev_d_term;
         pid->prev_d_term = d_term;
     }
     /* v5: 相位分离积分 — 升压段大钳位快速建压，逼近段小钳位让P项主导制动，
@@ -865,6 +895,9 @@ void RBF_PID_Init(RBF_PID_Handle *pid, float sampling_period,
                   float max_flow_lmin, float flow_rate_limit_pct) {
     memset(pid, 0, sizeof(*pid));
     pid->sampling_period = clamp_positive_or_default(sampling_period, 0.001f);
+    pid->process_time_constant_s = 1.0f;
+    pid->dt_valid = true;
+    pid->adaptation_frozen = false;
     pid->fMaxFlow = clamp_positive_or_default(max_flow_lmin, 0.0f);
     pid->fFlowRateLimit = clampf(0.0f, flow_rate_limit_pct, 1.0f);
     pid->output_min_flow = MIN_OUTPUT;
@@ -898,9 +931,28 @@ void RBF_PID_Init(RBF_PID_Handle *pid, float sampling_period,
 float RBF_PID_Update(RBF_PID_Handle *pid, float setpoint, float feedback) {
     float raw_error;
     float error;
+    bool target_jump;
 
     pid->P_set = isfinite(setpoint) ? setpoint : 0.0f;
     pid->P_actual = isfinite(feedback) ? feedback : 0.0f;
+    target_jump = fabsf(pid->P_set - pid->last_ref) > 5.0f;
+
+    if (!pid->dt_valid) {
+        float output_min = rbf_pid_output_lower_bound(pid);
+        float output_max = rbf_pid_output_upper_bound(pid);
+
+        pid->adaptation_frozen = true;
+        pid->prev_d_term = 0.0f;
+        pid->Error = pid->P_set - pid->P_actual;
+        pid->e_prev1 = pid->Error;
+        pid->e_prev2 = pid->Error;
+        pid->y_prev1 = pid->P_actual;
+        pid->y_prev2 = pid->P_actual;
+        pid->Output = clampf(output_min, pid->Output, output_max);
+        pid->u_prev = pid->Output;
+        pid->du = 0.0f;
+        return pid->Output;
+    }
 
     /* v6: 稳态前馈播种 — 设定值显著跳变时用 P_set/K 初始化 u_prev
      * 仅在跳变(|ΔP_set| > 5bar)时触发；ramp 渐进(每拍变化小)不触发→
@@ -937,6 +989,13 @@ float RBF_PID_Update(RBF_PID_Handle *pid, float setpoint, float feedback) {
     raw_error = pid->P_set - pid->P_actual;
     error = rbf_pid_apply_deadband(raw_error);
     pid->Error = error;
+    if (target_jump) {
+        /* The outer pressure controller already seeds the error history when
+         * it performs a target soft reset.  Keep the causal error history
+         * here so standalone RBF callers retain their incremental response;
+         * only the independently filtered D state needs a kick-free seed. */
+        pid->prev_d_term = 0.0f;
+    }
     pid->control_state = rbf_pid_resolve_control_state(pid, raw_error);
 
     int is_steady = rbf_pid_step_rbf_nn(pid,error);
@@ -948,7 +1007,7 @@ float RBF_PID_Update(RBF_PID_Handle *pid, float setpoint, float feedback) {
     pid->u_prev = pid->Output;
     pid->du_prev = pid->du;
 
-    if( !is_steady ) {
+    if (!is_steady && !pid->adaptation_frozen && pid->dt_valid) {
     	rbf_pid_step_adaptive_gains(pid, error, raw_error);
     }
 
@@ -1038,6 +1097,27 @@ void RBF_PID_SetGainCompensation(RBF_PID_Handle *pid, float systemGain) {
     rbf_pid_refresh_gain_compensation(pid);
 }
 
+void RBF_PID_SetProcessTimeConstant(RBF_PID_Handle *pid, float tau_s) {
+    if (pid == NULL) {
+        return;
+    }
+    pid->process_time_constant_s =
+        (isfinite(tau_s) && tau_s > 0.0f) ? tau_s : 1.0f;
+}
+
+void RBF_PID_SetDtValid(RBF_PID_Handle *pid, bool valid) {
+    if (pid == NULL) {
+        return;
+    }
+    pid->dt_valid = valid;
+    pid->adaptation_frozen = !valid;
+    if (!valid) {
+        /* Seed the D state before the next valid sample to avoid a kick. */
+        pid->prev_d_term = 0.0f;
+        pid->e_prev2 = pid->e_prev1;
+    }
+}
+
 void RBF_PID_SetExternalFlowCap(RBF_PID_Handle *pid, float cap_lmin, bool enable) {
     if (pid == NULL) {
         return;
@@ -1077,7 +1157,9 @@ void RBF_PID_ShadowUpdate(RBF_PID_ShadowState *shadow,
 
     shadow->last_dt = dt;
     shadow->valid = false;
-    if (pid != NULL && dt_valid && isfinite(dt) && dt > 0.0f &&
+    if (pid != NULL && dt_valid && isfinite(dt) &&
+        fabsf(dt - HYD_DEFAULT_RBF_PID_SAMPLING_PERIOD) <=
+            HYD_RBF_VALID_DT_TOLERANCE &&
         isfinite(setpoint) && isfinite(feedback)) {
         shadow->residual = feedback - setpoint;
         shadow->g_du = pid->Jacobian;
