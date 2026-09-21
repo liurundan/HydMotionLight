@@ -55,6 +55,7 @@ static float rbf_pid_overdrive_cap(const RBF_PID_Handle *pid, float error);
 static float rbf_pid_boost_flow_cap(const RBF_PID_Handle *pid, float error);
 static float rbf_pid_effective_soft_cap(const RBF_PID_Handle *pid, float error);
 static float clampf(float min_value, float value, float max_value);
+static float rbf_pid_effective_du_scale(const RBF_PID_Handle *pid);
 
 static float rbf_pid_discrete_jacobian_min(const RBF_PID_Handle *pid) {
     float tau = pid->process_time_constant_s;
@@ -79,6 +80,19 @@ static float rbf_pid_discrete_jacobian_max(const RBF_PID_Handle *pid) {
     nominal = pid->K * dt / fmaxf(tau, 0.1f);
     return fmaxf(rbf_pid_discrete_jacobian_min(pid),
                  clampf(0.05f, 4.0f * nominal, 2.0f));
+}
+
+static void rbf_pid_refresh_adaptation_gate(RBF_PID_Handle *pid) {
+    float excitation_floor;
+
+    if (pid == NULL) {
+        return;
+    }
+    excitation_floor = 0.02f * rbf_pid_effective_du_scale(pid);
+    pid->adaptation_frozen = !pid->dt_valid ||
+        !isfinite(pid->P_set) || !isfinite(pid->P_actual) ||
+        !isfinite(pid->du_prev) || fabsf(pid->du_prev) < excitation_floor ||
+        pid->output_saturated;
 }
 
 static float sign(float x)
@@ -984,6 +998,8 @@ float RBF_PID_Update(RBF_PID_Handle *pid, float setpoint, float feedback) {
 
     /* P0-1修复：统一数值防护，移到enforce之前，模式无关 */
     rbf_pid_sanitize_runtime_state(pid);
+
+    rbf_pid_refresh_adaptation_gate(pid);
 
     rbf_pid_enforce_control_mode(pid);
     raw_error = pid->P_set - pid->P_actual;

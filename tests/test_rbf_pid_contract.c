@@ -112,12 +112,28 @@ static void test_d_term_is_independently_low_pass_filtered(void) {
     assert(fabsf(second_output - first_output) < 28.0f);
 }
 
+static void test_adaptation_gate_freezes_on_low_excitation_and_recovers(void) {
+    RBF_PID_Handle pid;
+
+    RBF_PID_Init(&pid, 0.001f, 90.0f, 1.0f);
+    RBF_PID_SetLearningRates(&pid, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f);
+
+    (void)RBF_PID_Update(&pid, 20.0f, 0.0f);
+    assert(pid.adaptation_frozen);
+
+    pid.du_prev = pid.flow_normalization_scale * 0.1f;
+    pid.output_saturated = false;
+    (void)RBF_PID_Update(&pid, 20.0f, 0.5f);
+    assert(!pid.adaptation_frozen);
+}
+
 int main(void) {
     test_du_normalization_is_configurable();
     test_effective_cap_and_shadow_are_side_effect_free();
     test_first_order_benchmark_contract();
     test_jacobian_uses_discrete_one_ms_sensitivity_and_invalid_dt_freezes();
     test_d_term_is_independently_low_pass_filtered();
+    test_adaptation_gate_freezes_on_low_excitation_and_recovers();
     printf("RBF-PID contract tests passed.\n");
     return 0;
 }
