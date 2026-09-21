@@ -78,31 +78,94 @@ typedef HYD_UINT16 HYD_FbStateMask;
 #define HYD_FB_STATE_MASK_BIT(state) ((HYD_FbStateMask)(1U << (state)))
 #define HYD_DEFAULT_SIM_CYCLE_TIME 0.001f
 
-/* v12：压力闭环过程增益 K 的推导用机器常数。
- *
- * Ksys = P_chamber[bar] / n[rpm]（稳态建压增益），是"过程层已知的机器常数"
- * （PressureModel 的泄漏闭式标定即以它为锚点，见 src/sim/PressureModel.c:469）。
- * 整机增益 K = Ksys / (D[mL/rev]/1000)  [bar/(L/min)]。
- *
- * 25cc/rev 机型：K = 5.0 / 0.025 = 200 bar/(L/min)。
- *
- * 为什么需要这个默认值（v12 的核心修复）：
- *   K 是 RBF-PID 的**核心过程增益** —— Jacobian 限幅中心(K*0.2~K*5)、
- *   稳态前馈 P_set/K、过驱动软上限、可达性下界四处都依赖它。
- *   `_params.pressureSystemGain` 旧默认 = 0（不启用补偿）→ RBF 退化为"盲学"。
- *   实测（真实链 gain=42.105、Ksys=5，闭环入口 Execute）：
- *     K = 0   → 0/3 达标（Mp +22.18%, ess -4.693, σ 8.030）
- *     K = 200 → 3/3 达标（Mp  +3.43%, ess +0.317, σ 0.447）
- *   因此现场不配 K 时，库必须自行推导出一个可用值，否则默认不可用。
- *   现场可用 HYD_PARAM_PRESSURE_SYSTEM_GAIN 显式覆盖（优先级高于此推导）。 */
-#define HYD_DEFAULT_PRESSURE_KSYS_BAR_PER_RPM 5.0f
-
 /* v12：升压限流默认值推导系数（未显式配置 HYD_PARAM_PRESSURE_BOOST_FLOW_LIMIT 时）。
  *   q_boost = clamp(0.30 * Q_max, 3 * P_ceiling / K, Q_max)
  * 下界取可达性要求(P_ceiling/K)的 3 倍，避免 §12.3 D11（限流低于维持流量 →
  * 目标压力永不可达）。实测 25cc 机型 → 0.30*40.375 = 12.1 L/min，与现场值 12 吻合。 */
 #define HYD_DEFAULT_BOOST_FLOW_FRACTION   0.30f
 #define HYD_DEFAULT_BOOST_REACH_SAFETY    3.0f
+
+static HYD_BOOL HYD_IsFinitePositive(HYD_REAL value) {
+    return isfinite(value) && value > 0.0;
+}
+
+static HYD_REAL HYD_KsysToProcessGain(HYD_REAL ksys,
+                                       const HYD_PumpConfig* pumpConfig) {
+    if (!HYD_IsFinitePositive(ksys) ||
+        !HYD_PumpConfig_IsValid(pumpConfig)) {
+        return 0.0;
+    }
+    return ksys / (pumpConfig->displacementMlRev / 1000.0);
+}
+
+/* Resolve the physical gain without inventing a machine constant.  The legacy
+ * systemGain field remains K_process [bar/(L/min)]; the appended Ksys fields
+ * are converted only when pump displacement is valid. */
+static HYD_REAL HYD_ResolvePressureProcessGain(
+    const HYD_MotionControlFB* fb,
+    const HYD_MotionSegment* segment,
+    HYD_REAL* resolvedKsys,
+    HYD_PressureCalibrationStatus* calibrationStatus) {
+    HYD_REAL segmentK;
+    HYD_REAL segmentKsysK;
+    HYD_REAL fbK;
+    HYD_REAL fbKsysK;
+    HYD_REAL selectedK = 0.0;
+    HYD_REAL selectedKsys = 0.0;
+    HYD_BOOL conflict = false;
+    HYD_BOOL pumpValid;
+    HYD_BOOL tauValid;
+
+    if (resolvedKsys != NULL) {
+        *resolvedKsys = 0.0;
+    }
+    if (calibrationStatus != NULL) {
+        *calibrationStatus = HYD_PRESSURE_CALIBRATION_UNCALIBRATED;
+    }
+    if (fb == NULL) {
+        return 0.0;
+    }
+
+    pumpValid = HYD_PumpConfig_IsValid(&fb->pumpConfig);
+    segmentK = (segment != NULL && HYD_IsFinitePositive(segment->systemGain))
+        ? segment->systemGain : 0.0;
+    segmentKsysK = (segment != NULL)
+        ? HYD_KsysToProcessGain(segment->systemGainKsys, &fb->pumpConfig) : 0.0;
+    if (segmentK > 0.0 && segmentKsysK > 0.0) {
+        conflict = fabs(segmentK - segmentKsysK) > 0.10 * fmax(segmentK, segmentKsysK);
+    }
+    if (!conflict && (segmentK > 0.0 || segmentKsysK > 0.0)) {
+        selectedK = (segmentK > 0.0) ? segmentK : segmentKsysK;
+        selectedKsys = (segmentKsysK > 0.0)
+            ? segment->systemGainKsys
+            : selectedK * (fb->pumpConfig.displacementMlRev / 1000.0);
+    } else if (!conflict) {
+        fbK = HYD_IsFinitePositive(fb->_params.pressureSystemGain)
+            ? fb->_params.pressureSystemGain : 0.0;
+        fbKsysK = HYD_KsysToProcessGain(fb->_params.pressureSystemKsys,
+                                         &fb->pumpConfig);
+        if (fbK > 0.0 && fbKsysK > 0.0) {
+            conflict = fabs(fbK - fbKsysK) > 0.10 * fmax(fbK, fbKsysK);
+        }
+        if (!conflict && (fbK > 0.0 || fbKsysK > 0.0)) {
+            selectedK = (fbK > 0.0) ? fbK : fbKsysK;
+            selectedKsys = (fbKsysK > 0.0)
+                ? fb->_params.pressureSystemKsys
+                : selectedK * (fb->pumpConfig.displacementMlRev / 1000.0);
+        }
+    }
+
+    if (selectedK > 0.0 && pumpValid) {
+        tauValid = HYD_IsFinitePositive(fb->_params.pressurePlantTauS);
+        if (tauValid && calibrationStatus != NULL) {
+            *calibrationStatus = HYD_PRESSURE_CALIBRATION_CALIBRATED;
+        }
+    }
+    if (resolvedKsys != NULL && selectedK > 0.0 && pumpValid) {
+        *resolvedKsys = selectedKsys;
+    }
+    return conflict ? 0.0 : selectedK;
+}
 
 static HYD_BOOL HYD_UseSimulationFixedStep(const HYD_MotionControlFB* fb) {
     return (fb != NULL) && (fb->_useSimulation || fb->_useFixedCycleTime);
@@ -2346,6 +2409,8 @@ static HYD_BOOL HYD_ExecuteActiveSegmentControl(HYD_MotionControlFB* fb,
 
     if (segment->mode == HYD_MODE_PRESSURE_CLOSED_LOOP) {
         HYD_REAL pumpFlowLimit;
+        HYD_REAL resolvedKsys;
+        HYD_PressureCalibrationStatus calibrationStatus;
 
         pressureInput.outputMax = HYD_ResolvePressureOutputMax(fb, segment);
         pumpFlowLimit = HYD_GetPumpFlowLimit(fb);
@@ -2372,22 +2437,16 @@ static HYD_BOOL HYD_ExecuteActiveSegmentControl(HYD_MotionControlFB* fb,
         pressureInput.pumpFeedbackValidFlags = fb->_pumpFeedback.validFlags;
         pressureInput.pumpFeedbackAntiWindup = fb->_params.pumpFeedbackAntiWindup;
         pressureInput.pumpTorqueOverloadPermille = fb->_params.pumpTorqueOverloadPermille;
-        /* v10: 系统增益（IEC 初始化配置）→ 段级未显式指定时作为全机默认值。
-         * v12: 未显式配置时由泵铭牌推导 K = Ksys/(D/1000)。
-         *   K 是 RBF-PID 的核心过程增益（Jacobian 限幅中心 / 稳态前馈 P_set/K /
-         *   过驱动软上限 / 可达性下界四处都依赖它）。旧默认 0 → RBF "盲学"，
-         *   实测在真实机上 0/3 达标；推导出 K≈200 后 3/3。 */
-        pressureInput.systemGain = fb->_params.pressureSystemGain;
-        if (pressureInput.systemGain <= 0.0 &&
-            HYD_PumpConfig_IsValid(&fb->pumpConfig) &&
-            fb->pumpConfig.displacementMlRev > 0.0) {
-            pressureInput.systemGain =
-                (HYD_REAL)HYD_DEFAULT_PRESSURE_KSYS_BAR_PER_RPM /
-                (fb->pumpConfig.displacementMlRev / 1000.0);
-        }
+        /* Resolve explicit physical calibration only.  A pump nameplate gives
+         * flow/rpm conversion, but cannot identify pressure gain (leakage,
+         * oil temperature, valve gain), so it must never manufacture Ksys. */
+        pressureInput.systemGain = HYD_ResolvePressureProcessGain(
+            fb, segment, &resolvedKsys, &calibrationStatus);
+        pressureInput.systemGainKsys = resolvedKsys;
+        fb->_pressureController.calibrationStatus = calibrationStatus;
 
         /* v11: 升压段限流（IEC 初始化配置）→ RBF-PID 升压软上限。
-         * v12: 未显式配置时按 Q_max 推导，并用可达性下界兜底：
+         * v12: 已标定 K 时按 Q_max 推导，并用可达性下界兜底：
          *        q_boost = clamp(0.30*Q_max, 3*P_ceiling/K, Q_max)
          *      下界是 §12.3 D11 可达性要求(P_ceiling/K)的 3 倍安全裕度。 */
         pressureInput.boostFlowLimitLmin = fb->_params.pressureBoostFlowLimit;
