@@ -3745,6 +3745,7 @@ void HYD_MotionControlFB_Init(HYD_MotionControlFB* fb) {
      * τ 低估是安全方向（增益偏小→慢但稳），库默认 1.0 s 即取在安全侧。 */
     fb->_params.pressurePlantTauS = 0.0f;
     fb->_params.pressureLoopOmega = 0.0f;
+    fb->_params.pressureSystemKsys = 0.0f;
 
     /* Legacy defaults — used when pumpConfig/cylinderConfig are not configured.
      * pumpConfig and cylinderConfig are zero after memset — inactive by default. */
@@ -4337,6 +4338,7 @@ HYD_BOOL HYD_MotionControlFB_ReadParameter(const HYD_MotionControlFB* fb, int pa
         case HYD_PARAM_PRESSURE_BOOST_BRAKE_FRAC:      *value = fb->_params.pressureBoostBrakeFrac; break;
         case HYD_PARAM_PRESSURE_PLANT_TAU:             *value = fb->_params.pressurePlantTauS; break;
         case HYD_PARAM_PRESSURE_LOOP_OMEGA:            *value = fb->_params.pressureLoopOmega; break;
+        case HYD_PARAM_PRESSURE_SYSTEM_KSYS:           *value = fb->_params.pressureSystemKsys; break;
         default: return false;
     }
     return true;
@@ -4420,6 +4422,10 @@ HYD_BOOL HYD_MotionControlFB_WriteParameter(HYD_MotionControlFB* fb, int paramNu
              * 调大 = 更快，但超过稳定边界会把泵转速纹波放大成压力纹波
              * （实测 wn=20 时 σ 由 0.5 恶化到 6.5 bar）。换机型必须重扫。 */
             fb->_params.pressureLoopOmega =
+                (isfinite(value) && value > 0.0) ? value : 0.0;
+            break;
+        case HYD_PARAM_PRESSURE_SYSTEM_KSYS:
+            fb->_params.pressureSystemKsys =
                 (isfinite(value) && value > 0.0) ? value : 0.0;
             break;
         case HYD_PARAM_PUMP_DISPLACEMENT:

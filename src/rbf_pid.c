@@ -1054,6 +1054,40 @@ void RBF_PID_SetExternalFlowCap(RBF_PID_Handle *pid, float cap_lmin, bool enable
     pid->external_saturated = enable;
 }
 
+void RBF_PID_SetEffectiveUpperCap(RBF_PID_Handle *pid, float cap_lmin, bool valid) {
+    if (pid == NULL) {
+        return;
+    }
+
+    pid->effective_upper_cap = (isfinite(cap_lmin) && cap_lmin >= 0.0f) ? cap_lmin : 0.0f;
+    pid->effective_upper_cap_valid = valid && isfinite(cap_lmin) && cap_lmin >= 0.0f;
+}
+
+void RBF_PID_ShadowUpdate(RBF_PID_ShadowState *shadow,
+                          const RBF_PID_Handle *pid,
+                          float setpoint,
+                          float feedback,
+                          float measured_flow,
+                          float dt,
+                          bool dt_valid) {
+    (void)measured_flow;
+    if (shadow == NULL) {
+        return;
+    }
+
+    shadow->last_dt = dt;
+    shadow->valid = false;
+    if (pid != NULL && dt_valid && isfinite(dt) && dt > 0.0f &&
+        isfinite(setpoint) && isfinite(feedback)) {
+        shadow->residual = feedback - setpoint;
+        shadow->g_du = pid->Jacobian;
+        shadow->valid_sample_count++;
+        shadow->valid = true;
+    } else {
+        shadow->invalid_sample_count++;
+    }
+}
+
 void RBF_PID_SetBoostFlowLimit(RBF_PID_Handle *pid, float limit_lmin) {
     if (pid == NULL) {
         return;

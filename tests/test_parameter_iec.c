@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <assert.h>
 #include <math.h>
 #include <string.h>
 #include "motion_interface.h"
@@ -89,6 +90,21 @@ static void test_write_then_read_iec(void) {
 
     ASSERT_TRUE(IEC_VAL(rp.VALID) == true, "ReadParameter after write should set VALID");
     ASSERT_FLOAT_EQ((HYD_REAL)IEC_VAL(rp.VALUE), 2.5f, 0.001f, "pressureKp should be 2.5 after write");
+}
+
+static void test_pressure_system_ksys_round_trip_iec(void) {
+    HYD_MotionControlFB* fb;
+    HYD_REAL value = 0.0;
+
+    __HydMotion_framework_Init();
+    ensure_axis_allocated();
+    fb = __MK_GetPublic_MotionControlFB(0);
+
+    assert(HYD_MotionControlFB_WriteParameter(fb, HYD_PARAM_PRESSURE_SYSTEM_KSYS, 0.66));
+    assert(HYD_MotionControlFB_ReadParameter(fb, HYD_PARAM_PRESSURE_SYSTEM_KSYS, &value));
+    assert(fabs(value - 0.66) < 0.00001);
+    assert(HYD_MotionControlFB_WriteParameter(fb, HYD_PARAM_PRESSURE_SYSTEM_KSYS, -1.0));
+    assert(fb->_params.pressureSystemKsys == 0.0);
 }
 
 /* Test: WriteBoolParameter then ReadBoolParameter through IEC FBs */
@@ -394,6 +410,7 @@ static void test_pressure_handle_caps_feedforward_at_low_percentage(void) {
 int main(void) {
     test_read_parameter_iec();
     test_write_then_read_iec();
+    test_pressure_system_ksys_round_trip_iec();
     test_write_read_bool_iec();
     test_invalid_axisid_iec();
     test_segment_builder_uses_fb_params();

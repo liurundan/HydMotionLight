@@ -208,8 +208,19 @@ typedef struct {
      * 选值时仍应满足 Q_lim > P_set_max/K（换机型后 K 会变，务必重新核算）。 */
     float boost_flow_limit_lmin;
     float boost_flow_brake_frac;
+    float effective_upper_cap;          /* shadow cap [L/min], not consumed in Gate 0 */
+    bool effective_upper_cap_valid;     /* shadow cap validity */
 
 } RBF_PID_Handle;
+
+typedef struct {
+    float residual;                     /* shadow residual [bar] */
+    float g_du;                         /* shadow sensitivity [bar/(L/min)] */
+    float last_dt;
+    uint32_t valid_sample_count;
+    uint32_t invalid_sample_count;
+    bool valid;
+} RBF_PID_ShadowState;
 
 /**
  * @brief 初始化RBF-PID控制器
@@ -306,6 +317,24 @@ void RBF_PID_SetGainCompensation(RBF_PID_Handle *pid, float systemGain);
  *       enable=false 时不改变任何既有回归基线。
  */
 void RBF_PID_SetExternalFlowCap(RBF_PID_Handle *pid, float cap_lmin, bool enable);
+
+/**
+ * @brief Publish the effective upper cap for diagnostics/shadow consumers.
+ * @note Gate 0 stores the cap only; production output behavior is unchanged.
+ */
+void RBF_PID_SetEffectiveUpperCap(RBF_PID_Handle *pid, float cap_lmin, bool valid);
+
+/**
+ * @brief Update a side-effect-free shadow observation state.
+ * @note The const PID handle is never modified and production control state is untouched.
+ */
+void RBF_PID_ShadowUpdate(RBF_PID_ShadowState *shadow,
+                          const RBF_PID_Handle *pid,
+                          float setpoint,
+                          float feedback,
+                          float measured_flow,
+                          float dt,
+                          bool dt_valid);
 
 /**
  * @brief v8: 设置升压段实验限流上限（升压段必须限流，否则容易超调）

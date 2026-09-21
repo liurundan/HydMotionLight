@@ -187,6 +187,16 @@ static void HYD_StateReporter_SetPressureLoopState(HYD_MotionControlFB* fb,
     fb->STATE.pressureLoop.trackingApplied = pressureOutput->trackingApplied;
     fb->STATE.pressureLoop.saturated = pressureOutput->saturated;
     fb->STATE.pressureLoop.adaptiveActive = pressureOutput->adaptiveActive;
+    fb->STATE.pressureLoop.calibrationStatus = pressureOutput->calibrationStatus;
+    fb->STATE.pressureLoop.limitStatus = pressureOutput->limitStatus;
+    fb->STATE.pressureLoop.requestedStrategy = pressureOutput->requestedStrategy;
+    fb->STATE.pressureLoop.dtValid = pressureOutput->dtValid;
+    fb->STATE.pressureLoop.gDu = pressureOutput->gDu;
+    fb->STATE.pressureLoop.effectiveUpperCap = pressureOutput->effectiveUpperCap;
+    fb->STATE.pressureLoop.promotionValidSamples = pressureOutput->promotionValidSamples;
+    fb->STATE.pressureLoop.adaptationFreezeCount = pressureOutput->adaptationFreezeCount;
+    fb->STATE.pressureLoop.adaptationFreezeReason =
+        pressureOutput->adaptationFreezeReason;
 }
 
 void HYD_StateReporter_SetActive(HYD_MotionControlFB* fb, HYD_BOOL active) {

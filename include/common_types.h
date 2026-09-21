@@ -256,6 +256,29 @@ typedef enum {
     HYD_PRESSURE_CONTROLLER_FF_PI
 } HYD_PressureControllerType;
 
+typedef enum {
+    HYD_PRESSURE_CALIBRATION_UNCALIBRATED = 0,
+    HYD_PRESSURE_CALIBRATION_CALIBRATED = 1,
+    HYD_PRESSURE_CALIBRATION_ADAPTATION_CONFIDENT = 2
+} HYD_PressureCalibrationStatus;
+
+typedef enum {
+    HYD_PRESSURE_LIMIT_NONE = 0,
+    HYD_PRESSURE_LIMIT_CAPACITY_INSUFFICIENT = 1,
+    HYD_PRESSURE_LIMIT_CAP_BOUND_UNREACHABLE = 2
+} HYD_PressureLimitStatus;
+
+typedef enum {
+    HYD_PRESSURE_ADAPTATION_FREEZE_NONE = 0,
+    HYD_PRESSURE_ADAPTATION_FREEZE_INVALID_DT = 1,
+    HYD_PRESSURE_ADAPTATION_FREEZE_SENSOR_INVALID = 2,
+    HYD_PRESSURE_ADAPTATION_FREEZE_LOW_EXCITATION = 3,
+    HYD_PRESSURE_ADAPTATION_FREEZE_RESIDUAL_HIGH = 4,
+    HYD_PRESSURE_ADAPTATION_FREEZE_SATURATED = 5,
+    HYD_PRESSURE_ADAPTATION_FREEZE_UNCALIBRATED = 6,
+    HYD_PRESSURE_ADAPTATION_FREEZE_CAPACITY_LIMIT = 7
+} HYD_PressureAdaptationFreezeReason;
+
 /* BufferMode values follow Beckhoff / PLCopen MC2 ordering.
  * ABORT (0): preempt current motion and execute immediately.
  * BUFFER (1): queue one following command after the active command.
@@ -321,6 +344,15 @@ typedef struct {
     HYD_BOOL trackingApplied;
     HYD_BOOL saturated;
     HYD_BOOL adaptiveActive;
+    HYD_PressureCalibrationStatus calibrationStatus;
+    HYD_PressureLimitStatus limitStatus;
+    HYD_PressureControllerType requestedStrategy;
+    HYD_BOOL dtValid;
+    HYD_REAL gDu;
+    HYD_REAL effectiveUpperCap;
+    uint32_t promotionValidSamples;
+    uint32_t adaptationFreezeCount;
+    HYD_PressureAdaptationFreezeReason adaptationFreezeReason;
 #endif
 } HYD_PressureLoopState;
 
@@ -432,6 +464,7 @@ typedef struct {
      * 典型值: 注塑机保压段 1-10 bar/(L/min)，取决于油缸面积和负载刚度。
      * 0 表示不启用增益补偿（由 PID 自适应完全承担）。 */
     HYD_REAL systemGain;
+    HYD_REAL systemGainKsys;           /* Ksys [bar/rpm], appended compatibility field */
 } HYD_MotionSegment;
 
 typedef struct {
@@ -638,6 +671,7 @@ typedef enum {
     HYD_PARAM_PRESSURE_LOOP_OMEGA,      /* 目标闭环带宽 ωn [rad/s]；0 = 用库默认。
                                          * 增大 = 更快，但超过稳定边界会放大纹波（实测边界 wn≈18~20，
                                          * 见评估报告 §2.2）。默认值取边界的 ~70%。 */
+    HYD_PARAM_PRESSURE_SYSTEM_KSYS,     /* 机型稳态增益 Ksys [bar/rpm]，0 = 未标定 */
     HYD_PARAM_COUNT
 } HYD_ParameterNumber;
 
@@ -689,6 +723,7 @@ typedef struct {
      * HYD_PARAM_PRESSURE_LOOP_OMEGA 注释，以及 motion_control.c 的出厂默认）。 */
     HYD_REAL pressurePlantTauS;          /* τ [s]，对象一阶时间常数 */
     HYD_REAL pressureLoopOmega;          /* ωn [rad/s]，目标闭环带宽 */
+    HYD_REAL pressureSystemKsys;         /* Ksys [bar/rpm]，0 = 未标定 */
 } HYD_MotionFBParams;
 
 /* ============================================================================

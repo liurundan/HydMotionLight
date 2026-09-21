@@ -45,6 +45,7 @@ typedef struct {
      * <= 0 表示"未配置 → 用库默认"。 */
     HYD_REAL plantTauS;            /* τ [s]，对象一阶时间常数 */
     HYD_REAL loopOmega;            /* ωn [rad/s]，目标闭环带宽 */
+    HYD_REAL systemGainKsys;       /* Ksys [bar/rpm]，机型标定兼容字段 */
 } HYD_PressureControllerInput;
 
 typedef struct {
@@ -74,6 +75,17 @@ typedef struct {
     HYD_REAL resolvedKi;
     HYD_REAL resolvedSteadyStateFF;
     HYD_REAL resolvedBoostFlowLimitLmin;  /* 0 = 上游未给可用限流值 */
+
+    /* Gate 0 contract: requested/applied strategy and adaptation observability. */
+    HYD_PressureControllerType requestedStrategy;
+    HYD_PressureCalibrationStatus calibrationStatus;
+    HYD_PressureLimitStatus limitStatus;
+    HYD_BOOL dtValid;
+    HYD_REAL gDu;                    /* bar/(L/min) per one-sample flow increment */
+    HYD_REAL effectiveUpperCap;      /* effective output upper cap [L/min] */
+    uint32_t promotionValidSamples;
+    uint32_t adaptationFreezeCount;
+    HYD_PressureAdaptationFreezeReason adaptationFreezeReason;
 } HYD_PressureControllerState;
 
 typedef struct {
@@ -114,6 +126,17 @@ typedef struct {
      *   上层诊断应对其做防抖（例如持续 200 ms）后再报警。 */
     HYD_REAL steadyStateFF;
     HYD_BOOL capBoundDemand;
+
+    /* Gate 0 contract: same-cycle diagnostic snapshot as state reporter input. */
+    HYD_PressureControllerType requestedStrategy;
+    HYD_PressureCalibrationStatus calibrationStatus;
+    HYD_PressureLimitStatus limitStatus;
+    HYD_BOOL dtValid;
+    HYD_REAL gDu;
+    HYD_REAL effectiveUpperCap;
+    uint32_t promotionValidSamples;
+    uint32_t adaptationFreezeCount;
+    HYD_PressureAdaptationFreezeReason adaptationFreezeReason;
 } HYD_PressureControllerOutput;
 
 void HYD_PressureController_ClearState(HYD_PressureControllerState* state);

@@ -165,6 +165,44 @@ static void test_clear_current_diagnostic_resets_protection_action(void) {
     printf("test_clear_current_diagnostic_resets_protection_action PASSED\n");
 }
 
+static void test_pressure_contract_observations_are_reported(void) {
+    HYD_MotionControlFB fb;
+    HYD_MotionPlannerOutput planner;
+    HYD_PumpConverterOutput pump;
+    HYD_PressureControllerOutput pressure;
+
+    HYD_MotionControlFB_Init(&fb);
+    memset(&planner, 0, sizeof(planner));
+    memset(&pump, 0, sizeof(pump));
+    memset(&pressure, 0, sizeof(pressure));
+    pressure.appliedStrategy = HYD_PRESSURE_CONTROLLER_RBF_PID;
+    pressure.requestedStrategy = HYD_PRESSURE_CONTROLLER_RBF_PID;
+    pressure.calibrationStatus = HYD_PRESSURE_CALIBRATION_CALIBRATED;
+    pressure.limitStatus = HYD_PRESSURE_LIMIT_CAPACITY_INSUFFICIENT;
+    pressure.dtValid = true;
+    pressure.gDu = 12.5;
+    pressure.effectiveUpperCap = 3.25;
+    pressure.promotionValidSamples = 42U;
+    pressure.adaptationFreezeCount = 7U;
+    pressure.adaptationFreezeReason = HYD_PRESSURE_ADAPTATION_FREEZE_SATURATED;
+
+    HYD_StateReporter_ReportExecution(&fb, &planner, &pump, NULL,
+                                      pressure.appliedStrategy, &pressure, NULL);
+
+#if HYD_ENABLE_PRESSURE_LOOP_TELEMETRY
+    assert(fb.STATE.pressureLoop.requestedStrategy == pressure.requestedStrategy);
+    assert(fb.STATE.pressureLoop.calibrationStatus == pressure.calibrationStatus);
+    assert(fb.STATE.pressureLoop.limitStatus == pressure.limitStatus);
+    assert(fb.STATE.pressureLoop.dtValid == pressure.dtValid);
+    assert(fb.STATE.pressureLoop.gDu == pressure.gDu);
+    assert(fb.STATE.pressureLoop.effectiveUpperCap == pressure.effectiveUpperCap);
+    assert(fb.STATE.pressureLoop.promotionValidSamples == pressure.promotionValidSamples);
+    assert(fb.STATE.pressureLoop.adaptationFreezeCount == pressure.adaptationFreezeCount);
+    assert(fb.STATE.pressureLoop.adaptationFreezeReason == pressure.adaptationFreezeReason);
+#endif
+    printf("test_pressure_contract_observations_are_reported PASSED\n");
+}
+
 int main(void) {
     test_apply_safe_outputs_zeros_pump_speed_and_planned_outputs();
     test_set_fb_state_propagates_and_refreshes_error_id();
@@ -172,5 +210,6 @@ int main(void) {
     test_set_idle_state_with_finished_flag_resolves_done();
     test_set_idle_state_without_source_resolves_idle();
     test_clear_current_diagnostic_resets_protection_action();
+    test_pressure_contract_observations_are_reported();
     return 0;
 }
