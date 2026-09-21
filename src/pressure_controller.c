@@ -398,8 +398,7 @@ static void HYD_ResolvePressureControllerConfig(const HYD_MotionSegment* segment
      * legacy K_process and a positive tau explicitly. */
     {
         HYD_BOOL explicitCalibrated = (config->systemGain > 0.0 &&
-                                       config->plantTauS > 0.0 &&
-                                       input != NULL && input->plantTauS > 0.0);
+                                       config->plantTauS > 0.0);
         HYD_BOOL stateCalibrated = (state != NULL &&
                                     state->calibrationStatus >=
                                     HYD_PRESSURE_CALIBRATION_CALIBRATED);
