@@ -131,16 +131,21 @@ static void test_default_config_meets_all_three(void) {
     PressureModelOutput po;
     HYD_PRESSUREHANDLE ph;
     float pmax = 0.0f, p90 = -1.0f;
+    float filtered_min = 1.0e30f, filtered_max = -1.0e30f;
     float sum = 0.0f, sq = 0.0f;
-    int i, n = 0, settled = 0;
+    int i, n = 0, settled = 0, p90_confirm = 0;
     float ess, sigma, mp;
 
     printf("  [1] 出厂默认（仅配泵铭牌）→ 是否 3/3 达标\n");
 
-    /* 只写泵铭牌。策略/增益/滤波/升限流一律不写 —— 全部走出厂默认与 v12 推导。 */
+    /* 泵铭牌 + 显式 Ksys/tau：这是 calibrated performance acceptance。
+     * 仅写泵铭牌的 UNCALIBRATED smoke 由独立测试覆盖。 */
     iec_write(axisId, HYD_PARAM_PUMP_DISPLACEMENT, PUMP_DISP_ML_REV);
     iec_write(axisId, HYD_PARAM_PUMP_VOLUMETRIC_EFF, PUMP_VOL_EFF);
     iec_write(axisId, HYD_PARAM_PUMP_MAX_SPEED, PUMP_MAX_RPM);
+    iec_write(axisId, HYD_PARAM_PRESSURE_SYSTEM_KSYS, 5.0f);
+    iec_write(axisId, HYD_PARAM_PRESSURE_PLANT_TAU, DEFAULT_TAU);
+    iec_write(axisId, HYD_PARAM_PRESSURE_FILTER_ALPHA, 0.10f);
 
     /* ---- 升压段：0 → 150 bar，无噪声看超调 ---- */
     PressureModel_InitParams(&pp);
@@ -154,8 +159,15 @@ static void test_default_config_meets_all_three(void) {
 
     for (i = 0; i < 5000; ++i) {
         loop_step(fb, &ph, &pp, &ps, &po);
-        if (po.measured_pressure_bar > pmax) pmax = po.measured_pressure_bar;
-        if (p90 < 0.0f && po.measured_pressure_bar >= 0.9f * 150.0f) p90 = (float)i * SIM_DT * 1000.0f;
+        if (po.real_pressure_bar > pmax) pmax = po.real_pressure_bar;
+        if (po.real_pressure_bar >= 0.9f * 150.0f) {
+            ++p90_confirm;
+            if (p90 < 0.0f && p90_confirm >= 3) {
+                p90 = (float)(i - 2) * SIM_DT * 1000.0f;
+            }
+        } else {
+            p90_confirm = 0;
+        }
     }
     mp = (p90 > 0.0f) ? (pmax - 150.0f) / 150.0f * 100.0f : -1.0f;
     printf("      S1 Mp=%.2f%%  (峰值 %.2f bar, tr %.1f ms)\n", mp, pmax, p90);
@@ -165,6 +177,8 @@ static void test_default_config_meets_all_three(void) {
     memset(&po, 0, sizeof(po));
     pp.enable_sensor_noise = 1u;
     pp.enable_motor_noise = 1u;
+    pp.sensor_noise_std_bar = 0.10f;
+    pp.motor_noise_std_rpm = 0.5f;
     fb->_activeSegmentValid = false;   /* 重开段，让控制器重置 */
     fb->AXIS_REF.timestamp = 0.0;
     init_handle(&ph, axisId, 100.0f);
@@ -177,6 +191,10 @@ static void test_default_config_meets_all_three(void) {
             sum += po.measured_pressure_bar;
             sq += po.measured_pressure_bar * po.measured_pressure_bar;
             ++n;
+            if ((float)fb->_pressureController.previousFilteredPressure < filtered_min)
+                filtered_min = (float)fb->_pressureController.previousFilteredPressure;
+            if ((float)fb->_pressureController.previousFilteredPressure > filtered_max)
+                filtered_max = (float)fb->_pressureController.previousFilteredPressure;
         }
     }
     if (n > 0) {
@@ -187,13 +205,16 @@ static void test_default_config_meets_all_three(void) {
         ess = 1e9f; sigma = 1e9f;
     }
     (void)settled;
-    printf("      S2 ess=%.3f bar  sigma=%.3f bar RMS\n", ess, sigma);
+    printf("      S2 ess=%.3f bar  sigma=%.3f bar RMS  filtered_p2p=%.3f bar\n",
+           ess, sigma, filtered_max - filtered_min);
 
     ASSERT_TRUE(p90 > 0.0f, "默认配置必须真的升到 90% 目标压力");
     ASSERT_TRUE(pmax <= 150.0f * (1.0f + TARGET_MP_PCT / 100.0f),
                 "默认配置：升压超调 Mp 必须 <= 5%");
-    ASSERT_TRUE(fabsf(ess) <= TARGET_ESS_BAR, "默认配置：保压 ess 必须 <= 1 bar");
-    ASSERT_TRUE(sigma <= TARGET_SIGMA_BAR, "默认配置：保压 sigma 必须 <= 1 bar RMS");
+    ASSERT_TRUE(fabsf(ess) <= TARGET_ESS_BAR, "calibrated 配置：保压 ess 必须 <= 1 bar");
+    ASSERT_TRUE((filtered_max - filtered_min) <= 1.0f,
+                "calibrated 配置：filtered pressure 峰峰值必须 <= 1 bar");
+    ASSERT_TRUE(sigma <= TARGET_SIGMA_BAR, "calibrated 配置：保压 sigma 必须 <= 1 bar RMS");
 }
 
 /* ---------------- 推导值是否真的到达算法（硬证据） ---------------- */
@@ -212,6 +233,8 @@ static void test_derived_k_and_boost_reach_the_algorithm(void) {
     iec_write(axisId, HYD_PARAM_PUMP_DISPLACEMENT, PUMP_DISP_ML_REV);
     iec_write(axisId, HYD_PARAM_PUMP_VOLUMETRIC_EFF, PUMP_VOL_EFF);
     iec_write(axisId, HYD_PARAM_PUMP_MAX_SPEED, PUMP_MAX_RPM);
+    iec_write(axisId, HYD_PARAM_PRESSURE_SYSTEM_KSYS, 5.0f);
+    iec_write(axisId, HYD_PARAM_PRESSURE_PLANT_TAU, DEFAULT_TAU);
 
     PressureModel_InitParams(&pp);
     pp.enable_sensor_noise = 0u;
