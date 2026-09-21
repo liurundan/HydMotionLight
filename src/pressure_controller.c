@@ -81,6 +81,7 @@ typedef struct {
 
 typedef struct {
     const HYD_PressureStrategySpec* strategySpec;
+    HYD_PressureControllerType requestedStrategy;
     HYD_PressureControllerType strategy;
     HYD_REAL kp;
     HYD_REAL kpHigh;
@@ -300,6 +301,7 @@ static void HYD_ResolvePressureControllerConfig(const HYD_MotionSegment* segment
 
     memset(config, 0, sizeof(*config));
     strategySpec = HYD_ResolvePressureStrategySpec(segment);
+    config->requestedStrategy = strategySpec->strategy;
     config->strategySpec = strategySpec;
     config->strategy = strategySpec->strategy;
     config->kp = HYD_ResolveGain((segment != NULL) ? segment->pressureKp : 0.0,
@@ -386,6 +388,35 @@ static void HYD_ResolvePressureControllerConfig(const HYD_MotionSegment* segment
             if (input != NULL && input->targetPressure > 0.0f) {
                 config->steadyStateFF = input->targetPressure / config->systemGain;
             }
+        }
+    }
+
+    /* An uncalibrated physical gain cannot safely drive FF or online RBF
+     * tuning.  Keep the requested strategy observable, but apply a fixed
+     * conservative PI until the motion layer provides a calibrated status.
+     * Direct controller callers retain compatibility when they provide the
+     * legacy K_process and a positive tau explicitly. */
+    {
+        HYD_BOOL explicitCalibrated = (config->systemGain > 0.0 &&
+                                       config->plantTauS > 0.0 &&
+                                       input != NULL && input->plantTauS > 0.0);
+        HYD_BOOL stateCalibrated = (state != NULL &&
+                                    state->calibrationStatus >=
+                                    HYD_PRESSURE_CALIBRATION_CALIBRATED);
+        HYD_BOOL adaptiveRequested =
+            (config->requestedStrategy == HYD_PRESSURE_CONTROLLER_FF_PI) ||
+            (config->requestedStrategy == HYD_PRESSURE_CONTROLLER_RBF_PID) ||
+            (config->requestedStrategy == HYD_PRESSURE_CONTROLLER_RBF_PI);
+        if (adaptiveRequested && !explicitCalibrated && !stateCalibrated) {
+            config->strategy = HYD_PRESSURE_CONTROLLER_PI;
+            config->strategySpec = HYD_FindPressureStrategySpec(
+                HYD_PRESSURE_CONTROLLER_PI);
+            config->kp = 0.10;
+            config->ki = 0.05;
+            config->kd = 0.0;
+            config->integralLimit = 0.10 * config->outputMax;
+            config->steadyStateFF = 0.0;
+            config->boostFlowLimitLmin = 0.0;
         }
     }
 
@@ -1037,7 +1068,7 @@ void HYD_PressureController_Execute(const HYD_MotionSegment* segment,
     output->adaptiveActive = config.strategySpec->adaptive;
     output->effectiveUpperCap = effectiveMax;
     output->limitStatus = state->limitStatus;
-    output->requestedStrategy = config.strategy;
+    output->requestedStrategy = config.requestedStrategy;
     output->calibrationStatus = state->calibrationStatus;
     output->dtValid = state->dtValid;
 

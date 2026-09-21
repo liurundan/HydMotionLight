@@ -284,9 +284,10 @@ int main(void) {
      *     自己都算不出来的"解析增益"。
      * 换言之：没有对象模型时，FF_PI 退回"和 PI 一样"，绝不会比 PI 更激进。 */
     assert(L.ctrl.resolvedSteadyStateFF == 0.0f);
-    assert(L.ctrl.resolvedKp == L.segment.pressureKp);
-    assert(L.ctrl.resolvedKi == L.segment.pressureKi);
-    printf("  [6] K 缺失时 Q_ff=0、增益回退段级（退化成 PI）...... OK\n\n");
+    assert(fabsf((float)L.ctrl.resolvedKp - 0.10f) < 1e-6f);
+    assert(fabsf((float)L.ctrl.resolvedKi - 0.05f) < 1e-6f);
+    assert(L.ctrl.activeStrategy == HYD_PRESSURE_CONTROLLER_PI);
+    printf("  [6] K 缺失时 Q_ff=0、保守 PI 回退（请求仍可观测）...... OK\n\n");
 
     printf("=== FF_PI 契约断言全部通过 ===\n");
     printf("注：[3] 的 RBF 对照组保留为“负向断言” —— 它证明本用例的植物确实能复现\n");
