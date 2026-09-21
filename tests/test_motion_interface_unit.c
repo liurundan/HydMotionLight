@@ -1785,8 +1785,8 @@ static void test_pressurehandle_latches_controller_until_next_execute(void) {
     ph.EXECUTE0.value = true;
     __mcl_cmd_PressureHandle(&ph);
     ASSERT_TRUE(fb->STATE.pressureControllerApplied ==
-                    HYD_PRESSURE_CONTROLLER_RBF_PID,
-                "Runtime state should report the latched RBF-PID controller");
+                    HYD_PRESSURE_CONTROLLER_PI,
+                "Uncalibrated RBF request should report conservative PI applied strategy");
 
     ASSERT_TRUE(HYD_MotionControlFB_WriteParameter(
                     fb,
@@ -1799,8 +1799,8 @@ static void test_pressurehandle_latches_controller_until_next_execute(void) {
                     HYD_PRESSURE_CONTROLLER_RBF_PID,
                 "Active PressureHandle should not hot-switch controller strategy");
     ASSERT_TRUE(fb->STATE.pressureControllerApplied ==
-                    HYD_PRESSURE_CONTROLLER_RBF_PID,
-                "Applied controller should remain RBF-PID until the next command");
+                    HYD_PRESSURE_CONTROLLER_PI,
+                "Uncalibrated request should remain on conservative PI until calibration");
 
     HYD_MotionControlFB_SoftReset(fb);
     IEC_VAL(ph.EXECUTE) = false;
