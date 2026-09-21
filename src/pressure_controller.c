@@ -919,7 +919,8 @@ static HYD_REAL HYD_ResolveEffectiveUpperCap(
         limitStatus = HYD_PRESSURE_LIMIT_CAPACITY_INSUFFICIENT;
     }
 
-    if (limitStatus == HYD_PRESSURE_LIMIT_NONE) {
+    if (limitStatus == HYD_PRESSURE_LIMIT_NONE &&
+        config->boostFlowLimitLmin > 0.0) {
         boostCap = HYD_FfPiOutputMax(config, targetPressure, error, hardMax);
     }
     if (limitStatus != HYD_PRESSURE_LIMIT_NONE) {
@@ -1036,6 +1037,9 @@ void HYD_PressureController_Execute(const HYD_MotionSegment* segment,
     output->adaptiveActive = config.strategySpec->adaptive;
     output->effectiveUpperCap = effectiveMax;
     output->limitStatus = state->limitStatus;
+    output->requestedStrategy = config.strategy;
+    output->calibrationStatus = state->calibrationStatus;
+    output->dtValid = state->dtValid;
 
     if (config.strategy == HYD_PRESSURE_CONTROLLER_RBF_PID ||
         config.strategy == HYD_PRESSURE_CONTROLLER_RBF_PI) {
@@ -1111,6 +1115,7 @@ void HYD_PressureController_Execute(const HYD_MotionSegment* segment,
         output->saturated =
             (config.strategy == HYD_PRESSURE_CONTROLLER_RBF_PI && internalSaturated) ||
             (outputFlow != rawOutputFlow);
+        output->capBoundDemand = (rawOutputFlow > effectiveMax + 1.0e-9) ? 1 : 0;
 
         /* v10: 指令 vs 实测的流量跟踪误差（负值 = 泵给多了）。 */
         if (output->pumpFeedbackApplied) {
