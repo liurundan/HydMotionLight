@@ -421,8 +421,14 @@ static void test_pressure_model_fb_exposes_first_order_inputs(void) {
                 "PressureModel FB should expose MODEL_TYPE");
     ASSERT_NEAR(cmd.K_NUM.value, 0.25, TOLERANCE,
                 "PressureModel FB should expose K_NUM");
+    /* K_NUM is bar/rpm in the simulator; it is not a pressure-controller
+     * systemGain (bar/(L/min)). The conversion belongs at the controller
+     * fixture boundary: K_process = K_NUM * rpm_per_(L/min). */
     ASSERT_NEAR(cmd.TTAU.value, 0.2, TOLERANCE,
                 "PressureModel FB should expose TTAU");
+    ASSERT_NEAR(PressureModel_FirstOrderGainToProcessGain(0.25f, 20.0f),
+                5.0f, TOLERANCE,
+                "K_NUM conversion to pressure-controller K_process");
     ASSERT_NEAR(cmd.DELAYTIME.value, 0.01, TOLERANCE,
                 "PressureModel FB should expose DELAYTIME");
 }

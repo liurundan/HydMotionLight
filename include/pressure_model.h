@@ -36,6 +36,18 @@ enum {
     PRESSURE_MODEL_ORDER_39_ACTIVE = 1u << 2
 };
 
+/* First-order simulator gain is pressure per motor speed [bar/rpm].
+ * Pressure-controller systemGain uses [bar/(L/min)]; callers must convert
+ * with K_process = K_rpm * flowToPumpSpeedGain. */
+#define PRESSURE_MODEL_FIRST_ORDER_GAIN_UNIT_BAR_PER_RPM 1
+
+static inline float PressureModel_FirstOrderGainToProcessGain(
+    float gain_bar_per_rpm, float flow_to_speed_gain_rpm_per_lmin) {
+    return (gain_bar_per_rpm > 0.0f && flow_to_speed_gain_rpm_per_lmin > 0.0f)
+        ? gain_bar_per_rpm * flow_to_speed_gain_rpm_per_lmin
+        : 0.0f;
+}
+
 typedef enum {
     PRESSURE_MODEL_TYPE_PHYSICAL_CALIBRATED = 0u,
     PRESSURE_MODEL_TYPE_PHYSICAL = PRESSURE_MODEL_TYPE_PHYSICAL_CALIBRATED,
@@ -125,6 +137,9 @@ typedef struct {
     float torque_from_pressure_gain;
     float torque_from_speed_gain;
     unsigned char model_type;
+    /* First-order process gain [bar/rpm].  To configure
+     * HYD_MotionSegment.systemGain [bar/(L/min)], multiply by
+     * flowToPumpSpeedGain [rpm/(L/min)]. */
     float first_order_k_bar_per_rpm;
     float first_order_tau_s;
     float first_order_delay_s;

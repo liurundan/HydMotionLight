@@ -375,3 +375,9 @@ add_test(NAME test_pressure_cap_contract COMMAND test_pressure_cap_contract)
 add_executable(test_rbf_pid_practicality tests/test_rbf_pid_practicality.c)
 target_link_libraries(test_rbf_pid_practicality PRIVATE HydroMotionLib)
 add_test(NAME test_rbf_pid_practicality COMMAND test_rbf_pid_practicality)
+
+add_executable(test_rbf_pid_first_order_gain1p5
+               tests/test_rbf_pid_first_order_gain1p5.c)
+target_link_libraries(test_rbf_pid_first_order_gain1p5 PRIVATE HydroMotionLib HydroSimLib)
+add_test(NAME test_rbf_pid_first_order_gain1p5
+         COMMAND test_rbf_pid_first_order_gain1p5)
