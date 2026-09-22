@@ -453,6 +453,70 @@ typedef HYD_REAL HYD_TIME;
  * 原值：rbf_pid.c:273 `4.0f`. */
 #define HYD_THRESH_RBF_ETA_SCALE_GAIN        4.0f
 
+/* --- 除零防护与数值安全 --- */
+
+/* 系统增益最小安全值（防止除零）。
+ * 压力控制器计算稳态前馈、流量上限时需要除以 systemGain (K)。
+ * 当 K 低于此阈值时视为"未标定"，回退到保守策略。
+ * 单位：bar/(L/min)。 */
+#ifndef HYD_MIN_SAFE_SYSTEM_GAIN
+    #define HYD_MIN_SAFE_SYSTEM_GAIN  1e-3f
+#endif
+
+/* --- FF_PI 控制器整定参数 --- */
+
+/* FF_PI 默认对象时间常数（一阶惯性对象 P(s) = K/(τs+1) 中的 τ）。
+ * 保守取值：低估 τ 会降低响应速度但不会失稳；高估 τ 可能越界。
+ * 单位：秒。 */
+#ifndef HYD_DEFAULT_PLANT_TAU_S
+    #define HYD_DEFAULT_PLANT_TAU_S          1.0f
+#endif
+
+/* FF_PI 默认闭环带宽（期望极点配置 s² + 2ζωn·s + ωn² 中的 ωn）。
+ * 实测稳定边界 wn ≈ 18~20 rad/s，取 65% 留裕度。
+ * 单位：rad/s。 */
+#ifndef HYD_DEFAULT_LOOP_OMEGA
+    #define HYD_DEFAULT_LOOP_OMEGA           12.0f
+#endif
+
+/* FF_PI 闭环阻尼系数（ζ=1 为临界阻尼，无超调）。
+ * 注塑机压力控制不希望超调，固定取 1.0。
+ * 单位：无量纲。 */
+#ifndef HYD_FF_PI_DAMPING
+    #define HYD_FF_PI_DAMPING                1.0f
+#endif
+
+/* FF_PI 升压包络窄带解除阈值（|e| / P_set 低于此值时完全不收紧上限）。
+ * 这是修复"K 高估 → 软上限变硬天花板 → 静默欠压"的关键。
+ * 实测：0.07 是能救回 K 高估 2.5× 的最小值。
+ * 单位：无量纲比例 [0, 1]。 */
+#ifndef HYD_FF_PI_NARROW_BAND_FRAC
+    #define HYD_FF_PI_NARROW_BAND_FRAC       0.07f
+#endif
+
+/* FF_PI 升压制动窗口默认比例（e_b = P_set × brake_frac）。
+ * 实测：brake=2.0 时 Mp=2.42%；brake=0.5 时 Mp=26.27%（滤波滞后）。
+ * 单位：无量纲比例。 */
+#ifndef HYD_FF_PI_BRAKE_FRAC_DEFAULT
+    #define HYD_FF_PI_BRAKE_FRAC_DEFAULT     2.0f
+#endif
+
+/* --- 升压流量限制推导系数 --- */
+
+/* 升压限流默认值占最大流量的比例（未显式配置时）。
+ * q_boost = clamp(0.30 × Q_max, 3 × P_ceiling / K, Q_max)。
+ * 单位：无量纲比例 [0, 1]。 */
+#ifndef HYD_DEFAULT_BOOST_FLOW_FRACTION
+    #define HYD_DEFAULT_BOOST_FLOW_FRACTION  0.30f
+#endif
+
+/* 升压限流可达性安全系数（确保限流值不低于维持流量的 N 倍）。
+ * 避免 D11 缺陷：限流低于 P_set/K 时目标压力永不可达。
+ * 单位：无量纲倍数。 */
+#ifndef HYD_DEFAULT_BOOST_REACH_SAFETY
+    #define HYD_DEFAULT_BOOST_REACH_SAFETY   3.0f
+#endif
+
 #define HYD_MAX_AXIS_MOTION  20 /* 最大液压轴数量，包括合模、射胶、顶出、座台、中子等 */
 
 #ifndef HYD_MAX_TOGGLE_MECHANISMS

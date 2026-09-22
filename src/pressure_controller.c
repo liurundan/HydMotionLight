@@ -6,56 +6,6 @@
 #define HYD_DEFAULT_PRESSURE_FILTER_ALPHA 0.1
 #define HYD_DEFAULT_PRESSURE_DERIVATIVE_FILTER_ALPHA 0.05
 
-/* --- v13：FF_PI（前馈 + 解析整定 PI）默认对象参数 ---
- *
- * 整定式（对象 P(s) = K/(τs+1)，位置式 PI，闭环匹配 s² + 2ζωn·s + ωn²）：
- *     KP = (2·ζ·ωn·τ − 1) / K        [L/min per bar]
- *     KI = ωn²·τ / K                 [L/min per bar per s]
- *
- * 【τ 默认 1.0 s 是刻意保守的】KP 与 KI 都 ∝ τ：
- *   低估 τ（默认 1.0 < 实测 1.862）→ 增益偏小 → 响应偏慢但**绝不会失稳**；
- *   高估 τ                          → 增益偏大 → 可能越过稳定边界（实测边界 wn≈18~20）。
- * 因此默认值选在"安全侧"，现场按实测 t63 写入 HYD_PARAM_PRESSURE_PLANT_TAU 即可提速。
- *
- * 【ωn 默认 12 rad/s】实测稳定边界 wn≈18~20（超过后 σ 从 0.5 恶化到 6.5 bar）。
- * 取边界的 ~65%，留出 τ 标定误差与机型差异的裕度。 */
-#define HYD_DEFAULT_PLANT_TAU_S     1.0f
-#define HYD_DEFAULT_LOOP_OMEGA      12.0f
-#define HYD_FF_PI_DAMPING           1.0f   /* ζ = 1：压力闭环不希望有超调 */
-/* 升压制动包络的"窄带解除"阈值：|e| <= 该比例 × P_set 时完全不收紧上限。
- * 这是修复"K 高估 → 软上限变硬天花板 → 静默稳态欠压"的关键，
- * 实测（评估报告 §4.1）：K 高估 1.9× 时 ess 由 -1.943 bar 归零。
- *
- * 【0.07 是实测拐点，勿凭直觉改 —— 它同时决定"超调裕度"与"K 失配可达性"】
- * 解除太晚：K 高估时，比例项的静平衡点 P_eq = (K·Q_ff + K·kp·P_set)/(1 + K·kp)
- *   落在解除区**之外** → 包络把压力永久卡在 P_eq（实测 K=500：卡在 141.9/150 bar，
- *   Mp 记为负 = 根本没到目标），积分被抗饱和锁死 → 又变成"静默欠压"。
- * 解除太早：升压末期提前放开上限 → 建压速率突增 → 10 ms 滤波滞后 → 超调恶化。
- *
- * 生产链路实测（25cc/1700rpm、τ=1.0、ωn=12、目标 150 bar，boost=12.11）：
- *   窄带   K=100   K=200    K=300   K=380   K=500
- *   0.05   7.79F   2.42P    0.86P   0.44P   -6.07F(卡死)
- *   0.06   7.79F   2.91P    0.86P   0.44P   -6.07F(卡死)
- *   0.07   8.45F   3.20P    0.99P   0.46P    0.66P   ← 采用
- *   0.08   9.36F   3.67P    1.10P   0.73P    0.79P
- *   0.10  10.37F   4.52P    1.65P   1.05P    0.95P
- *   0.15  14.29F   6.75F    3.35P   1.85P    1.69P
- * （数字为 Mp%，P=3/3 达标 F=未达标；K 真值 ≈210.55）
- * 0.07 是"能救回 K 高估 2.5×"的最小值，名义点仍留 1.8 pp 超调裕度。 */
-#define HYD_FF_PI_NARROW_BAND_FRAC  0.07f
-/* FF_PI 的升压制动窗口默认比例 e_b = brake_frac × P_set。
- *
- * 【为什么是 2.0 而不是 RBF 沿用的 0.5 —— 实测，勿凭直觉改】
- * 生产链路前置滤波 α=0.1（时间常数 dt/α = 10 ms）。升压若过快，滤波滞后会让控制器
- * "看不见"已经上升的压力 → 冲过目标。实测 25cc/1700rpm、K=200、目标 150 bar：
- *     brake=0.5, boost=12.11 → Mp 26.27%（滤波滞后只看到 ~112 bar 时实际已到 150）
- *     brake=1.0, boost=12.11 → Mp 10.43%
- *     brake=2.0, boost=12.11 → Mp  2.42%   tr 265ms  ts 435ms   ← 采用
- * 物理含义：e_b = 2·P_set 意味着从**开始升压**就在收口（frac = e/(2·P_set) ≤ 0.5），
- * 等效把建压速率限制在 τ_filter 跟得上的水平（≈0.05·P_set/τ_filter ≈ 750 bar/s）。
- * 窗口再大只是更慢，不再改善超调；窗口小于 1.0 则超调急剧恶化。 */
-#define HYD_FF_PI_BRAKE_FRAC_DEFAULT 2.0f
-
 typedef struct {
     HYD_PressureControllerType strategy;
     HYD_BOOL supportsIntegral;
@@ -208,11 +158,14 @@ static HYD_REAL HYD_ResolveDeadband(const HYD_MotionSegment* segment) {
 }
 
 static HYD_REAL HYD_ApplyPressureDeadband(HYD_REAL error, HYD_REAL deadband) {
-    if (deadband <= 0.0 || fabs(error) <= deadband) {
-        return deadband > 0.0 ? 0.0 : error;
+    /* 恢复旧版语义：死区内误差清零（而非平移），保持向后兼容 */
+    if (deadband <= 0.0) {
+        return error;
     }
-
-    return error > 0.0 ? error - deadband : error + deadband;
+    if (fabs(error) <= deadband) {
+        return 0.0;  /* 死区内清零 */
+    }
+    return error;  /* 死区外保持原值 */
 }
 
 static HYD_REAL HYD_ResolveTrackedIntegralOutput(const HYD_MotionSegment* segment,
@@ -375,7 +328,11 @@ static void HYD_ResolvePressureControllerConfig(const HYD_MotionSegment* segment
         if (input != NULL && input->loopOmega > 0.0) {
             config->loopOmega = input->loopOmega;
         }
-        if (config->systemGain > 0.0) {
+        /* 除零防护：systemGain 必须 > 最小安全值才计算整定增益 */
+        if (!(config->systemGain > HYD_MIN_SAFE_SYSTEM_GAIN)) {
+            /* K 无效时不计算整定增益，保持 kp/ki 为 0 */
+            config->steadyStateFF = 0.0;
+        } else {
             HYD_REAL tau = config->plantTauS;
             HYD_REAL wn = config->loopOmega;
             HYD_REAL kp = (2.0f * HYD_FF_PI_DAMPING * wn * tau - 1.0f) / config->systemGain;
@@ -1197,11 +1154,12 @@ void HYD_PressureController_Execute(const HYD_MotionSegment* segment,
     }
 
     if (shadowRequested && config.strategy == HYD_PRESSURE_CONTROLLER_PI) {
+        /* P1-6修复：先读取泵反馈再Shadow更新，确保actualFlow是本拍数据 */
         HYD_ApplyPumpFeedbackToRbfPid(state, input, output);
         RBF_PID_ShadowUpdate(&state->rbfShadow, &state->rbfPid,
                              (float)input->targetPressure,
                              (float)filteredPressure,
-                             (float)output->actualFlow,
+                             (float)output->actualFlow,  /* 现在使用本拍数据 */
                              (float)config.dt,
                              state->dtValid);
         state->gDu = state->rbfShadow.g_du;
@@ -1352,9 +1310,13 @@ void HYD_PressureController_Execute(const HYD_MotionSegment* segment,
             output->flowTrackingError = outputFlow - output->actualFlow;
         }
 
-        state->rbfPid.output_saturated = output->saturated ? true : false;
-        state->rbfPid.Output = (float)outputFlow;
-        state->rbfPid.u_prev = (float)outputFlow;
+        /* P0-3修复：只在非软复位时覆盖播种值（软复位已精心设置u_prev） */
+        if (!state->softResetPending) {
+            state->rbfPid.output_saturated = output->saturated ? true : false;
+            state->rbfPid.Output = (float)outputFlow;
+            state->rbfPid.u_prev = (float)outputFlow;
+        }
+        /* 软复位标志在HYD_SoftResetRbfPidState中已清除，这里不会遗留 */
 
         state->initialized = true;
         state->trackingRequested = false;

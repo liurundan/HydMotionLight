@@ -81,9 +81,8 @@ typedef HYD_UINT16 HYD_FbStateMask;
 /* v12：升压限流默认值推导系数（未显式配置 HYD_PARAM_PRESSURE_BOOST_FLOW_LIMIT 时）。
  *   q_boost = clamp(0.30 * Q_max, 3 * P_ceiling / K, Q_max)
  * 下界取可达性要求(P_ceiling/K)的 3 倍，避免 §12.3 D11（限流低于维持流量 →
- * 目标压力永不可达）。实测 25cc 机型 → 0.30*40.375 = 12.1 L/min，与现场值 12 吻合。 */
-#define HYD_DEFAULT_BOOST_FLOW_FRACTION   0.30f
-#define HYD_DEFAULT_BOOST_REACH_SAFETY    3.0f
+ * 目标压力永不可达）。实测 25cc 机型 → 0.30*40.375 = 12.1 L/min，与现场值 12 吻合。
+ * 常量已移至 hyd_config.h §14D。 */
 
 static HYD_BOOL HYD_IsFinitePositive(HYD_REAL value) {
     return isfinite(value) && value > 0.0;
@@ -2488,6 +2487,18 @@ static HYD_BOOL HYD_ExecuteActiveSegmentControl(HYD_MotionControlFB* fb,
                                        &fb->_pressureController,
                                        &pressureInput,
                                        pressureOutput);
+
+        /* P0-1修复：检测压力控制器dt异常，静默冻结时上报故障 */
+        if (pressureInput.enforceFixedSampling && !pressureOutput->dtValid) {
+            HYD_StateReporter_ReportFault(fb,
+                HYD_DIAG_CODE_PRESSURE_SAMPLE_TIMING_FAULT,
+                fb->AXIS_REF.timestamp,
+                segment,
+                &fb->STATE.references);
+            fb->PUMP_SPEED = 0.0f;
+            return false;  /* 函数签名返回HYD_BOOL */
+        }
+
         plannerOutput->targetFlow = pressureOutput->outputFlow;
         plannerOutput->direction = segment->direction;
         if (pressureOutput->unsaturatedOutputFlow > segment->maxFlow) {

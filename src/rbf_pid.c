@@ -63,10 +63,10 @@ static float rbf_pid_discrete_jacobian_min(const RBF_PID_Handle *pid) {
     float nominal;
 
     if (!(pid->K > 0.0f) || !(tau > 0.0f) || !isfinite(tau)) {
-        return 0.005f;
+        return 0.01f;  /* 从0.005提升到0.01 — 修复K=1.5时稳态误差 */
     }
     nominal = pid->K * dt / fmaxf(tau, 0.1f);
-    return clampf(0.005f, 0.25f * nominal, 0.5f);
+    return clampf(0.01f, 0.5f * nominal, 0.1f);  /* 下界从0.005→0.01，上界从0.5→0.1 */
 }
 
 static float rbf_pid_discrete_jacobian_max(const RBF_PID_Handle *pid) {
@@ -345,8 +345,8 @@ static bool rbf_pid_same_direction_saturation(const RBF_PID_Handle *pid, float e
 }
 
 // ========== 稳态判定参数（可调） ==========
-#define STEADY_DEAD_ZONE     10.0f   // 误差死区（bar），根据传感器量程设定
-#define STEADY_DE_RATIO      1.0f    // 变化率死区系数
+#define STEADY_DEAD_ZONE     2.0f   /* 误差死区（bar），从10.0降到2.0 — 提高响应灵敏度 */
+#define STEADY_DE_RATIO      0.5f   /* 变化率死区系数，从1.0降到0.5 */
 
 static int rbf_pid_step_rbf_nn(RBF_PID_Handle *pid,float error) {
     float h[RBF_HNUM];
@@ -486,7 +486,7 @@ static int rbf_pid_step_rbf_nn(RBF_PID_Handle *pid,float error) {
 static float rbf_pid_compute_soft_flow_cap(const RBF_PID_Handle *pid) {
     float hard_limit = rbf_pid_max_flow_output(pid);
 
-    if (pid->K <= 0.0f || pid->P_set <= 0.0f) {
+    if (!(pid->K > HYD_MIN_SAFE_SYSTEM_GAIN) || !(pid->P_set > 0.0f)) {
         return hard_limit;
     }
 
@@ -606,7 +606,9 @@ static float rbf_pid_boost_flow_cap(const RBF_PID_Handle *pid, float error) {
     float e_brake;
     float frac;
 
-    if (pid->boost_flow_limit_lmin <= 0.0f || pid->K <= 0.0f || pid->P_set <= 0.0f) {
+    if (!(pid->boost_flow_limit_lmin > 0.0f) ||
+        !(pid->K > HYD_MIN_SAFE_SYSTEM_GAIN) ||
+        !(pid->P_set > 0.0f)) {
         return hard_limit;   /* 未配置限流：不改变既有行为 */
     }
     if (error <= 0.0f) {
@@ -715,11 +717,12 @@ static void rbf_pid_step_adaptive_gains(RBF_PID_Handle *pid, float error, float 
 	pid->KP = clampf(pid->min_KP, pid->KP, pid->max_KP);
 
 	// 5.1 积分增益 Ki 更新（带L2惩罚，防止积分饱和）
-	float grad_Ki = pid->eta_i * error * sign(pid->Jacobian) * abs_Jac * error;
+	// 修复稳态误差：移除 abs_Jac * error 项，避免误差小时更新停滞
+	float grad_Ki = pid->eta_i * error * sign(pid->Jacobian);
 	float decay_Ki = LAMBDA_KI * (pid->KI - KI_CENTER);
 	float delta_Ki = grad_Ki - decay_Ki;
-	if (delta_Ki > 0.00005f) delta_Ki = 0.00005f;
-	if (delta_Ki < -0.00005f) delta_Ki = -0.00005f;
+	if (delta_Ki > 0.0001f) delta_Ki = 0.0001f;   // 放宽从0.00005→0.0001
+	if (delta_Ki < -0.0001f) delta_Ki = -0.0001f;
 	pid->KI += delta_Ki;
 	pid->KI = clampf(pid->min_KI, pid->KI, pid->max_KI);
 
