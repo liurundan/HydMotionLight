@@ -210,8 +210,8 @@ typedef struct {
      * 选值时仍应满足 Q_lim > P_set_max/K（换机型后 K 会变，务必重新核算）。 */
     float boost_flow_limit_lmin;
     float boost_flow_brake_frac;
-    float effective_upper_cap;          /* shadow cap [L/min], not consumed in Gate 0 */
-    bool effective_upper_cap_valid;     /* shadow cap validity */
+    float effective_upper_cap;          /* controller-resolved cap [L/min] */
+    bool effective_upper_cap_valid;     /* cap is authoritative for output/anti-windup */
 
     /* Appended runtime-contract state; keep legacy field offsets stable. */
     float process_time_constant_s;      /* calibrated tau [s] */
@@ -224,9 +224,15 @@ typedef struct {
     float residual;                     /* shadow residual [bar] */
     float g_du;                         /* shadow sensitivity [bar/(L/min)] */
     float last_dt;
+    float previous_feedback;             /* previous measured pressure [bar] */
+    float previous_flow;                 /* previous measured flow [L/min] */
+    float residual_rms;                  /* EWMA innovation magnitude [bar] */
     uint32_t valid_sample_count;
+    uint32_t confidence_sample_count;    /* consecutive quality-qualified samples */
     uint32_t invalid_sample_count;
     bool valid;
+    bool quality_valid;
+    bool history_valid;
 } RBF_PID_ShadowState;
 
 /**
@@ -328,14 +334,17 @@ void RBF_PID_SetDtValid(RBF_PID_Handle *pid, bool valid);
 void RBF_PID_SetExternalFlowCap(RBF_PID_Handle *pid, float cap_lmin, bool enable);
 
 /**
- * @brief Publish the effective upper cap for diagnostics/shadow consumers.
- * @note Gate 0 stores the cap only; production output behavior is unchanged.
+ * @brief Publish the controller-resolved upper cap.
+ * @note When valid, this cap is consumed by RBF output, saturation and
+ *       anti-windup paths; the outer pressure controller remains the owner.
  */
 void RBF_PID_SetEffectiveUpperCap(RBF_PID_Handle *pid, float cap_lmin, bool valid);
+float RBF_PID_GetIntrinsicUpperCap(const RBF_PID_Handle *pid, float error);
 
 /**
- * @brief Update a side-effect-free shadow observation state.
- * @note The const PID handle is never modified and production control state is untouched.
+ * @brief Update the side-effect-free shadow observation state.
+ * @note Innovation is based on measured-flow-induced pressure change rather
+ *       than setpoint error, so promotion cannot be earned by a static error.
  */
 void RBF_PID_ShadowUpdate(RBF_PID_ShadowState *shadow,
                           const RBF_PID_Handle *pid,

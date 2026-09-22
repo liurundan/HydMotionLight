@@ -224,6 +224,7 @@ static void test_iec_system_gain_reaches_rbf_pid(void) {
     segment.maxFlow = 40.0f;
     segment.pressureController = HYD_PRESSURE_CONTROLLER_RBF_PID;
     segment.systemGain = 0.0;   /* 明确不设段级值 */
+    segment.pressureFilterAlpha = 0.1f;
 
     input.targetPressure = 100.0f;
     input.measuredPressure = 0.0f;
@@ -232,6 +233,7 @@ static void test_iec_system_gain_reaches_rbf_pid(void) {
     input.flowToPumpSpeedGain = PUMP_FLOW_SPEED_GAIN;
     input.pumpSpeedLimit = PUMP_MAX_RPM;
     input.systemGain = iec_read(axisId, HYD_PARAM_PRESSURE_SYSTEM_GAIN, NULL);
+    input.plantTauS = 1.0f;
     input.timestamp = 0.001f;
 
     HYD_PressureController_Execute(&segment, &fb->_pressureController, &input, &output);
@@ -567,6 +569,7 @@ static void seed_active_pressure_segment(HYD_MotionControlFB* fb) {
     segment.pressureCeiling = 250.0f;
     segment.pressureRampRate = 500.0f;
     segment.systemGain = 200.0f;
+    segment.pressureFilterAlpha = 0.1f;
     segment.pressureRbfConfig.minKp = 0.5f;
     segment.pressureRbfConfig.maxKp = 1.2f;
     segment.pressureRbfConfig.minKi = 0.005f;
@@ -590,6 +593,7 @@ static void seed_active_pressure_segment(HYD_MotionControlFB* fb) {
     fb->_directOwnerTicket = 1U;
     fb->_executionId = 1U;
     fb->_plannerState.initialized = true;
+    fb->_params.pressurePlantTauS = 1.0f;
 }
 
 /* 把反馈交给 FB（模拟 HAL），跑一个压力闭环周期，
@@ -614,6 +618,7 @@ static void test_fb_forwards_pump_feedback_into_rbf_pid(void) {
     packet.validFlags = HYD_PUMP_FEEDBACK_VALID_RPM;
     ASSERT_TRUE(HYD_MotionControlFB_SetPumpFeedback(fb, &packet), "feedback accepted");
 
+    /* Fixed-cycle production path is anchored at the segment timestamp. */
     fb->AXIS_REF.timestamp = 1.001f;
     HYD_MotionControlFB_Cycle(fb);
 

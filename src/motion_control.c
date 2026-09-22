@@ -2443,7 +2443,14 @@ static HYD_BOOL HYD_ExecuteActiveSegmentControl(HYD_MotionControlFB* fb,
         pressureInput.systemGain = HYD_ResolvePressureProcessGain(
             fb, segment, &resolvedKsys, &calibrationStatus);
         pressureInput.systemGainKsys = resolvedKsys;
-        fb->_pressureController.calibrationStatus = calibrationStatus;
+        /* Preserve a runtime ADAPTATION_CONFIDENT promotion while the base
+         * machine calibration remains valid.  A later resolver downgrade
+         * (missing/conflicting calibration) still demotes it immediately. */
+        if (calibrationStatus < HYD_PRESSURE_CALIBRATION_CALIBRATED ||
+            fb->_pressureController.calibrationStatus <
+                HYD_PRESSURE_CALIBRATION_ADAPTATION_CONFIDENT) {
+            fb->_pressureController.calibrationStatus = calibrationStatus;
+        }
 
         /* v11: 升压段限流（IEC 初始化配置）→ RBF-PID 升压软上限。
          * v12: 已标定 K 时按 Q_max 推导，并用可达性下界兜底：
@@ -2473,6 +2480,10 @@ static HYD_BOOL HYD_ExecuteActiveSegmentControl(HYD_MotionControlFB* fb,
         pressureInput.plantTauS = fb->_params.pressurePlantTauS;
         pressureInput.loopOmega = fb->_params.pressureLoopOmega;
         pressureInput.timestamp = HYD_GetCurrentSegmentTime(fb);
+        /* The IEC motion cycle is the production owner of the fixed 1 ms
+         * pressure-loop contract.  Direct controller callers intentionally
+         * leave this false for deterministic variable-step unit tests. */
+        pressureInput.enforceFixedSampling = true;
         HYD_PressureController_Execute(segment,
                                        &fb->_pressureController,
                                        &pressureInput,

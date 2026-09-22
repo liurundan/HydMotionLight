@@ -392,13 +392,17 @@ static void HYD_ResolvePressureControllerConfig(const HYD_MotionSegment* segment
     }
 
     /* An uncalibrated physical gain cannot safely drive FF or online RBF
-     * tuning.  Keep the requested strategy observable, but apply a fixed
-     * conservative PI until the motion layer provides a calibrated status.
-     * Direct controller callers retain compatibility when they provide the
-     * legacy K_process and a positive tau explicitly. */
+     * tuning.  The production motion layer is authoritative: its explicit
+     * calibration status is the only way the IEC path may enable FF/RBF.
+     * Direct controller callers retain compatibility when they intentionally
+     * opt out of the production contract and provide legacy K_process + tau
+     * explicitly for a deterministic unit/simulation fixture. */
     {
-        HYD_BOOL explicitCalibrated = (config->systemGain > 0.0 &&
-                                       config->plantTauS > 0.0);
+        HYD_BOOL explicitCalibrated =
+            (state != NULL && state->calibrationStatus >=
+             HYD_PRESSURE_CALIBRATION_CALIBRATED) ||
+            (input != NULL && !input->enforceFixedSampling &&
+             config->systemGain > 0.0);
         HYD_BOOL stateCalibrated = (state != NULL &&
                                     state->calibrationStatus >=
                                     HYD_PRESSURE_CALIBRATION_CALIBRATED);
@@ -987,6 +991,7 @@ void HYD_PressureController_Execute(const HYD_MotionSegment* segment,
     HYD_REAL effectiveMax;   /* v13: FF_PI 升压包络后的有效上限（其余策略 == config.outputMax） */
     HYD_REAL ffFlow;         /* v13: 本拍实际采用的前馈流量（FF_PI 下被 Q_ff 取代，见下） */
     HYD_BOOL trackingRequested;
+    HYD_BOOL shadowRequested = false;
 
     if (output == NULL) {
         return;
@@ -1000,15 +1005,32 @@ void HYD_PressureController_Execute(const HYD_MotionSegment* segment,
     }
 
     if (!state->initialized) {
+        HYD_PressureCalibrationStatus initialCalibrationStatus =
+            state->calibrationStatus;
+        HYD_TIME initialTimestamp = input->timestamp;
+        /* A production scan has a known fixed period even on the first call;
+         * seed one period of history so the first real sample is not treated
+         * as a zero-dt fault.  Variable-step direct callers retain the old
+         * timestamp semantics. */
+        if (input->enforceFixedSampling) {
+            initialTimestamp -= (HYD_TIME)HYD_DEFAULT_RBF_PID_SAMPLING_PERIOD;
+        }
         HYD_PressureController_InitState(state,
                                          input->measuredPressure,
                                          HYD_ClampReal(input->feedforwardFlow,
                                                        input->outputMin,
                                                        input->outputMax),
-                                         input->timestamp);
+                                         initialTimestamp);
+        /* Motion layer resolves calibration before entering this function;
+         * InitState clears transient controller memory, not that authority. */
+        state->calibrationStatus = initialCalibrationStatus;
     }
 
     HYD_ResolvePressureControllerConfig(segment, state, input, &config);
+    state->dtValid = !input->enforceFixedSampling ||
+        (config.dt > 0.0 &&
+         fabs(config.dt - (HYD_REAL)HYD_DEFAULT_RBF_PID_SAMPLING_PERIOD) <=
+             (HYD_REAL)HYD_RBF_VALID_DT_TOLERANCE);
 
     /* v13：把本拍实际生效的整定结果留在 state 上，供诊断与验收断言读取。
      * 见 HYD_PressureControllerState 中三个字段的注释（RBF 黑箱的教训）。 */
@@ -1035,6 +1057,45 @@ void HYD_PressureController_Execute(const HYD_MotionSegment* segment,
     effectiveMax = HYD_ResolveEffectiveUpperCap(&config, input, state,
                                                 input->targetPressure, error,
                                                 config.outputMax);
+
+    /* A capacity diagnosis is a hard safety decision, not an advisory bit.
+     * Never let FF/RBF continue to schedule an unreachable target while the
+     * cap is latched below Qss; retain the requested strategy for telemetry
+     * and use the same conservative PI baseline as the uncalibrated path. */
+    if (state->limitStatus != HYD_PRESSURE_LIMIT_NONE &&
+        (config.requestedStrategy == HYD_PRESSURE_CONTROLLER_FF_PI ||
+         config.requestedStrategy == HYD_PRESSURE_CONTROLLER_RBF_PID ||
+         config.requestedStrategy == HYD_PRESSURE_CONTROLLER_RBF_PI)) {
+        config.strategy = HYD_PRESSURE_CONTROLLER_PI;
+        config.strategySpec = HYD_FindPressureStrategySpec(
+            HYD_PRESSURE_CONTROLLER_PI);
+        config.kp = 0.10;
+        config.ki = 0.05;
+        config.kd = 0.0;
+        config.integralLimit = 0.10 * effectiveMax;
+        config.steadyStateFF = 0.0;
+        config.boostFlowLimitLmin = 0.0;
+    }
+    shadowRequested =
+        (config.requestedStrategy == HYD_PRESSURE_CONTROLLER_RBF_PID ||
+         config.requestedStrategy == HYD_PRESSURE_CONTROLLER_RBF_PI) &&
+        (config.strategy == HYD_PRESSURE_CONTROLLER_PI) &&
+        (state->calibrationStatus < HYD_PRESSURE_CALIBRATION_CALIBRATED ||
+         state->limitStatus != HYD_PRESSURE_LIMIT_NONE);
+    if (shadowRequested) {
+        if (!state->rbfInitialized) {
+            HYD_EnsureRbfPidInitialized(state,
+                                        config.samplingPeriod,
+                                        config.outputMax,
+                                        input->flowToPumpSpeedGain,
+                                        input->pumpSpeedLimit);
+            HYD_ApplyRbfPidConfig(state, &config, segment,
+                                  input->flowToPumpSpeedGain,
+                                  input->pumpSpeedLimit);
+        }
+        RBF_PID_SetEffectiveUpperCap(&state->rbfPid, (float)effectiveMax, true);
+        RBF_PID_SetDtValid(&state->rbfPid, state->dtValid);
+    }
     if (config.strategy == HYD_PRESSURE_CONTROLLER_FF_PI) {
         output->steadyStateFF = config.steadyStateFF;
         /* 【实测踩坑，勿删】FF_PI **取代**而不是叠加 legacy 名义保压流量。
@@ -1071,6 +1132,87 @@ void HYD_PressureController_Execute(const HYD_MotionSegment* segment,
     output->calibrationStatus = state->calibrationStatus;
     output->dtValid = state->dtValid;
 
+    /* A bad production sample must not turn an arbitrary timestamp delta into
+     * an integration or adaptive-learning step.  Hold the last command,
+     * preserve filter/controller history, and re-anchor time so the next
+     * valid 1 ms sample can recover without a large dt burst. */
+    if (input->enforceFixedSampling && !state->dtValid) {
+        /* Keep the actuator reachability observation current even while a
+         * malformed production timestamp freezes the controller. */
+        HYD_ApplyPumpFeedbackToRbfPid(state, input, output);
+        if (shadowRequested) {
+            RBF_PID_ShadowUpdate(&state->rbfShadow, &state->rbfPid,
+                                 (float)input->targetPressure,
+                                 (float)filteredPressure,
+                                 (float)output->outputFlow,
+                                 (float)config.dt,
+                                 false);
+            state->gDu = state->rbfShadow.g_du;
+            state->promotionValidSamples = 0U;
+        }
+        if (state->rbfInitialized) {
+            RBF_PID_SetDtValid(&state->rbfPid, false);
+        }
+        state->adaptationFreezeReason = HYD_PRESSURE_ADAPTATION_FREEZE_INVALID_DT;
+        state->adaptationFreezeCount++;
+        output->outputFlow = HYD_ClampReal(state->previousOutput,
+                                           config.outputMin,
+                                           effectiveMax);
+        output->unsaturatedOutputFlow = state->previousOutput;
+        output->saturated = (output->outputFlow != output->unsaturatedOutputFlow);
+        output->adaptiveActive = false;
+        output->samplingPeriod = config.samplingPeriod;
+        output->outputFlow = HYD_ClampReal(output->outputFlow,
+                                           config.outputMin,
+                                           effectiveMax);
+        output->effectiveUpperCap = effectiveMax;
+        output->dtValid = false;
+        state->previousOutput = output->outputFlow;
+        state->previousTimestamp = input->timestamp;
+        state->activeStrategy = config.strategy;
+        output->calibrationStatus = state->calibrationStatus;
+        output->gDu = state->gDu;
+        output->promotionValidSamples = state->promotionValidSamples;
+        output->adaptationFreezeCount = state->adaptationFreezeCount;
+        output->adaptationFreezeReason = state->adaptationFreezeReason;
+        return;
+    }
+    if (state->adaptationFreezeReason == HYD_PRESSURE_ADAPTATION_FREEZE_INVALID_DT) {
+        state->adaptationFreezeReason = HYD_PRESSURE_ADAPTATION_FREEZE_NONE;
+    }
+
+    if (config.requestedStrategy != HYD_PRESSURE_CONTROLLER_PI &&
+        config.requestedStrategy != HYD_PRESSURE_CONTROLLER_P &&
+        config.requestedStrategy != HYD_PRESSURE_CONTROLLER_PID &&
+        config.strategy == HYD_PRESSURE_CONTROLLER_PI &&
+        state->calibrationStatus < HYD_PRESSURE_CALIBRATION_CALIBRATED) {
+        if (state->adaptationFreezeReason !=
+            HYD_PRESSURE_ADAPTATION_FREEZE_UNCALIBRATED) {
+            state->adaptationFreezeCount++;
+        }
+        state->adaptationFreezeReason =
+            HYD_PRESSURE_ADAPTATION_FREEZE_UNCALIBRATED;
+        output->adaptiveActive = false;
+        output->calibrationStatus = state->calibrationStatus;
+    }
+
+    if (shadowRequested && config.strategy == HYD_PRESSURE_CONTROLLER_PI) {
+        HYD_ApplyPumpFeedbackToRbfPid(state, input, output);
+        RBF_PID_ShadowUpdate(&state->rbfShadow, &state->rbfPid,
+                             (float)input->targetPressure,
+                             (float)filteredPressure,
+                             (float)output->actualFlow,
+                             (float)config.dt,
+                             state->dtValid);
+        state->gDu = state->rbfShadow.g_du;
+        state->promotionValidSamples = state->rbfShadow.confidence_sample_count;
+        if (!state->rbfShadow.quality_valid) {
+            state->adaptationFreezeReason =
+                HYD_PRESSURE_ADAPTATION_FREEZE_LOW_EXCITATION;
+            state->adaptationFreezeCount++;
+        }
+    }
+
     if (config.strategy == HYD_PRESSURE_CONTROLLER_RBF_PID ||
         config.strategy == HYD_PRESSURE_CONTROLLER_RBF_PI) {
         HYD_REAL effectiveTargetPressure;
@@ -1094,6 +1236,16 @@ void HYD_PressureController_Execute(const HYD_MotionSegment* segment,
 
         if (needsAdaptiveReset) {
             output->trackingApplied = true;
+            /* Confidence belongs to one operating point.  A target jump or
+             * strategy hand-off keeps the calibrated plant knowledge but
+             * invalidates the consecutive shadow-quality window. */
+            memset(&state->rbfShadow, 0, sizeof(state->rbfShadow));
+            state->promotionValidSamples = 0U;
+            if (state->calibrationStatus ==
+                HYD_PRESSURE_CALIBRATION_ADAPTATION_CONFIDENT) {
+                state->calibrationStatus =
+                    HYD_PRESSURE_CALIBRATION_CALIBRATED;
+            }
             if (state->softResetPending) {
                 /* 软复位：保留网络，只清工况特定状态 + 增益收敛到窗口中心 */
                 HYD_SoftResetRbfPidState(state, trackedOutputFlow,
@@ -1113,11 +1265,59 @@ void HYD_PressureController_Execute(const HYD_MotionSegment* segment,
             }
         }
 
+        /* The controller owns the single effective cap.  Once the target/K
+         * have been synchronized, preserve the RBF physical soft cap as one
+         * input to that resolver, then feed the resolved result back into RBF
+         * for output and anti-windup. */
+        {
+            HYD_REAL intrinsicCap = (HYD_REAL)RBF_PID_GetIntrinsicUpperCap(
+                &state->rbfPid,
+                (float)error);
+            if (intrinsicCap > 0.0 && intrinsicCap < effectiveMax) {
+                effectiveMax = intrinsicCap;
+                state->effectiveUpperCap = effectiveMax;
+                output->effectiveUpperCap = effectiveMax;
+            }
+        }
+
         /* v10: 泵电机反馈 → 算法（数据链最后一环）。
          * 必须放在复位之后：RBF_PID_Reset() 会 memset 句柄，
          * 把 external_flow_cap 一并清零，因此每拍都在复位后重新注入。 */
         HYD_ApplyPumpFeedbackToRbfPid(state, input, output);
         RBF_PID_SetEffectiveUpperCap(&state->rbfPid, (float)effectiveMax, true);
+        RBF_PID_SetDtValid(&state->rbfPid, state->dtValid);
+        RBF_PID_ShadowUpdate(&state->rbfShadow, &state->rbfPid,
+                             (float)input->targetPressure,
+                             (float)filteredPressure,
+                             (float)output->actualFlow,
+                             (float)config.dt,
+                             state->dtValid);
+        state->gDu = state->rbfShadow.g_du;
+        state->promotionValidSamples = state->rbfShadow.confidence_sample_count;
+        if (state->rbfShadow.valid && state->rbfShadow.quality_valid) {
+            state->adaptationFreezeReason = HYD_PRESSURE_ADAPTATION_FREEZE_NONE;
+            if (state->promotionValidSamples >= 500U) {
+                state->calibrationStatus =
+                    HYD_PRESSURE_CALIBRATION_ADAPTATION_CONFIDENT;
+            }
+        } else if (state->rbfPid.output_saturated) {
+            state->adaptationFreezeReason =
+                HYD_PRESSURE_ADAPTATION_FREEZE_SATURATED;
+            state->adaptationFreezeCount++;
+        } else if (state->rbfShadow.valid &&
+                   state->rbfShadow.residual_rms > 2.0f) {
+            state->adaptationFreezeReason =
+                HYD_PRESSURE_ADAPTATION_FREEZE_RESIDUAL_HIGH;
+            state->adaptationFreezeCount++;
+        } else if (state->rbfShadow.valid) {
+            state->adaptationFreezeReason =
+                HYD_PRESSURE_ADAPTATION_FREEZE_LOW_EXCITATION;
+            state->adaptationFreezeCount++;
+        } else if (!state->dtValid) {
+            state->adaptationFreezeReason =
+                HYD_PRESSURE_ADAPTATION_FREEZE_INVALID_DT;
+            state->adaptationFreezeCount++;
+        }
 
         effectiveTargetPressure = input->targetPressure -
             ((input->targetPressure - filteredPressure) - error);
@@ -1165,6 +1365,11 @@ void HYD_PressureController_Execute(const HYD_MotionSegment* segment,
         state->previousOutput = outputFlow;
         state->previousTimestamp = input->timestamp;
         state->activeStrategy = config.strategy;
+        output->calibrationStatus = state->calibrationStatus;
+        output->gDu = state->gDu;
+        output->promotionValidSamples = state->promotionValidSamples;
+        output->adaptationFreezeCount = state->adaptationFreezeCount;
+        output->adaptationFreezeReason = state->adaptationFreezeReason;
         return;
     }
 
@@ -1245,4 +1450,9 @@ void HYD_PressureController_Execute(const HYD_MotionSegment* segment,
     state->previousOutput = outputFlow;
     state->previousTimestamp = input->timestamp;
     state->activeStrategy = config.strategy;
+    output->calibrationStatus = state->calibrationStatus;
+    output->gDu = state->gDu;
+    output->promotionValidSamples = state->promotionValidSamples;
+    output->adaptationFreezeCount = state->adaptationFreezeCount;
+    output->adaptationFreezeReason = state->adaptationFreezeReason;
 }

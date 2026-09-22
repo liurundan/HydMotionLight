@@ -46,6 +46,12 @@ typedef struct {
     HYD_REAL plantTauS;            /* τ [s]，对象一阶时间常数 */
     HYD_REAL loopOmega;            /* ωn [rad/s]，目标闭环带宽 */
     HYD_REAL systemGainKsys;       /* Ksys [bar/rpm]，机型标定兼容字段 */
+
+    /* Production IEC path sets this flag to enforce the fixed 1 ms contract.
+     * Direct controller tests/tools leave it false so they may intentionally
+     * exercise variable-step behavior without silently changing the machine
+     * runtime contract. */
+    HYD_BOOL enforceFixedSampling;
 } HYD_PressureControllerInput;
 
 typedef struct {
@@ -61,6 +67,7 @@ typedef struct {
     HYD_TIME previousTimestamp;
     HYD_PressureControllerType activeStrategy;
     RBF_PID_Handle rbfPid;
+    RBF_PID_ShadowState rbfShadow;
 
     /* --- v13：本拍**实际生效**的整定结果快照（纯观测，不参与控制） ---
      *

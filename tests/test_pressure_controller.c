@@ -22,7 +22,7 @@ static HYD_MotionSegment make_pressure_segment(void) {
     segment.pressureDerivativeFilterAlpha = 1.0;
     /* Explicit K_process keeps direct controller fixtures on the calibrated
      * compatibility path; production IEC entry supplies calibration status. */
-    segment.systemGain = 30.0;
+    segment.systemGain = 200.0;
     return segment;
 }
 
@@ -264,11 +264,12 @@ static void test_rbf_pid_strategy_executes_within_limits_and_adapts(void) {
     printf("Testing adaptive RBF-PID pressure strategy integration...\n");
     segment = make_pressure_segment();
     segment.pressureController = HYD_PRESSURE_CONTROLLER_RBF_PID;
-    segment.systemGain = 30.0;
+    segment.systemGain = 200.0;
     segment.targetFlow = 0.0;
-    segment.maxFlow = 1.0;
+    segment.maxFlow = 20.0;
 
     HYD_PressureController_InitState(&state, 0.0, 0.0, 0.0);
+    state.calibrationStatus = HYD_PRESSURE_CALIBRATION_CALIBRATED;
     feedback = 0.0;
 
     for (step = 0; step < 20; ++step) {
@@ -331,6 +332,7 @@ static void test_rbf_pid_strategy_uses_library_default_tuning_profile(void) {
     memset(&segment.pressureRbfConfig, 0, sizeof(segment.pressureRbfConfig));
 
     HYD_PressureController_InitState(&state, 5.0, segment.targetFlow, 0.0);
+    state.calibrationStatus = HYD_PRESSURE_CALIBRATION_CALIBRATED;
 
     input.targetPressure = 20.0;
     input.measuredPressure = 5.0;
@@ -381,6 +383,7 @@ static void test_rbf_pid_strategy_uses_segment_level_tuning_profile(void) {
     segment.pressureRbfConfig.disablePressureAccelFeedforward = 1.0;
 
     HYD_PressureController_InitState(&state, 5.0, segment.targetFlow, 0.0);
+    state.calibrationStatus = HYD_PRESSURE_CALIBRATION_CALIBRATED;
 
     input.targetPressure = 20.0;
     input.measuredPressure = 5.0;
@@ -449,6 +452,7 @@ static void test_rbf_pid_strategy_switch_tracks_previous_output_bumplessly(void)
 
     segment.pressureController = HYD_PRESSURE_CONTROLLER_RBF_PID;
     segment.systemGain = 30.0;
+    state.calibrationStatus = HYD_PRESSURE_CALIBRATION_CALIBRATED;
     input.targetPressure = 10.0;
     input.measuredPressure = 10.0;
     input.flowToPumpSpeedGain = 20.0;
@@ -488,6 +492,7 @@ static void test_rbf_pi_strategy_disables_derivative_behavior(void) {
     segment.pressureRbfConfig.etaD = 0.13;
 
     HYD_PressureController_InitState(&state, 5.0, segment.targetFlow, 0.0);
+    state.calibrationStatus = HYD_PRESSURE_CALIBRATION_CALIBRATED;
 
     memset(&input, 0, sizeof(input));
     input.targetPressure = 20.0;

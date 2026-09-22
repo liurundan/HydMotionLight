@@ -558,6 +558,11 @@ float RBF_PID_OverdriveFlowCap(const RBF_PID_Handle *pid, float error) {
     if (pid == NULL) {
         return 0.0f;
     }
+    if (pid->effective_upper_cap_valid) {
+        return clampf(rbf_pid_output_lower_bound(pid),
+                      pid->effective_upper_cap,
+                      rbf_pid_output_upper_bound(pid));
+    }
     return rbf_pid_overdrive_cap(pid, error);
 }
 
@@ -650,7 +655,7 @@ static float rbf_pid_boost_flow_cap(const RBF_PID_Handle *pid, float error) {
     return q_ss + (q_boost - q_ss) * frac;
 }
 
-static float rbf_pid_effective_soft_cap(const RBF_PID_Handle *pid, float error) {
+static float rbf_pid_intrinsic_soft_cap(const RBF_PID_Handle *pid, float error) {
     float cap;
     float boost_cap;
 
@@ -677,6 +682,15 @@ static float rbf_pid_effective_soft_cap(const RBF_PID_Handle *pid, float error) 
         cap = boost_cap;
     }
     return cap;
+}
+
+static float rbf_pid_effective_soft_cap(const RBF_PID_Handle *pid, float error) {
+    if (pid->effective_upper_cap_valid) {
+        return clampf(rbf_pid_output_lower_bound(pid),
+                      pid->effective_upper_cap,
+                      rbf_pid_output_upper_bound(pid));
+    }
+    return rbf_pid_intrinsic_soft_cap(pid, error);
 }
 
 #define ETA_KD_BOOST 0.5f // 微分强制唤醒系数
@@ -1006,10 +1020,10 @@ float RBF_PID_Update(RBF_PID_Handle *pid, float setpoint, float feedback) {
     error = rbf_pid_apply_deadband(raw_error);
     pid->Error = error;
     if (target_jump) {
-        /* The outer pressure controller already seeds the error history when
-         * it performs a target soft reset.  Keep the causal error history
-         * here so standalone RBF callers retain their incremental response;
-         * only the independently filtered D state needs a kick-free seed. */
+        /* Seed the causal history on standalone target jumps as well as outer
+         * controller soft resets; this prevents a one-sample D kick. */
+        pid->e_prev1 = error;
+        pid->e_prev2 = error;
         pid->prev_d_term = 0.0f;
     }
     pid->control_state = rbf_pid_resolve_control_state(pid, raw_error);
@@ -1159,6 +1173,19 @@ void RBF_PID_SetEffectiveUpperCap(RBF_PID_Handle *pid, float cap_lmin, bool vali
     pid->effective_upper_cap_valid = valid && isfinite(cap_lmin) && cap_lmin >= 0.0f;
 }
 
+float RBF_PID_GetIntrinsicUpperCap(const RBF_PID_Handle *pid, float error) {
+    float cap;
+    if (pid == NULL) {
+        return 0.0f;
+    }
+    cap = rbf_pid_intrinsic_soft_cap(pid, error);
+    if (pid->external_flow_cap_valid && pid->external_flow_cap < cap) {
+        cap = pid->external_flow_cap;
+    }
+    return clampf(rbf_pid_output_lower_bound(pid), cap,
+                  rbf_pid_output_upper_bound(pid));
+}
+
 void RBF_PID_ShadowUpdate(RBF_PID_ShadowState *shadow,
                           const RBF_PID_Handle *pid,
                           float setpoint,
@@ -1166,23 +1193,64 @@ void RBF_PID_ShadowUpdate(RBF_PID_ShadowState *shadow,
                           float measured_flow,
                           float dt,
                           bool dt_valid) {
-    (void)measured_flow;
+    const float residual_limit = 2.0f;
+    const float g_du_min = 0.005f;
+    const float g_du_max = 2.0f;
+    float delta_flow;
+    float predicted_feedback;
+    float innovation;
+    float excitation_floor;
+    bool quality_ok;
+
     if (shadow == NULL) {
         return;
     }
 
     shadow->last_dt = dt;
     shadow->valid = false;
+    shadow->quality_valid = false;
     if (pid != NULL && dt_valid && isfinite(dt) &&
         fabsf(dt - HYD_DEFAULT_RBF_PID_SAMPLING_PERIOD) <=
             HYD_RBF_VALID_DT_TOLERANCE &&
-        isfinite(setpoint) && isfinite(feedback)) {
-        shadow->residual = feedback - setpoint;
+        isfinite(setpoint) && isfinite(feedback) && isfinite(measured_flow)) {
+        delta_flow = shadow->history_valid ?
+            (measured_flow - shadow->previous_flow) : 0.0f;
+        predicted_feedback = shadow->history_valid
+            ? shadow->previous_feedback + pid->Jacobian * delta_flow
+            : feedback;
+        innovation = feedback - predicted_feedback;
+        shadow->residual = innovation;
         shadow->g_du = pid->Jacobian;
+        if (!shadow->history_valid) {
+            shadow->residual_rms = fabsf(innovation);
+        } else {
+            shadow->residual_rms = sqrtf(0.98f * shadow->residual_rms *
+                                         shadow->residual_rms +
+                                         0.02f * innovation * innovation);
+        }
+        excitation_floor = 0.02f *
+            ((pid->flow_normalization_scale > 0.0f)
+                ? pid->flow_normalization_scale : 90.0f);
+        quality_ok = shadow->g_du >= g_du_min &&
+                     shadow->g_du <= g_du_max &&
+                     fabsf(delta_flow) >= excitation_floor &&
+                     shadow->residual_rms <= residual_limit &&
+                     !pid->output_saturated &&
+                     !pid->adaptation_frozen;
         shadow->valid_sample_count++;
+        if (quality_ok) {
+            shadow->confidence_sample_count++;
+            shadow->quality_valid = true;
+        } else {
+            shadow->confidence_sample_count = 0U;
+        }
+        shadow->previous_feedback = feedback;
+        shadow->previous_flow = measured_flow;
+        shadow->history_valid = true;
         shadow->valid = true;
     } else {
         shadow->invalid_sample_count++;
+        shadow->confidence_sample_count = 0U;
     }
 }
 

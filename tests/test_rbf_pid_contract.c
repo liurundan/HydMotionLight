@@ -28,7 +28,10 @@ static void test_effective_cap_and_shadow_are_side_effect_free(void) {
     RBF_PID_ShadowUpdate(&shadow, &pid, 10.0f, 8.0f, 1.0f, 0.001f, true);
     assert(shadow.valid);
     assert(shadow.valid_sample_count == 1U);
-    assert(fabsf(shadow.residual + 2.0f) < 1.0e-6f);
+    assert(fabsf(shadow.residual) < 1.0e-6f);
+    RBF_PID_ShadowUpdate(&shadow, &pid, 10.0f, 8.0f, 4.0f, 0.001f, true);
+    assert(shadow.valid_sample_count == 2U);
+    assert(isfinite(shadow.residual));
     assert(pid.Output == output_before);
 
     RBF_PID_ShadowUpdate(&shadow, &pid, 10.0f, 8.0f, 1.0f, 0.0f, false);

@@ -43,7 +43,7 @@
 #define HYD_PARAM_EXT_FB_BYTES        32U
 #define HYD_FF_PI_PARAM_FB_BYTES       8U
 #define HYD_FF_PI_OBSERVABILITY_BYTES 16U
-#define HYD_CALIBRATION_OBSERVABILITY_BYTES 112U
+#define HYD_CALIBRATION_OBSERVABILITY_BYTES 176U
 
 static HYD_TogglePreparedConfig validated_default(void)
 {

@@ -369,3 +369,9 @@ add_test(NAME test_ff_pi_contract COMMAND test_ff_pi_contract)
 add_executable(test_pressure_cap_contract tests/test_pressure_cap_contract.c)
 target_link_libraries(test_pressure_cap_contract PRIVATE HydroMotionLib)
 add_test(NAME test_pressure_cap_contract COMMAND test_pressure_cap_contract)
+
+# Consolidated RBF-PID practicality contract: fixed-dt freeze/recovery,
+# calibration fallback, shared cap consumption, D lifecycle and shadow quality.
+add_executable(test_rbf_pid_practicality tests/test_rbf_pid_practicality.c)
+target_link_libraries(test_rbf_pid_practicality PRIVATE HydroMotionLib)
+add_test(NAME test_rbf_pid_practicality COMMAND test_rbf_pid_practicality)

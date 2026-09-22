@@ -132,6 +132,7 @@ static void test_default_config_meets_all_three(void) {
     HYD_PRESSUREHANDLE ph;
     float pmax = 0.0f, p90 = -1.0f;
     float filtered_min = 1.0e30f, filtered_max = -1.0e30f;
+    float measured_min = 1.0e30f, measured_max = -1.0e30f;
     float sum = 0.0f, sq = 0.0f;
     int i, n = 0, settled = 0, p90_confirm = 0;
     float ess, sigma, mp;
@@ -195,6 +196,8 @@ static void test_default_config_meets_all_three(void) {
                 filtered_min = (float)fb->_pressureController.previousFilteredPressure;
             if ((float)fb->_pressureController.previousFilteredPressure > filtered_max)
                 filtered_max = (float)fb->_pressureController.previousFilteredPressure;
+            if (po.measured_pressure_bar < measured_min) measured_min = po.measured_pressure_bar;
+            if (po.measured_pressure_bar > measured_max) measured_max = po.measured_pressure_bar;
         }
     }
     if (n > 0) {
@@ -205,10 +208,11 @@ static void test_default_config_meets_all_three(void) {
         ess = 1e9f; sigma = 1e9f;
     }
     (void)settled;
-    printf("      S2 ess=%.3f bar  sigma=%.3f bar RMS  filtered_p2p=%.3f bar\n",
-           ess, sigma, filtered_max - filtered_min);
+    printf("      S2 ess=%.3f bar  sigma=%.3f bar RMS  measured_p2p=%.3f filtered_p2p=%.3f bar\n",
+           ess, sigma, measured_max - measured_min, filtered_max - filtered_min);
 
-    ASSERT_TRUE(p90 > 0.0f, "默认配置必须真的升到 90% 目标压力");
+    ASSERT_TRUE(p90 > 0.0f && p90 <= 800.0f,
+                "calibrated 配置：real pressure p90 必须在 800 ms 内");
     ASSERT_TRUE(pmax <= 150.0f * (1.0f + TARGET_MP_PCT / 100.0f),
                 "默认配置：升压超调 Mp 必须 <= 5%");
     ASSERT_TRUE(fabsf(ess) <= TARGET_ESS_BAR, "calibrated 配置：保压 ess 必须 <= 1 bar");
@@ -288,6 +292,7 @@ static void test_explicit_config_still_overrides(void) {
     iec_write(axisId, HYD_PARAM_PUMP_VOLUMETRIC_EFF, PUMP_VOL_EFF);
     iec_write(axisId, HYD_PARAM_PUMP_MAX_SPEED, PUMP_MAX_RPM);
     iec_write(axisId, HYD_PARAM_PRESSURE_SYSTEM_GAIN, 120.0f);      /* 显式 K */
+    iec_write(axisId, HYD_PARAM_PRESSURE_PLANT_TAU, DEFAULT_TAU);
     iec_write(axisId, HYD_PARAM_PRESSURE_BOOST_FLOW_LIMIT, 8.0f);   /* 显式限流 */
 
     PressureModel_InitParams(&pp);
