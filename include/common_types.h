@@ -257,6 +257,30 @@ typedef enum {
     HYD_PRESSURE_CONTROLLER_FF_PI
 } HYD_PressureControllerType;
 
+/* RBF-PID预设模式（工业实用性简化接口）
+ *
+ * 通过预设模式将147个RBF内部参数简化为5个必填参数：
+ *   1. systemGain (K)
+ *   2. plantTau (τ)
+ *   3. maxPressure
+ *   4. maxFlow
+ *   5. rbfPreset (选择场景)
+ *
+ * 应用场景推荐：
+ *   - THIN_WALL:     薄壁件射胶（快速充填，熔体剪切稀化明显）
+ *   - THICK_WALL:    厚壁件保压（长周期冷却，补缩动态变化）
+ *   - STANDARD:      标准通用配置（平衡响应速度和稳定性）
+ *   - PLASTICATION:  储料背压（物料批次差异大，需自学习）
+ *   - CUSTOM:        专家模式（手动配置所有147个参数）
+ */
+typedef enum {
+    HYD_RBF_PRESET_CUSTOM = 0,        /* 自定义（专家模式，需配所有参数） */
+    HYD_RBF_PRESET_THIN_WALL = 1,     /* 薄壁件射胶（激进学习） */
+    HYD_RBF_PRESET_THICK_WALL = 2,    /* 厚壁件保压（保守学习） */
+    HYD_RBF_PRESET_STANDARD = 3,      /* 标准配置（中庸） */
+    HYD_RBF_PRESET_PLASTICATION = 4   /* 储料背压（批次自学习） */
+} HYD_RbfPreset;
+
 typedef enum {
     HYD_PRESSURE_CALIBRATION_UNCALIBRATED = 0,
     HYD_PRESSURE_CALIBRATION_CALIBRATED = 1,
@@ -277,7 +301,8 @@ typedef enum {
     HYD_PRESSURE_ADAPTATION_FREEZE_RESIDUAL_HIGH = 4,
     HYD_PRESSURE_ADAPTATION_FREEZE_SATURATED = 5,
     HYD_PRESSURE_ADAPTATION_FREEZE_UNCALIBRATED = 6,
-    HYD_PRESSURE_ADAPTATION_FREEZE_CAPACITY_LIMIT = 7
+    HYD_PRESSURE_ADAPTATION_FREEZE_CAPACITY_LIMIT = 7,
+    HYD_PRESSURE_ADAPTATION_FREEZE_DIVERGENCE = 8  /* RBF增益发散，已自动回退PI */
 } HYD_PressureAdaptationFreezeReason;
 
 /* BufferMode values follow Beckhoff / PLCopen MC2 ordering.
@@ -673,6 +698,10 @@ typedef enum {
                                          * 增大 = 更快，但超过稳定边界会放大纹波（实测边界 wn≈18~20，
                                          * 见评估报告 §2.2）。默认值取边界的 ~70%。 */
     HYD_PARAM_PRESSURE_SYSTEM_KSYS,     /* 机型稳态增益 Ksys [bar/rpm]，0 = 未标定 */
+    /* --- RBF-PID 工业实用性简化接口（v14，2026-09-22）--- */
+    HYD_PARAM_RBF_PRESET,               /* RBF预设模式 HYD_RbfPreset，0=CUSTOM 1=THIN_WALL 2=THICK_WALL 3=STANDARD 4=PLASTICATION */
+    HYD_PARAM_RBF_AGGRESSIVENESS,       /* 响应激进度 [0.5-2.0]，默认1.0。>1激进，<1保守，影响学习率 */
+    HYD_PARAM_RBF_ENABLE_ADAPTATION,    /* 是否开启在线学习 [0/1]，默认1。关闭后RBF退化为固定增益PID */
     HYD_PARAM_COUNT
 } HYD_ParameterNumber;
 
@@ -725,6 +754,11 @@ typedef struct {
     HYD_REAL pressurePlantTauS;          /* τ [s]，对象一阶时间常数 */
     HYD_REAL pressureLoopOmega;          /* ωn [rad/s]，目标闭环带宽 */
     HYD_REAL pressureSystemKsys;         /* Ksys [bar/rpm]，0 = 未标定 */
+    /* --- RBF-PID 工业实用性简化接口（v14，2026-09-22）--- */
+    HYD_RbfPreset rbfPreset;             /* RBF预设模式，默认 CUSTOM */
+    HYD_REAL rbfAggressiveness;          /* 响应激进度 [0.5-2.0]，默认1.0 */
+    HYD_BOOL rbfEnableAdaptation;        /* 是否开启在线学习，默认true */
+    HYD_BOOL rbfPresetDirty;             /* 预设参数需重新推导标志（内部使用） */
 } HYD_MotionFBParams;
 
 /* ============================================================================

@@ -2478,6 +2478,18 @@ static HYD_BOOL HYD_ExecuteActiveSegmentControl(HYD_MotionControlFB* fb,
         /* v13: FF_PI 解析整定参数（0 → 控制器内部用库默认） */
         pressureInput.plantTauS = fb->_params.pressurePlantTauS;
         pressureInput.loopOmega = fb->_params.pressureLoopOmega;
+        /* v14: RBF预设参数推导（仅在预设脏标志时） */
+        if (fb->_params.rbfPresetDirty &&
+            fb->_params.pressureControllerType == HYD_PRESSURE_CONTROLLER_RBF_PID) {
+            HYD_DeriveRbfConfigFromPreset(
+                fb->_params.rbfPreset,
+                fb->_params.pressureSystemGain,
+                fb->_params.pressurePlantTauS,
+                fb->_params.maxFlow,
+                fb->_params.rbfAggressiveness,
+                &fb->_pressureController.rbfPid);
+            fb->_params.rbfPresetDirty = false;
+        }
         pressureInput.timestamp = HYD_GetCurrentSegmentTime(fb);
         /* The IEC motion cycle is the production owner of the fixed 1 ms
          * pressure-loop contract.  Direct controller callers intentionally
@@ -3827,6 +3839,11 @@ void HYD_MotionControlFB_Init(HYD_MotionControlFB* fb) {
     fb->_params.pressurePlantTauS = 0.0f;
     fb->_params.pressureLoopOmega = 0.0f;
     fb->_params.pressureSystemKsys = 0.0f;
+    /* v14: RBF-PID 工业实用性简化接口默认值 */
+    fb->_params.rbfPreset = HYD_RBF_PRESET_STANDARD;
+    fb->_params.rbfAggressiveness = 1.0f;
+    fb->_params.rbfEnableAdaptation = true;
+    fb->_params.rbfPresetDirty = false;
 
     /* Legacy defaults — used when pumpConfig/cylinderConfig are not configured.
      * pumpConfig and cylinderConfig are zero after memset — inactive by default. */
@@ -4420,6 +4437,9 @@ HYD_BOOL HYD_MotionControlFB_ReadParameter(const HYD_MotionControlFB* fb, int pa
         case HYD_PARAM_PRESSURE_PLANT_TAU:             *value = fb->_params.pressurePlantTauS; break;
         case HYD_PARAM_PRESSURE_LOOP_OMEGA:            *value = fb->_params.pressureLoopOmega; break;
         case HYD_PARAM_PRESSURE_SYSTEM_KSYS:           *value = fb->_params.pressureSystemKsys; break;
+        case HYD_PARAM_RBF_PRESET:                     *value = (HYD_REAL)fb->_params.rbfPreset; break;
+        case HYD_PARAM_RBF_AGGRESSIVENESS:             *value = fb->_params.rbfAggressiveness; break;
+        case HYD_PARAM_RBF_ENABLE_ADAPTATION:          *value = fb->_params.rbfEnableAdaptation ? 1.0f : 0.0f; break;
         default: return false;
     }
     return true;
@@ -4508,6 +4528,23 @@ HYD_BOOL HYD_MotionControlFB_WriteParameter(HYD_MotionControlFB* fb, int paramNu
         case HYD_PARAM_PRESSURE_SYSTEM_KSYS:
             fb->_params.pressureSystemKsys =
                 (isfinite(value) && value > 0.0) ? value : 0.0;
+            break;
+        case HYD_PARAM_RBF_PRESET:
+            if ((int)value < 0 || (int)value > HYD_RBF_PRESET_PLASTICATION) {
+                return false;
+            }
+            fb->_params.rbfPreset = (HYD_RbfPreset)(int)value;
+            fb->_params.rbfPresetDirty = true;
+            break;
+        case HYD_PARAM_RBF_AGGRESSIVENESS:
+            if (value < 0.5f || value > 2.0f) {
+                return false;
+            }
+            fb->_params.rbfAggressiveness = value;
+            fb->_params.rbfPresetDirty = true;
+            break;
+        case HYD_PARAM_RBF_ENABLE_ADAPTATION:
+            fb->_params.rbfEnableAdaptation = (value >= 0.5f);
             break;
         case HYD_PARAM_PUMP_DISPLACEMENT:
             fb->pumpConfig.displacementMlRev = value;

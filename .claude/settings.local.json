@@ -4,13 +4,29 @@
       "Read(//mnt/c/Users/Administrator/AppData/Local/Microsoft/WindowsApps/**)",
       "Read(///wsl.localhost/Ubuntu-22.04/home/dan/project/hdy-motion-light/docs/superpowers/plans/**)",
       "Read(///wsl.localhost/Ubuntu-22.04/home/dan/project/**)",
-      "Bash(cmake --preset unixgcc)",
-      "Bash(wsl -d Ubuntu-22.04 -- bash -lc \"cd /home/dan/project/hdy-motion-light && cmake --preset unixgcc\")",
-      "Bash(wsl -d Ubuntu-22.04 -- bash -lc \"cd /home/dan/project/hdy-motion-light && rm -rf out/build/unixgcc && cmake --preset unixgcc\")",
+      "Bash(cmake --preset *)",
+      "Bash(cmake --build *)",
+      "Bash(ctest *)",
+      "Bash(D:/mingw64/bin/gcc *)",
+      "Bash(D:/mingw64/bin/mingw32-make *)",
+      "Bash(wsl -d Ubuntu-22.04 -- bash -lc \"cd /home/dan/project/hyd-motion-light && cmake --preset unixgcc\")",
+      "Bash(wsl -d Ubuntu-22.04 -- bash -lc \"cd /home/dan/project/hyd-motion-light && rm -rf out/build/unixgcc && cmake --preset unixgcc\")",
       "Bash(wsl *)"
     ]
   },
   "skillOverrides": {
     "algorithmic-art": "name-only"
+  },
+  "build": {
+    "windows": {
+      "preset": "mingw-w64",
+      "compiler": "D:/mingw64/bin/gcc.exe",
+      "make": "D:/mingw64/bin/mingw32-make.exe",
+      "buildDir": "out/build/mingw-w64"
+    },
+    "linux": {
+      "preset": "unixgcc",
+      "buildDir": "out/build/unixgcc"
+    }
   }
 }

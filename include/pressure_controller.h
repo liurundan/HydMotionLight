@@ -158,4 +158,25 @@ void HYD_PressureController_Execute(const HYD_MotionSegment* segment,
                                     const HYD_PressureControllerInput* input,
                                     HYD_PressureControllerOutput* output);
 
+/* RBF-PID预设参数推导函数
+ *
+ * 从预设模式推导RBF-PID完整配置（147个内部参数）
+ *
+ * @param preset         预设模式（THIN_WALL/THICK_WALL/STANDARD/PLASTICATION）
+ * @param systemGain     系统增益 K [bar/(L/min)]
+ * @param plantTau       对象时间常数 τ [s]
+ * @param maxFlow        最大流量 [L/min]
+ * @param aggressiveness 响应激进度 [0.5-2.0]，默认1.0
+ * @param pid            输出：RBF_PID_Handle指针（已初始化，仅覆盖学习参数）
+ *
+ * @note CUSTOM模式不推导，保持用户手动设置
+ */
+void HYD_DeriveRbfConfigFromPreset(
+    HYD_RbfPreset preset,
+    HYD_REAL systemGain,
+    HYD_REAL plantTau,
+    HYD_REAL maxFlow,
+    HYD_REAL aggressiveness,
+    RBF_PID_Handle* pid);
+
 #endif /* HYD_PRESSURE_CONTROLLER_H */

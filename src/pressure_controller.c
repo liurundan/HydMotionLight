@@ -575,11 +575,13 @@ static void HYD_ApplyPumpFeedbackToRbfPid(HYD_PressureControllerState* state,
 
     /* 抗饱和只在"正向贴限"时收紧上限。
      * 泵反转（rpm < 0，快速泄压）并非流量不足，干预会阻碍泄压；
-     * 且 RBF_PID 的 cap 只作用于上限，下限（负流量）本就不受影响。 */
-    if (input->pumpFeedbackAntiWindup && speedSaturated && forward) {
+     * 且 RBF_PID 的 cap 只作用于上限，下限（负流量）本就不受影响。
+     * v14修复：负流时也需调用SetExternalFlowCap通知控制器实际输出（防止积分器发散）。 */
+    if (input->pumpFeedbackAntiWindup && speedSaturated) {
+        /* forward=true时传正值，false时传负值（泄压实际流量） */
         RBF_PID_SetExternalFlowCap(&state->rbfPid,
-                                   (float)((actualFlow > 0.0) ? actualFlow : 0.0),
-                                   true);
+                                   (float)actualFlow,
+                                   forward);  /* 仅正向时有效限幅 */
     } else {
         RBF_PID_SetExternalFlowCap(&state->rbfPid, 0.0f, false);
     }
