@@ -833,6 +833,14 @@
 								<REAL />
 							</type>
 						</variable>
+						<variable name="FLOWLIMITPERCENT">
+							<type>
+								<REAL />
+							</type>
+							<initialValue>
+								<simpleValue value="100" />
+							</initialValue>
+						</variable>
 						<variable name="BUFFERMODE">
 							<type>
 								<INT />
@@ -907,7 +915,7 @@
 				<body>
 					<ST><![CDATA[{{ extern void __mcl_cmd_PressureHandle(HYD_PRESSUREHANDLE*); __mcl_cmd_PressureHandle(data__); }} ]]></ST>
 				</body>
-				<documentation><![CDATA[This Function Block commands pressure closed control. ]]></documentation>
+				<documentation><![CDATA[This Function Block commands pressure closed control. FLOWLIMITPERCENT is the pressure-segment flow cap as a percentage of 20 L/min; valid range is (0,100], default 100. ]]></documentation>
 			</pou>
 			<pou name="HYD_CreateMotion" pouType="functionBlock">
 				<interface>

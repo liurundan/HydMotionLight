@@ -176,7 +176,7 @@ static void test_resource_budget(void)
 #if HYD_ENABLE_FLOW_DIAGNOSTIC_TELEMETRY
            56U
 #else
-           32U
+           48U
 #endif
     );
 }

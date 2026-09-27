@@ -355,6 +355,7 @@ static void test_pressurehandle_timed_done(void) {
     IEC_VAL(ph.PRESSURE) = 5.0f;
     IEC_VAL(ph.PRESSURERAMPRATE) = 10.0f;
     IEC_VAL(ph.DURATION) = 0.5f;  /* 0.5秒 */
+    IEC_VAL(ph.FLOWLIMITPERCENT) = 100.0f;
 
     __mcl_cmd_PressureHandle(&ph);
 
@@ -824,6 +825,7 @@ static void test_moveabsolute_done_then_pressurehandle(void) {
     IEC_VAL(ph.PRESSURE) = 8.0f;
     IEC_VAL(ph.PRESSURERAMPRATE) = 5.0f;
     IEC_VAL(ph.DURATION) = 0.3f;
+    IEC_VAL(ph.FLOWLIMITPERCENT) = 100.0f;
 
     __mcl_cmd_PressureHandle(&ph);
 

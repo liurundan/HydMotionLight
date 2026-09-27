@@ -1533,6 +1533,7 @@ static void test_pressurehandle_execute_rising_starts_pressure_control(void) {
     IEC_VAL(ph.PRESSURE) = 10.0f;
     IEC_VAL(ph.PRESSURERAMPRATE) = 2.0f;
     IEC_VAL(ph.DURATION) = 5.0f;
+    IEC_VAL(ph.FLOWLIMITPERCENT) = 100.0f;
 
     __mcl_cmd_PressureHandle(&ph);
 
@@ -1542,6 +1543,153 @@ static void test_pressurehandle_execute_rising_starts_pressure_control(void) {
                "INPRESSURE should be false initially (pressure=0)");
     ASSERT_TRUE(IEC_VAL(ph.COMMANDABORTED) == false,
                "COMMANDABORTED should be false initially");
+}
+
+static void test_sim_pressurehandle_crawls_toward_zero(void) {
+    HYD_PRESSUREHANDLE ph;
+    HYD_MotionControlFB* fb;
+    HYD_REAL previousPosition;
+    int axisId;
+
+    __HydMotion_framework_Init();
+    axisId = create_sim_axis();
+    fb = __MK_GetPublic_MotionControlFB(axisId);
+
+    ASSERT_TRUE(fb != NULL, "Pressure creep test should resolve the simulation FB");
+    if (fb == NULL) {
+        return;
+    }
+
+    /* A fresh axis has no direction history. The pressure-mode simulator
+     * contract uses that HOLD state to select the default crawl toward zero. */
+    fb->_lastActiveDirection = HYD_DIRECTION_HOLD;
+    fb->AXIS_REF.position = 0.01f;
+    memset(&ph, 0, sizeof(ph));
+    IEC_VAL(ph.EN) = true;
+    IEC_VAL(ph.EXECUTE) = true;
+    ph.EXECUTE0.value = false;
+    IEC_VAL(ph.AXISID) = axisId;
+    IEC_VAL(ph.PRESSURE) = 10.0f;
+    IEC_VAL(ph.PRESSURERAMPRATE) = 2.0f;
+    IEC_VAL(ph.DURATION) = 1.0f;
+    IEC_VAL(ph.FLOWLIMITPERCENT) = 100.0f;
+
+    __mcl_cmd_PressureHandle(&ph);
+    ph.EXECUTE0.value = true;
+    previousPosition = fb->AXIS_REF.position;
+
+    for (int step = 0; step < 3; ++step) {
+        __HydMotion_framework_Publish();
+        __mcl_cmd_PressureHandle(&ph);
+        ASSERT_TRUE(fb->AXIS_REF.position < previousPosition,
+                    "Simulation pressure segment should creep toward zero");
+        ASSERT_TRUE(fb->AXIS_REF.velocity < -0.9f && fb->AXIS_REF.velocity > -1.1f,
+                    "Simulation pressure creep velocity should be -1 mm/s");
+        previousPosition = fb->AXIS_REF.position;
+    }
+
+    for (int step = 0; step < 20; ++step) {
+        __HydMotion_framework_Publish();
+        __mcl_cmd_PressureHandle(&ph);
+    }
+
+    ASSERT_TRUE(fabsf(fb->AXIS_REF.position) < 1e-6f,
+                "Simulation pressure creep should clamp position at zero");
+    ASSERT_TRUE(fabsf(fb->AXIS_REF.velocity) < 1e-6f,
+                "Simulation pressure creep should stop at zero position");
+}
+
+static void test_stop_pressurehandle_completes_without_timeout(void) {
+    HYD_PRESSUREHANDLE ph;
+    HYD_STOP stop;
+    HYD_MotionControlFB *fb;
+    int axisId;
+    int step;
+
+    __HydMotion_framework_Init();
+    axisId = create_sim_axis();
+    fb = __MK_GetPublic_MotionControlFB(axisId);
+    ASSERT_TRUE(fb != NULL, "Pressure stop test should resolve the simulation FB");
+    if (fb == NULL) {
+        return;
+    }
+
+    memset(&ph, 0, sizeof(ph));
+    IEC_VAL(ph.EN) = true;
+    IEC_VAL(ph.EXECUTE) = true;
+    IEC_VAL(ph.AXISID) = axisId;
+    IEC_VAL(ph.PRESSURE) = 10.0f;
+    IEC_VAL(ph.PRESSURERAMPRATE) = 2.0f;
+    IEC_VAL(ph.DURATION) = 0.0f;
+    IEC_VAL(ph.FLOWLIMITPERCENT) = 100.0f;
+    __mcl_cmd_PressureHandle(&ph);
+    for (step = 0; step < 20; ++step) {
+        __HydMotion_framework_Publish();
+        IEC_VAL(ph.EXECUTE) = true;
+        ph.EXECUTE0.value = true;
+        __mcl_cmd_PressureHandle(&ph);
+    }
+    ASSERT_TRUE(fb->STATE.active, "PressureHandle should be active before Stop");
+
+    memset(&stop, 0, sizeof(stop));
+    IEC_VAL(stop.EN) = true;
+    IEC_VAL(stop.EXECUTE) = true;
+    IEC_VAL(stop.AXISID) = axisId;
+    IEC_VAL(stop.DECELERATION) = 100.0f;
+    __mcl_cmd_Stop(&stop);
+
+    /* The first Stop call queues and executes the command.  The next PLC
+     * cycle must publish zero simulated velocity and expose DONE. */
+    __HydMotion_framework_Publish();
+    IEC_VAL(stop.EXECUTE) = true;
+    stop.EXECUTE0.value = true;
+    __mcl_cmd_Stop(&stop);
+
+    ASSERT_TRUE(IEC_VAL(stop.DONE),
+                "Stop should complete immediately for a pressure-mode creep segment");
+    ASSERT_TRUE(IEC_VAL(stop.ERROR) == false,
+                "Pressure-mode Stop should not report an error");
+    ASSERT_TRUE(fb->DIAGNOSTIC.code != HYD_DIAG_CODE_TIMEOUT,
+                "Pressure-mode Stop should not enter the stop timeout fault path");
+    ASSERT_TRUE(fb->FB_STATE == HYD_FB_STATE_DONE,
+                "Pressure-mode Stop should leave the FB in DONE");
+    ASSERT_TRUE(fb->PUMP_SPEED == 0.0f && fabsf(fb->AXIS_REF.velocity) < 1e-6f,
+                "Pressure-mode Stop should clear pump output and simulated creep velocity");
+}
+
+static void test_pressurehandle_does_not_move_non_simulation_feedback(void) {
+    HYD_PRESSUREHANDLE ph;
+    HYD_MotionControlFB* fb;
+    int axisId;
+
+    __HydMotion_framework_Init();
+    ensure_axes_allocated(1);
+    axisId = 0;
+    fb = __MK_GetPublic_MotionControlFB(axisId);
+
+    ASSERT_TRUE(fb != NULL, "Non-simulation pressure test should resolve the FB");
+    if (fb == NULL) {
+        return;
+    }
+
+    fb->AXIS_REF.position = 10.0f;
+    memset(&ph, 0, sizeof(ph));
+    IEC_VAL(ph.EN) = true;
+    IEC_VAL(ph.EXECUTE) = true;
+    ph.EXECUTE0.value = false;
+    IEC_VAL(ph.AXISID) = axisId;
+    IEC_VAL(ph.PRESSURE) = 10.0f;
+    IEC_VAL(ph.PRESSURERAMPRATE) = 2.0f;
+    IEC_VAL(ph.DURATION) = 1.0f;
+    IEC_VAL(ph.FLOWLIMITPERCENT) = 100.0f;
+
+    __mcl_cmd_PressureHandle(&ph);
+    ph.EXECUTE0.value = true;
+    __HydMotion_framework_Publish();
+    __mcl_cmd_PressureHandle(&ph);
+
+    ASSERT_TRUE(fabsf(fb->AXIS_REF.position - 10.0f) < 1e-6f,
+                "Non-simulation pressure segment should not auto-move position");
 }
 
 static void test_pressurehandle_accepts_continuousupdate_and_updates_active_target(void) {
@@ -1560,6 +1708,7 @@ static void test_pressurehandle_accepts_continuousupdate_and_updates_active_targ
     IEC_VAL(ph.PRESSURERAMPRATE) = 2.0f;
     IEC_VAL(ph.DURATION) = 1.0f;
     IEC_VAL(ph.CONTINUOUSUPDATE) = true;
+    IEC_VAL(ph.FLOWLIMITPERCENT) = 100.0f;
 
     __mcl_cmd_PressureHandle(&ph);
 
@@ -1576,6 +1725,7 @@ static void test_pressurehandle_accepts_continuousupdate_and_updates_active_targ
 
     IEC_VAL(ph.PRESSURE) = 12.0f;
     IEC_VAL(ph.PRESSURERAMPRATE) = 4.0f;
+    IEC_VAL(ph.FLOWLIMITPERCENT) = 25.0f;
     __mcl_cmd_PressureHandle(&ph);
 
     ASSERT_TRUE(IEC_VAL(ph.ERROR) == false,
@@ -1584,6 +1734,22 @@ static void test_pressurehandle_accepts_continuousupdate_and_updates_active_targ
                "PressureHandle continuous update should update active targetPressure");
     ASSERT_TRUE(fabs(fb->_activeSegment.pressureRampRate - 4.0f) < 0.001f,
                "PressureHandle continuous update should update active pressureRampRate");
+    ASSERT_TRUE(fabs(fb->_activeSegment.maxFlow - 5.0f) < 0.001f,
+               "PressureHandle continuous update should convert 25 percent to 5 L/min");
+    ASSERT_TRUE(fabs(fb->DIRECT_SEGMENT.maxFlow - 5.0f) < 0.001f,
+               "PressureHandle continuous update should persist the converted flow limit");
+
+    IEC_VAL(ph.FLOWLIMITPERCENT) = 0.0f;
+    __mcl_cmd_PressureHandle(&ph);
+
+    ASSERT_TRUE(IEC_VAL(ph.ERROR) == true,
+               "PressureHandle continuous update should reject zero flow limit percent");
+    ASSERT_TRUE(IEC_VAL(ph.ERRORID) == HYD_DIAG_CODE_COMMAND_NOT_ALLOWED,
+               "Rejected continuous update should report command-not-allowed");
+    ASSERT_TRUE(fabs(fb->_activeSegment.maxFlow - 5.0f) < 0.001f,
+               "Rejected continuous update should preserve the active flow limit");
+    ASSERT_TRUE(fabs(fb->DIRECT_SEGMENT.maxFlow - 5.0f) < 0.001f,
+               "Rejected continuous update should preserve the direct flow limit");
 }
 
 static void test_pressurehandle_latches_controller_until_next_execute(void) {
@@ -1608,6 +1774,7 @@ static void test_pressurehandle_latches_controller_until_next_execute(void) {
     IEC_VAL(ph.PRESSURERAMPRATE) = 10.0f;
     IEC_VAL(ph.DURATION) = 5.0f;
     IEC_VAL(ph.CONTINUOUSUPDATE) = true;
+    IEC_VAL(ph.FLOWLIMITPERCENT) = 100.0f;
     __mcl_cmd_PressureHandle(&ph);
 
     ASSERT_TRUE(fb->_activeSegment.pressureController ==
@@ -1663,6 +1830,7 @@ static void test_pressurehandle_en_false_clears_outputs(void) {
     ph.EXECUTE0.value = false;
     IEC_VAL(ph.AXISID) = 0;
     IEC_VAL(ph.PRESSURE) = 10.0f;
+    IEC_VAL(ph.FLOWLIMITPERCENT) = 100.0f;
 
     __mcl_cmd_PressureHandle(&ph);
 
@@ -1725,6 +1893,7 @@ static void test_pressurehandle_completion_keeps_completion_semantics(void) {
     IEC_VAL(ph.PRESSURE) = 10.0f;
     IEC_VAL(ph.PRESSURERAMPRATE) = 2.0f;
     IEC_VAL(ph.DURATION) = 0.05f;
+    IEC_VAL(ph.FLOWLIMITPERCENT) = 100.0f;
 
     __mcl_cmd_PressureHandle(&ph);
     __HydMotion_framework_Publish();
@@ -3319,6 +3488,9 @@ int main(void) {
     test_reset_immediate_done_on_uninitialized_axis();
     test_reset_preserves_direct_segment_configuration();
     test_pressurehandle_execute_rising_starts_pressure_control();
+    test_sim_pressurehandle_crawls_toward_zero();
+    test_stop_pressurehandle_completes_without_timeout();
+    test_pressurehandle_does_not_move_non_simulation_feedback();
     test_pressurehandle_accepts_continuousupdate_and_updates_active_target();
     test_pressurehandle_latches_controller_until_next_execute();
     test_pressurehandle_en_false_clears_outputs();

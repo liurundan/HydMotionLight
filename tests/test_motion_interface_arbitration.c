@@ -516,6 +516,7 @@ static void test_pressurehandle_preempted_by_stop(void) {
     IEC_VAL(ph.AXISID) = 0;
     IEC_VAL(ph.PRESSURE) = 10.0f;
     IEC_VAL(ph.PRESSURERAMPRATE) = 2.0f;
+    IEC_VAL(ph.FLOWLIMITPERCENT) = 100.0f;
     __mcl_cmd_PressureHandle(&ph);
     __HydMotion_framework_Publish();
 
@@ -582,6 +583,7 @@ static void test_movevelocity_preempted_by_pressurehandle(void) {
     IEC_VAL(ph.PRESSURE) = 5.0f;
     IEC_VAL(ph.PRESSURERAMPRATE) = 10.0f;
     IEC_VAL(ph.DURATION) = 0.5f;
+    IEC_VAL(ph.FLOWLIMITPERCENT) = 100.0f;
     __mcl_cmd_PressureHandle(&ph);
     __HydMotion_framework_Publish();
 

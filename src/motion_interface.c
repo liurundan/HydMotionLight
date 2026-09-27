@@ -27,6 +27,9 @@ static HYD_AxisSlotState HYD_AxisSlots[HYD_MAX_AXIS_MOTION];
 static HYD_UINT16 HYD_FrameworkGeneration;
 
 static const HYD_REAL HYD_CONTABS_DIRECTION_VELOCITY_THRESHOLD = 0.01f;
+static const HYD_REAL HYD_PRESSURE_HANDLE_BASE_MAX_FLOW = 20.0f;
+static const HYD_REAL HYD_SIM_PRESSURE_CREEP_VELOCITY = 1.0f;
+static const HYD_REAL HYD_SIM_PRESSURE_CREEP_MAX_STROKE = 500.0f;
 
 static int allocMotionControlFB(void)
 {
@@ -279,6 +282,7 @@ static HYD_MotionSegment buildPressureSegment(
     HYD_REAL targetPressure,
     HYD_REAL rampRate,
     HYD_REAL duration,
+    HYD_REAL maxFlow,
     const HYD_MotionControlFB* fb)
 {
     HYD_MotionSegment seg;
@@ -292,9 +296,8 @@ static HYD_MotionSegment buildPressureSegment(
 
     seg.targetPressure = targetPressure;
     seg.targetFlow = fb->_params.defaultTargetFlow;
-    /* Preserve the established PressureHandle limit; recipe/profile paths use
-     * the configurable maxFlow parameter independently. */
-    seg.maxFlow = 20.0;
+    seg.maxFlow = maxFlow;
+
     seg.duration = duration;
     seg.pressureRampRate = rampRate;
     seg.pressureCeiling  = MAX_PRESSURE;
@@ -310,7 +313,9 @@ static HYD_MotionSegment buildPressureSegment(
 
     seg.pressureTolerance = fb->_params.pressureTolerance;
     seg.flowTolerance = fb->_params.flowTolerance;
-    seg.timeoutLimit = fb->_params.timeoutLimit;
+    /* PressureHandle is a pressure hold. A global motion timeout must not
+     * turn its manual/timed hold into a timeout fault. */
+    seg.timeoutLimit = 0.0f;
 
     return seg;
 }
@@ -345,7 +350,11 @@ static HYD_MotionSegment buildSegmentFromMotion(const HYD_AXISMOTION* motion,
     seg.positionTolerance = fb->_params.positionTolerance;
     seg.pressureTolerance = fb->_params.pressureTolerance;
     seg.flowTolerance = fb->_params.flowTolerance;
-    seg.timeoutLimit = fb->_params.timeoutLimit;
+    /* Keep the global timeout for position/speed segments only. Pressure
+     * segments end by their pressure/time/manual condition and never use the
+     * motion completion watchdog. */
+    seg.timeoutLimit = (seg.mode == HYD_MODE_PRESSURE_CLOSED_LOOP)
+        ? 0.0f : fb->_params.timeoutLimit;
 
     seg.pressureController = (HYD_PressureControllerType)(int)fb->_params.pressureControllerType;
     seg.pressureKp = fb->_params.pressureKp;
@@ -568,6 +577,25 @@ static HYD_BOOL resolvePressureLimit(HYD_REAL requestedLimit,
     return true;
 }
 
+/* PressureHandle is intentionally based on its fixed 20 L/min process
+ * envelope. The IEC percentage is converted once here; the core only sees
+ * absolute L/min through HYD_MotionSegment.maxFlow. */
+static HYD_BOOL resolvePressureHandleFlowLimit(HYD_REAL requestedPercent,
+                                               HYD_REAL* resolvedLimit,
+                                               IEC_WORD* errorId)
+{
+    if (resolvedLimit == NULL || !isfinite(requestedPercent) ||
+        requestedPercent <= 0.0f || requestedPercent > 100.0f) {
+        if (errorId != NULL) {
+            *errorId = (IEC_WORD)HYD_DIAG_CODE_COMMAND_NOT_ALLOWED;
+        }
+        return false;
+    }
+
+    *resolvedLimit = HYD_PRESSURE_HANDLE_BASE_MAX_FLOW * requestedPercent / 100.0f;
+    return true;
+}
+
 static HYD_BOOL applyMoveAbsoluteLiveUpdate(HYD_MotionControlFB* fb,
                                             IEC_WORD execId,
                                             HYD_MOVEABSOLUTE* data__)
@@ -643,27 +671,40 @@ static HYD_BOOL applyMoveVelocityLiveUpdate(HYD_MotionControlFB* fb,
     request.maxDeceleration = __GET_VAR(data__->DECELERATION);
     request.maxPressure = pressureLimit;
     request.direction = dir;
+
+    fb->_activeSegment.maxFlow = 11;
+
     return HYD_MotionControlFB_ApplyLiveUpdate(fb, &request);
 }
 
 static HYD_BOOL applyPressureHandleLiveUpdate(HYD_MotionControlFB* fb,
                                               IEC_WORD execId,
-                                              HYD_PRESSUREHANDLE* data__)
+                                              HYD_PRESSUREHANDLE* data__,
+                                              IEC_WORD* errorId)
 {
     HYD_LiveUpdateRequest request;
+    HYD_REAL maxFlow;
 
     if (fb == NULL || data__ == NULL || !__GET_VAR(data__->CONTINUOUSUPDATE)) {
         return true;
     }
 
+    if (!resolvePressureHandleFlowLimit(__GET_VAR(data__->FLOWLIMITPERCENT),
+                                        &maxFlow,
+                                        errorId)) {
+        return false;
+    }
+
     memset(&request, 0, sizeof(request));
     request.flags = HYD_LIVE_UPDATE_TARGET_PRESSURE |
                     HYD_LIVE_UPDATE_PRESSURE_RAMP_RATE |
+                    HYD_LIVE_UPDATE_MAX_FLOW |
                     HYD_LIVE_UPDATE_CONTINUOUS_UPDATE;
     request.ownerKind = HYD_DIRECT_CMD_PRESSURE_HANDLE;
     request.ownerTicket = (uint16_t)execId;
     request.targetPressure = __GET_VAR(data__->PRESSURE);
     request.pressureRampRate = __GET_VAR(data__->PRESSURERAMPRATE);
+    request.maxFlow = maxFlow;
     return HYD_MotionControlFB_ApplyLiveUpdate(fb, &request);
 }
 
@@ -819,14 +860,48 @@ void __HydMotion_framework_Publish()
             HYD_TIME simDeltaTime = (fb->_simulationCycleTime > 0.0f)
                 ? fb->_simulationCycleTime
                 : (HYD_TIME)dfCycleTime;
+            HYD_REAL simVelocity = fb->_simFeedback.targetVelocity;
+
+            /* Pressure mode commands flow rather than a template velocity.
+             * Simulate the residual low-speed creep motion for mold protection,
+             * injection-to-holding transfer, and ejector pressure holding phases. */
+            if (fb->STATE.active && !fb->_isStopping && fb->_activeSegmentValid &&
+                fb->_activeSegment.mode == HYD_MODE_PRESSURE_CLOSED_LOOP) {
+
+                /* Determine creep direction based on motion history:
+                 * - Default: creep toward zero (negative direction)
+                 * - If prior position/velocity motion exists, creep in that direction */
+                HYD_REAL creepDirection = -1.0f;  /* Default: toward zero */
+
+                if (fb->_lastActiveDirection == HYD_DIRECTION_POSITIVE) {
+                    creepDirection = 1.0f;  /* Forward creep (mold close, injection hold) */
+                } else if (fb->_lastActiveDirection == HYD_DIRECTION_NEGATIVE) {
+                    creepDirection = -1.0f;  /* Backward creep (retraction, ejector) */
+                }
+                /* else: HOLD or uninitialized → use default -1.0f */
+
+                simVelocity = creepDirection * HYD_SIM_PRESSURE_CREEP_VELOCITY;
+            }
 
             if (simDeltaTime > 0.0) {
-                fb->AXIS_REF.position += fb->_simFeedback.targetVelocity * simDeltaTime;
-                if(fb->AXIS_REF.position < 0.0f) {
-					fb->AXIS_REF.position = 0.0f;
-				}
+                fb->AXIS_REF.position += simVelocity * simDeltaTime;
+
+                /* Existing lower bound: always enforce position >= 0 */
+                if (fb->AXIS_REF.position < 0.0f) {
+                    fb->AXIS_REF.position = 0.0f;
+                    simVelocity = 0.0f;
+                }
+
+                /* Upper bound for forward pressure-mode creep only */
+                if (fb->STATE.active && fb->_activeSegmentValid &&
+                    fb->_activeSegment.mode == HYD_MODE_PRESSURE_CLOSED_LOOP &&
+                    simVelocity > 0.0f &&
+                    fb->AXIS_REF.position > HYD_SIM_PRESSURE_CREEP_MAX_STROKE) {
+                    fb->AXIS_REF.position = HYD_SIM_PRESSURE_CREEP_MAX_STROKE;
+                    simVelocity = 0.0f;
+                }
             }
-            fb->AXIS_REF.velocity  = fb->_simFeedback.targetVelocity;
+            fb->AXIS_REF.velocity  = simVelocity;
             fb->AXIS_REF.flow      = fb->_simFeedback.targetFlow;
             fb->AXIS_REF.pressure  = fb->_simFeedback.targetPressure;
             fb->AXIS_REF.timestamp += simDeltaTime;
@@ -2497,7 +2572,16 @@ void __mcl_cmd_PressureHandle(HYD_PRESSUREHANDLE *data__)
     if (execRising)
     {
         IEC_WORD errorId = 0;
+        HYD_REAL maxFlow;
         if (!validateSupportedBufferMode(bufferMode, &errorId)) {
+            __SET_VAR(data__->, ERROR, , true);
+            __SET_VAR(data__->, ERRORID, , errorId);
+            __SET_VAR(data__->, EXECUTE0, , execute);
+            return;
+        }
+        if (!resolvePressureHandleFlowLimit(__GET_VAR(data__->FLOWLIMITPERCENT),
+                                            &maxFlow,
+                                            &errorId)) {
             __SET_VAR(data__->, ERROR, , true);
             __SET_VAR(data__->, ERRORID, , errorId);
             __SET_VAR(data__->, EXECUTE0, , execute);
@@ -2510,6 +2594,7 @@ void __mcl_cmd_PressureHandle(HYD_PRESSUREHANDLE *data__)
             targetPressure,
             __GET_VAR(data__->PRESSURERAMPRATE),
             __GET_VAR(data__->DURATION),
+            maxFlow,
             fb);
 
         HYD_DirectStartResult startResult =
@@ -2569,9 +2654,12 @@ void __mcl_cmd_PressureHandle(HYD_PRESSUREHANDLE *data__)
             __SET_VAR(data__->, INPRESSURE, , false);
             __SET_VAR(data__->, DONE, , false);
         } else if (directExecutionIsCurrentOwner(fb, myExecId, HYD_DIRECT_CMD_PRESSURE_HANDLE)) {
-            if (!applyPressureHandleLiveUpdate(fb, myExecId, data__)) {
+            IEC_WORD errorId = 0;
+
+            if (!applyPressureHandleLiveUpdate(fb, myExecId, data__, &errorId)) {
                 __SET_VAR(data__->, ERROR, , true);
-                __SET_VAR(data__->, ERRORID, , commandFailureErrorId(fb));
+                __SET_VAR(data__->, ERRORID, ,
+                          errorId != 0 ? errorId : commandFailureErrorId(fb));
                 __SET_VAR(data__->, BUSY, , false);
                 __SET_VAR(data__->, ACTIVE, , false);
                 __SET_VAR(data__->, INPRESSURE, , false);

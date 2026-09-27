@@ -2,6 +2,9 @@
  * @file rbf_pid.h
  * @brief RBF神经网络自适应PID控制器 - 嵌入式C实现
  * @note 基于ST代码转换，适用于ARM Cortex-M等平台
+ *
+ * 评审修复 v2：补充 Δu 单独归一化接口；为保持嵌入式结构体大小，复用
+ * 既有兼容状态槽保存该标尺。压力滤波和死区状态由外层控制器维护。
  */
 
 #ifndef RBF_PID_H
@@ -19,16 +22,16 @@
  * Task 2 要求初始化/复位恢复到确定性的内置窗口，后续可通过
  * RBF_PID_SetParamLimits() 覆盖。 */
 #define PID_MIN_KP          0.4f
-#define PID_MAX_KP          0.6f
-#define PID_MIN_KI          0.0018f // 0.0008
-#define PID_MAX_KI          0.0056f
+#define PID_MAX_KP          0.9f
+#define PID_MIN_KI          0.0013f // 0.0008
+#define PID_MAX_KI          0.0046f
 #define PID_MIN_KD          0.015f
 #define PID_MAX_KD          0.035f
 
-#define HYD_DEFAULT_RBF_W_LEARNING_RATE 0.005f
-#define HYD_DEFAULT_RBF_C_LEARNING_RATE 0.005f
-#define HYD_DEFAULT_RBF_B_LEARNING_RATE 0.005f
-#define HYD_DEFAULT_PID_P_LEARNING_RATE 0.00025f
+#define HYD_DEFAULT_RBF_W_LEARNING_RATE 0.002f
+#define HYD_DEFAULT_RBF_C_LEARNING_RATE 0.002f
+#define HYD_DEFAULT_RBF_B_LEARNING_RATE 0.002f
+#define HYD_DEFAULT_PID_P_LEARNING_RATE 0.01f
 #define HYD_DEFAULT_PID_I_LEARNING_RATE 0.00025f
 #define HYD_DEFAULT_PID_D_LEARNING_RATE 0.00025f
 
@@ -95,7 +98,6 @@ typedef struct {
     float max_KD;
     int32_t Status;
     int32_t TuneResult;
-    float n_out;                    /* mirrored flow-domain command [L/min] */
 
     /* RBF神经网络参数 */
     float c[RBF_HNUM][RBF_INPUT_DIM];   // 中心向量
@@ -145,6 +147,10 @@ typedef struct {
     float pid_mode_eta_d;
     bool pressure_accel_ff_requested;
     RBF_PID_ControlMode control_mode; /* Appended to preserve existing field offsets. */
+
+    float f_dd_press_prev;                /* 兼容存储槽：当前用于 Δu 归一化标尺 */
+    float v_ref_k1;
+
 } RBF_PID_Handle;
 
 /**
@@ -203,6 +209,15 @@ void RBF_PID_SetLearningRates(RBF_PID_Handle *pid,
  */
 void RBF_PID_SetPressureNormalization(RBF_PID_Handle *pid, float scale);
 void RBF_PID_SetFlowNormalization(RBF_PID_Handle *pid, float scale);
+
+/**
+ * @brief 配置 Δu 归一化标量（评审修复 v2 新增）
+ * @param pid RBF_PID句柄指针
+ * @param scale Δu 归一化尺度 [L/min]，默认 5.0；传 0 或负值回落默认。
+ * @note 标定目标：使单步 Δu/尺度 大致落在 ±0.5 以内。
+ *       若采样周期相对 1ms 变化超过 5 倍，建议按实际 Δu 幅度重新标定。
+ */
+void RBF_PID_SetDuNormalization(RBF_PID_Handle *pid, float scale);
 
 /**
  * @brief 设置系统物理增益兼容参数

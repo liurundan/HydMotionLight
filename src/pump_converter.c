@@ -50,6 +50,84 @@ void HYD_PumpConverter_Execute(const HYD_PumpConverterInput* input,
 
 }
 
+void HYD_PumpConverter_ApplySlewLimit(
+    const HYD_PumpConverterInput* input,
+    HYD_REAL previousPumpSpeed,
+    HYD_TIME deltaTime,
+    HYD_REAL accelerationRpmPerSecond,
+    HYD_REAL decelerationRpmPerSecond,
+    HYD_PumpConverterOutput* output) {
+    HYD_PumpConverterOutput requested;
+    HYD_REAL targetSpeed;
+    HYD_REAL limitedSpeed;
+    HYD_REAL rate;
+    HYD_REAL maxDelta;
+
+    if (output == NULL) {
+        return;
+    }
+
+    HYD_PumpConverter_Execute(input, &requested);
+    if (input == NULL ||
+        !HYD_PumpConverter_IsFiniteReal(previousPumpSpeed) ||
+        !HYD_PumpConverter_IsFiniteReal(deltaTime) ||
+        !HYD_PumpConverter_IsFiniteReal(accelerationRpmPerSecond) ||
+        !HYD_PumpConverter_IsFiniteReal(decelerationRpmPerSecond) ||
+        deltaTime <= 0.0 ||
+        accelerationRpmPerSecond <= 0.0 ||
+        decelerationRpmPerSecond <= 0.0 ||
+        !HYD_PumpConverter_IsFiniteReal(requested.pumpSpeed)) {
+        output->commandFlow = 0.0;
+        output->pumpSpeed = 0.0;
+        output->maxFlow = requested.maxFlow;
+        output->speedLimitActive = true;
+        return;
+    }
+
+    targetSpeed = requested.pumpSpeed;
+    limitedSpeed = previousPumpSpeed;
+    if (limitedSpeed > input->pumpSpeedLimit) {
+        limitedSpeed = input->pumpSpeedLimit;
+    } else if (limitedSpeed < -input->pumpSpeedLimit * HYD_PUMP_NEGATIVE_SPEED_RATIO) {
+        limitedSpeed = -input->pumpSpeedLimit * HYD_PUMP_NEGATIVE_SPEED_RATIO;
+    }
+
+    /* A reversal must first decelerate to zero. This prevents a one-scan
+     * sign change from commanding an instantaneous pump direction reversal. */
+    if ((limitedSpeed > 0.0 && targetSpeed < 0.0) ||
+        (limitedSpeed < 0.0 && targetSpeed > 0.0)) {
+        rate = decelerationRpmPerSecond;
+        maxDelta = rate * deltaTime;
+        if (fabs(limitedSpeed) <= maxDelta) {
+            limitedSpeed = 0.0;
+        } else {
+            limitedSpeed += (limitedSpeed > 0.0) ? -maxDelta : maxDelta;
+        }
+    } else {
+        rate = (fabs(targetSpeed) > fabs(limitedSpeed))
+            ? accelerationRpmPerSecond
+            : decelerationRpmPerSecond;
+        maxDelta = rate * deltaTime;
+        if (targetSpeed > limitedSpeed + maxDelta) {
+            limitedSpeed += maxDelta;
+        } else if (targetSpeed < limitedSpeed - maxDelta) {
+            limitedSpeed -= maxDelta;
+        } else {
+            limitedSpeed = targetSpeed;
+        }
+    }
+
+    limitedSpeed = HYD_ClampReal(
+        limitedSpeed,
+        -input->pumpSpeedLimit * HYD_PUMP_NEGATIVE_SPEED_RATIO,
+        input->pumpSpeedLimit);
+    output->maxFlow = requested.maxFlow;
+    output->pumpSpeed = limitedSpeed;
+    output->commandFlow = limitedSpeed / input->flowToPumpSpeedGain;
+    output->speedLimitActive = requested.speedLimitActive ||
+                                limitedSpeed != targetSpeed;
+}
+
 HYD_BOOL HYD_PumpConverter_ValidateConfig(HYD_REAL flowToPumpSpeedGain,
                                           HYD_REAL pumpSpeedLimit,
                                           HYD_DiagnosticCode* code) {

@@ -4,20 +4,25 @@
 #include <math.h>
 #include <string.h>
 
-static const float RBF_PID_ERROR_DEADBAND = 0.0005f;
+#define EPS 1e-6f
+
+static const float RBF_PID_ERROR_DEADBAND = 0.005f;
 static const float RBF_PID_SOFT_CAP_RATIO = 1.05f;
-static const float RBF_PID_LEARNING_RATIO_TIGHT = 0.01f;
-static const float RBF_PID_LEARNING_RATIO_NEAR = 0.05f;
-static const float RBF_PID_LEARNING_RATIO_MID = 0.10f;
-static const float RBF_PID_LEARNING_SCALE_TIGHT = 0.02f;
-static const float RBF_PID_LEARNING_SCALE_NEAR = 0.10f;
-static const float RBF_PID_LEARNING_SCALE_MID = 0.25f;
-static const float RBF_PID_NEAR_TARGET_RATIO = 0.02f;
-static const float RBF_PID_ACCEL_FF_GAIN = -0.15f;
+static const float RBF_PID_NEAR_TARGET_RATIO = 0.08f;
 static const float RBF_PID_DYNAMIC_FF_GAIN = 0.001f;
 static const float RBF_PID_WEIGHT_LIMIT = 5.0f;
 
 static float rbf_pid_compute_soft_flow_cap(const RBF_PID_Handle *pid);
+
+static float sign(float x)
+{
+    if (x > EPS)
+        return 1.0f;
+    else if (x < -EPS)
+        return -1.0f;
+    else
+        return 0.0f;
+}
 
 static float clampf(float min_value, float value, float max_value) {
     if (value < min_value) {
@@ -57,6 +62,7 @@ static float rbf_pid_clamp_adaptive_value(const RBF_PID_Handle *pid,
 
 static float rbf_pid_max_flow_output(const RBF_PID_Handle *pid) {
     float max_output = pid->fMaxFlow * pid->fFlowRateLimit;
+
 
     return max_output > 0.0f ? max_output : 90.0f;
 }
@@ -117,9 +123,9 @@ static void rbf_pid_apply_default_learning_rates(RBF_PID_Handle *pid) {
 }
 
 static void rbf_pid_apply_default_gains(RBF_PID_Handle *pid) {
-    pid->KP = 0.04f;
+    pid->KP = PID_MIN_KP;
     pid->KI = PID_MIN_KI;
-    pid->KD = 0.020f;
+    pid->KD = PID_MIN_KD;
 }
 
 static void rbf_pid_refresh_gain_compensation(RBF_PID_Handle *pid) {
@@ -152,9 +158,8 @@ static float rbf_pid_apply_deadband(float error) {
     return error > 0.0f ? error - RBF_PID_ERROR_DEADBAND : error + RBF_PID_ERROR_DEADBAND;
 }
 
-static float rbf_pid_effective_flow_scale(const RBF_PID_Handle *pid) {
-    return clamp_positive_or_default(pid->flow_normalization_scale,
-                                     rbf_pid_max_flow_output(pid));
+static float rbf_pid_effective_du_scale(const RBF_PID_Handle *pid) {
+    return clamp_positive_or_default(pid->f_dd_press_prev, 5.0f);
 }
 
 static float rbf_pid_effective_pressure_scale(const RBF_PID_Handle *pid) {
@@ -255,12 +260,16 @@ static bool rbf_pid_same_direction_saturation(const RBF_PID_Handle *pid, float e
         (pid->Output <= output_min + 1.0e-6f && error < 0.0f);
 }
 
-static void rbf_pid_step_rbf_nn(RBF_PID_Handle *pid) {
+// ========== 稳态判定参数（可调） ==========
+#define STEADY_DEAD_ZONE     10.0f   // 误差死区（bar），根据传感器量程设定
+#define STEADY_DE_RATIO      1.0f    // 变化率死区系数
+
+static int rbf_pid_step_rbf_nn(RBF_PID_Handle *pid,float error) {
     float h[RBF_HNUM];
-    float flow_scale = rbf_pid_effective_flow_scale(pid);
+    float du_scale = rbf_pid_effective_du_scale(pid);
     float pressure_scale = rbf_pid_effective_pressure_scale(pid);
     float x[RBF_INPUT_DIM] = {
-        pid->du_prev / flow_scale,
+        pid->du_prev / du_scale,
         pid->y_prev1 / pressure_scale,
         pid->y_prev2 / pressure_scale
     };
@@ -270,12 +279,11 @@ static void rbf_pid_step_rbf_nn(RBF_PID_Handle *pid) {
     float error_rbf_n;
     int i;
 
-    if (pid->control_mode == RBF_PID_CONTROL_MODE_PI) {
-        rbf_pid_sanitize_network(pid);
-        for (i = 0; i < RBF_INPUT_DIM; ++i) {
-            if (!isfinite(x[i])) {
-                x[i] = 0.0f;
-            }
+    /* P0-1修复：统一数值防护，模式无关 */
+    rbf_pid_sanitize_network(pid);
+    for (i = 0; i < RBF_INPUT_DIM; ++i) {
+        if (!isfinite(x[i])) {
+            x[i] = 0.0f;
         }
     }
     memcpy(pid->last_rbf_input, x, sizeof(x));
@@ -298,69 +306,81 @@ static void rbf_pid_step_rbf_nn(RBF_PID_Handle *pid) {
     }
 
     pid->Jacobian = rbf_pid_clamp_adaptive_value(pid, -5.0f,
-        (pressure_scale / flow_scale) * jacobian_n,
+        (pressure_scale / du_scale) * jacobian_n,
         50.0f,
         0.0f);
-    error_rbf_n = y_n - y_hat_n;
 
-    if (pid->control_mode == RBF_PID_CONTROL_MODE_PI &&
-        rbf_pid_same_direction_saturation(pid, pid->Error)) {
-        return;
-    }
+    // ---------- 4. 稳态判定（冻结条件） ----------
+        // 当误差和误差变化率都很小时，认为系统进入稳态
+    float de  = error - pid->e_prev1;
+    int is_steady = (fabsf(error) < STEADY_DEAD_ZONE) &&
+                        (fabsf(de) < STEADY_DEAD_ZONE * STEADY_DE_RATIO);
 
-    for (i = 0; i < RBF_HNUM; ++i) {
-        float delta_w = pid->eta_w * error_rbf_n * h[i] +
-            pid->alpha * (pid->w[i] - pid->w_1[i]);
-        float width = pid->b_rbf[i];
-        float width_sq = width * width;
-        float width_cu = width_sq * width;
-        float norm_val = 0.0f;
-        int j;
+	if (!is_steady) {
+		error_rbf_n = y_n - y_hat_n;
 
-        if (pid->control_mode == RBF_PID_CONTROL_MODE_PI) {
-            pid->w[i] = clamp_finite(-RBF_PID_WEIGHT_LIMIT,
-                                     pid->w[i] + delta_w,
-                                     RBF_PID_WEIGHT_LIMIT,
-                                     pid->w[i]);
-        } else {
-            pid->w[i] += delta_w;
-        }
+		/* P0-2修复：权重饱和抑制应模式无关 */
+		bool skip_learning = false;
+		if (pid->control_mode == RBF_PID_CONTROL_MODE_PI) {
+			skip_learning = rbf_pid_same_direction_saturation(pid, pid->Error);
+		}
 
-        for (j = 0; j < RBF_INPUT_DIM; ++j) {
-            float delta_center = pid->eta_c * error_rbf_n * pid->w[i] * h[i] *
-                (x[j] - pid->c[i][j]) / width_sq +
-                pid->alpha * (pid->ci_1[i][j] - pid->ci_2[i][j]);
-            pid->c[i][j] = rbf_pid_clamp_adaptive_value(
-                pid, -2.0f, pid->c[i][j] + delta_center, 2.0f,
-                pid->c[i][j]);
-        }
+		if (!skip_learning) {
+			for (i = 0; i < RBF_HNUM; ++i) {
+				float w_old = pid->w[i];
+				float delta_w = pid->eta_w * error_rbf_n * h[i]
+						+ pid->alpha * (pid->w[i] - pid->w_1[i]);
+				float width = pid->b_rbf[i];
+				float width_sq = width * width;
+				float width_cu = width_sq * width;
+				int j;
 
-        for (j = 0; j < RBF_INPUT_DIM; ++j) {
-            float diff = x[j] - pid->c[i][j];
-            norm_val += diff * diff;
-        }
+				/* Step 1: Compute norm_val BEFORE updating c[i][j] */
+				float norm_val = 0.0f;
+				for (j = 0; j < RBF_INPUT_DIM; ++j) {
+					float diff = x[j] - pid->c[i][j];
+					norm_val += diff * diff;
+				}
 
-        pid->b_rbf[i] = rbf_pid_clamp_adaptive_value(pid, 0.2f,
-            pid->b_rbf[i] + pid->eta_b * error_rbf_n * pid->w[i] * h[i] *
-            norm_val / width_cu +
-            pid->alpha * (pid->bi_1[i] - pid->bi_2[i]),
-            5.0f,
-            pid->b_rbf[i]);
-    }
+				/* Step 2: Update c[i][j] using w_old */
+				for (j = 0; j < RBF_INPUT_DIM; ++j) {
+					float delta_center = pid->eta_c * error_rbf_n * w_old * h[i]
+							* (x[j] - pid->c[i][j]) / width_sq
+							+ pid->alpha * (pid->ci_1[i][j] - pid->ci_2[i][j]);
+					pid->c[i][j] = rbf_pid_clamp_adaptive_value(pid, -2.0f,
+							pid->c[i][j] + delta_center, 2.0f, pid->c[i][j]);
+				}
 
-    for (i = 0; i < RBF_HNUM; ++i) {
-        int j;
+				/* Step 3: Update b_rbf[i] using norm_val computed with OLD centers */
+				pid->b_rbf[i] = rbf_pid_clamp_adaptive_value(pid, 0.2f,
+						pid->b_rbf[i]
+								+ pid->eta_b * error_rbf_n * w_old * h[i]
+										* norm_val / width_cu
+								+ pid->alpha * (pid->bi_1[i] - pid->bi_2[i]), 5.0f,
+						pid->b_rbf[i]);
 
-        for (j = 0; j < RBF_INPUT_DIM; ++j) {
-            pid->ci_2[i][j] = pid->ci_1[i][j];
-            pid->ci_1[i][j] = pid->c[i][j];
-        }
+				/* Step 4: Update w[i] with WEIGHT_LIMIT clamping (P0-2修复：统一钳位) */
+				pid->w[i] = clamp_finite(-RBF_PID_WEIGHT_LIMIT,
+						pid->w[i] + delta_w, RBF_PID_WEIGHT_LIMIT, pid->w[i]);
+			}
+		}
 
-        pid->bi_2[i] = pid->bi_1[i];
-        pid->bi_1[i] = pid->b_rbf[i];
-        pid->w_2[i] = pid->w_1[i];
-        pid->w_1[i] = pid->w[i];
-    }
+		for (i = 0; i < RBF_HNUM; ++i) {
+			int j;
+
+			for (j = 0; j < RBF_INPUT_DIM; ++j) {
+				pid->ci_2[i][j] = pid->ci_1[i][j];
+				pid->ci_1[i][j] = pid->c[i][j];
+			}
+
+			pid->bi_2[i] = pid->bi_1[i];
+			pid->bi_1[i] = pid->b_rbf[i];
+			pid->w_2[i] = pid->w_1[i];
+			pid->w_1[i] = pid->w[i];
+		}
+	}
+
+	return is_steady;
 }
 
 static float rbf_pid_compute_soft_flow_cap(const RBF_PID_Handle *pid) {
@@ -373,62 +393,62 @@ static float rbf_pid_compute_soft_flow_cap(const RBF_PID_Handle *pid) {
     return clampf(0.0f, (pid->P_set * RBF_PID_SOFT_CAP_RATIO) / pid->K, hard_limit);
 }
 
-static float rbf_pid_target_relative_learning_scale(const RBF_PID_Handle *pid, float raw_error) {
-    float setpoint_scale = clamp_positive_or_default(fabsf(pid->P_set), 1.0f);
-    float error_ratio = fabsf(raw_error) / setpoint_scale;
+#define ETA_KD_BOOST 0.5f // 微分强制唤醒系数
+#define LAMBDA_KI    0.0005f // 积分惩罚系数
+#define KI_CENTER    0.0f   // 积分中心值
 
-    if (error_ratio <= RBF_PID_LEARNING_RATIO_TIGHT) {
-        return RBF_PID_LEARNING_SCALE_TIGHT;
-    }
-    if (error_ratio <= RBF_PID_LEARNING_RATIO_NEAR) {
-        return RBF_PID_LEARNING_SCALE_NEAR;
-    }
-    if (error_ratio <= RBF_PID_LEARNING_RATIO_MID) {
-        return RBF_PID_LEARNING_SCALE_MID;
-    }
-    return 1.0f;
-}
+static void rbf_pid_step_adaptive_gains(RBF_PID_Handle *pid, float error, float raw_error)
+{
+	float de  = error - pid->e_prev1;
+	float dde = de - (pid->e_prev1 - pid->e_prev2);
+	// ---------- 5. PID 参数在线整定（带抗饱和 & 微分唤醒） ----------
+	float abs_Jac = fabsf(pid->Jacobian);
+	if (abs_Jac < 1e-6f) {
+		abs_Jac = 1e-6f;   // 避免除零
+	}
+	// 5.3 比例增益 Kp 更新（常规梯度）
+	//    公式：ΔKp = ηp * e * Jac * Δe
+	float grad_Kp = pid->eta_p * error * sign(pid->Jacobian) * abs_Jac * de;
+	pid->KP += grad_Kp;
+	pid->KP = clampf(pid->min_KP, pid->KP, pid->max_KP);
 
-static void rbf_pid_step_adaptive_gains(RBF_PID_Handle *pid, float error, float raw_error) {
-    float de = error - pid->e_prev1;
-    float dde = de - (pid->e_prev1 - pid->e_prev2);
-    float learning_scale = rbf_pid_target_relative_learning_scale(pid, raw_error);
+	// 5.1 积分增益 Ki 更新（带L2惩罚，防止积分饱和）
+	float grad_Ki = pid->eta_i * error * sign(pid->Jacobian) * abs_Jac * error;
+	float decay_Ki = LAMBDA_KI * (pid->KI - KI_CENTER);
+	float delta_Ki = grad_Ki - decay_Ki;
+	pid->KI += delta_Ki;
+	pid->KI = clampf(pid->min_KI, pid->KI, pid->max_KI);
 
-    if (rbf_pid_same_direction_saturation(pid, error)) {
-        return;
-    }
+	if (pid->control_mode == RBF_PID_CONTROL_MODE_PI) {
+		pid->KD = 0.0f;
+	} else {
 
-    switch (pid->control_state) {
-        case RBF_PID_CONTROL_STATE_INIT:
-            learning_scale *= 0.10f;
-            break;
-        case RBF_PID_CONTROL_STATE_HOLD:
-            learning_scale *= 0.25f;
-            break;
-        case RBF_PID_CONTROL_STATE_RELIEF:
-            learning_scale *= 0.50f;
-            break;
-        case RBF_PID_CONTROL_STATE_BOOST:
-        default:
-            break;
-    }
+		// 5.2 微分增益 Kd 更新（带"强制唤醒"机制）
+		float delta_Kd = 0.0f;
 
-    pid->KP = rbf_pid_clamp_adaptive_value(pid, pid->min_KP,
-        pid->KP + learning_scale * pid->eta_p * error * pid->Jacobian * de,
-        pid->max_KP,
-        pid->min_KP);
-    pid->KI = rbf_pid_clamp_adaptive_value(pid, pid->min_KI,
-        pid->KI + learning_scale * pid->eta_i * error * pid->Jacobian * error,
-        pid->max_KI,
-        pid->min_KI);
-    if (pid->control_mode == RBF_PID_CONTROL_MODE_PI) {
-        pid->KD = 0.0f;
-    } else {
-        pid->KD = rbf_pid_clamp_adaptive_value(pid, pid->min_KD,
-            pid->KD + learning_scale * pid->eta_d * error * pid->Jacobian * dde,
-            pid->max_KD,
-            pid->min_KD);
-    }
+		// 判断：误差是否在发散且Kd处于低位？
+		int error_diverging = (fabsf(error) > fabsf(pid->e_prev1)) && (fabsf(error) > 0.01f);
+		int kd_at_floor = (pid->KD <= pid->min_KD * 1.1f);
+
+		if (error_diverging && kd_at_floor) {
+			// 【强制唤醒】放弃纯梯度，强行提升Kd
+			float boost = ETA_KD_BOOST * fabsf(de) * sign(pid->Jacobian);
+			delta_Kd = fmaxf(boost, 0.0f);
+		} else {
+			// 正常情况：使用"绝对值整流"防止负向累积
+			float grad_Kd_base = pid->eta_d * error * sign(pid->Jacobian) * fabsf(dde);
+			// 再加一点"趋势预测"：如果误差正在减小，保持Kd不掉太快
+			if (error * de < 0) {
+				// 误差在收拢，微分项已经起效，不要过度衰减
+				delta_Kd = fmaxf(grad_Kd_base, 0.0f);
+			} else {
+				delta_Kd = grad_Kd_base;
+			}
+		}
+		pid->KD += delta_Kd;
+		pid->KD = clampf(pid->min_KD, pid->KD, pid->max_KD);
+
+	}
 }
 
 static void rbf_pid_step_incremental_output(RBF_PID_Handle *pid, float error, float raw_error) {
@@ -449,53 +469,52 @@ static void rbf_pid_step_incremental_output(RBF_PID_Handle *pid, float error, fl
         pid->prev_d_term = 0.0f;
     } else {
         float raw_d_term = (error - 2.0f * pid->e_prev1 + pid->e_prev2);
-        float flt_alpha = HYD_THRESH_RBF_DERIV_FILTER_ALPHA;
-        d_term = flt_alpha * raw_d_term + (1.0f - flt_alpha) * pid->prev_d_term;
+        //float flt_alpha = HYD_THRESH_RBF_DERIV_FILTER_ALPHA;
+        //d_term = flt_alpha * raw_d_term + (1.0f - flt_alpha) * pid->prev_d_term;
+        d_term = raw_d_term;
         pid->prev_d_term = d_term;
     }
-
-    du = pid->KP * (error - pid->e_prev1) + pid->KI * error + pid->KD * d_term;
+    float interf_term = pid->KI * error;
+    interf_term = clampf(-0.08, interf_term, 0.08);
+    du = pid->KP * (error - pid->e_prev1) + interf_term + pid->KD * d_term;
 
     float actual_press = pid->P_actual;
-    float setpoint_scale = clamp_positive_or_default(fabsf(pid->P_set), 1.0f);
-    float pressure_scale = rbf_pid_effective_pressure_scale(pid);
-    float actual_press_n = actual_press / pressure_scale;
-    float last_press_n = pid->fLastActPress / pressure_scale;
-    float last_press2_n = pid->fLastActPress2 / pressure_scale;
-    float f_delta_press = actual_press_n - last_press_n;
-    float f_dd_press = f_delta_press - (last_press_n - last_press2_n);
-    bool near_target = fabsf(raw_error) <= RBF_PID_NEAR_TARGET_RATIO * setpoint_scale;
-    bool boost_or_relief = (pid->control_state == RBF_PID_CONTROL_STATE_BOOST) ||
-        (pid->control_state == RBF_PID_CONTROL_STATE_RELIEF);
-    float f_uff = (pid->pressure_accel_ff_enabled &&
-                   boost_or_relief &&
-                   !near_target &&
-                   fabsf(f_dd_press) > HYD_THRESH_RBF_FF_ACCEL_DEAD_BAND)
-        ? (RBF_PID_ACCEL_FF_GAIN * f_dd_press) : 0.0f;
 
-    float ref_change = pid->P_set - pid->last_ref;
-    float ref_rate = clampf(-10.0f, ref_change, 10.0f);
-    float dynamic_ff = (pid->control_state == RBF_PID_CONTROL_STATE_HOLD)
-        ? 0.0f
-        : (RBF_PID_DYNAMIC_FF_GAIN * ref_rate);
+    float f_delta_press = actual_press - pid->fLastActPress;
+    float f_velfb = 0.0f;
+    float near_target_threshold = pid->P_set * RBF_PID_NEAR_TARGET_RATIO;
+    if (pid->pressure_accel_ff_enabled ) {
+        float pressure_error = fabsf(pid->P_set - actual_press);
 
-    du += dynamic_ff + f_uff;
+        if (pressure_error > near_target_threshold)
+        {
+            f_velfb = -0.0f * f_delta_press; // 1:0.15,
+        }
+    }
 
-    pid->du = (pid->control_mode == RBF_PID_CONTROL_MODE_PI && !isfinite(du))
-        ? 0.0f : du;
-    pid->Output = clampf(output_min, pid->u_prev + pid->du, soft_output_max);
-    pid->output_saturated = (pid->Output <= output_min + 1.0e-6f) ||
-        (pid->Output >= soft_output_max - 1.0e-6f);
-    pid->n_out = pid->Output;
+    float vel_ref  = pid->P_set - pid->last_ref;
+    vel_ref  = clampf( -10.0f, vel_ref, 10.0f );
+    float f_du_ff  = RBF_PID_DYNAMIC_FF_GAIN * ( vel_ref -  pid->v_ref_k1 );
+
+   // du = clampf( -0.5, du, 0.5 );
+//    printf("output_min: %.3f, output_max: %.3f,  kp:%.3f,k:%.3f,kd:%.3f,du:%.6f\n", output_min, output_max,
+//    		pid->KP, pid->KI, pid->KD, du);
+
+    pid->du = !isfinite(du) ? 0.0f : du;
+
+    pid->Output = pid->u_prev + pid->du + f_du_ff + f_velfb;
+
+    pid->Output =  clampf( output_min, pid->Output, soft_output_max );
+    pid->output_saturated = (pid->Output <= output_min + 1.0e-6f) || (pid->Output >= soft_output_max - 1.0e-6f);
     if (pid->P_set < 0.1f && actual_press < 0.5f) {
         pid->Output = 0.0f;
-        pid->n_out = 0.0f;
         pid->output_saturated = false;
     }
 
     pid->fLastActPress2 = pid->fLastActPress;
     pid->fLastActPress = actual_press;
     pid->last_ref = pid->P_set;
+    pid->v_ref_k1 = vel_ref;
 }
 
 static void rbf_pid_step_steady_state(RBF_PID_Handle *pid) {
@@ -543,6 +562,7 @@ void RBF_PID_Init(RBF_PID_Handle *pid, float sampling_period,
     pid->TuneResult = 66;
     pid->alpha = 0.05f;
     pid->flowToPumpSpeedGain = 20.0f;
+    pid->f_dd_press_prev = 5.0f;
     pid->pressure_accel_ff_enabled = true;
     pid->control_mode = RBF_PID_CONTROL_MODE_PID;
     rbf_pid_apply_default_limits(pid);
@@ -559,30 +579,33 @@ float RBF_PID_Update(RBF_PID_Handle *pid, float setpoint, float feedback) {
     float raw_error;
     float error;
 
-    if (pid->control_mode == RBF_PID_CONTROL_MODE_PI) {
-        pid->P_set = isfinite(setpoint) ? setpoint : 0.0f;
-        pid->P_actual = isfinite(feedback) ? feedback : 0.0f;
-        rbf_pid_sanitize_runtime_state(pid);
-    } else {
-        pid->P_set = setpoint;
-        pid->P_actual = feedback;
-    }
+    pid->P_set = isfinite(setpoint) ? setpoint : 0.0f;
+    pid->P_actual = isfinite(feedback) ? feedback : 0.0f;
+
+    /* P0-1修复：统一数值防护，移到enforce之前，模式无关 */
+    rbf_pid_sanitize_runtime_state(pid);
+
     rbf_pid_enforce_control_mode(pid);
     raw_error = pid->P_set - pid->P_actual;
     error = rbf_pid_apply_deadband(raw_error);
     pid->Error = error;
     pid->control_state = rbf_pid_resolve_control_state(pid, raw_error);
 
-    rbf_pid_step_rbf_nn(pid);
-    rbf_pid_step_adaptive_gains(pid, error, raw_error);
+    int is_steady = rbf_pid_step_rbf_nn(pid,error);
+
     rbf_pid_step_incremental_output(pid, error, raw_error);
 
     pid->y_prev2 = pid->y_prev1;
     pid->y_prev1 = pid->P_actual;
-    pid->e_prev2 = pid->e_prev1;
-    pid->e_prev1 = error;
     pid->u_prev = pid->Output;
     pid->du_prev = pid->du;
+
+    if( !is_steady ) {
+    	rbf_pid_step_adaptive_gains(pid, error, raw_error);
+    }
+
+    pid->e_prev2 = pid->e_prev1;
+    pid->e_prev1 = error;
 
     rbf_pid_step_steady_state(pid);
     pid->Status = pid->steady_state ? 3 : 2;
@@ -610,6 +633,9 @@ void RBF_PID_SetParamLimits(RBF_PID_Handle *pid,
     sort_pair(&pid->min_KI, &pid->max_KI);
     sort_pair(&pid->min_KD, &pid->max_KD);
     pid->pid_mode_kd = clampf(pid->min_KD, pid->pid_mode_kd, pid->max_KD);
+    pid->KP = clampf(pid->min_KP, pid->KP, pid->max_KP);
+    pid->KI = clampf(pid->min_KI, pid->KI, pid->max_KI);
+    pid->KD = clampf(pid->min_KD, pid->KD, pid->max_KD);
 }
 
 void RBF_PID_SetLearningRates(RBF_PID_Handle *pid,
@@ -638,6 +664,14 @@ void RBF_PID_SetFlowNormalization(RBF_PID_Handle *pid, float scale) {
     pid->flow_normalization_scale = clamp_positive_or_default(
         scale,
         (pid->fMaxFlow > 0.0f) ? pid->fMaxFlow : 90.0f);
+}
+
+void RBF_PID_SetDuNormalization(RBF_PID_Handle *pid, float scale) {
+    if (pid == NULL) {
+        return;
+    }
+
+    pid->f_dd_press_prev = clamp_positive_or_default(scale, 5.0f);
 }
 
 void RBF_PID_SetGainCompensation(RBF_PID_Handle *pid, float systemGain) {

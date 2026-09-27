@@ -5,8 +5,9 @@
 #include <string.h>
 
 static void test_validate_config(void);
-static void test_negative_requested_flow_uses_magnitude(void);
 static void test_non_finite_input_returns_safe_zero(void);
+static void test_slew_limit_bounds_acceleration(void);
+static void test_slew_limit_does_not_cross_zero_on_reversal(void);
 
 static void test_basic_conversion(void) {
     HYD_PumpConverterInput input = {0};
@@ -112,6 +113,39 @@ static void test_non_finite_input_returns_safe_zero(void) {
     printf("✓ Non-finite pump converter input handling test passed\n");
 }
 
+static void test_slew_limit_bounds_acceleration(void) {
+    HYD_PumpConverterInput input = {0};
+    HYD_PumpConverterOutput output = {0};
+
+    printf("Testing pump speed slew acceleration limit...\n");
+    input.requestedFlow = 20.0;
+    input.flowToPumpSpeedGain = 100.0;
+    input.pumpSpeedLimit = 3000.0;
+    HYD_PumpConverter_Execute(&input, &output);
+
+    HYD_PumpConverter_ApplySlewLimit(&input, 100.0, 0.001, 1000.0, 2000.0, &output);
+    assert(fabs(output.pumpSpeed - 101.0) < 0.001);
+    assert(fabs(output.commandFlow - 1.01) < 0.001);
+    printf("✓ Pump speed slew acceleration limit test passed\n");
+}
+
+static void test_slew_limit_does_not_cross_zero_on_reversal(void) {
+    HYD_PumpConverterInput input = {0};
+    HYD_PumpConverterOutput output = {0};
+
+    printf("Testing pump speed slew reversal zero crossing...\n");
+    input.requestedFlow = -20.0;
+    input.flowToPumpSpeedGain = 100.0;
+    input.pumpSpeedLimit = 3000.0;
+    HYD_PumpConverter_Execute(&input, &output);
+
+    HYD_PumpConverter_ApplySlewLimit(&input, 100.0, 0.001, 1000.0, 2000.0, &output);
+    assert(output.pumpSpeed >= 0.0);
+    assert(output.pumpSpeed < 100.0);
+    assert(fabs(output.commandFlow - output.pumpSpeed / input.flowToPumpSpeedGain) < 0.001);
+    printf("✓ Pump speed slew reversal zero crossing test passed\n");
+}
+
 int main(void) {
     printf("Running PumpConverter tests...\n\n");
 
@@ -120,6 +154,8 @@ int main(void) {
     test_invalid_input_returns_safe_zero();
     test_negative_requested_flow_is_preserved();
     test_non_finite_input_returns_safe_zero();
+    test_slew_limit_bounds_acceleration();
+    test_slew_limit_does_not_cross_zero_on_reversal();
     test_validate_config();
 
     printf("\n✅ All PumpConverter tests passed successfully!\n");

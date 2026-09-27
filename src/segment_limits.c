@@ -44,6 +44,14 @@ HYD_TIME HYD_Segment_GetTimeoutLimit(const HYD_MotionSegment* segment) {
         return 0.0;
     }
 
+    /* Pressure control is a hold/settle operation. Its duration (when any)
+     * is the normal end condition, not a motion-completion watchdog. Keep
+     * the timeout policy out of this generic resolver so every caller gets
+     * the same pressure-mode semantics. */
+    if (segment->mode == HYD_MODE_PRESSURE_CLOSED_LOOP) {
+        return 0.0;
+    }
+
     if (segment->timeoutLimit > 0.0) {
         return segment->timeoutLimit;
     }

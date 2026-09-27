@@ -341,7 +341,7 @@ typedef struct {
     HYD_REAL pressureTolerance;  /* bar */
     HYD_REAL flowTolerance;      /* L/min */
     HYD_REAL velocityTolerance;  /* mm/s */
-    HYD_TIME timeoutLimit;       /* s, 0 means disabled or auto-derived for time-ended segments */
+    HYD_TIME timeoutLimit;       /* s, motion watchdog; 0 disables and pressure mode ignores it */
     HYD_TIME stableWindow;       /* s, 0 means immediate completion */
     HYD_REAL stableVelocityLimit; /* mm/s, 0 disables velocity-settled gate */
     HYD_REAL vpTransferPosition;        /* mm, 0 disables position transfer observation */
