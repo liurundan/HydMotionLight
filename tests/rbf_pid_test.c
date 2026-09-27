@@ -7,8 +7,9 @@ static void test_flow_normalization_and_system_gain_soft_cap_are_configurable(vo
 static void test_flow_domain_output_is_independent_from_pump_gain(void);
 static void test_rbf_input_uses_causal_history_and_split_normalization(void);
 static void test_pressure_accel_feedforward_toggle_changes_incremental_output(void);
-static void test_pressure_accel_feedforward_is_suppressed_inside_near_target_band(void);
+static void test_pressure_rate_damping_remains_active_near_target_while_moving(void);
 static void test_pressure_accel_feedforward_remains_active_outside_near_target_band(void);
+static void test_pressure_rate_damping_is_quiet_after_steady_state(void);
 static void test_target_relative_small_error_reduces_gain_drift(void);
 static void test_control_mode_round_trip_restores_pid_configuration(void);
 static void test_ksys_bar_per_rpm_converts_to_flow_domain(void);
@@ -364,13 +365,13 @@ static void test_pressure_accel_feedforward_toggle_changes_incremental_output(vo
     printf("✓ Pressure acceleration feedforward toggle test passed\n");
 }
 
-static void test_pressure_accel_feedforward_is_suppressed_inside_near_target_band(void) {
+static void test_pressure_rate_damping_remains_active_near_target_while_moving(void) {
     RBF_PID_Handle enabled;
     RBF_PID_Handle disabled;
     float out_enabled;
     float out_disabled;
 
-    printf("Testing near-target pressure acceleration feedforward suppression...\n");
+    printf("Testing pressure-rate damping near target while pressure is moving...\n");
 
     RBF_PID_Init(&enabled, 0.001f, 90.0f, 1.0f);
     RBF_PID_Init(&disabled, 0.001f, 90.0f, 1.0f);
@@ -385,8 +386,36 @@ static void test_pressure_accel_feedforward_is_suppressed_inside_near_target_ban
     out_enabled = RBF_PID_Update(&enabled, 100.0f, 98.5f);
     out_disabled = RBF_PID_Update(&disabled, 100.0f, 98.5f);
 
+    assert(fabsf(out_enabled - out_disabled) > 0.1f);
+    printf("PASS pressure-rate damping remains active during approach\n");
+}
+
+static void test_pressure_rate_damping_is_quiet_after_steady_state(void) {
+    RBF_PID_Handle enabled;
+    RBF_PID_Handle disabled;
+    float out_enabled;
+    float out_disabled;
+    int step;
+
+    printf("Testing pressure-rate damping quietness after steady state...\n");
+
+    RBF_PID_Init(&enabled, 0.001f, 90.0f, 1.0f);
+    RBF_PID_Init(&disabled, 0.001f, 90.0f, 1.0f);
+    RBF_PID_SetLearningRates(&enabled, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f);
+    RBF_PID_SetLearningRates(&disabled, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f);
+
+    for (step = 0; step < 300; ++step) {
+        (void)RBF_PID_Update(&enabled, 100.0f, 100.0f);
+        (void)RBF_PID_Update(&disabled, 100.0f, 100.0f);
+    }
+
+    assert(enabled.steady_state);
+    out_enabled = RBF_PID_Update(&enabled, 100.0f, 100.00005f);
+    RBF_PID_SetPressureAccelFeedforwardEnabled(&disabled, false);
+    out_disabled = RBF_PID_Update(&disabled, 100.0f, 100.00005f);
+
     assert(fabsf(out_enabled - out_disabled) < 1e-6f);
-    printf("PASS near-target feedforward suppression test\n");
+    printf("PASS pressure-rate damping remains quiet at steady hold\n");
 }
 
 static void test_pressure_accel_feedforward_remains_active_outside_near_target_band(void) {
@@ -510,8 +539,9 @@ int main(void) {
     test_network_initialization_is_deterministic_without_seed_hookup();
     test_rbf_pid_negative_output();
     test_pressure_accel_feedforward_toggle_changes_incremental_output();
-    test_pressure_accel_feedforward_is_suppressed_inside_near_target_band();
+    test_pressure_rate_damping_remains_active_near_target_while_moving();
     test_pressure_accel_feedforward_remains_active_outside_near_target_band();
+    test_pressure_rate_damping_is_quiet_after_steady_state();
     test_target_relative_small_error_reduces_gain_drift();
 
     printf("\n✅ All RBF_PID tests passed successfully!\n");

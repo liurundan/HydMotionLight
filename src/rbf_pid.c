@@ -8,11 +8,33 @@
 
 static const float RBF_PID_ERROR_DEADBAND = 0.005f;
 static const float RBF_PID_SOFT_CAP_RATIO = 1.05f;
-static const float RBF_PID_NEAR_TARGET_RATIO = 0.08f;
 static const float RBF_PID_DYNAMIC_FF_GAIN = 0.001f;
-static const float RBF_PID_PRESSURE_RATE_FF_GAIN = 0.15f;
+/* The legacy implementation used -0.15 * delta_pressure per sample.  The
+ * rate form below is the same nominal damping at the fixed 1 ms scan while
+ * making the units explicit: [L/min] / [bar/s]. */
+static const float RBF_PID_PRESSURE_RATE_DAMPING_GAIN = 0.00015f;
+static const float RBF_PID_PRESSURE_RATE_DAMPING_LIMIT = 0.5f;
+/* Minimum measured pressure speed that is allowed to move the output.  This
+ * must exceed the filtered sensor/ADC noise expressed in bar/s. */
+static const float RBF_PID_PRESSURE_RATE_DEADBAND = 0.5f;
 static const float RBF_PID_WEIGHT_LIMIT = 5.0f;
 
+/* Steady-state criteria for a 0-250 bar pressure loop.  The error and rate
+ * limits scale with target pressure but retain a noise floor. */
+static const float RBF_PID_STEADY_ERROR_MIN_BAR = 0.5f;
+static const float RBF_PID_STEADY_ERROR_RATIO = 0.01f;
+static const float RBF_PID_STEADY_RATE_MIN_BAR_S = 0.25f;
+static const float RBF_PID_STEADY_RATE_RATIO = 0.005f;
+static const float RBF_PID_STEADY_TIME_S = 0.2f;
+/* Learning freeze is intentionally looser than the reported steady-state
+ * flag.  It prevents parameter drift near a target without claiming that the
+ * physical pressure has fully settled. */
+static const float RBF_PID_LEARNING_ERROR_MIN_BAR = 1.0f;
+static const float RBF_PID_LEARNING_ERROR_RATIO = 0.06f;
+static const float RBF_PID_LEARNING_ERROR_MAX_BAR = 5.0f;
+static const float RBF_PID_LEARNING_DU_LIMIT = 2.0f;
+
+static float rbf_pid_max_flow_output(const RBF_PID_Handle *pid);
 static float rbf_pid_compute_soft_flow_cap(const RBF_PID_Handle *pid);
 
 static float sign(float x)
@@ -48,6 +70,85 @@ static float clamp_finite(float min_value, float value, float max_value, float f
 
 static float finite_or_default(float value, float fallback) {
     return isfinite(value) ? value : fallback;
+}
+
+static float rbf_pid_effective_sampling_period(const RBF_PID_Handle *pid) {
+    if (pid != NULL && isfinite(pid->sampling_period) &&
+        pid->sampling_period > 1.0e-6f) {
+        return pid->sampling_period;
+    }
+    return RBF_PID_FIXED_SAMPLING_PERIOD;
+}
+
+static float rbf_pid_pressure_rate(const RBF_PID_Handle *pid) {
+    /* The outer pressure controller supplies a filtered pressure signal.  A
+     * local rate deadband below removes the remaining quantization chatter. */
+    float dt = rbf_pid_effective_sampling_period(pid);
+    float current_delta = pid->P_actual - pid->fLastActPress;
+    float rate = current_delta / dt;
+
+    return isfinite(rate) ? rate : 0.0f;
+}
+
+static float rbf_pid_setpoint_rate(const RBF_PID_Handle *pid) {
+    float dt = rbf_pid_effective_sampling_period(pid);
+    float rate = (pid->P_set - pid->last_ref) / dt;
+
+    return isfinite(rate) ? rate : 0.0f;
+}
+
+static float rbf_pid_steady_error_limit(const RBF_PID_Handle *pid) {
+    float target = fabsf(pid->P_set);
+    float limit = RBF_PID_STEADY_ERROR_RATIO * target;
+
+    return (limit > RBF_PID_STEADY_ERROR_MIN_BAR)
+        ? limit : RBF_PID_STEADY_ERROR_MIN_BAR;
+}
+
+static float rbf_pid_steady_rate_limit(const RBF_PID_Handle *pid) {
+    float target = fabsf(pid->P_set);
+    float limit = RBF_PID_STEADY_RATE_RATIO * target;
+
+    return (limit > RBF_PID_STEADY_RATE_MIN_BAR_S)
+        ? limit : RBF_PID_STEADY_RATE_MIN_BAR_S;
+}
+
+static float rbf_pid_pressure_rate_damping_limit(const RBF_PID_Handle *pid) {
+    /* Scale the per-scan flow increment with the available flow range so a
+     * 30 L/min and a 120 L/min machine do not receive the same absolute kick. */
+    return clampf(0.1f,
+                  0.005f * rbf_pid_max_flow_output(pid),
+                  RBF_PID_PRESSURE_RATE_DAMPING_LIMIT);
+}
+
+static float rbf_pid_learning_error_limit(const RBF_PID_Handle *pid) {
+    float target = fabsf(pid->P_set);
+    float limit = RBF_PID_LEARNING_ERROR_RATIO * target;
+
+    limit = (limit > RBF_PID_LEARNING_ERROR_MIN_BAR)
+        ? limit : RBF_PID_LEARNING_ERROR_MIN_BAR;
+    return clampf(RBF_PID_LEARNING_ERROR_MIN_BAR,
+                  limit,
+                  RBF_PID_LEARNING_ERROR_MAX_BAR);
+}
+
+static bool rbf_pid_learning_freeze_candidate(const RBF_PID_Handle *pid,
+                                               float error) {
+    float rate_limit = rbf_pid_steady_rate_limit(pid);
+    float setpoint_rate = rbf_pid_setpoint_rate(pid);
+
+    /* PI mode has no pressure-rate damping path.  Preserve its established
+     * conservative adaptation hold so this optimization does not change the
+     * plant behavior of the derivative-free controller. */
+    if (pid->control_mode == RBF_PID_CONTROL_MODE_PI) {
+        float de = error - pid->e_prev1;
+        return fabsf(error) < 10.0f && fabsf(de) < 10.0f;
+    }
+
+    return fabsf(error) <= rbf_pid_learning_error_limit(pid) &&
+        fabsf(pid->du) <= RBF_PID_LEARNING_DU_LIMIT &&
+        fabsf(setpoint_rate) <= rate_limit &&
+        !pid->output_saturated;
 }
 
 static float rbf_pid_clamp_adaptive_value(const RBF_PID_Handle *pid,
@@ -257,10 +358,6 @@ static bool rbf_pid_same_direction_saturation(const RBF_PID_Handle *pid, float e
         (pid->Output <= output_min + 1.0e-6f && error < 0.0f);
 }
 
-// ========== 稳态判定参数（可调） ==========
-#define STEADY_DEAD_ZONE     10.0f   // 误差死区（bar），根据传感器量程设定
-#define STEADY_DE_RATIO      1.0f    // 变化率死区系数
-
 static int rbf_pid_step_rbf_nn(RBF_PID_Handle *pid,float error) {
     float h[RBF_HNUM];
     float pressure_scale = rbf_pid_effective_pressure_scale(pid);
@@ -275,6 +372,7 @@ static int rbf_pid_step_rbf_nn(RBF_PID_Handle *pid,float error) {
     float y_hat_n = 0.0f;
     float jacobian_n = 0.0f;
     float error_rbf_n;
+    int freeze_learning = rbf_pid_learning_freeze_candidate(pid, error);
     int i;
 
     /* P0-1修复：统一数值防护，模式无关 */
@@ -312,13 +410,7 @@ static int rbf_pid_step_rbf_nn(RBF_PID_Handle *pid,float error) {
             pid->Jacobian, 2.0f * pid->K);
     }
 
-    // ---------- 4. 稳态判定（冻结条件） ----------
-        // 当误差和误差变化率都很小时，认为系统进入稳态
-    float de  = error - pid->e_prev1;
-    int is_steady = (fabsf(error) < STEADY_DEAD_ZONE) &&
-                        (fabsf(de) < STEADY_DEAD_ZONE * STEADY_DE_RATIO);
-
-	if (!is_steady) {
+	if (!freeze_learning) {
 		error_rbf_n = y_n - y_hat_n;
 
 		/* P0-2修复：权重饱和抑制应模式无关 */
@@ -379,7 +471,7 @@ static int rbf_pid_step_rbf_nn(RBF_PID_Handle *pid,float error) {
 		}
 	}
 
-	return is_steady;
+    return freeze_learning;
 }
 
 static float rbf_pid_compute_soft_flow_cap(const RBF_PID_Handle *pid) {
@@ -472,19 +564,15 @@ static void rbf_pid_step_incremental_output(RBF_PID_Handle *pid, float error, fl
     du = pid->KP * (error - pid->e_prev1) + interf_term + pid->KD * d_term;
 
     float actual_press = pid->P_actual;
+    float pressure_rate = rbf_pid_pressure_rate(pid);
 
-    float f_delta_press = actual_press - pid->fLastActPress;
     float f_velfb = 0.0f;
-    float near_target_threshold = pid->P_set * RBF_PID_NEAR_TARGET_RATIO;
-    if (pid->pressure_accel_ff_enabled ) {
-        float pressure_error = fabsf(pid->P_set - actual_press);
-
-        if (pressure_error > near_target_threshold)
-        {
-            f_velfb = clampf(-0.5f,
-                -RBF_PID_PRESSURE_RATE_FF_GAIN * f_delta_press,
-                0.5f);
-        }
+    if (pid->pressure_accel_ff_enabled && !pid->steady_state &&
+        fabsf(pressure_rate) > RBF_PID_PRESSURE_RATE_DEADBAND) {
+        float damping_limit = rbf_pid_pressure_rate_damping_limit(pid);
+        f_velfb = clampf(-damping_limit,
+            -RBF_PID_PRESSURE_RATE_DAMPING_GAIN * pressure_rate,
+            damping_limit);
     }
 
     float vel_ref  = pid->P_set - pid->last_ref;
@@ -515,22 +603,31 @@ static void rbf_pid_step_incremental_output(RBF_PID_Handle *pid, float error, fl
 }
 
 static void rbf_pid_step_steady_state(RBF_PID_Handle *pid) {
-    const float e_steady = 5.0f;
-    const float t_steady = 0.2f;
-    const float delta_u_steady = 2.0f;
-    int n_steady = (int)(t_steady / pid->sampling_period);
+    float error_limit = rbf_pid_steady_error_limit(pid);
+    float rate_limit = rbf_pid_steady_rate_limit(pid);
+    float dt = rbf_pid_effective_sampling_period(pid);
+    float pressure_rate = rbf_pid_pressure_rate(pid);
+    float setpoint_rate = rbf_pid_setpoint_rate(pid);
+    int n_steady = (int)ceilf(RBF_PID_STEADY_TIME_S / dt);
     float error = pid->P_set - pid->P_actual;
-    bool condition1;
-    bool condition2;
+    bool condition_error;
+    bool condition_pressure_rate;
+    bool condition_setpoint_rate;
+    bool condition_not_saturated;
+    bool candidate;
 
     if (n_steady < 5) {
         n_steady = 5;
     }
 
-    condition1 = fabsf(error) <= e_steady;
-    condition2 = fabsf(pid->du) <= delta_u_steady;
+    condition_error = fabsf(error) <= error_limit;
+    condition_pressure_rate = fabsf(pressure_rate) <= rate_limit;
+    condition_setpoint_rate = fabsf(setpoint_rate) <= rate_limit;
+    condition_not_saturated = !pid->output_saturated;
+    candidate = condition_error && condition_pressure_rate &&
+        condition_setpoint_rate && condition_not_saturated;
 
-    if (condition1 && condition2) {
+    if (candidate) {
         if (pid->steady_count < n_steady) {
             pid->steady_count++;
         }
@@ -538,9 +635,7 @@ static void rbf_pid_step_steady_state(RBF_PID_Handle *pid) {
         pid->steady_count = 0;
     }
 
-    pid->steady_state = condition1 && condition2 &&
-        pid->steady_count >= n_steady &&
-        fabsf(pid->P_set) > 5.0f;
+    pid->steady_state = candidate && pid->steady_count >= n_steady;
 }
 
 void RBF_PID_Init(RBF_PID_Handle *pid, float sampling_period,
@@ -590,7 +685,9 @@ float RBF_PID_Update(RBF_PID_Handle *pid, float setpoint, float feedback) {
     pid->Error = error;
     pid->control_state = rbf_pid_resolve_control_state(pid, raw_error);
 
-    int is_steady = rbf_pid_step_rbf_nn(pid,error);
+    rbf_pid_step_steady_state(pid);
+
+    int freeze_learning = rbf_pid_step_rbf_nn(pid,error);
 
     rbf_pid_step_incremental_output(pid, error, raw_error);
 
@@ -599,14 +696,13 @@ float RBF_PID_Update(RBF_PID_Handle *pid, float setpoint, float feedback) {
     pid->u_prev = pid->Output;
     pid->du_prev = pid->du;
 
-    if( !is_steady ) {
+    if (!freeze_learning) {
     	rbf_pid_step_adaptive_gains(pid, error, raw_error);
     }
 
     pid->e_prev2 = pid->e_prev1;
     pid->e_prev1 = error;
 
-    rbf_pid_step_steady_state(pid);
     pid->Status = pid->steady_state ? 3 : 2;
 
     return pid->Output;
@@ -726,6 +822,8 @@ void RBF_PID_TrackOutput(RBF_PID_Handle *pid,
     pid->du = 0.0f;
     pid->du_prev = 0.0f;
     pid->feedforward_flow_prev = pid->feedforward_flow;
+    pid->steady_count = 0;
+    pid->steady_state = false;
     pid->output_saturated = false;
 }
 
