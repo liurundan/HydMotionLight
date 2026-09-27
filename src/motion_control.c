@@ -2305,6 +2305,7 @@ static HYD_BOOL HYD_ExecuteActiveSegmentControl(HYD_MotionControlFB* fb,
             pressureInput.flowToPumpSpeedGain = fb->FLOW_TO_PUMP_SPEED_GAIN;
             pressureInput.pumpSpeedLimit = fb->PUMP_SPEED_LIMIT;
         }
+        pressureInput.systemGainBarPerRpm = fb->_params.ksysBarPerRpm;
         pressureInput.timestamp = HYD_GetCurrentSegmentTime(fb);
         HYD_PressureController_Execute(segment,
                                        &fb->_pressureController,
@@ -3577,6 +3578,7 @@ void HYD_MotionControlFB_Init(HYD_MotionControlFB* fb) {
     fb->_params.pressureControllerType = (HYD_REAL)HYD_PRESSURE_CONTROLLER_PI;
     fb->_params.defaultTargetFlow = 5.0f;
     fb->_params.useSimulation = false;
+    fb->_params.ksysBarPerRpm = 0.0f;
 
     /* Legacy defaults — used when pumpConfig/cylinderConfig are not configured.
      * pumpConfig and cylinderConfig are zero after memset — inactive by default. */
@@ -4161,6 +4163,7 @@ HYD_BOOL HYD_MotionControlFB_ReadParameter(const HYD_MotionControlFB* fb, int pa
         case HYD_PARAM_CYLINDER_AREA_EXTEND:           *value = fb->cylinderConfig.areaExtendMm2; break;
         case HYD_PARAM_CYLINDER_AREA_RETRACT:          *value = fb->cylinderConfig.areaRetractMm2; break;
         case HYD_PARAM_CYLINDER_STROKE:                *value = fb->cylinderConfig.strokeMm; break;
+        case HYD_PARAM_KSYS_BAR_PER_RPM:               *value = fb->_params.ksysBarPerRpm; break;
         default: return false;
     }
     return true;
@@ -4215,6 +4218,10 @@ HYD_BOOL HYD_MotionControlFB_WriteParameter(HYD_MotionControlFB* fb, int paramNu
         case HYD_PARAM_CYLINDER_AREA_EXTEND:           fb->cylinderConfig.areaExtendMm2 = value; break;
         case HYD_PARAM_CYLINDER_AREA_RETRACT:          fb->cylinderConfig.areaRetractMm2 = value; break;
         case HYD_PARAM_CYLINDER_STROKE:                fb->cylinderConfig.strokeMm = value; break;
+        case HYD_PARAM_KSYS_BAR_PER_RPM:
+            if (!isfinite(value) || value < 0.0) return false;
+            fb->_params.ksysBarPerRpm = value;
+            break;
         default: return false;
     }
     return true;

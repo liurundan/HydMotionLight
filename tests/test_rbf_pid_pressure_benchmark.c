@@ -12,7 +12,7 @@
 #define BENCHMARK_FLOW_TO_RPM 20.0f
 #define BENCHMARK_PUMP_LIMIT_RPM 1800.0f
 #define BENCHMARK_MAX_FLOW_LPM 90.0f
-#define BENCHMARK_MODEL_GAIN_BAR_PER_RPM 0.66f
+#define BENCHMARK_MODEL_GAIN_BAR_PER_RPM 1.50f
 #define BENCHMARK_MODEL_TAU_S 1.0f
 #define BENCHMARK_CONTROLLER_GAIN_BAR_PER_LPM \
     (BENCHMARK_MODEL_GAIN_BAR_PER_RPM * BENCHMARK_FLOW_TO_RPM)
@@ -31,6 +31,7 @@ typedef struct {
     float tail_ripple_bar;
     float max_flow_lpm;
     float max_flow_step_lpm;
+    float rise_time_s;
     int finite;
     int limit_ok;
 } BenchmarkMetrics;
@@ -48,7 +49,8 @@ static HYD_MotionSegment make_segment(float target_bar,
     segment.pressureCeiling = target_bar * 3.0f;
     segment.pressureFilterAlpha = 1.0f;
     segment.pressureDerivativeFilterAlpha = 1.0f;
-    segment.systemGain = BENCHMARK_CONTROLLER_GAIN_BAR_PER_LPM;
+    segment.systemGain = (kind == BENCHMARK_PI)
+        ? BENCHMARK_CONTROLLER_GAIN_BAR_PER_LPM : 0.0f;
 
     if (kind == BENCHMARK_PI) {
         segment.pressureController = HYD_PRESSURE_CONTROLLER_PI;
@@ -111,7 +113,11 @@ static void run_controller(BenchmarkControllerKind kind,
     float tail_max_error = 0.0f;
     float tail_min_pressure = 1.0e9f;
     float tail_max_pressure = -1.0e9f;
-    float stage_peak_pressure;
+        float stage_peak_pressure;
+        float rise_time_s;
+        int saw_10_percent;
+        int saw_90_percent;
+        int can_measure_rise_time;
     int tail_samples = 0;
     int global_step;
     int target_index;
@@ -129,6 +135,10 @@ static void run_controller(BenchmarkControllerKind kind,
         tail_min_pressure = 1.0e9f;
         tail_max_pressure = -1.0e9f;
         stage_peak_pressure = 0.0f;
+        rise_time_s = -1.0f;
+        saw_10_percent = 0;
+        saw_90_percent = 0;
+        can_measure_rise_time = pressure_bar < targets[target_index] * 0.10f;
         tail_samples = 0;
 
         for (global_step = 0;
@@ -144,6 +154,7 @@ static void run_controller(BenchmarkControllerKind kind,
             input.outputMax = BENCHMARK_MAX_FLOW_LPM;
             input.flowToPumpSpeedGain = BENCHMARK_FLOW_TO_RPM;
             input.pumpSpeedLimit = BENCHMARK_PUMP_LIMIT_RPM;
+            input.systemGainBarPerRpm = BENCHMARK_MODEL_GAIN_BAR_PER_RPM;
             input.timestamp = (float)(target_index * BENCHMARK_STEPS_PER_TARGET +
                                       global_step + 1) * BENCHMARK_DT_S;
 
@@ -171,6 +182,15 @@ static void run_controller(BenchmarkControllerKind kind,
             PressureModel_Step(&params, &plant, pump_rpm, BENCHMARK_DT_S,
                                &plant_output);
             pressure_bar = plant_output.measured_pressure_bar;
+            if (can_measure_rise_time && !saw_10_percent &&
+                pressure_bar >= targets[target_index] * 0.10f) {
+                saw_10_percent = 1;
+            }
+            if (can_measure_rise_time && saw_10_percent && !saw_90_percent &&
+                pressure_bar >= targets[target_index] * 0.90f) {
+                saw_90_percent = 1;
+                rise_time_s = (float)(global_step + 1) * BENCHMARK_DT_S;
+            }
             if (pressure_bar > metrics->peak_pressure_bar) {
                 metrics->peak_pressure_bar = pressure_bar;
             }
@@ -199,11 +219,13 @@ static void run_controller(BenchmarkControllerKind kind,
             ? tail_abs_error_sum / (float)tail_samples : 0.0f;
         metrics->tail_max_error_bar = tail_max_error;
         metrics->tail_ripple_bar = tail_max_pressure - tail_min_pressure;
+        metrics->rise_time_s = rise_time_s;
         printf("  target=%.0f final=%.3f stage_peak=%.3f tail_mae=%.3f "
-               "tail_max=%.3f ripple=%.3f max_flow=%.3f max_du=%.3f\n",
+               "tail_max=%.3f ripple=%.3f rise10-90=%.3f max_flow=%.3f max_du=%.3f\n",
                targets[target_index], metrics->final_pressure_bar,
                stage_peak_pressure, metrics->tail_mae_bar,
                metrics->tail_max_error_bar, metrics->tail_ripple_bar,
+               metrics->rise_time_s,
                metrics->max_flow_lpm, metrics->max_flow_step_lpm);
         assert(metrics->tail_mae_bar <= targets[target_index] * 0.01f);
         assert(metrics->tail_max_error_bar <= targets[target_index] * 0.01f);

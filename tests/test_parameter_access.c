@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <math.h>
 #include <string.h>
 #include "motion_control.h"
 
@@ -107,6 +108,40 @@ static void test_write_read_roundtrip(void) {
     ok = HYD_MotionControlFB_ReadParameter(&fb, HYD_PARAM_VELOCITY_CORRECTION_LIMIT, &val);
     ASSERT_TRUE(ok, "Read velocityCorrectionLimit should succeed");
     ASSERT_FLOAT_EQ(val, 20.0f, 0.001f, "velocityCorrectionLimit should round-trip");
+}
+
+static void test_ksys_bar_per_rpm_roundtrip_and_validation(void) {
+    HYD_MotionControlFB fb;
+    HYD_REAL value = -1.0;
+    HYD_BOOL ok;
+
+    HYD_MotionControlFB_Init(&fb);
+
+    ok = HYD_MotionControlFB_ReadParameter(
+        &fb, HYD_PARAM_KSYS_BAR_PER_RPM, &value);
+    ASSERT_TRUE(ok, "Ksys parameter should be readable");
+    ASSERT_FLOAT_EQ(value, 0.0f, 0.001f,
+                    "Ksys should default to disabled zero");
+
+    ok = HYD_MotionControlFB_WriteParameter(
+        &fb, HYD_PARAM_KSYS_BAR_PER_RPM, 1.5f);
+    ASSERT_TRUE(ok, "Positive Ksys should be writable");
+    ok = HYD_MotionControlFB_ReadParameter(
+        &fb, HYD_PARAM_KSYS_BAR_PER_RPM, &value);
+    ASSERT_TRUE(ok, "Written Ksys should be readable");
+    ASSERT_FLOAT_EQ(value, 1.5f, 0.001f,
+                    "Ksys should round-trip in bar/rpm");
+
+    ok = HYD_MotionControlFB_WriteParameter(
+        &fb, HYD_PARAM_KSYS_BAR_PER_RPM, 0.0f);
+    ASSERT_TRUE(ok, "Zero Ksys should disable the feature");
+
+    ok = HYD_MotionControlFB_WriteParameter(
+        &fb, HYD_PARAM_KSYS_BAR_PER_RPM, -1.0f);
+    ASSERT_TRUE(!ok, "Negative Ksys should be rejected");
+    ok = HYD_MotionControlFB_WriteParameter(
+        &fb, HYD_PARAM_KSYS_BAR_PER_RPM, NAN);
+    ASSERT_TRUE(!ok, "Non-finite Ksys should be rejected");
 }
 
 static void test_pressure_controller_type_validation(void) {
@@ -235,6 +270,7 @@ int main(void) {
     test_init_sets_defaults();
     test_init_syncs_legacy_fields();
     test_write_read_roundtrip();
+    test_ksys_bar_per_rpm_roundtrip_and_validation();
     test_pressure_controller_type_validation();
     test_write_read_bool_roundtrip();
     test_invalid_param_number();

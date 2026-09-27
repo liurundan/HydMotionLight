@@ -11,6 +11,9 @@ static void test_pressure_accel_feedforward_is_suppressed_inside_near_target_ban
 static void test_pressure_accel_feedforward_remains_active_outside_near_target_band(void);
 static void test_target_relative_small_error_reduces_gain_drift(void);
 static void test_control_mode_round_trip_restores_pid_configuration(void);
+static void test_ksys_bar_per_rpm_converts_to_flow_domain(void);
+static void test_ksys_feedforward_is_applied_as_delta_without_reaccumulation(void);
+static void test_tracking_preserves_rbf_network_state(void);
 
 static void test_init_sets_ready_defaults(void) {
     RBF_PID_Handle pid;
@@ -19,7 +22,7 @@ static void test_init_sets_ready_defaults(void) {
     RBF_PID_Init(&pid, 0.01f, 90.0f, 1.0f);
 
     assert(pid.Status == 1);
-    assert(fabsf(pid.sampling_period - 0.01f) < 1e-6f);
+    assert(fabsf(pid.sampling_period - RBF_PID_FIXED_SAMPLING_PERIOD) < 1e-6f);
     assert(fabsf(pid.fMaxFlow - 90.0f) < 1e-6f);
     assert(fabsf(pid.fFlowRateLimit - 1.0f) < 1e-6f);
     assert(fabsf(pid.pressure_normalization_scale - MAX_PRESSURE) < 1e-6f);
@@ -64,13 +67,13 @@ static void test_control_mode_round_trip_restores_pid_configuration(void) {
     printf("✓ RBF PI/PID mode round-trip configuration test passed\n");
 }
 
-static void test_pid_saturation_does_not_freeze_network_learning(void) {
+static void test_pid_saturation_freezes_network_learning(void) {
     RBF_PID_Handle pid;
     float weights_before[RBF_HNUM];
     bool changed = false;
     int i;
 
-    printf("Testing legacy RBF-PID network learning under saturation...\n");
+    printf("Testing RBF-PID network learning freeze under saturation...\n");
     RBF_PID_Init(&pid, 0.001f, 10.0f, 1.0f);
     RBF_PID_SetLearningRates(&pid, 0.2f, 0.2f, 0.2f,
                              0.1f, 0.1f, 0.1f);
@@ -88,8 +91,55 @@ static void test_pid_saturation_does_not_freeze_network_learning(void) {
             changed = true;
         }
     }
-    assert(changed);
-    printf("✓ Legacy RBF-PID network learning under saturation test passed\n");
+    assert(!changed);
+    printf("✓ RBF-PID network learning freeze under saturation test passed\n");
+}
+
+static void test_ksys_bar_per_rpm_converts_to_flow_domain(void) {
+    RBF_PID_Handle pid;
+
+    printf("Testing Ksys bar/rpm conversion...\n");
+    RBF_PID_Init(&pid, 0.010f, 90.0f, 1.0f);
+    assert(fabsf(pid.sampling_period - RBF_PID_FIXED_SAMPLING_PERIOD) < 1e-6f);
+
+    RBF_PID_SetKsysBarPerRpm(&pid, 1.5f, 20.0f);
+    assert(pid.ksys_valid);
+    assert(fabsf(pid.K - 30.0f) < 1e-6f);
+
+    RBF_PID_SetKsysBarPerRpm(&pid, -1.0f, 20.0f);
+    assert(!pid.ksys_valid);
+    assert(!pid.ksys_valid);
+    printf("PASS Ksys bar/rpm conversion test\n");
+}
+
+static void test_ksys_feedforward_is_applied_as_delta_without_reaccumulation(void) {
+    RBF_PID_Handle pid;
+    float first;
+    float second;
+
+    printf("Testing Ksys feedforward delta application...\n");
+    RBF_PID_Init(&pid, 0.001f, 90.0f, 1.0f);
+    RBF_PID_SetLearningRates(&pid, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f);
+    RBF_PID_SetFeedforwardFlow(&pid, 10.0f);
+    first = RBF_PID_Update(&pid, 20.0f, 20.0f);
+    second = RBF_PID_Update(&pid, 20.0f, 20.0f);
+    assert(first > 9.0f);
+    assert(fabsf(second - first) < 0.1f);
+    printf("PASS Ksys feedforward delta application test\n");
+}
+
+static void test_tracking_preserves_rbf_network_state(void) {
+    RBF_PID_Handle pid;
+    float weight_before;
+
+    printf("Testing RBF tracking preserves network state...\n");
+    RBF_PID_Init(&pid, 0.001f, 90.0f, 1.0f);
+    weight_before = pid.w[0];
+    RBF_PID_TrackOutput(&pid, 4.0f, 20.0f, 19.0f);
+    assert(fabsf(pid.Output - 4.0f) < 1e-6f);
+    assert(fabsf(pid.u_prev - 4.0f) < 1e-6f);
+    assert(fabsf(pid.w[0] - weight_before) < 1e-6f);
+    printf("PASS RBF tracking network preservation test\n");
 }
 
 static void test_enabled_controller_respects_limits_and_drives_feedback(void) {
@@ -144,7 +194,7 @@ static void test_explicit_reset_restores_runtime_state(void) {
     assert(fabsf(pid.e_prev1) < 1e-6f);
     assert(fabsf(pid.e_prev2) < 1e-6f);
     assert(fabsf(pid.Output) < 1e-6f);
-    assert(fabsf(pid.sampling_period - 0.01f) < 1e-6f);
+    assert(fabsf(pid.sampling_period - RBF_PID_FIXED_SAMPLING_PERIOD) < 1e-6f);
     assert(fabsf(pid.fMaxFlow - 90.0f) < 1e-6f);
     assert(fabsf(pid.fFlowRateLimit - 1.0f) < 1e-6f);
     assert(fabsf(pid.pressure_normalization_scale - MAX_PRESSURE) < 1e-6f);
@@ -392,25 +442,23 @@ static void test_flow_domain_output_is_independent_from_pump_gain(void) {
 
 static void test_rbf_input_uses_causal_history_and_split_normalization(void) {
     RBF_PID_Handle pid;
-    float prev_du;
+    float prev_flow;
 
     printf("Testing RBF causal input vector and split normalization...\n");
     RBF_PID_Init(&pid, 0.001f, 90.0f, 1.0f);
     RBF_PID_SetFlowNormalization(&pid, 45.0f);
-    RBF_PID_SetDuNormalization(&pid, 3.0f);
     RBF_PID_SetPressureNormalization(&pid, 200.0f);
     RBF_PID_SetLearningRates(&pid, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f);
 
     (void)RBF_PID_Update(&pid, 100.0f, 40.0f);
     (void)RBF_PID_Update(&pid, 100.0f, 55.0f);
-    prev_du = pid.du_prev;
+    prev_flow = pid.u_prev;
     (void)RBF_PID_Update(&pid, 100.0f, 60.0f);
 
     assert(RBF_INPUT_DIM == 3);
-    assert(fabsf(pid.last_rbf_input[0] - (prev_du / 3.0f)) < 1e-6f);
+    assert(fabsf(pid.last_rbf_input[0] - (prev_flow / 45.0f)) < 1e-6f);
     assert(fabsf(pid.last_rbf_input[1] - (55.0f / 200.0f)) < 1e-6f);
-    assert(fabsf(pid.last_rbf_input[2] - (40.0f / 200.0f)) < 1e-6f);
-    assert(fabsf(pid.last_rbf_input[0] - (prev_du / 45.0f)) > 1e-4f);
+    assert(fabsf(pid.last_rbf_input[2] - ((55.0f - 40.0f) / 200.0f)) < 1e-6f);
     printf("PASS RBF causal input vector test\n");
 }
 
@@ -448,13 +496,16 @@ int main(void) {
 
     test_init_sets_ready_defaults();
     test_control_mode_round_trip_restores_pid_configuration();
-    test_pid_saturation_does_not_freeze_network_learning();
+    test_pid_saturation_freezes_network_learning();
     test_enabled_controller_respects_limits_and_drives_feedback();
     test_explicit_reset_restores_runtime_state();
     test_adaptive_learning_rate_scales_with_error();
     test_default_gain_window_allows_adaptation();
     test_flow_normalization_and_system_gain_soft_cap_are_configurable();
     test_flow_domain_output_is_independent_from_pump_gain();
+    test_ksys_bar_per_rpm_converts_to_flow_domain();
+    test_ksys_feedforward_is_applied_as_delta_without_reaccumulation();
+    test_tracking_preserves_rbf_network_state();
     test_rbf_input_uses_causal_history_and_split_normalization();
     test_network_initialization_is_deterministic_without_seed_hookup();
     test_rbf_pid_negative_output();

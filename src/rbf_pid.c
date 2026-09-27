@@ -10,6 +10,7 @@ static const float RBF_PID_ERROR_DEADBAND = 0.005f;
 static const float RBF_PID_SOFT_CAP_RATIO = 1.05f;
 static const float RBF_PID_NEAR_TARGET_RATIO = 0.08f;
 static const float RBF_PID_DYNAMIC_FF_GAIN = 0.001f;
+static const float RBF_PID_PRESSURE_RATE_FF_GAIN = 0.15f;
 static const float RBF_PID_WEIGHT_LIMIT = 5.0f;
 
 static float rbf_pid_compute_soft_flow_cap(const RBF_PID_Handle *pid);
@@ -158,10 +159,6 @@ static float rbf_pid_apply_deadband(float error) {
     return error > 0.0f ? error - RBF_PID_ERROR_DEADBAND : error + RBF_PID_ERROR_DEADBAND;
 }
 
-static float rbf_pid_effective_du_scale(const RBF_PID_Handle *pid) {
-    return clamp_positive_or_default(pid->f_dd_press_prev, 5.0f);
-}
-
 static float rbf_pid_effective_pressure_scale(const RBF_PID_Handle *pid) {
     return clamp_positive_or_default(pid->pressure_normalization_scale,
                                      MAX_PRESSURE);
@@ -266,12 +263,13 @@ static bool rbf_pid_same_direction_saturation(const RBF_PID_Handle *pid, float e
 
 static int rbf_pid_step_rbf_nn(RBF_PID_Handle *pid,float error) {
     float h[RBF_HNUM];
-    float du_scale = rbf_pid_effective_du_scale(pid);
     float pressure_scale = rbf_pid_effective_pressure_scale(pid);
+    float flow_scale = clamp_positive_or_default(pid->flow_normalization_scale,
+                                                 pid->fMaxFlow > 0.0f ? pid->fMaxFlow : 90.0f);
     float x[RBF_INPUT_DIM] = {
-        pid->du_prev / du_scale,
+        pid->u_prev / flow_scale,
         pid->y_prev1 / pressure_scale,
-        pid->y_prev2 / pressure_scale
+        (pid->y_prev1 - pid->y_prev2) / pressure_scale
     };
     float y_n = pid->P_actual / pressure_scale;
     float y_hat_n = 0.0f;
@@ -305,10 +303,14 @@ static int rbf_pid_step_rbf_nn(RBF_PID_Handle *pid,float error) {
             (pid->b_rbf[i] * pid->b_rbf[i]);
     }
 
-    pid->Jacobian = rbf_pid_clamp_adaptive_value(pid, -5.0f,
-        (pressure_scale / du_scale) * jacobian_n,
-        50.0f,
+    pid->Jacobian = rbf_pid_clamp_adaptive_value(pid, -500.0f,
+        (pressure_scale / flow_scale) * jacobian_n,
+        500.0f,
         0.0f);
+    if (pid->ksys_valid) {
+        pid->Jacobian = clampf(0.5f * pid->K,
+            pid->Jacobian, 2.0f * pid->K);
+    }
 
     // ---------- 4. 稳态判定（冻结条件） ----------
         // 当误差和误差变化率都很小时，认为系统进入稳态
@@ -320,10 +322,7 @@ static int rbf_pid_step_rbf_nn(RBF_PID_Handle *pid,float error) {
 		error_rbf_n = y_n - y_hat_n;
 
 		/* P0-2修复：权重饱和抑制应模式无关 */
-		bool skip_learning = false;
-		if (pid->control_mode == RBF_PID_CONTROL_MODE_PI) {
-			skip_learning = rbf_pid_same_direction_saturation(pid, pid->Error);
-		}
+        bool skip_learning = rbf_pid_same_direction_saturation(pid, pid->Error);
 
 		if (!skip_learning) {
 			for (i = 0; i < RBF_HNUM; ++i) {
@@ -386,11 +385,27 @@ static int rbf_pid_step_rbf_nn(RBF_PID_Handle *pid,float error) {
 static float rbf_pid_compute_soft_flow_cap(const RBF_PID_Handle *pid) {
     float hard_limit = rbf_pid_max_flow_output(pid);
 
-    if (pid->K <= 0.0f || pid->P_set <= 0.0f) {
+    if (pid->P_set <= 0.0f) {
         return hard_limit;
     }
 
-    return clampf(0.0f, (pid->P_set * RBF_PID_SOFT_CAP_RATIO) / pid->K, hard_limit);
+    if (pid->ksys_valid && pid->control_state != RBF_PID_CONTROL_STATE_HOLD) {
+        return hard_limit;
+    }
+
+    if (!pid->ksys_valid && pid->K <= 0.0f) {
+        return hard_limit;
+    }
+
+    {
+        float process_gain = pid->K;
+        if (process_gain <= 0.0f) {
+            return hard_limit;
+        }
+        return clampf(0.0f,
+            (pid->P_set * RBF_PID_SOFT_CAP_RATIO) / process_gain,
+            hard_limit);
+    }
 }
 
 #define ETA_KD_BOOST 0.5f // 微分强制唤醒系数
@@ -400,7 +415,6 @@ static float rbf_pid_compute_soft_flow_cap(const RBF_PID_Handle *pid) {
 static void rbf_pid_step_adaptive_gains(RBF_PID_Handle *pid, float error, float raw_error)
 {
 	float de  = error - pid->e_prev1;
-	float dde = de - (pid->e_prev1 - pid->e_prev2);
 	// ---------- 5. PID 参数在线整定（带抗饱和 & 微分唤醒） ----------
 	float abs_Jac = fabsf(pid->Jacobian);
 	if (abs_Jac < 1e-6f) {
@@ -408,47 +422,26 @@ static void rbf_pid_step_adaptive_gains(RBF_PID_Handle *pid, float error, float 
 	}
 	// 5.3 比例增益 Kp 更新（常规梯度）
 	//    公式：ΔKp = ηp * e * Jac * Δe
-	float grad_Kp = pid->eta_p * error * sign(pid->Jacobian) * abs_Jac * de;
-	pid->KP += grad_Kp;
-	pid->KP = clampf(pid->min_KP, pid->KP, pid->max_KP);
+    float grad_Kp = pid->eta_p * error * sign(pid->Jacobian) * abs_Jac * de;
+    float kp_step_limit = 0.01f * (pid->max_KP - pid->min_KP);
+    float ki_step_limit = 0.01f * (pid->max_KI - pid->min_KI);
+    pid->KP += clampf(-kp_step_limit, grad_Kp, kp_step_limit);
+    pid->KP = clampf(pid->min_KP, pid->KP, pid->max_KP);
 
 	// 5.1 积分增益 Ki 更新（带L2惩罚，防止积分饱和）
-	float grad_Ki = pid->eta_i * error * sign(pid->Jacobian) * abs_Jac * error;
-	float decay_Ki = LAMBDA_KI * (pid->KI - KI_CENTER);
-	float delta_Ki = grad_Ki - decay_Ki;
+    float grad_Ki = pid->eta_i * error * sign(pid->Jacobian) * abs_Jac * error;
+    float decay_Ki = LAMBDA_KI * (pid->KI - KI_CENTER);
+    float delta_Ki = clampf(-ki_step_limit, grad_Ki - decay_Ki, ki_step_limit);
 	pid->KI += delta_Ki;
 	pid->KI = clampf(pid->min_KI, pid->KI, pid->max_KI);
 
 	if (pid->control_mode == RBF_PID_CONTROL_MODE_PI) {
 		pid->KD = 0.0f;
-	} else {
-
-		// 5.2 微分增益 Kd 更新（带"强制唤醒"机制）
-		float delta_Kd = 0.0f;
-
-		// 判断：误差是否在发散且Kd处于低位？
-		int error_diverging = (fabsf(error) > fabsf(pid->e_prev1)) && (fabsf(error) > 0.01f);
-		int kd_at_floor = (pid->KD <= pid->min_KD * 1.1f);
-
-		if (error_diverging && kd_at_floor) {
-			// 【强制唤醒】放弃纯梯度，强行提升Kd
-			float boost = ETA_KD_BOOST * fabsf(de) * sign(pid->Jacobian);
-			delta_Kd = fmaxf(boost, 0.0f);
-		} else {
-			// 正常情况：使用"绝对值整流"防止负向累积
-			float grad_Kd_base = pid->eta_d * error * sign(pid->Jacobian) * fabsf(dde);
-			// 再加一点"趋势预测"：如果误差正在减小，保持Kd不掉太快
-			if (error * de < 0) {
-				// 误差在收拢，微分项已经起效，不要过度衰减
-				delta_Kd = fmaxf(grad_Kd_base, 0.0f);
-			} else {
-				delta_Kd = grad_Kd_base;
-			}
-		}
-		pid->KD += delta_Kd;
-		pid->KD = clampf(pid->min_KD, pid->KD, pid->max_KD);
-
-	}
+    } else {
+        /* Keep D fixed in the first industrial rollout; measured pressure is
+         * already filtered upstream and a second-difference learner is noisy. */
+        pid->KD = clampf(pid->min_KD, pid->pid_mode_kd, pid->max_KD);
+    }
 }
 
 static void rbf_pid_step_incremental_output(RBF_PID_Handle *pid, float error, float raw_error) {
@@ -488,7 +481,9 @@ static void rbf_pid_step_incremental_output(RBF_PID_Handle *pid, float error, fl
 
         if (pressure_error > near_target_threshold)
         {
-            f_velfb = -0.0f * f_delta_press; // 1:0.15,
+            f_velfb = clampf(-0.5f,
+                -RBF_PID_PRESSURE_RATE_FF_GAIN * f_delta_press,
+                0.5f);
         }
     }
 
@@ -502,7 +497,8 @@ static void rbf_pid_step_incremental_output(RBF_PID_Handle *pid, float error, fl
 
     pid->du = !isfinite(du) ? 0.0f : du;
 
-    pid->Output = pid->u_prev + pid->du + f_du_ff + f_velfb;
+    pid->Output = pid->u_prev + pid->du + f_du_ff + f_velfb +
+        (pid->feedforward_flow - pid->feedforward_flow_prev);
 
     pid->Output =  clampf( output_min, pid->Output, soft_output_max );
     pid->output_saturated = (pid->Output <= output_min + 1.0e-6f) || (pid->Output >= soft_output_max - 1.0e-6f);
@@ -515,6 +511,7 @@ static void rbf_pid_step_incremental_output(RBF_PID_Handle *pid, float error, fl
     pid->fLastActPress = actual_press;
     pid->last_ref = pid->P_set;
     pid->v_ref_k1 = vel_ref;
+    pid->feedforward_flow_prev = pid->feedforward_flow;
 }
 
 static void rbf_pid_step_steady_state(RBF_PID_Handle *pid) {
@@ -549,7 +546,8 @@ static void rbf_pid_step_steady_state(RBF_PID_Handle *pid) {
 void RBF_PID_Init(RBF_PID_Handle *pid, float sampling_period,
                   float max_flow_lmin, float flow_rate_limit_pct) {
     memset(pid, 0, sizeof(*pid));
-    pid->sampling_period = clamp_positive_or_default(sampling_period, 0.001f);
+    (void)sampling_period;
+    pid->sampling_period = RBF_PID_FIXED_SAMPLING_PERIOD;
     pid->fMaxFlow = clamp_positive_or_default(max_flow_lmin, 0.0f);
     pid->fFlowRateLimit = clampf(0.0f, flow_rate_limit_pct, 1.0f);
     pid->output_min_flow = MIN_OUTPUT;
@@ -571,6 +569,7 @@ void RBF_PID_Init(RBF_PID_Handle *pid, float sampling_period,
     pid->pid_mode_kd = pid->KD;
     pid->pid_mode_eta_d = pid->eta_d;
     pid->pressure_accel_ff_requested = true;
+    pid->ksys_valid = false;
     rbf_pid_refresh_gain_compensation(pid);
     rbf_pid_init_network(pid);
 }
@@ -681,6 +680,53 @@ void RBF_PID_SetGainCompensation(RBF_PID_Handle *pid, float systemGain) {
 
     pid->K = (systemGain > 0.0f) ? systemGain : 0.0f;
     rbf_pid_refresh_gain_compensation(pid);
+}
+
+void RBF_PID_SetKsysBarPerRpm(RBF_PID_Handle *pid,
+                              float ksys_bar_per_rpm,
+                              float flow_to_pump_speed_gain) {
+    if (pid == NULL) {
+        return;
+    }
+
+    pid->ksys_valid = false;
+    if (isfinite(ksys_bar_per_rpm) && isfinite(flow_to_pump_speed_gain) &&
+        ksys_bar_per_rpm > 0.0f && flow_to_pump_speed_gain > 0.0f) {
+        float process_gain = ksys_bar_per_rpm * flow_to_pump_speed_gain;
+        if (isfinite(process_gain) && process_gain > 0.0f) {
+            pid->K = process_gain;
+            pid->ksys_valid = true;
+        }
+    }
+}
+
+void RBF_PID_SetFeedforwardFlow(RBF_PID_Handle *pid, float feedforward_flow) {
+    if (pid == NULL) {
+        return;
+    }
+    pid->feedforward_flow = isfinite(feedforward_flow) ? feedforward_flow : 0.0f;
+}
+
+void RBF_PID_TrackOutput(RBF_PID_Handle *pid,
+                         float output_flow,
+                         float setpoint,
+                         float feedback) {
+    if (pid == NULL) {
+        return;
+    }
+    pid->Output = finite_or_default(output_flow, 0.0f);
+    pid->u_prev = pid->Output;
+    pid->P_set = finite_or_default(setpoint, 0.0f);
+    pid->P_actual = finite_or_default(feedback, 0.0f);
+    pid->Error = pid->P_set - pid->P_actual;
+    pid->e_prev1 = pid->Error;
+    pid->e_prev2 = pid->Error;
+    pid->y_prev1 = pid->P_actual;
+    pid->y_prev2 = pid->P_actual;
+    pid->du = 0.0f;
+    pid->du_prev = 0.0f;
+    pid->feedforward_flow_prev = pid->feedforward_flow;
+    pid->output_saturated = false;
 }
 
 void RBF_PID_SetPressureAccelFeedforwardEnabled(RBF_PID_Handle *pid, bool enabled) {

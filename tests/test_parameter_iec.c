@@ -91,6 +91,39 @@ static void test_write_then_read_iec(void) {
     ASSERT_FLOAT_EQ((HYD_REAL)IEC_VAL(rp.VALUE), 2.5f, 0.001f, "pressureKp should be 2.5 after write");
 }
 
+static void test_ksys_write_then_read_iec(void) {
+    HYD_WRITEPARAMETER wp;
+    HYD_READPARAMETER rp;
+
+    __HydMotion_framework_Init();
+    ensure_axis_allocated();
+
+    memset(&wp, 0, sizeof(wp));
+    IEC_VAL(wp.EN) = true;
+    IEC_VAL(wp.AXISID) = 0;
+    IEC_VAL(wp.PARAMETERNUMBER) = HYD_PARAM_KSYS_BAR_PER_RPM;
+    IEC_VAL(wp.VALUE) = 1.5;
+    IEC_VAL(wp.EXECUTE) = true;
+    __mcl_cmd_WriteParameter(&wp);
+
+    ASSERT_TRUE(IEC_VAL(wp.DONE) == true,
+                "Ksys WriteParameter should set DONE");
+    ASSERT_TRUE(IEC_VAL(wp.ERROR) == false,
+                "Ksys WriteParameter should not set ERROR");
+
+    memset(&rp, 0, sizeof(rp));
+    IEC_VAL(rp.EN) = true;
+    IEC_VAL(rp.AXISID) = 0;
+    IEC_VAL(rp.ENABLE) = true;
+    IEC_VAL(rp.PARAMETERNUMBER) = HYD_PARAM_KSYS_BAR_PER_RPM;
+    __mcl_cmd_ReadParameter(&rp);
+
+    ASSERT_TRUE(IEC_VAL(rp.VALID) == true,
+                "Ksys ReadParameter should set VALID");
+    ASSERT_FLOAT_EQ((HYD_REAL)IEC_VAL(rp.VALUE), 1.5f, 0.001f,
+                    "Ksys should round-trip through IEC in bar/rpm");
+}
+
 /* Test: WriteBoolParameter then ReadBoolParameter through IEC FBs */
 static void test_write_read_bool_iec(void) {
     __HydMotion_framework_Init();
@@ -383,6 +416,7 @@ static void test_pressure_handle_caps_feedforward_at_low_percentage(void) {
 int main(void) {
     test_read_parameter_iec();
     test_write_then_read_iec();
+    test_ksys_write_then_read_iec();
     test_write_read_bool_iec();
     test_invalid_axisid_iec();
     test_segment_builder_uses_fb_params();

@@ -591,6 +591,7 @@ typedef enum {
     HYD_PARAM_CYLINDER_AREA_EXTEND,     /* mm² */
     HYD_PARAM_CYLINDER_AREA_RETRACT,    /* mm² */
     HYD_PARAM_CYLINDER_STROKE,          /* mm */
+    HYD_PARAM_KSYS_BAR_PER_RPM,         /* bar/rpm; 0 disables Ksys feedforward */
     HYD_PARAM_COUNT
 } HYD_ParameterNumber;
 
@@ -623,6 +624,7 @@ typedef struct {
     HYD_REAL pressureControllerType;
     HYD_REAL defaultTargetFlow;
     HYD_BOOL useSimulation;
+    HYD_REAL ksysBarPerRpm;              /* bar/rpm; 0 disables Ksys feedforward */
 } HYD_MotionFBParams;
 
 /* ============================================================================

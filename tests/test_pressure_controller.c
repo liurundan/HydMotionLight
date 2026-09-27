@@ -378,14 +378,17 @@ static void test_rbf_pid_strategy_uses_segment_level_tuning_profile(void) {
     input.outputMax = segment.maxFlow;
     input.flowToPumpSpeedGain = 20.0;
     input.pumpSpeedLimit = 1800.0;
+    input.systemGainBarPerRpm = 1.5;
     input.timestamp = 0.02;
     HYD_PressureController_Execute(&segment, &state, &input, &output);
 
     assert(output.appliedStrategy == HYD_PRESSURE_CONTROLLER_RBF_PID);
     assert(output.adaptiveActive);
     assert(fabs(output.feedforwardFlow - segment.targetFlow) < 0.001);
-    assert(fabs(output.samplingPeriod - 0.02) < 0.001);
+    assert(fabs(output.samplingPeriod - RBF_PID_FIXED_SAMPLING_PERIOD) < 1e-6);
     assert(state.rbfInitialized);
+    assert(state.rbfPid.ksys_valid);
+    assert(fabsf(state.rbfPid.K - 30.0f) < 1e-6f);
     assert(fabsf(state.rbfPid.min_KP - 0.81f) < 1e-6f);
     assert(fabsf(state.rbfPid.max_KP - 0.82f) < 1e-6f);
     assert(fabsf(state.rbfPid.min_KI - 0.019f) < 1e-6f);

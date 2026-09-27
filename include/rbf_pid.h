@@ -36,6 +36,7 @@
 #define HYD_DEFAULT_PID_D_LEARNING_RATE 0.00025f
 
 #define HYD_DEFAULT_RBF_PID_SAMPLING_PERIOD 0.001
+#define RBF_PID_FIXED_SAMPLING_PERIOD       0.001f
 
 
 /* Task 3 增量控制输出限幅 */
@@ -151,6 +152,11 @@ typedef struct {
     float f_dd_press_prev;                /* 兼容存储槽：当前用于 Δu 归一化标尺 */
     float v_ref_k1;
 
+    /* Industrial pressure-loop calibration and feedforward state. */
+    float feedforward_flow;
+    float feedforward_flow_prev;
+    bool ksys_valid;
+
 } RBF_PID_Handle;
 
 /**
@@ -227,6 +233,30 @@ void RBF_PID_SetDuNormalization(RBF_PID_Handle *pid, float scale);
  *       补偿因子会随压力归一化标量变化而同步刷新，避免 setter 调用顺序造成陈旧状态。
  */
 void RBF_PID_SetGainCompensation(RBF_PID_Handle *pid, float systemGain);
+
+/**
+ * @brief Configure an offline calibrated system gain in bar/rpm.
+ * @param pid RBF-PID handle
+ * @param ksys_bar_per_rpm Offline pressure gain [bar/rpm], 0 disables it
+ * @param flow_to_pump_speed_gain Pump conversion [rpm/(L/min)]
+ */
+void RBF_PID_SetKsysBarPerRpm(RBF_PID_Handle *pid,
+                              float ksys_bar_per_rpm,
+                              float flow_to_pump_speed_gain);
+
+/**
+ * @brief Set the current total flow feedforward baseline [L/min].
+ * The update path applies only its change since the previous scan.
+ */
+void RBF_PID_SetFeedforwardFlow(RBF_PID_Handle *pid, float feedforward_flow);
+
+/**
+ * @brief Track an externally applied total flow without rebuilding the RBF network.
+ */
+void RBF_PID_TrackOutput(RBF_PID_Handle *pid,
+                         float output_flow,
+                         float setpoint,
+                         float feedback);
 
 void RBF_PID_SetPressureAccelFeedforwardEnabled(RBF_PID_Handle *pid, bool enabled);
 
