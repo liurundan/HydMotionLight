@@ -18,6 +18,9 @@ typedef uint8_t HYD_UINT8;
 typedef uint16_t HYD_UINT16;
 typedef uint16_t HYD_UINT;
 
+#define HYD_FALSE 0
+#define HYD_TRUE  1
+
 enum {
     HYD_PUMP_FEEDBACK_VALID_RPM = 1u << 0,
     HYD_PUMP_FEEDBACK_VALID_ANGLE = 1u << 1,
