@@ -342,6 +342,66 @@ static void test_gain_1p5_target_150_reaches_when_flow_units_are_correct(void) {
     assert(fabsf(setpoint - pressure) <= 0.05f);
 }
 
+static void test_target_drop_relief_releases_then_rebuilds(void) {
+    HYD_MotionSegment segment = {0};
+    HYD_PressureControllerState state;
+    HYD_PressureControllerInput input = {0};
+    HYD_PressureControllerOutput output;
+    float pressure = 100.0f;
+    int step;
+    int relief_samples = 0;
+    int exited_relief = 0;
+    float min_pressure = pressure;
+
+    segment.mode = HYD_MODE_PRESSURE_CLOSED_LOOP;
+    segment.endCondition = HYD_END_MANUAL;
+    segment.direction = HYD_DIRECTION_HOLD;
+    segment.targetPressure = 100.0f;
+    segment.maxFlow = 90.0f;
+    segment.pressureController = HYD_PRESSURE_CONTROLLER_RBF_PID;
+
+    HYD_PressureController_InitState(&state, pressure, 0.0f, 0.0f);
+    for (step = 0; step < 2000; ++step) {
+        memset(&input, 0, sizeof(input));
+        input.targetPressure = 100.0f;
+        input.measuredPressure = pressure;
+        input.outputMin = -5.0f;
+        input.outputMax = 90.0f;
+        input.flowToPumpSpeedGain = 20.0f;
+        input.pumpSpeedLimit = 1800.0f;
+        input.systemGainBarPerRpm = 1.5f;
+        input.timestamp = (HYD_TIME)(step + 1) * 0.001;
+        HYD_PressureController_Execute(&segment, &state, &input, &output);
+        pressure = first_order_step(pressure, output.outputFlow * 20.0f,
+                                    1.5f, 1.0f, 0.001f);
+    }
+
+    for (step = 0; step < 3000; ++step) {
+        memset(&input, 0, sizeof(input));
+        input.targetPressure = 20.0f;
+        input.measuredPressure = pressure;
+        input.outputMin = -5.0f;
+        input.outputMax = 90.0f;
+        input.flowToPumpSpeedGain = 20.0f;
+        input.pumpSpeedLimit = 1800.0f;
+        input.systemGainBarPerRpm = 1.5f;
+        input.timestamp = (HYD_TIME)(step + 2001) * 0.001;
+        HYD_PressureController_Execute(&segment, &state, &input, &output);
+        if (output.reliefActive) relief_samples++;
+        if (!output.reliefActive && relief_samples > 0) exited_relief = 1;
+        pressure = first_order_step(pressure, output.outputFlow * 20.0f,
+                                    1.5f, 1.0f, 0.001f);
+        if (pressure < min_pressure) min_pressure = pressure;
+    }
+
+    assert(relief_samples > 0);
+    assert(exited_relief);
+    assert(output.effectiveOutputMin >= -1.0e-6f);
+    assert(min_pressure > 0.0f);
+    printf("target-drop relief samples=%d min_pressure=%.3f final=%.3f\n",
+           relief_samples, min_pressure, pressure);
+}
+
 int main(void) {
     test_gain_1p5_tau_1_has_small_steady_state_error();
     test_pressure_controller_path_has_small_steady_state_error();
@@ -353,6 +413,7 @@ int main(void) {
     test_first_order_capacity_boundary_is_diagnosed();
     test_pressure_controller_reports_unreachable_target();
     test_gain_1p5_target_150_reaches_when_flow_units_are_correct();
+    test_target_drop_relief_releases_then_rebuilds();
     puts("RBF-PID first-order gain=1.5 regression passed.");
     return 0;
 }

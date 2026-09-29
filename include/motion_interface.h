@@ -489,6 +489,22 @@ typedef struct {
 
 } HYD_SETAXISFEEDBACK;
 
+/* System-level shared single-pump feedback. This is deliberately separate
+ * from HYD_SETAXISFEEDBACK because one pump serves multiple axes. */
+typedef struct {
+  __DECLARE_VAR(BOOL,EN)
+  __DECLARE_VAR(BOOL,ENO)
+  __DECLARE_VAR(BOOL,ENABLE)
+  __DECLARE_VAR(REAL,PUMP_SPEED_RPM)
+  __DECLARE_VAR(REAL,PUMP_ANGLE_DEG)
+  __DECLARE_VAR(REAL,PUMP_TORQUE_PCT_TN)
+  __DECLARE_VAR(REAL,TIMESTAMP)
+  __DECLARE_VAR(BOOL,DONE)
+  __DECLARE_VAR(BOOL,BUSY)
+  __DECLARE_VAR(BOOL,ERROR)
+  __DECLARE_VAR(WORD,ERRORID)
+} HYD_SETPUMPFEEDBACK;
+
 // FUNCTION_BLOCK HYD_GETPUMPREQUEST
 // Data part
 typedef struct {
@@ -686,6 +702,7 @@ extern void __mcl_cmd_Reset(HYD_RESET *data__);
 extern void __mcl_cmd_MoveVelocity(HYD_MOVEVELOCITY *data__);
 extern void __mcl_cmd_PressureHandle(HYD_PRESSUREHANDLE *data__);
 extern void __mcl_cmd_SetAxisFeedback(HYD_SETAXISFEEDBACK *data__);
+extern void __mcl_cmd_SetPumpFeedback(HYD_SETPUMPFEEDBACK *data__);
 extern void __mcl_cmd_GetPumpRequest(HYD_GETPUMPREQUEST *data__);
 
 extern void __mcl_cmd_ReadStatus(HYD_READSTATUS* data__);

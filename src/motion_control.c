@@ -19,6 +19,20 @@
 #include <math.h>
 #include <string.h>
 
+static HYD_PumpFeedback g_sharedPumpFeedback;
+
+void HYD_MotionControl_SetPumpFeedback(const HYD_PumpFeedback* feedback)
+{
+    if (feedback == NULL) return;
+    g_sharedPumpFeedback = *feedback;
+}
+
+void HYD_MotionControl_GetPumpFeedback(HYD_PumpFeedback* feedback)
+{
+    if (feedback == NULL) return;
+    *feedback = g_sharedPumpFeedback;
+}
+
 
 
 /* Internal function declarations */
@@ -2306,6 +2320,7 @@ static HYD_BOOL HYD_ExecuteActiveSegmentControl(HYD_MotionControlFB* fb,
             pressureInput.pumpSpeedLimit = fb->PUMP_SPEED_LIMIT;
         }
         pressureInput.systemGainBarPerRpm = fb->_params.ksysBarPerRpm;
+        HYD_MotionControl_GetPumpFeedback(&pressureInput.pumpFeedback);
         pressureInput.timestamp = HYD_GetCurrentSegmentTime(fb);
         HYD_PressureController_Execute(segment,
                                        &fb->_pressureController,
@@ -2313,7 +2328,8 @@ static HYD_BOOL HYD_ExecuteActiveSegmentControl(HYD_MotionControlFB* fb,
                                        pressureOutput);
         plannerOutput->targetFlow = pressureOutput->outputFlow;
         plannerOutput->direction = segment->direction;
-        if (pressureOutput->unsaturatedOutputFlow > segment->maxFlow) {
+        if (pressureOutput->unsaturatedOutputFlow > segment->maxFlow ||
+            pressureInput.outputMax < segment->maxFlow) {
             fb->STATE.limitFlags |= HYD_LIMIT_FLAG_FLOW;
         }
         if (pumpFlowLimit > 0.0f &&
@@ -2408,6 +2424,10 @@ static HYD_BOOL HYD_ExecuteActiveSegmentControl(HYD_MotionControlFB* fb,
     }
 
     pumpInput.requestedFlow = plannerOutput->targetFlow;
+    pumpInput.minimumFlow = 0.0;
+    if (segment->mode == HYD_MODE_PRESSURE_CLOSED_LOOP) {
+        pumpInput.minimumFlow = pressureOutput->effectiveOutputMin;
+    }
     if (HYD_PumpConfig_IsValid(&fb->pumpConfig)) {
         pumpInput.flowToPumpSpeedGain = HYD_PumpConfig_GetFlowToSpeedGain(&fb->pumpConfig);
         pumpInput.pumpSpeedLimit = HYD_PumpConfig_GetSpeedLimit(&fb->pumpConfig);
@@ -2964,6 +2984,8 @@ static void HYD_MotionControlFB_RunRunningState(HYD_MotionControlFB* fb) {
 
     limiterInput.requestedFlow = pumpOutput.commandFlow;
     limiterInput.requestedPumpSpeed = pumpOutput.pumpSpeed;
+    limiterInput.minimumFlow = (segment->mode == HYD_MODE_PRESSURE_CLOSED_LOOP)
+        ? pressureOutput.effectiveOutputMin : 0.0;
     if (HYD_PumpConfig_IsValid(&fb->pumpConfig)) {
         limiterInput.flowToPumpSpeedGain = HYD_PumpConfig_GetFlowToSpeedGain(&fb->pumpConfig);
         limiterInput.pumpSpeedLimit = HYD_PumpConfig_GetSpeedLimit(&fb->pumpConfig);
@@ -3003,8 +3025,7 @@ static void HYD_MotionControlFB_RunRunningState(HYD_MotionControlFB* fb) {
     limiterInput.currentTime = fb->AXIS_REF.timestamp;
 
     /* 压力闭环段允许小幅负流量/负转速，用于快速卸压 */
-    limiterInput.allowNegativeFlow =
-        (segment->mode == HYD_MODE_PRESSURE_CLOSED_LOOP);
+    limiterInput.allowNegativeFlow = limiterInput.minimumFlow < 0.0;
 
     /* 使用带保护状态的扩展版本（支持压力限制 + 软限位 + debounce + 故障升级） */
     HYD_OutputLimiter_ExecuteWithProtection(&limiterInput, &fb->_limiterState, &limiterOutput);
@@ -3027,6 +3048,7 @@ static void HYD_MotionControlFB_RunRunningState(HYD_MotionControlFB* fb) {
         !limiterOutput.softLimitActive) {
         memset(&slewInput, 0, sizeof(slewInput));
         slewInput.requestedFlow = limiterOutput.commandFlow;
+        slewInput.minimumFlow = limiterInput.minimumFlow;
         slewInput.flowToPumpSpeedGain = limiterInput.flowToPumpSpeedGain;
         slewInput.pumpSpeedLimit = limiterInput.pumpSpeedLimit;
         slewInput.direction = segment->direction;

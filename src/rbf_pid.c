@@ -251,25 +251,47 @@ static void rbf_pid_init_network(RBF_PID_Handle *pid)
 }
 
 /* 网络参数钳位（P1-7：仅在初始化/复位/学习发生后调用） */
-static void rbf_pid_sanitize_network(RBF_PID_Handle *pid)
+static float rbf_pid_sanitize_network_value(float value, float min_value,
+                                            float max_value, float fallback,
+                                            bool *changed)
+{
+    if (!isfinite(value) || value < min_value || value > max_value) {
+        *changed = true;
+    }
+    return clamp_finite(min_value, value, max_value, fallback);
+}
+
+static bool rbf_pid_sanitize_network(RBF_PID_Handle *pid)
 {
     int i, j;
+    bool changed = false;
 
     for (i = 0; i < RBF_HNUM; ++i) {
-        pid->w[i]   = clamp_finite(-RBF_PID_WEIGHT_LIMIT, pid->w[i],   RBF_PID_WEIGHT_LIMIT, 0.0f);
-        pid->w_1[i] = clamp_finite(-RBF_PID_WEIGHT_LIMIT, pid->w_1[i], RBF_PID_WEIGHT_LIMIT, pid->w[i]);
-        pid->w_2[i] = clamp_finite(-RBF_PID_WEIGHT_LIMIT, pid->w_2[i], RBF_PID_WEIGHT_LIMIT, pid->w_1[i]);
+        pid->w[i] = rbf_pid_sanitize_network_value(
+            pid->w[i], -RBF_PID_WEIGHT_LIMIT, RBF_PID_WEIGHT_LIMIT, 0.0f, &changed);
+        pid->w_1[i] = rbf_pid_sanitize_network_value(
+            pid->w_1[i], -RBF_PID_WEIGHT_LIMIT, RBF_PID_WEIGHT_LIMIT, pid->w[i], &changed);
+        pid->w_2[i] = rbf_pid_sanitize_network_value(
+            pid->w_2[i], -RBF_PID_WEIGHT_LIMIT, RBF_PID_WEIGHT_LIMIT, pid->w_1[i], &changed);
 
-        pid->b_rbf[i] = clamp_finite(0.2f, pid->b_rbf[i], 5.0f, 0.4f);
-        pid->bi_1[i]  = clamp_finite(0.2f, pid->bi_1[i],  5.0f, pid->b_rbf[i]);
-        pid->bi_2[i]  = clamp_finite(0.2f, pid->bi_2[i],  5.0f, pid->bi_1[i]);
+        pid->b_rbf[i] = rbf_pid_sanitize_network_value(
+            pid->b_rbf[i], 0.2f, 5.0f, 0.4f, &changed);
+        pid->bi_1[i] = rbf_pid_sanitize_network_value(
+            pid->bi_1[i], 0.2f, 5.0f, pid->b_rbf[i], &changed);
+        pid->bi_2[i] = rbf_pid_sanitize_network_value(
+            pid->bi_2[i], 0.2f, 5.0f, pid->bi_1[i], &changed);
 
         for (j = 0; j < RBF_INPUT_DIM; ++j) {
-            pid->c[i][j]    = clamp_finite(-2.0f, pid->c[i][j],    2.0f, 0.0f);
-            pid->ci_1[i][j] = clamp_finite(-2.0f, pid->ci_1[i][j], 2.0f, pid->c[i][j]);
-            pid->ci_2[i][j] = clamp_finite(-2.0f, pid->ci_2[i][j], 2.0f, pid->ci_1[i][j]);
+            pid->c[i][j] = rbf_pid_sanitize_network_value(
+                pid->c[i][j], -2.0f, 2.0f, 0.0f, &changed);
+            pid->ci_1[i][j] = rbf_pid_sanitize_network_value(
+                pid->ci_1[i][j], -2.0f, 2.0f, pid->c[i][j], &changed);
+            pid->ci_2[i][j] = rbf_pid_sanitize_network_value(
+                pid->ci_2[i][j], -2.0f, 2.0f, pid->ci_1[i][j], &changed);
         }
     }
+
+    return changed;
 }
 
 static void rbf_pid_sanitize_runtime_state(RBF_PID_Handle *pid)
@@ -427,7 +449,7 @@ static int rbf_pid_step_rbf_nn(RBF_PID_Handle *pid, float error)
         }
 
         if (learned) {
-            rbf_pid_sanitize_network(pid);  /* P1-7：仅学习后钳位 */
+            (void)rbf_pid_sanitize_network(pid);  /* P1-7：仅学习后钳位 */
         }
 
         return is_steady;
@@ -448,7 +470,9 @@ static void rbf_pid_step_adaptive_gains(RBF_PID_Handle *pid, float error)
     float grad, delta;
 
     if (!pid->learning_enabled) return;
-    if (pid->fault_flags & RBF_PID_FAULT_JACOBIAN_SIGN) return;
+    if (pid->fault_flags & (RBF_PID_FAULT_JACOBIAN_SIGN |
+                            RBF_PID_FAULT_NETWORK)) return;
+    if (rbf_pid_same_direction_saturation(pid)) return;
 
     pressure_scale = rbf_pid_effective_pressure_scale(pid);
     de  = error - pid->e_prev1;
@@ -569,7 +593,7 @@ static void rbf_pid_step_incremental_output(RBF_PID_Handle *pid, float error)
 /* ==================== 外层稳态判定（Status 用） ==================== */
 static void rbf_pid_step_steady_state(RBF_PID_Handle *pid)
 {
-    int n_steady = (int)(RBF_PID_STEADY_T_LIMIT / pid->sampling_period);
+    int n_steady = (int)(RBF_PID_STEADY_T_LIMIT / RBF_PID_FIXED_SAMPLING_PERIOD);
     float error = pid->P_set - pid->P_actual;
     bool condition1 = fabsf(error) <= RBF_PID_STEADY_E_LIMIT;   /* [bar] */
     bool condition2 = fabsf(pid->du) <= RBF_PID_STEADY_DU_LIMIT; /* [L/min] */
@@ -595,7 +619,8 @@ void RBF_PID_Init(RBF_PID_Handle *pid, float sampling_period,
     if (pid == NULL) return;
 
     memset(pid, 0, sizeof(*pid));
-    pid->sampling_period = clamp_positive_or_default(sampling_period, 0.001f);
+    (void)sampling_period;
+    pid->sampling_period = RBF_PID_FIXED_SAMPLING_PERIOD;
     pid->fMaxFlow = clamp_positive_or_default(max_flow_lmin, 0.0f);
     pid->fFlowRateLimit = clampf(0.0f, flow_rate_limit_pct, 1.0f);
     pid->output_min_flow = MIN_OUTPUT;
@@ -626,7 +651,26 @@ void RBF_PID_Init(RBF_PID_Handle *pid, float sampling_period,
     pid->pid_mode_eta_d = pid->eta_d;
 
     rbf_pid_init_network(pid);
-    rbf_pid_sanitize_network(pid);
+    (void)rbf_pid_sanitize_network(pid);
+}
+
+static float rbf_pid_hold_safe_output(RBF_PID_Handle *pid)
+{
+    float output_min;
+    float output_max;
+    float safe_output;
+
+    pid->sampling_period = RBF_PID_FIXED_SAMPLING_PERIOD;
+    rbf_pid_sanitize_runtime_state(pid);
+    output_min = rbf_pid_output_lower_bound(pid);
+    output_max = rbf_pid_effective_output_max(pid);
+    safe_output = isfinite(pid->Output) ? pid->Output : pid->u_prev;
+    if (!isfinite(safe_output)) safe_output = 0.0f;
+    pid->Output = clampf(output_min, safe_output, output_max);
+    pid->du = 0.0f;
+    pid->output_saturated = (pid->Output <= output_min + 1.0e-6f) ||
+                            (pid->Output >= output_max - 1.0e-6f);
+    return pid->Output;
 }
 
 float RBF_PID_Update(RBF_PID_Handle *pid, float setpoint, float feedback)
@@ -634,14 +678,28 @@ float RBF_PID_Update(RBF_PID_Handle *pid, float setpoint, float feedback)
     float raw_error;
     float error;
     int is_steady;
+    bool network_changed;
 
     if (pid == NULL) return 0.0f;
 
-    pid->P_set = isfinite(setpoint) ? setpoint : 0.0f;
-    pid->P_actual = isfinite(feedback) ? feedback : 0.0f;
+    pid->sampling_period = RBF_PID_FIXED_SAMPLING_PERIOD;
+    if (!isfinite(setpoint) || !isfinite(feedback)) {
+        pid->fault_flags |= RBF_PID_FAULT_INPUT_INVALID;
+        return rbf_pid_hold_safe_output(pid);
+    }
+
+    pid->fault_flags &= ~(uint32_t)RBF_PID_FAULT_INPUT_INVALID;
+    pid->P_set = setpoint;
+    pid->P_actual = feedback;
 
     rbf_pid_sanitize_runtime_state(pid);
     rbf_pid_enforce_control_mode(pid);
+    network_changed = rbf_pid_sanitize_network(pid);
+    if (network_changed) {
+        pid->fault_flags |= RBF_PID_FAULT_NETWORK;
+    } else {
+        pid->fault_flags &= ~(uint32_t)RBF_PID_FAULT_NETWORK;
+    }
 
     /*
      * v3.2（F3）：双重死区治理。

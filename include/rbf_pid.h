@@ -72,6 +72,8 @@
 /* ---------- 故障标志位（fault_flags） ---------- */
 #define RBF_PID_FAULT_NONE 0x0000u
 #define RBF_PID_FAULT_JACOBIAN_SIGN 0x0001u /* Jacobian 持续为负，自适应已冻结 */
+#define RBF_PID_FAULT_INPUT_INVALID   0x0002u /* 本拍设定/反馈无效，保持上一安全输出 */
+#define RBF_PID_FAULT_NETWORK         0x0004u /* 网络参数被清洗，本拍冻结自适应 */
 
 /**
  * @brief 反馈控制模式
@@ -90,7 +92,7 @@ typedef struct {
     /* ---- 运行输入与基础配置 ---- */
     float P_set;                /* 压力设定值 [bar] */
     float P_actual;             /* 压力反馈值 [bar]（前端已滤波） */
-    float sampling_period;      /* 采样时间 [s] */
+    float sampling_period;      /* 固定控制周期 [s]，始终为 0.001 */
     float fMaxFlow;             /* 最大泵流量 [L/min] */
     float fFlowRateLimit;       /* 流量限幅比例 [0,1] */
     float output_min_flow;      /* 输出下限 [L/min] */

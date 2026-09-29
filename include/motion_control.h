@@ -438,6 +438,11 @@ static inline HYD_BOOL HYD_MotionControlFB_IsError(const HYD_MotionControlFB* fb
 /* Full reset of configuration, recipe, runtime state, and internal helpers. */
 void HYD_MotionControlFB_Init(HYD_MotionControlFB* fb);
 
+/* Shared single-pump feedback. The snapshot is system-owned and read by all
+ * axis controllers; it is intentionally separate from HYD_SETAXISFEEDBACK. */
+void HYD_MotionControl_SetPumpFeedback(const HYD_PumpFeedback* feedback);
+void HYD_MotionControl_GetPumpFeedback(HYD_PumpFeedback* feedback);
+
 /*
  * Soft reset: clears runtime execution state, active segment, fault status,
  * diagnostic retention, and internal controllers, but preserves recipe,

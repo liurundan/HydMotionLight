@@ -74,6 +74,9 @@ target_link_libraries(test_rbf_pid_contract PRIVATE HydroMotionLib HydroSimLib)
 add_executable(test_rbf_pid_pressure_benchmark tests/test_rbf_pid_pressure_benchmark.c)
 target_link_libraries(test_rbf_pid_pressure_benchmark PRIVATE HydroMotionLib HydroSimLib)
 
+add_executable(test_rbf_pid_relief_first_order tests/test_rbf_pid_relief_first_order.c)
+target_link_libraries(test_rbf_pid_relief_first_order PRIVATE HydroMotionLib)
+
 add_executable(test_negative_flow tests/test_negative_flow.c)
 target_link_libraries(test_negative_flow PRIVATE HydroMotionLib)
 
@@ -234,6 +237,7 @@ add_test(NAME test_segment_completion COMMAND segment_completion_test)
 add_test(NAME test_rbf_pid COMMAND rbf_pid_test)
 add_test(NAME test_rbf_pid_contract COMMAND test_rbf_pid_contract)
 add_test(NAME test_rbf_pid_pressure_benchmark COMMAND test_rbf_pid_pressure_benchmark)
+add_test(NAME test_rbf_pid_relief_first_order COMMAND test_rbf_pid_relief_first_order)
 add_test(NAME test_diagnostic_monitor COMMAND test_diagnostic_monitor)
 add_test(NAME test_diagnostic_criteria COMMAND test_diagnostic_criteria)
 add_test(NAME test_sprint3_integration COMMAND test_sprint3_integration)

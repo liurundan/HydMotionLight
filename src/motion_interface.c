@@ -2736,6 +2736,38 @@ void __mcl_cmd_SetAxisFeedback(HYD_SETAXISFEEDBACK *data__)
 
 }
 
+void __mcl_cmd_SetPumpFeedback(HYD_SETPUMPFEEDBACK *data__)
+{
+    HYD_PumpFeedback feedback;
+
+    if (data__ == NULL) return;
+    memset(&feedback, 0, sizeof(feedback));
+    if (!__GET_VAR(data__->ENABLE) ||
+        !isfinite(__GET_VAR(data__->PUMP_SPEED_RPM)) ||
+        !isfinite(__GET_VAR(data__->PUMP_ANGLE_DEG)) ||
+        !isfinite(__GET_VAR(data__->PUMP_TORQUE_PCT_TN)) ||
+        !isfinite(__GET_VAR(data__->TIMESTAMP))) {
+        __SET_VAR(data__->, DONE,, false);
+        __SET_VAR(data__->, ERROR,, true);
+        __SET_VAR(data__->, ERRORID,, (IEC_WORD)HYD_DIAG_CODE_SENSOR_FAULT);
+        return;
+    }
+
+    feedback.rpm = __GET_VAR(data__->PUMP_SPEED_RPM);
+    feedback.angleDeg = __GET_VAR(data__->PUMP_ANGLE_DEG);
+    feedback.torquePermille = __GET_VAR(data__->PUMP_TORQUE_PCT_TN);
+    feedback.timestamp = __GET_VAR(data__->TIMESTAMP);
+    feedback.validFlags = HYD_PUMP_FEEDBACK_VALID_RPM |
+                          HYD_PUMP_FEEDBACK_VALID_ANGLE |
+                          HYD_PUMP_FEEDBACK_VALID_TORQUE |
+                          HYD_PUMP_FEEDBACK_VALID_TIMESTAMP;
+    HYD_MotionControl_SetPumpFeedback(&feedback);
+    __SET_VAR(data__->, DONE,, true);
+    __SET_VAR(data__->, BUSY,, false);
+    __SET_VAR(data__->, ERROR,, false);
+    __SET_VAR(data__->, ERRORID,, (IEC_WORD)HYD_DIAG_CODE_NONE);
+}
+
 void __mcl_cmd_GetPumpRequest(HYD_GETPUMPREQUEST *data__)
 {
     IEC_BOOL enable = __GET_VAR(data__->ENABLE);

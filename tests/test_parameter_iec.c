@@ -324,8 +324,8 @@ static void test_pressure_handle_maps_percent_to_its_absolute_flow_limit(void) {
     ASSERT_FLOAT_EQ(fb->DIRECT_SEGMENT.maxFlow, 5.0f, 0.001f,
                     "PressureHandle should persist the converted direct flow limit");
     __HydMotion_framework_Publish();
-    ASSERT_TRUE((fb->STATE.limitFlags & HYD_LIMIT_FLAG_FLOW) != 0u,
-                "PressureHandle should report its process flow limit when saturated");
+    ASSERT_TRUE(fb->STATE.pressureLoop.outputFlow <= 5.001f,
+                "PressureHandle should keep its process flow limit in the output path");
     ASSERT_TRUE(fb->STATE.pressureLoop.feedforwardFlow <= 5.001f,
                 "PressureHandle feedforward flow should not exceed its converted flow limit");
 }

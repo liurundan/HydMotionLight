@@ -711,7 +711,31 @@ void HYD_SETAXISFEEDBACK_body__(HYD_SETAXISFEEDBACK *data__) {
 
 __end:
   return;
-} // HYD_SETAXISFEEDBACK_body__() 
+} // HYD_SETAXISFEEDBACK_body__()
+
+void HYD_SETPUMPFEEDBACK_init__(HYD_SETPUMPFEEDBACK *data__, BOOL retain) {
+  __INIT_VAR(data__->EN,__BOOL_LITERAL(TRUE),retain)
+  __INIT_VAR(data__->ENO,__BOOL_LITERAL(TRUE),retain)
+  __INIT_VAR(data__->ENABLE,__BOOL_LITERAL(FALSE),retain)
+  __INIT_VAR(data__->PUMP_SPEED_RPM,0,retain)
+  __INIT_VAR(data__->PUMP_ANGLE_DEG,0,retain)
+  __INIT_VAR(data__->PUMP_TORQUE_PCT_TN,0,retain)
+  __INIT_VAR(data__->TIMESTAMP,0,retain)
+  __INIT_VAR(data__->DONE,__BOOL_LITERAL(FALSE),retain)
+  __INIT_VAR(data__->BUSY,__BOOL_LITERAL(FALSE),retain)
+  __INIT_VAR(data__->ERROR,__BOOL_LITERAL(FALSE),retain)
+  __INIT_VAR(data__->ERRORID,0,retain)
+}
+
+void HYD_SETPUMPFEEDBACK_body__(HYD_SETPUMPFEEDBACK *data__) {
+  if (!__GET_VAR(data__->EN)) {
+    __SET_VAR(data__->,ENO,,__BOOL_LITERAL(FALSE));
+    return;
+  }
+  __SET_VAR(data__->,ENO,,__BOOL_LITERAL(TRUE));
+  { extern void __mcl_cmd_SetPumpFeedback(HYD_SETPUMPFEEDBACK*);
+    __mcl_cmd_SetPumpFeedback(data__); }
+}
 
 
 

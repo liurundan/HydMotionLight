@@ -99,6 +99,7 @@ static void hil_step_once(HYD_MotionControlFB* fb, HydraulicSimEnv* env, HYD_REA
         memset(&pump_input, 0, sizeof(pump_input));
         memset(&pump_output, 0, sizeof(pump_output));
         pump_input.requestedFlow = fb->STATE.plannedFlow;
+        pump_input.minimumFlow = -5.0f;
         pump_input.flowToPumpSpeedGain = fb->FLOW_TO_PUMP_SPEED_GAIN;
         pump_input.pumpSpeedLimit = fb->PUMP_SPEED_LIMIT;
         pump_input.direction = fb->STATE.plannedDirection;

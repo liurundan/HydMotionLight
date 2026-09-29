@@ -12,8 +12,14 @@ typedef struct {
     HYD_ProtectionAction protectionAction;
     HYD_REAL derateRatio;
 
-    /* --- 负流量允许（新增） --- */
-    HYD_BOOL allowNegativeFlow;    /* true = 允许小幅负流量/负转速用于快速卸压 */
+    /* Resolved strategy lower bound [L/min].  The effective lower bound is
+     * max(minimumFlow, hardware reverse-flow capability). */
+    HYD_REAL minimumFlow;
+
+    /* Legacy compatibility flag.  New callers must provide minimumFlow; this
+     * flag is used only when minimumFlow is zero and no canonical negative
+     * policy was supplied by an older caller. */
+    HYD_BOOL allowNegativeFlow;
 
     /* --- 压力限制（新增） --- */
     HYD_REAL actualPressure;         /* 当前压力反馈 [bar] */

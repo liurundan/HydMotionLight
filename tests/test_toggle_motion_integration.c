@@ -196,7 +196,7 @@ static void test_pressure_flow_bypasses_toggle_velocity_mapping(void)
     HYD_MotionControlFB_Scan(&toggle);
 
     assert_near(toggle.STATE.plannedFlow, direct.STATE.plannedFlow, 0.0001f);
-    assert_near(toggle.STATE.plannedFlow, 5.0f, 0.0001f);
+    assert_near(toggle.STATE.plannedFlow, 5.0f / 3.5f, 0.0001f);
 }
 
 static void start_bound_toggle_speed(

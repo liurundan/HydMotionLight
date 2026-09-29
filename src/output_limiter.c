@@ -8,23 +8,34 @@ static HYD_BOOL HYD_OutputLimiter_IsFinite(HYD_REAL value) {
     return isfinite(value) ? true : false;
 }
 
-/* 计算流量/转速下限（与 PumpConverter 一致）
- * allowNegativeFlow=false（默认）：下限=0，原 ClampToZero 行为
- * allowNegativeFlow=true：下限 = -pumpSpeedLimit * 0.05
- *   允许小幅负流量/负转速，用于压力闭环快速卸压 */
+/* Resolve one lower bound for both flow and speed.  The strategy bound is
+ * authoritative when supplied; the pump reverse capability remains the hard
+ * safety boundary.  The legacy flag is retained only for old callers that
+ * leave minimumFlow at zero. */
 static void HYD_OutputLimiter_GetLimits(
     const HYD_OutputLimiterInput* input,
     HYD_REAL* minFlow,
     HYD_REAL* minSpeed)
 {
-    *minFlow = 0.0;
-    *minSpeed = 0.0;
-    if (input->allowNegativeFlow &&
-        input->flowToPumpSpeedGain > 0.0 &&
-        input->pumpSpeedLimit > 0.0) {
-        *minSpeed = -input->pumpSpeedLimit * HYD_PUMP_NEGATIVE_SPEED_RATIO;
-        *minFlow  = *minSpeed / input->flowToPumpSpeedGain;
+    HYD_REAL hardwareMinFlow = 0.0;
+    HYD_REAL strategyMinFlow = input->minimumFlow;
+
+    if (input->flowToPumpSpeedGain > 0.0 && input->pumpSpeedLimit > 0.0) {
+        hardwareMinFlow = -input->pumpSpeedLimit *
+                          HYD_PUMP_NEGATIVE_SPEED_RATIO /
+                          input->flowToPumpSpeedGain;
     }
+
+    if (!HYD_OutputLimiter_IsFinite(strategyMinFlow)) {
+        strategyMinFlow = 0.0;
+    } else if (strategyMinFlow == 0.0 && input->allowNegativeFlow) {
+        /* Preserve the pre-minimumFlow ABI for existing callers. */
+        strategyMinFlow = hardwareMinFlow;
+    }
+
+    *minFlow = (strategyMinFlow > hardwareMinFlow)
+        ? strategyMinFlow : hardwareMinFlow;
+    *minSpeed = *minFlow * input->flowToPumpSpeedGain;
 }
 
 static HYD_REAL HYD_OutputLimiter_ResolveDerateRatio(HYD_REAL configuredRatio) {
@@ -82,7 +93,7 @@ void HYD_OutputLimiter_Execute(const HYD_OutputLimiterInput* input,
 
     /* --- pumpSpeedLimit 硬裁剪（最终兜底） --- */
     {
-        HYD_REAL lo = input->allowNegativeFlow ? -input->pumpSpeedLimit * HYD_PUMP_NEGATIVE_SPEED_RATIO : 0.0;
+        HYD_REAL lo = minSpeed;
         HYD_REAL hi = input->pumpSpeedLimit;
         if (pumpSpeed > hi) {
             pumpSpeed = hi;
@@ -392,7 +403,7 @@ void HYD_OutputLimiter_ExecuteWithProtection(
 
     /* --- 7. pumpSpeedLimit 硬裁剪（最终兜底） --- */
     {
-        HYD_REAL lo = input->allowNegativeFlow ? -input->pumpSpeedLimit * HYD_PUMP_NEGATIVE_SPEED_RATIO : 0.0;
+        HYD_REAL lo = minSpeed;
         HYD_REAL hi = input->pumpSpeedLimit;
         if (pumpSpeed > hi) {
             pumpSpeed = hi;
