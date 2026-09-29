@@ -468,19 +468,13 @@ typedef HYD_REAL HYD_TIME;
 #endif
 
 /* ============================================================================
- * 14C. 泵负转速下限比例（Pump Negative Speed Ratio）
+ * 14C. 泵反向转速边界
  *
- * 允许油泵小范围反转以快速卸压时，反转转速上限占 pumpSpeedLimit 的比例。
- * 例：pumpSpeedLimit=1500rpm, RATIO=0.05 → 最大反转转速 = -75rpm
- *
- * 使用此宏的模块：
- *   - output_limiter.c  HYD_OutputLimiter_GetLimits()
- *   - output_limiter.c  HYD_OutputLimiter_Execute() 硬裁剪
- *   - output_limiter.c  HYD_OutputLimiter_ExecuteWithProtection() 硬裁剪
- *   - pump_converter.c  HYD_PumpConverter_Execute()
- *   - motion_interface.c __mcl_cmd_GetPumpRequest()（间接，依赖上游保证）
+ * 压力闭环的反向卸压使用与正向相同的 pumpSpeedLimit，实际策略下限由
+ * 压力控制器外层通过 outputMin 统一下发。该宏保留为硬件兼容点，默认
+ * 为 1.0，避免在流量转速换算和最终限幅器中再次引入额外的反向缩放。
  * ============================================================================ */
-#define HYD_PUMP_NEGATIVE_SPEED_RATIO      0.05f
+#define HYD_PUMP_NEGATIVE_SPEED_RATIO      1.0f
 
 /* Default normal-operation pump speed slew rates (rpm/s). Protected STOP and
  * FAULT paths bypass these limits and retain immediate zero output. */

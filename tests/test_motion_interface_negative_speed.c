@@ -235,7 +235,7 @@ static void test_enable_false(void)
 
 /* ==================================================================
  * Test 8: 负转速不被钳位到 0（验证 ALLOW_NEGATIVE 生效）
- * pumpSpeedLimit=1500, RATIO=0.05 → 下限=-75，-60 在范围内
+ * 反向转速使用与正向相同的泵速边界，-60 在范围内
  * ================================================================== */
 static void test_negative_speed_not_clamped(void)
 {

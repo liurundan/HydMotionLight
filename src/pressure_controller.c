@@ -9,6 +9,7 @@
  * These thresholds are deliberately small and asymmetric: reverse flow is
  * admitted only while pressure is materially above the requested target. */
 #define HYD_RELIEF_MIN_FEEDBACK_PRESSURE 5.0
+#define HYD_RELIEF_STOP_TARGET_PRESSURE 0.1
 #define HYD_RELIEF_ENTER_ERROR 2.0
 #define HYD_RELIEF_EXIT_ERROR 0.5
 #define HYD_RELIEF_TARGET_DROP 2.0
@@ -189,6 +190,14 @@ static HYD_REAL HYD_ResolvePumpCapabilityMin(const HYD_PressureControllerInput* 
            input->flowToPumpSpeedGain;
 }
 
+static HYD_BOOL HYD_ShouldClampReverseFlow(const HYD_PressureControllerInput* input)
+{
+    return input != NULL && isfinite(input->targetPressure) &&
+           isfinite(input->measuredPressure) &&
+           input->targetPressure < HYD_RELIEF_STOP_TARGET_PRESSURE &&
+           input->measuredPressure < HYD_RELIEF_MIN_FEEDBACK_PRESSURE;
+}
+
 static void HYD_UpdateReliefState(HYD_PressureControllerState* state,
                                   const HYD_PressureControllerInput* input)
 {
@@ -297,7 +306,8 @@ static void HYD_ResolvePressureControllerConfig(const HYD_MotionSegment* segment
     /* Lower bound is resolved once here and shared by both PID paths. */
     if (input != NULL) {
         HYD_REAL requestedMin = isfinite(input->outputMin) ? input->outputMin : 0.0;
-        HYD_REAL reliefPolicyMin = (state != NULL && state->reliefActive) ? requestedMin : 0.0;
+        HYD_REAL reliefPolicyMin = (state != NULL && state->reliefActive &&
+                                    !HYD_ShouldClampReverseFlow(input)) ? requestedMin : 0.0;
         HYD_REAL pumpCapabilityMin = HYD_ResolvePumpCapabilityMin(input);
 
         config->outputMin = reliefPolicyMin > pumpCapabilityMin ?
@@ -349,7 +359,6 @@ static void HYD_EnsureRbfPidInitialized(HYD_PressureControllerState* state,
     state->rbfPid.sampling_period = (float)samplingPeriod;
     state->rbfPid.fMaxFlow = fMaxFlow;
     state->rbfPid.fFlowRateLimit = fFlowRateLimit;
-    state->rbfPid.output_min_flow = (float)MIN_OUTPUT;
     state->rbfPid.output_max_flow = (float)resolvedOutputMax;
 }
 
@@ -638,7 +647,8 @@ void HYD_PressureController_Execute(const HYD_MotionSegment* segment,
     output->controlError = error;
     output->feedforwardFlow = input->feedforwardFlow;
     output->requestedOutputMin = isfinite(input->outputMin) ? input->outputMin : 0.0;
-    output->reliefPolicyMin = state->reliefActive ? output->requestedOutputMin : 0.0;
+    output->reliefPolicyMin = (state->reliefActive && !HYD_ShouldClampReverseFlow(input)) ?
+                              output->requestedOutputMin : 0.0;
     output->pumpCapabilityMin = HYD_ResolvePumpCapabilityMin(input);
     output->effectiveOutputMin = config.outputMin;
     output->reliefActive = state->reliefActive;
@@ -692,7 +702,8 @@ void HYD_PressureController_Execute(const HYD_MotionSegment* segment,
 
         /* Reverse flow is a relief-only capability.  The same state machine
          * is used by RBF and conventional PID below. */
-        if (outputFlow < 0.0 && !state->reliefActive) {
+        if (outputFlow < 0.0 &&
+            (!state->reliefActive || HYD_ShouldClampReverseFlow(input))) {
             outputFlow = 0.0;
         }
 
@@ -777,7 +788,8 @@ void HYD_PressureController_Execute(const HYD_MotionSegment* segment,
     outputFlow = HYD_ClampReal(unsaturatedOutput, config.outputMin, config.outputMax);
 
     /* Keep reverse flow semantics identical to the RBF path. */
-    if (outputFlow < 0.0 && !state->reliefActive) {
+    if (outputFlow < 0.0 &&
+        (!state->reliefActive || HYD_ShouldClampReverseFlow(input))) {
         outputFlow = 0.0;
     }
 

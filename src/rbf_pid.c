@@ -579,12 +579,6 @@ static void rbf_pid_step_incremental_output(RBF_PID_Handle *pid, float error)
     pid->output_saturated = (pid->Output <= output_min + 1.0e-6f) ||
                             (pid->Output >= output_max - 1.0e-6f);
 
-    /* 低压安全：设定与反馈均进入低压区时强制零输出 */
-    if (pid->P_set < 0.1f && pid->P_actual < 0.5f) {
-        pid->Output = 0.0f;
-        pid->output_saturated = false;
-    }
-
     pid->fLastActPress2 = pid->fLastActPress;
     pid->fLastActPress = pid->P_actual;
     pid->last_ref = pid->P_set;

@@ -176,6 +176,32 @@ static void test_pressure_controller_relief_clamp_low_feedback(void) {
     printf("    ✅ M6-Test5 passed (outputFlow=%.4f)\n", (double)output.outputFlow);
 }
 
+static void test_rbf_low_pressure_reverse_flow_is_clamped(void) {
+    HYD_MotionSegment segment;
+    HYD_PressureControllerState state;
+    HYD_PressureControllerInput input;
+    HYD_PressureControllerOutput output;
+
+    segment = make_pressure_segment();
+    segment.pressureController = HYD_PRESSURE_CONTROLLER_RBF_PID;
+    HYD_PressureController_InitState(&state, 8.0, 0.0, 0.0);
+
+    memset(&input, 0, sizeof(input));
+    input.targetPressure = 0.05;
+    input.measuredPressure = 4.0;
+    input.feedforwardFlow = 0.0;
+    input.outputMin = -5.0;
+    input.outputMax = segment.maxFlow;
+    input.flowToPumpSpeedGain = 20.0;
+    input.pumpSpeedLimit = 1800.0;
+    input.timestamp = 0.001;
+
+    HYD_PressureController_Execute(&segment, &state, &input, &output);
+
+    assert(output.effectiveOutputMin == 0.0);
+    assert(output.outputFlow >= 0.0);
+}
+
 int main(void) {
     printf("Running negative flow tests (M6)...\n\n");
 
@@ -184,6 +210,7 @@ int main(void) {
     test_pressure_controller_deadband_boundary();
     test_pressure_controller_relief_high_feedback_allows_negative_flow();
     test_pressure_controller_relief_clamp_low_feedback();
+    test_rbf_low_pressure_reverse_flow_is_clamped();
 
     printf("\n✅ All negative flow tests passed successfully!\n");
     return 0;

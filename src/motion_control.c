@@ -2311,7 +2311,10 @@ static HYD_BOOL HYD_ExecuteActiveSegmentControl(HYD_MotionControlFB* fb,
          * active process/pump cap when a low percentage is selected. */
         pressureInput.feedforwardFlow = HYD_ClampReal(
             segment->targetFlow, 0.0f, pressureInput.outputMax) / 3.5f;
-        pressureInput.outputMin = -5.0;
+        /* The pressure controller owns the reverse-flow policy.  Expose the
+         * complete configured pump capability; the controller will set this
+         * to zero when reverse relief is not currently allowed. */
+        pressureInput.outputMin = -pumpFlowLimit;
         if (HYD_PumpConfig_IsValid(&fb->pumpConfig)) {
             pressureInput.flowToPumpSpeedGain = HYD_PumpConfig_GetFlowToSpeedGain(&fb->pumpConfig);
             pressureInput.pumpSpeedLimit = HYD_PumpConfig_GetSpeedLimit(&fb->pumpConfig);

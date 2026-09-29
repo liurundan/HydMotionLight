@@ -362,7 +362,7 @@ static void test_allow_negative_flow_passes_negative_input(void) {
 
     HYD_OutputLimiter_Execute(&input, &output);
 
-    /* -1.0 > minFlow(-1.5), -100.0 > minSpeed(-150.0) → 原值通过 */
+    /* -1.0 > minFlow(-30), -100.0 > minSpeed(-3000) -> 原值通过 */
     assert_real_eq(output.commandFlow, -1.0, 0.001, "negative flow should pass");
     assert_real_eq(output.pumpSpeed, -100.0, 0.001, "negative speed should pass");
     printf("test_allow_negative_flow_passes_negative_input PASSED\n");
@@ -374,16 +374,16 @@ static void test_allow_negative_flow_clamps_to_min(void) {
     HYD_REAL minSpeed, minFlow;
 
     memset(&input, 0, sizeof(input));
-    input.requestedFlow = -10.0;
-    input.requestedPumpSpeed = -200.0;
+    input.requestedFlow = -40.0;
+    input.requestedPumpSpeed = -4000.0;
     input.flowToPumpSpeedGain = 100.0;
     input.pumpSpeedLimit = 3000.0;
     input.protectionAction = HYD_PROTECTION_ACTION_NONE;
     input.allowNegativeFlow = true;
 
     /* 计算期望下限 */
-    minSpeed = -input.pumpSpeedLimit * 0.05f;  /* -150.0 */
-    minFlow  = minSpeed / input.flowToPumpSpeedGain; /* -1.5 */
+    minSpeed = -input.pumpSpeedLimit;  /* -3000.0 */
+    minFlow  = minSpeed / input.flowToPumpSpeedGain; /* -30.0 */
 
     HYD_OutputLimiter_Execute(&input, &output);
 

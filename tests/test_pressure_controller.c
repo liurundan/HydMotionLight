@@ -110,6 +110,25 @@ static void test_negative_flow_is_bounded_and_finite(void) {
     }
 }
 
+static void test_reverse_limit_is_passed_to_rbf(void) {
+    HYD_MotionSegment segment = make_segment(HYD_PRESSURE_CONTROLLER_RBF_PID);
+    HYD_PressureControllerState state;
+    HYD_PressureControllerInput input;
+    HYD_PressureControllerOutput output;
+
+    HYD_PressureController_InitState(&state, 100.0, 0.0, 0.0);
+    fill_input(&input, 0.001);
+    input.targetPressure = 20.0;
+    input.measuredPressure = 100.0;
+    input.outputMin = -90.0;
+    input.outputMax = 20.0;
+
+    HYD_PressureController_Execute(&segment, &state, &input, &output);
+
+    assert(fabs(output.effectiveOutputMin - (-90.0)) < 1.0e-6);
+    assert(fabs((double)state.rbfPid.output_min_flow - (-90.0)) < 1.0e-6);
+}
+
 static void test_soft_reset_preserves_network(void) {
     HYD_MotionSegment segment = make_segment(HYD_PRESSURE_CONTROLLER_RBF_PID);
     HYD_PressureControllerState state;
@@ -130,6 +149,7 @@ int main(void) {
     test_pressure_feedback_is_not_filtered_by_controller();
     test_ksys_is_converted_to_flow_domain();
     test_negative_flow_is_bounded_and_finite();
+    test_reverse_limit_is_passed_to_rbf();
     test_soft_reset_preserves_network();
     puts("Pressure controller tests passed.");
     return 0;

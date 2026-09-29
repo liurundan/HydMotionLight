@@ -72,18 +72,32 @@ static void test_negative_requested_flow_is_preserved(void) {
 
     printf("Testing negative requested flow preservation...\n");
     input.requestedFlow = -6.0;
+    input.minimumFlow = -10.0;
     input.flowToPumpSpeedGain = 120.0;
     input.pumpSpeedLimit = 1200.0;
     input.direction = HYD_DIRECTION_RETRACT;
 
     HYD_PumpConverter_Execute(&input, &output);
 
-    /* Negative flow is preserved for rapid depressurization.
-     * commandFlow = clamp(-6.0, -0.5, 10.0) = -0.5
-     * pumpSpeed = -0.5 * 120 = -60 rpm (small reverse) */
-    assert(output.commandFlow <= 0.0);  /* negative direction preserved */
+    /* Negative flow is preserved for rapid depressurization. */
+    assert(output.commandFlow < 0.0);  /* negative direction preserved */
     assert(fabs(output.pumpSpeed - output.commandFlow * input.flowToPumpSpeedGain) < 0.001);
     printf("✓ Negative requested flow preservation test passed\n");
+}
+
+static void test_negative_flow_uses_full_pump_speed_limit(void) {
+    HYD_PumpConverterInput input = {0};
+    HYD_PumpConverterOutput output = {0};
+
+    input.requestedFlow = -100.0;
+    input.minimumFlow = -100.0;
+    input.flowToPumpSpeedGain = 20.0;
+    input.pumpSpeedLimit = 1800.0;
+
+    HYD_PumpConverter_Execute(&input, &output);
+
+    assert(fabs(output.commandFlow - (-90.0)) < 0.001);
+    assert(fabs(output.pumpSpeed - (-1800.0)) < 0.001);
 }
 
 static void test_non_finite_input_returns_safe_zero(void) {
@@ -153,6 +167,7 @@ int main(void) {
     test_pump_limit_back_projects_flow();
     test_invalid_input_returns_safe_zero();
     test_negative_requested_flow_is_preserved();
+    test_negative_flow_uses_full_pump_speed_limit();
     test_non_finite_input_returns_safe_zero();
     test_slew_limit_bounds_acceleration();
     test_slew_limit_does_not_cross_zero_on_reversal();

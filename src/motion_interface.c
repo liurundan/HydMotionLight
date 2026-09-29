@@ -2844,7 +2844,7 @@ void __mcl_cmd_GetPumpRequest(HYD_GETPUMPREQUEST *data__)
     if (hasReverse) {
         /* 有反转卸压需求：输出最小的负值（绝对值最大的反转请求）
          * 负转速下限已由上游 output_limiter 保证在
-         *   [-pumpSpeedLimit * HYD_PUMP_NEGATIVE_SPEED_RATIO, 0] 范围内 */
+         *   [-pumpSpeedLimit, 0] 范围内 */
         outputSpeed = minReverse;
     } else {
         outputSpeed = maxForward;
