@@ -60,8 +60,7 @@
 #define HYD_DEFAULT_RBF_PID_SAMPLING_PERIOD 0.001f
 #define RBF_PID_FIXED_SAMPLING_PERIOD HYD_DEFAULT_RBF_PID_SAMPLING_PERIOD
 
-/* ---------- 增量输出限幅与压力量程默认值 ---------- */
-#define MIN_OUTPUT -25.0f       /* 输出下限 [L/min] */
+/* ---------- 压力量程默认值 ---------- */
 #define MAX_PRESSURE 250.0f     /* 压力量程默认值 [bar] */
 
 /* ---------- 压力速度阻尼默认增益 ---------- */

@@ -13,6 +13,7 @@ static void test_init_and_fixed_discrete_contract(void) {
     assert(fabsf(pid.KP - PID_MIN_KP) < 1.0e-6f);
     assert(fabsf(pid.KI - PID_MIN_KI) < 1.0e-6f);
     assert(fabsf(pid.KD - PID_MIN_KD) < 1.0e-6f);
+    assert(fabsf(pid.output_min_flow) < 1.0e-6f);
 }
 static void test_gain_compensation_and_normalization(void) {
     RBF_PID_Handle pid;

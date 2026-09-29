@@ -617,7 +617,10 @@ void RBF_PID_Init(RBF_PID_Handle *pid, float sampling_period,
     pid->sampling_period = RBF_PID_FIXED_SAMPLING_PERIOD;
     pid->fMaxFlow = clamp_positive_or_default(max_flow_lmin, 0.0f);
     pid->fFlowRateLimit = clampf(0.0f, flow_rate_limit_pct, 1.0f);
-    pid->output_min_flow = MIN_OUTPUT;
+    /* The pressure controller owns the flow lower bound.  A standalone RBF
+     * instance starts in positive-only mode until its caller explicitly sets
+     * a reverse-flow limit. */
+    pid->output_min_flow = 0.0f;
     pid->output_max_flow = 0.0f;
     pid->pressure_normalization_scale = MAX_PRESSURE;
     pid->flow_normalization_scale = (pid->fMaxFlow > 0.0f) ? pid->fMaxFlow : 90.0f;
