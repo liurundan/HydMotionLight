@@ -672,8 +672,6 @@ static HYD_BOOL applyMoveVelocityLiveUpdate(HYD_MotionControlFB* fb,
     request.maxPressure = pressureLimit;
     request.direction = dir;
 
-    fb->_activeSegment.maxFlow = 11;
-
     return HYD_MotionControlFB_ApplyLiveUpdate(fb, &request);
 }
 

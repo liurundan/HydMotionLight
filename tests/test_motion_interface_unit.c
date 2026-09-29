@@ -1261,6 +1261,7 @@ static void test_movevelocity_keeps_configured_flow_limit(void) {
     IEC_VAL(mv.VELOCITY) = 100.0f;
     IEC_VAL(mv.ACCELERATION) = 500.0f;
     IEC_VAL(mv.DIRECTION) = HYD_DIRECTION_POSITIVE;
+    IEC_VAL(mv.CONTINUOUSUPDATE) = true;
 
     __mcl_cmd_MoveVelocity(&mv);
     __HydMotion_framework_Publish();

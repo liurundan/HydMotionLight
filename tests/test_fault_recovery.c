@@ -2,6 +2,7 @@
 #include "motion_control.h"
 #include "action_profile.h"
 #include <assert.h>
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -55,7 +56,37 @@ static void test_abort_recovers_from_fault(void) {
     printf("test_abort_recovers_from_fault PASSED\n");
 }
 
+static void test_soft_reset_preserves_motion_limits(void) {
+    HYD_MotionControlFB fb;
+
+    HYD_MotionControlFB_Init(&fb);
+    fb._params.maxFlow = 72.0;
+    fb._params.maxVelocity = 180.0;
+    fb._params.velocityToFlowGain = 0.18;
+    fb.pumpConfig.displacementMlRev = 25.0;
+    fb.pumpConfig.volumetricEfficiency = 0.92;
+    fb.pumpConfig.maxSpeedRpm = 1800.0;
+    fb.cylinderConfig.areaExtendMm2 = 8000.0;
+    fb.cylinderConfig.areaRetractMm2 = 4500.0;
+    fb.cylinderConfig.strokeMm = 500.0;
+
+    HYD_MotionControlFB_SoftReset(&fb);
+
+    assert(fabs(fb._params.maxFlow - 72.0) < 1.0e-6);
+    assert(fabs(fb._params.maxVelocity - 180.0) < 1.0e-6);
+    assert(fabs(fb._params.velocityToFlowGain - 0.18) < 1.0e-6);
+    assert(fabs(fb.pumpConfig.displacementMlRev - 25.0) < 1.0e-6);
+    assert(fabs(fb.pumpConfig.volumetricEfficiency - 0.92) < 1.0e-6);
+    assert(fabs(fb.pumpConfig.maxSpeedRpm - 1800.0) < 1.0e-6);
+    assert(fabs(fb.cylinderConfig.areaExtendMm2 - 8000.0) < 1.0e-6);
+    assert(fabs(fb.cylinderConfig.areaRetractMm2 - 4500.0) < 1.0e-6);
+    assert(fabs(fb.cylinderConfig.strokeMm - 500.0) < 1.0e-6);
+
+    printf("test_soft_reset_preserves_motion_limits PASSED\n");
+}
+
 int main(void) {
     test_abort_recovers_from_fault();
+    test_soft_reset_preserves_motion_limits();
     return 0;
 }
