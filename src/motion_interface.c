@@ -809,6 +809,7 @@ int __HydMotion_framework_Init()
         HYD_AxisSlots[i] = HYD_AXIS_SLOT_FREE;
     }
     HYD_ToggleMechanismPool_Reset();
+    HYD_Debug_Reset();
 
     return 0;
 }
@@ -3022,6 +3023,42 @@ void __mcl_cmd_ReadSimFeedback(HYD_READSIMFEEDBACK* data__)
         __SET_VAR(data__->, BUSY,, false);
     }
 
+}
+
+void __mcl_cmd_ReadDebug(HYD_READDEBUG* data__)
+{
+    IEC_BOOL enable = __GET_VAR(data__->ENABLE);
+
+    if (enable)
+    {
+        __SET_VAR(data__->, VALUE0,, (IEC_REAL)HYD_Debug_GetValue(0U));
+        __SET_VAR(data__->, VALUE1,, (IEC_REAL)HYD_Debug_GetValue(1U));
+        __SET_VAR(data__->, VALUE2,, (IEC_REAL)HYD_Debug_GetValue(2U));
+        __SET_VAR(data__->, VALUE3,, (IEC_REAL)HYD_Debug_GetValue(3U));
+        __SET_VAR(data__->, VALUE4,, (IEC_REAL)HYD_Debug_GetValue(4U));
+        __SET_VAR(data__->, VALUE5,, (IEC_REAL)HYD_Debug_GetValue(5U));
+        __SET_VAR(data__->, VALUE6,, (IEC_REAL)HYD_Debug_GetValue(6U));
+        __SET_VAR(data__->, VALUE7,, (IEC_REAL)HYD_Debug_GetValue(7U));
+        __SET_VAR(data__->, VALID,, true);
+        __SET_VAR(data__->, BUSY,, false);
+        __SET_VAR(data__->, ERROR,, false);
+        __SET_VAR(data__->, ERRORID,, (IEC_WORD)HYD_DIAG_CODE_NONE);
+    }
+    else
+    {
+        __SET_VAR(data__->, VALUE0,, (IEC_REAL)0.0f);
+        __SET_VAR(data__->, VALUE1,, (IEC_REAL)0.0f);
+        __SET_VAR(data__->, VALUE2,, (IEC_REAL)0.0f);
+        __SET_VAR(data__->, VALUE3,, (IEC_REAL)0.0f);
+        __SET_VAR(data__->, VALUE4,, (IEC_REAL)0.0f);
+        __SET_VAR(data__->, VALUE5,, (IEC_REAL)0.0f);
+        __SET_VAR(data__->, VALUE6,, (IEC_REAL)0.0f);
+        __SET_VAR(data__->, VALUE7,, (IEC_REAL)0.0f);
+        __SET_VAR(data__->, VALID,, false);
+        __SET_VAR(data__->, BUSY,, false);
+        __SET_VAR(data__->, ERROR,, false);
+        __SET_VAR(data__->, ERRORID,, (IEC_WORD)HYD_DIAG_CODE_NONE);
+    }
 }
 
 void __mcl_cmd_ReadParameter(HYD_READPARAMETER *data__)

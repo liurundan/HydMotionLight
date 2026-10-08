@@ -2,6 +2,7 @@
 #define HYD_MOTION_INTERFACE_H
 
 #include "motion_control.h"
+#include "debug_values.h"
 #include "accessor.h"
 #include "iec_types_all.h"
  
@@ -599,6 +600,30 @@ typedef struct {
 
 } HYD_READSIMFEEDBACK;
 
+// FUNCTION_BLOCK HYD_READDEBUG
+// Reads the global eight-channel debug value bank.
+typedef struct {
+  // FB Interface - IN, OUT, IN_OUT variables
+  __DECLARE_VAR(BOOL,EN)
+  __DECLARE_VAR(BOOL,ENO)
+  __DECLARE_VAR(BOOL,ENABLE)
+  __DECLARE_VAR(BOOL,VALID)
+  __DECLARE_VAR(BOOL,BUSY)
+  __DECLARE_VAR(BOOL,ERROR)
+  __DECLARE_VAR(WORD,ERRORID)
+  __DECLARE_VAR(REAL,VALUE0)
+  __DECLARE_VAR(REAL,VALUE1)
+  __DECLARE_VAR(REAL,VALUE2)
+  __DECLARE_VAR(REAL,VALUE3)
+  __DECLARE_VAR(REAL,VALUE4)
+  __DECLARE_VAR(REAL,VALUE5)
+  __DECLARE_VAR(REAL,VALUE6)
+  __DECLARE_VAR(REAL,VALUE7)
+
+  // FB private variables - TEMP, private and located variables
+
+} HYD_READDEBUG;
+
 // FUNCTION_BLOCK HYD_READPARAMETER
 // Data part
 typedef struct {
@@ -708,6 +733,7 @@ extern void __mcl_cmd_GetPumpRequest(HYD_GETPUMPREQUEST *data__);
 extern void __mcl_cmd_ReadStatus(HYD_READSTATUS* data__);
 extern void __mcl_cmd_ReadError(HYD_READERROR* data__);
 extern void __mcl_cmd_ReadSimFeedback(HYD_READSIMFEEDBACK* data__);
+extern void __mcl_cmd_ReadDebug(HYD_READDEBUG* data__);
 
 extern void __mcl_cmd_ReadParameter(HYD_READPARAMETER* data__);
 extern void __mcl_cmd_WriteParameter(HYD_WRITEPARAMETER* data__);

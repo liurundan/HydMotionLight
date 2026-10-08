@@ -1431,6 +1431,33 @@
 				</body>
 				<documentation><![CDATA[get axis simfeedback from motion.]]></documentation>
 			</pou>
+			<pou name="HYD_ReadDebug" pouType="functionBlock">
+				<interface>
+					<inputVars>
+						<variable name="ENABLE"><type><BOOL /></type></variable>
+					</inputVars>
+					<outputVars>
+						<variable name="VALID"><type><BOOL /></type></variable>
+						<variable name="BUSY"><type><BOOL /></type></variable>
+						<variable name="ERROR"><type><BOOL /></type></variable>
+						<variable name="ERRORID"><type><WORD /></type></variable>
+						<variable name="VALUE0"><type><REAL /></type></variable>
+						<variable name="VALUE1"><type><REAL /></type></variable>
+						<variable name="VALUE2"><type><REAL /></type></variable>
+						<variable name="VALUE3"><type><REAL /></type></variable>
+						<variable name="VALUE4"><type><REAL /></type></variable>
+						<variable name="VALUE5"><type><REAL /></type></variable>
+						<variable name="VALUE6"><type><REAL /></type></variable>
+						<variable name="VALUE7"><type><REAL /></type></variable>
+					</outputVars>
+				</interface>
+				<body>
+					<ST>
+						<xhtml:p><![CDATA[{{ extern void __mcl_cmd_ReadDebug(HYD_READDEBUG*); __mcl_cmd_ReadDebug(data__); }} ]]></xhtml:p>
+					</ST>
+				</body>
+				<documentation><![CDATA[read the global eight-channel debug value bank.]]></documentation>
+			</pou>
 			<pou name="HYD_ReadParameter" pouType="functionBlock">
 				<interface>
 					<inputVars>

@@ -24,6 +24,7 @@ POU_TO_C_TYPE = {
     "HYD_ReadStatus": "HYD_READSTATUS",
     "HYD_ReadError": "HYD_READERROR",
     "HYD_ReadSimFeedback": "HYD_READSIMFEEDBACK",
+    "HYD_ReadDebug": "HYD_READDEBUG",
     "HYD_ReadParameter": "HYD_READPARAMETER",
     "HYD_WriteParameter": "HYD_WRITEPARAMETER",
     "HYD_ReadBoolParameter": "HYD_READBOOLPARAMETER",

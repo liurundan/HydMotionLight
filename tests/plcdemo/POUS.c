@@ -934,6 +934,54 @@ __end:
 
 
 
+void HYD_READDEBUG_init__(HYD_READDEBUG *data__, BOOL retain) {
+  __INIT_VAR(data__->EN,__BOOL_LITERAL(TRUE),retain)
+  __INIT_VAR(data__->ENO,__BOOL_LITERAL(TRUE),retain)
+  __INIT_VAR(data__->ENABLE,__BOOL_LITERAL(FALSE),retain)
+  __INIT_VAR(data__->VALID,__BOOL_LITERAL(FALSE),retain)
+  __INIT_VAR(data__->BUSY,__BOOL_LITERAL(FALSE),retain)
+  __INIT_VAR(data__->ERROR,__BOOL_LITERAL(FALSE),retain)
+  __INIT_VAR(data__->ERRORID,0,retain)
+  __INIT_VAR(data__->VALUE0,0,retain)
+  __INIT_VAR(data__->VALUE1,0,retain)
+  __INIT_VAR(data__->VALUE2,0,retain)
+  __INIT_VAR(data__->VALUE3,0,retain)
+  __INIT_VAR(data__->VALUE4,0,retain)
+  __INIT_VAR(data__->VALUE5,0,retain)
+  __INIT_VAR(data__->VALUE6,0,retain)
+  __INIT_VAR(data__->VALUE7,0,retain)
+}
+
+// Code part
+void HYD_READDEBUG_body__(HYD_READDEBUG *data__) {
+  // Control execution
+  if (!__GET_VAR(data__->EN)) {
+    __SET_VAR(data__->,ENO,,__BOOL_LITERAL(FALSE));
+    return;
+  }
+  else {
+    __SET_VAR(data__->,ENO,,__BOOL_LITERAL(TRUE));
+  }
+  // Initialise TEMP variables
+
+  __IL_DEFVAR_T __IL_DEFVAR;
+  __IL_DEFVAR_T __IL_DEFVAR_BACK;
+  #define GetFbVar(var,...) __GET_VAR(data__->var,__VA_ARGS__)
+  #define SetFbVar(var,val,...) __SET_VAR(data__->,var,__VA_ARGS__,val)
+ extern void __mcl_cmd_ReadDebug(HYD_READDEBUG*); __mcl_cmd_ReadDebug(data__);
+  #undef GetFbVar
+  #undef SetFbVar
+;
+
+  goto __end;
+
+__end:
+  return;
+} // HYD_READDEBUG_body__()
+
+
+
+
 void HYD_READPARAMETER_init__(HYD_READPARAMETER *data__, BOOL retain) {
   __INIT_VAR(data__->EN,__BOOL_LITERAL(TRUE),retain)
   __INIT_VAR(data__->ENO,__BOOL_LITERAL(TRUE),retain)

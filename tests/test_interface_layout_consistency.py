@@ -64,6 +64,7 @@ def main() -> int:
     required_pous = {
         "HYD_ConfigureToggleMechanism": "HYD_CONFIGURETOGGLEMECHANISM",
         "HYD_ReadToggleMechanism": "HYD_READTOGGLEMECHANISM",
+        "HYD_ReadDebug": "HYD_READDEBUG",
     }
     for pou_name, c_name in required_pous.items():
         if f'<pou name="{pou_name}"' not in xml_source:
@@ -72,6 +73,45 @@ def main() -> int:
         if c_name not in c_header or c_name not in plc_header:
             print(f"expected C and generated-equivalent layouts for {c_name}")
             return 1
+
+    debug_pou = next(
+        (pou for pou in ET.parse(XML).getroot().iter()
+         if local_name(pou.tag) == "pou" and
+         pou.attrib.get("name") == "HYD_ReadDebug"),
+        None,
+    )
+    if debug_pou is None:
+        print("expected XML POU HYD_ReadDebug")
+        return 1
+    debug_fields = [
+        variable.attrib.get("name")
+        for variable in debug_pou.iter()
+        if local_name(variable.tag) == "variable"
+    ]
+    expected_debug_fields = [
+        "ENABLE", "VALID", "BUSY", "ERROR", "ERRORID",
+        "VALUE0", "VALUE1", "VALUE2", "VALUE3",
+        "VALUE4", "VALUE5", "VALUE6", "VALUE7",
+    ]
+    if debug_fields != expected_debug_fields:
+        print(f"HYD_ReadDebug XML fields {debug_fields} != {expected_debug_fields}")
+        return 1
+    if "__mcl_cmd_ReadDebug(HYD_READDEBUG*);" not in xml_source:
+        print("expected HYD_ReadDebug XML body adapter declaration")
+        return 1
+    debug_init_start = plc_source.find("void HYD_READDEBUG_init__")
+    debug_init_end = plc_source.find("// Code part", debug_init_start)
+    if debug_init_start < 0 or debug_init_end < 0:
+        print("expected generated HYD_READDEBUG initializer")
+        return 1
+    debug_init = plc_source[debug_init_start:debug_init_end]
+    for field in ("VALID", "BUSY", "ERROR", "ERRORID", *[f"VALUE{i}" for i in range(8)]):
+        if field not in debug_init:
+            print(f"expected generated HYD_READDEBUG initializer for {field}")
+            return 1
+    if "__mcl_cmd_ReadDebug(HYD_READDEBUG*);" not in plc_source:
+        print("expected generated HYD_READDEBUG adapter call")
+        return 1
 
     create_start = plc_source.find("void HYD_CREATEMOTION_init__")
     create_end = plc_source.find("// Code part", create_start)
