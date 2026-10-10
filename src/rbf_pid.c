@@ -326,54 +326,53 @@ static void rbf_pid_enforce_control_mode(RBF_PID_Handle *pid)
 
 /* ==================== RBF 网络单步 ==================== */
 
-/*
- * 返回 1 表示处于稳态死区（本拍冻结学习）。
- * 稳态死区 = 0.5% * 压力量程。
- */
-static int rbf_pid_step_rbf_nn(RBF_PID_Handle *pid, float error)
-{
+typedef struct {
     float h[RBF_HNUM];
-    float flow_scale = rbf_pid_effective_flow_scale(pid);
-    float pressure_scale = rbf_pid_effective_pressure_scale(pid);
     float x[RBF_INPUT_DIM];
-    float y_n = pid->P_actual / pressure_scale;
-    float y_hat_n = 0.0f;
-    float jacobian_n = 0.0f;
-    float error_rbf_n = 0.0f;
-    float deadzone;
-    float de;
-    int i, j;
-    bool learned = false;
+    float y_n;
+    float y_hat_n;
+    int is_steady;
+} RBF_PID_NnStep;
 
-    /* v3.2（F4）：x[0] 改为绝对输出归一化，激励充分，
-       Jacobian 语义 = ∂P/∂u，与软限幅/增益补偿的 K 一致 */
-    x[0] = pid->u_prev / flow_scale;
-    x[1] = pid->y_prev1 / pressure_scale;
-    x[2] = pid->y_prev2 / pressure_scale;
+static bool rbf_pid_input_in_coverage(const RBF_PID_NnStep *step)
+{
+    if (step == NULL) return false;
 
-    for (i = 0; i < RBF_INPUT_DIM; ++i) {
-        if (!isfinite(x[i])) x[i] = 0.0f;
+    /* x[0] 的中心覆盖域是正向工作带 [0, 1.2]；压力历史允许
+       初始零值，但不接受明显负压或超过归一化工作上限。 */
+    return isfinite(step->x[0]) && step->x[0] >= 0.0f && step->x[0] <= 1.2f &&
+           isfinite(step->x[1]) && step->x[1] >= -0.2f && step->x[1] <= 1.2f &&
+           isfinite(step->x[2]) && step->x[2] >= -0.2f && step->x[2] <= 1.2f;
+}
+
+static uint32_t rbf_pid_resolve_freeze_reasons(const RBF_PID_Handle *pid,
+                                               const RBF_PID_NnStep *step)
+{
+    uint32_t reasons = RBF_PID_FREEZE_NONE;
+    float low_pressure_limit;
+
+    if (pid == NULL || step == NULL) return RBF_PID_FREEZE_OUT_OF_COVERAGE;
+
+    if (pid->u_prev < -EPS || pid->Output < -EPS) {
+        reasons |= RBF_PID_FREEZE_REVERSE_FLOW;
     }
-    memcpy(pid->last_rbf_input, x, sizeof(x));
-
-    pid->Jacobian = 0.0f;
-
-    for (i = 0; i < RBF_HNUM; ++i) {
-        float norm_val = 0.0f;
-        for (j = 0; j < RBF_INPUT_DIM; ++j) {
-            float diff = x[j] - pid->c[i][j];
-            norm_val += diff * diff;
-        }
-        h[i] = expf(-norm_val / (2.0f * pid->b_rbf[i] * pid->b_rbf[i]));
-        y_hat_n += pid->w[i] * h[i];
-        jacobian_n += pid->w[i] * h[i] * (pid->c[i][0] - x[0]) / (pid->b_rbf[i] * pid->b_rbf[i]);
+    if (!rbf_pid_input_in_coverage(step)) {
+        reasons |= RBF_PID_FREEZE_OUT_OF_COVERAGE;
     }
 
-    /* v3.2：换算回物理量纲 dP/du = (pressure_scale/flow_scale) * dŷ_n/dx0
-       [bar/(L/min)]，与 K = dP/dQ 同量纲 */
-    pid->Jacobian = clampf(-5.0f, (pressure_scale / flow_scale) * jacobian_n, 50.0f);
+    low_pressure_limit = 0.1f * rbf_pid_effective_pressure_scale(pid);
+    if (pid->P_actual < low_pressure_limit) {
+        reasons |= RBF_PID_FREEZE_LOW_PRESSURE;
+    }
 
-    /* ---- Jacobian 符号监督（P1-3） ---- */
+    return reasons;
+}
+
+static void rbf_pid_update_jacobian_supervision(RBF_PID_Handle *pid,
+                                                bool hold_count)
+{
+    if (pid == NULL || hold_count) return;
+
     if (pid->Jacobian < 0.0f) {
         pid->jac_neg_count++;
         if (pid->jac_neg_count >= RBF_PID_JACOBIAN_FAULT_COUNT) {
@@ -383,77 +382,122 @@ static int rbf_pid_step_rbf_nn(RBF_PID_Handle *pid, float error)
         pid->jac_neg_count = 0;
         pid->fault_flags &= ~(uint32_t)RBF_PID_FAULT_JACOBIAN_SIGN;
     }
+}
+
+/*
+ * 返回 1 表示处于稳态死区（本拍冻结学习）。
+ * 稳态死区 = 0.5% * 压力量程。
+ */
+static int rbf_pid_step_rbf_nn(RBF_PID_Handle *pid, float error,
+                               RBF_PID_NnStep *step)
+{
+    float flow_scale = rbf_pid_effective_flow_scale(pid);
+    float pressure_scale = rbf_pid_effective_pressure_scale(pid);
+    float y_hat_n = 0.0f;
+    float jacobian_n = 0.0f;
+    float deadzone;
+    float de;
+    int i, j;
+
+    if (pid == NULL || step == NULL) return 0;
+
+    memset(step, 0, sizeof(*step));
+
+    /* v3.2（F4）：x[0] 改为绝对输出归一化，激励充分，
+       Jacobian 语义 = ∂P/∂u，与软限幅/增益补偿的 K 一致 */
+    step->x[0] = pid->u_prev / flow_scale;
+    step->x[1] = pid->y_prev1 / pressure_scale;
+    step->x[2] = pid->y_prev2 / pressure_scale;
+
+    for (i = 0; i < RBF_INPUT_DIM; ++i) {
+        if (!isfinite(step->x[i])) step->x[i] = 0.0f;
+    }
+    memcpy(pid->last_rbf_input, step->x, sizeof(step->x));
+
+    pid->Jacobian = 0.0f;
+    step->y_n = pid->P_actual / pressure_scale;
+
+    for (i = 0; i < RBF_HNUM; ++i) {
+        float norm_val = 0.0f;
+        for (j = 0; j < RBF_INPUT_DIM; ++j) {
+            float diff = step->x[j] - pid->c[i][j];
+            norm_val += diff * diff;
+        }
+        step->h[i] = expf(-norm_val / (2.0f * pid->b_rbf[i] * pid->b_rbf[i]));
+        y_hat_n += pid->w[i] * step->h[i];
+        jacobian_n += pid->w[i] * step->h[i] *
+                      (pid->c[i][0] - step->x[0]) /
+                      (pid->b_rbf[i] * pid->b_rbf[i]);
+    }
+    step->y_hat_n = y_hat_n;
+
+    /* v3.2：换算回物理量纲 dP/du = (pressure_scale/flow_scale) * dŷ_n/dx0
+       [bar/(L/min)]，与 K = dP/dQ 同量纲 */
+    pid->Jacobian = clampf(-5.0f, (pressure_scale / flow_scale) * jacobian_n, 50.0f);
 
     /* ---- 稳态判定（冻结条件，P0-2） ---- */
     deadzone = RBF_PID_STEADY_DEADZONE_RATIO * pressure_scale;
     de = error - pid->e_prev1;
 
-    {
-        int is_steady = (fabsf(error) < deadzone) &&
-                        (fabsf(de) < deadzone * RBF_PID_STEADY_DE_RATIO);
+    step->is_steady = (fabsf(error) < deadzone) &&
+                      (fabsf(de) < deadzone * RBF_PID_STEADY_DE_RATIO);
+    return step->is_steady;
+}
 
-        if (!is_steady &&
-            pid->learning_enabled &&
-            !(pid->fault_flags & RBF_PID_FAULT_JACOBIAN_SIGN) &&
-            !rbf_pid_same_direction_saturation(pid)) {
+static void rbf_pid_step_rbf_learning(RBF_PID_Handle *pid, float error,
+                                      const RBF_PID_NnStep *step,
+                                      bool adaptation_allowed)
+{
+    float error_rbf_n;
+    int i, j;
 
-            error_rbf_n = y_n - y_hat_n;
+    if (pid == NULL || step == NULL || !adaptation_allowed || step->is_steady ||
+        !pid->learning_enabled ||
+        (pid->fault_flags & RBF_PID_FAULT_JACOBIAN_SIGN) ||
+        rbf_pid_same_direction_saturation(pid)) return;
 
-            for (i = 0; i < RBF_HNUM; ++i) {
-                float w_old = pid->w[i];
-                float delta_w = pid->eta_w * error_rbf_n * h[i] +
-                                pid->alpha * (pid->w[i] - pid->w_1[i]);
-                float width = pid->b_rbf[i];
-                float width_sq = width * width;
-                float width_cu = width_sq * width;
-                float norm_val = 0.0f;
+    error_rbf_n = step->y_n - step->y_hat_n;
+    for (i = 0; i < RBF_HNUM; ++i) {
+        float w_old = pid->w[i];
+        float delta_w = pid->eta_w * error_rbf_n * step->h[i] +
+                        pid->alpha * (pid->w[i] - pid->w_1[i]);
+        float width = pid->b_rbf[i];
+        float width_sq = width * width;
+        float width_cu = width_sq * width;
+        float norm_val = 0.0f;
 
-                /* Step 1: 用更新前的中心计算 norm_val */
-                for (j = 0; j < RBF_INPUT_DIM; ++j) {
-                    float diff = x[j] - pid->c[i][j];
-                    norm_val += diff * diff;
-                }
-
-                /* Step 2: 用 w_old 更新中心 */
-                for (j = 0; j < RBF_INPUT_DIM; ++j) {
-                    float delta_center = pid->eta_c * error_rbf_n * w_old * h[i] *
-                                         (x[j] - pid->c[i][j]) / width_sq +
-                                         pid->alpha * (pid->ci_1[i][j] - pid->ci_2[i][j]);
-                    pid->c[i][j] = clamp_finite(-2.0f, pid->c[i][j] + delta_center, 2.0f, pid->c[i][j]);
-                }
-
-                /* Step 3: 用旧中心 norm_val 更新宽度 */
-                pid->b_rbf[i] = clamp_finite(0.2f,
-                    pid->b_rbf[i] + pid->eta_b * error_rbf_n * w_old * h[i] * norm_val / width_cu +
-                    pid->alpha * (pid->bi_1[i] - pid->bi_2[i]),
-                    5.0f, pid->b_rbf[i]);
-
-                /* Step 4: 权重更新并钳位 */
-                pid->w[i] = clamp_finite(-RBF_PID_WEIGHT_LIMIT,
-                    pid->w[i] + delta_w, RBF_PID_WEIGHT_LIMIT, pid->w[i]);
-            }
-
-            /* 历史快照滚动 */
-            for (i = 0; i < RBF_HNUM; ++i) {
-                for (j = 0; j < RBF_INPUT_DIM; ++j) {
-                    pid->ci_2[i][j] = pid->ci_1[i][j];
-                    pid->ci_1[i][j] = pid->c[i][j];
-                }
-                pid->bi_2[i] = pid->bi_1[i];
-                pid->bi_1[i] = pid->b_rbf[i];
-                pid->w_2[i] = pid->w_1[i];
-                pid->w_1[i] = pid->w[i];
-            }
-
-            learned = true;
+        for (j = 0; j < RBF_INPUT_DIM; ++j) {
+            float diff = step->x[j] - pid->c[i][j];
+            norm_val += diff * diff;
         }
-
-        if (learned) {
-            (void)rbf_pid_sanitize_network(pid);  /* P1-7：仅学习后钳位 */
+        for (j = 0; j < RBF_INPUT_DIM; ++j) {
+            float delta_center = pid->eta_c * error_rbf_n * w_old * step->h[i] *
+                                 (step->x[j] - pid->c[i][j]) / width_sq +
+                                 pid->alpha * (pid->ci_1[i][j] - pid->ci_2[i][j]);
+            pid->c[i][j] = clamp_finite(-2.0f,
+                                        pid->c[i][j] + delta_center,
+                                        2.0f, pid->c[i][j]);
         }
-
-        return is_steady;
+        pid->b_rbf[i] = clamp_finite(0.2f,
+            pid->b_rbf[i] + pid->eta_b * error_rbf_n * w_old * step->h[i] *
+            norm_val / width_cu + pid->alpha * (pid->bi_1[i] - pid->bi_2[i]),
+            5.0f, pid->b_rbf[i]);
+        pid->w[i] = clamp_finite(-RBF_PID_WEIGHT_LIMIT,
+                                 pid->w[i] + delta_w,
+                                 RBF_PID_WEIGHT_LIMIT, pid->w[i]);
     }
+
+    for (i = 0; i < RBF_HNUM; ++i) {
+        for (j = 0; j < RBF_INPUT_DIM; ++j) {
+            pid->ci_2[i][j] = pid->ci_1[i][j];
+            pid->ci_1[i][j] = pid->c[i][j];
+        }
+        pid->bi_2[i] = pid->bi_1[i];
+        pid->bi_1[i] = pid->b_rbf[i];
+        pid->w_2[i] = pid->w_1[i];
+        pid->w_1[i] = pid->w[i];
+    }
+    (void)rbf_pid_sanitize_network(pid);
 }
 
 /* ==================== PID 增益在线整定 ==================== */
@@ -462,14 +506,15 @@ static int rbf_pid_step_rbf_nn(RBF_PID_Handle *pid, float error)
  * P1-1/P1-2：梯度全部使用压力量程归一化量 e_n/de_n/dde_n，
  * 并施加单步步长限幅。v3.2：Jacobian = ∂P/∂u [bar/(L/min)]。
  */
-static void rbf_pid_step_adaptive_gains(RBF_PID_Handle *pid, float error)
+static void rbf_pid_step_adaptive_gains(RBF_PID_Handle *pid, float error,
+                                        bool adaptation_allowed)
 {
     float pressure_scale;
     float de, dde;
     float e_n, de_n, dde_n;
     float grad, delta;
 
-    if (!pid->learning_enabled) return;
+    if (!adaptation_allowed || !pid->learning_enabled) return;
     if (pid->fault_flags & (RBF_PID_FAULT_JACOBIAN_SIGN |
                             RBF_PID_FAULT_NETWORK)) return;
     if (rbf_pid_same_direction_saturation(pid)) return;
@@ -636,6 +681,9 @@ void RBF_PID_Init(RBF_PID_Handle *pid, float sampling_period,
     pid->external_deadband_enabled = false;   /* v3.2：默认内层死区生效，向后兼容 */
     pid->jac_neg_count = 0;
     pid->fault_flags = RBF_PID_FAULT_NONE;
+    pid->adaptation_frozen = false;
+    pid->adaptation_resume_count = 0U;
+    pid->adaptation_freeze_reasons = RBF_PID_FREEZE_NONE;
     pid->control_mode = RBF_PID_CONTROL_MODE_PID;
     pid->feedforward_flow = 0.0f;       /* v3.1：前馈状态显式清零 */
     pid->feedforward_flow_prev = 0.0f;
@@ -674,8 +722,13 @@ float RBF_PID_Update(RBF_PID_Handle *pid, float setpoint, float feedback)
 {
     float raw_error;
     float error;
-    int is_steady;
     bool network_changed;
+    bool was_frozen;
+    bool freeze_now;
+    bool adaptation_allowed;
+    bool gain_adaptation_allowed;
+    uint32_t freeze_reasons;
+    RBF_PID_NnStep nn_step;
 
     if (pid == NULL) return 0.0f;
 
@@ -712,8 +765,40 @@ float RBF_PID_Update(RBF_PID_Handle *pid, float setpoint, float feedback)
     }
     pid->Error = error;
 
-    is_steady = rbf_pid_step_rbf_nn(pid, error);
+    (void)rbf_pid_step_rbf_nn(pid, error, &nn_step);
     rbf_pid_step_incremental_output(pid, error);
+
+    /* 先完成当前拍的控制输出，再决定当前样本是否可用于自适应。
+       这样本拍刚进入反向流量时也不会污染共享网络。 */
+    freeze_reasons = rbf_pid_resolve_freeze_reasons(pid, &nn_step);
+    freeze_now = (freeze_reasons != RBF_PID_FREEZE_NONE);
+    was_frozen = pid->adaptation_frozen;
+    if (freeze_now) {
+        pid->adaptation_frozen = true;
+        pid->adaptation_resume_count = 0U;
+        pid->adaptation_freeze_reasons = freeze_reasons;
+        adaptation_allowed = false;
+        gain_adaptation_allowed = false;
+    } else if (was_frozen) {
+        /* 恢复前两拍只允许网络重新学习，避免用尚未确认的 Jacobian 调参。 */
+        adaptation_allowed = true;
+        gain_adaptation_allowed = (pid->adaptation_resume_count >= 2U);
+        if (gain_adaptation_allowed) {
+            pid->adaptation_frozen = false;
+            pid->adaptation_resume_count = 0U;
+            pid->adaptation_freeze_reasons = RBF_PID_FREEZE_NONE;
+        } else {
+            pid->adaptation_resume_count++;
+        }
+    } else {
+        adaptation_allowed = true;
+        gain_adaptation_allowed = true;
+        pid->adaptation_freeze_reasons = RBF_PID_FREEZE_NONE;
+    }
+
+    /* 外推/卸压/低压期间不让错误 Jacobian 进入持续负号监督。 */
+    rbf_pid_update_jacobian_supervision(pid, freeze_now || was_frozen);
+    rbf_pid_step_rbf_learning(pid, error, &nn_step, adaptation_allowed);
 
     /* 历史滚动 */
     pid->y_prev2 = pid->y_prev1;
@@ -722,7 +807,7 @@ float RBF_PID_Update(RBF_PID_Handle *pid, float setpoint, float feedback)
     pid->du_prev = pid->du;
 
     /* 增益整定（冻结/开关/故障判定在函数内部） */
-    rbf_pid_step_adaptive_gains(pid, error);
+    rbf_pid_step_adaptive_gains(pid, error, gain_adaptation_allowed);
 
     pid->e_prev2 = pid->e_prev1;
     pid->e_prev1 = error;
@@ -767,6 +852,9 @@ void RBF_PID_SoftReset(RBF_PID_Handle *pid)
     memset(pid->last_rbf_input, 0, sizeof(pid->last_rbf_input));
     pid->jac_neg_count = 0;
     pid->fault_flags = RBF_PID_FAULT_NONE;
+    pid->adaptation_frozen = false;
+    pid->adaptation_resume_count = 0U;
+    pid->adaptation_freeze_reasons = RBF_PID_FREEZE_NONE;
     pid->Error = 0.0f;
     pid->Jacobian = 0.0f;
     pid->feedforward_flow = 0.0f;       /* v3.1：前馈状态清零，外层 Synchronize 后重新种子 */
