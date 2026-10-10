@@ -50,12 +50,12 @@
 #define PID_MAX_KD 0.035f
 
 /* ---------- 学习率默认值 ---------- */
-#define HYD_DEFAULT_RBF_W_LEARNING_RATE 0.002f
-#define HYD_DEFAULT_RBF_C_LEARNING_RATE 0.002f
-#define HYD_DEFAULT_RBF_B_LEARNING_RATE 0.002f
-#define HYD_DEFAULT_PID_P_LEARNING_RATE 0.01f
-#define HYD_DEFAULT_PID_I_LEARNING_RATE 0.00025f
-#define HYD_DEFAULT_PID_D_LEARNING_RATE 0.00025f
+#define HYD_DEFAULT_RBF_W_LEARNING_RATE 5.002f
+#define HYD_DEFAULT_RBF_C_LEARNING_RATE 5.002f
+#define HYD_DEFAULT_RBF_B_LEARNING_RATE 5.002f
+#define HYD_DEFAULT_PID_P_LEARNING_RATE 5.0f
+#define HYD_DEFAULT_PID_I_LEARNING_RATE 5.0f
+#define HYD_DEFAULT_PID_D_LEARNING_RATE 5.0f
 
 #define HYD_DEFAULT_RBF_PID_SAMPLING_PERIOD 0.001f
 #define RBF_PID_FIXED_SAMPLING_PERIOD HYD_DEFAULT_RBF_PID_SAMPLING_PERIOD
@@ -73,12 +73,6 @@
 #define RBF_PID_FAULT_JACOBIAN_SIGN 0x0001u /* Jacobian 持续为负，自适应已冻结 */
 #define RBF_PID_FAULT_INPUT_INVALID   0x0002u /* 本拍设定/反馈无效，保持上一安全输出 */
 #define RBF_PID_FAULT_NETWORK         0x0004u /* 网络参数被清洗，本拍冻结自适应 */
-
-/* 在线自适应冻结原因（不是故障；用于诊断当前样本是否可学习） */
-#define RBF_PID_FREEZE_NONE           0x0000u
-#define RBF_PID_FREEZE_REVERSE_FLOW   0x0001u
-#define RBF_PID_FREEZE_OUT_OF_COVERAGE 0x0002u
-#define RBF_PID_FREEZE_LOW_PRESSURE   0x0004u
 
 /**
  * @brief 反馈控制模式
@@ -166,9 +160,6 @@ typedef struct {
     bool output_saturated;
     bool learning_enabled;      /* 自适应总开关（网络+增益整定） */
     bool external_deadband_enabled; /* true：内层误差死区旁路，外层段死区为唯一死区 */
-    bool adaptation_frozen;     /* 当前或恢复预热阶段存在运行时冻结 */
-    uint8_t adaptation_resume_count; /* 有效样本恢复计数，达到2后恢复增益整定 */
-    uint32_t adaptation_freeze_reasons; /* RBF_PID_FREEZE_xxx 位或 */
     float y_prev1;
     float y_prev2;
     float last_rbf_input[RBF_INPUT_DIM];
