@@ -527,6 +527,34 @@ static void test_pressure_model_fb_first_order_mode_outputs_equal_real_and_measu
                 "First-order PressureModel FB should report equal real and measured pressure");
 }
 
+static void test_pressure_model_fb_integrator_mode_builds_pressure_from_rpm(void) {
+    HYD_PRESSUREMODEL cmd;
+    int i;
+
+    reset_pressure_model_cmd(&cmd);
+    cmd.ENABLE.value = false;
+    cmd.TIME_S.value = 0.0;
+    __mcl_cmd_updatePressureModel(&cmd);
+
+    for (i = 0; i < 100; ++i) {
+        cmd.ENABLE.value = true;
+        cmd.MODEL_TYPE.value = PRESSURE_MODEL_TYPE_PRESSURE_INTEGRATOR;
+        cmd.K_NUM.value = 0.5;
+        cmd.TTAU.value = 0.2;
+        cmd.DELAYTIME.value = 0.1;
+        cmd.MOTOR_RPM.value = 100.0;
+        cmd.TIME_S.value = 0.001 * (double)i;
+        __mcl_cmd_updatePressureModel(&cmd);
+    }
+
+    ASSERT_TRUE(cmd.ACTIVE.value,
+                "Pressure integrator FB should stay active while enabled");
+    ASSERT_NEAR(cmd.REAL_PRESSURE_BAR.value, 5.0, 1e-5,
+                "Pressure integrator FB should use K_NUM as a 1-second normalized gain");
+    ASSERT_NEAR(cmd.REAL_PRESSURE_BAR.value, cmd.MEASURED_PRESSURE_BAR.value, TOLERANCE,
+                "Pressure integrator FB should expose the real pressure without extra sensor lag");
+}
+
 static void test_pressure_model_fb_online_model_switch_preserves_pressure(void) {
     HYD_PRESSUREMODEL cmd;
     double charged_pressure;
@@ -625,6 +653,7 @@ int main(void) {
     test_pressure_model_fb_exposes_first_order_inputs();
     test_pressure_model_fb_negative_speed_depressurizes_without_reset();
     test_pressure_model_fb_first_order_mode_outputs_equal_real_and_measured();
+    test_pressure_model_fb_integrator_mode_builds_pressure_from_rpm();
     test_pressure_model_fb_online_model_switch_preserves_pressure();
     test_pressure_model_fb_hot_updates_first_order_parameters();
 

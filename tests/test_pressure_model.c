@@ -358,6 +358,75 @@ static int test_first_order_zero_input_holds_zero_pressure(void) {
     return 1;
 }
 
+static int test_pressure_integrator_matches_system_gain(void) {
+    PressureModelParams params = make_deterministic_params();
+    PressureModelState state;
+    PressureModelOutput out;
+    float expected_pressure_bar;
+
+    params.model_type = PRESSURE_MODEL_TYPE_PRESSURE_INTEGRATOR;
+    params.pressure_integrator_gain_bar_per_rpm_s = 0.75f;
+    params.pump_displacement_m3_rev = 20.0e-6f;
+    PressureModel_Reset(&state, 0x21212121u);
+
+    PressureModel_Step(&params, &state, 600.0f, DT_S, &out);
+    expected_pressure_bar = params.pressure_integrator_gain_bar_per_rpm_s *
+                            600.0f * DT_S;
+
+    ASSERT_TRUE(state.active_model_type == PRESSURE_MODEL_TYPE_PRESSURE_INTEGRATOR);
+    ASSERT_NEAR(out.real_pressure_bar, expected_pressure_bar, PRESSURE_EPS);
+    ASSERT_NEAR(out.measured_pressure_bar, out.real_pressure_bar, PRESSURE_EPS);
+    ASSERT_NEAR(out.pump_flow_m3_s, params.pump_displacement_m3_rev * 10.0f,
+                1.0e-9f);
+    return 1;
+}
+
+static int test_pressure_integrator_zero_and_reverse_speed_do_not_create_negative_pressure(void) {
+    PressureModelParams params = make_deterministic_params();
+    PressureModelState state;
+    PressureModelOutput out;
+    float charged_pressure;
+    int i;
+
+    params.model_type = PRESSURE_MODEL_TYPE_PRESSURE_INTEGRATOR;
+    params.pressure_integrator_gain_bar_per_rpm_s = 0.5f;
+    PressureModel_Reset(&state, 0x22222222u);
+
+    run_steps(&params, &state, 300.0f, 10, DT_S, &out);
+    charged_pressure = out.real_pressure_bar;
+    ASSERT_TRUE(charged_pressure > 0.0f);
+
+    run_steps(&params, &state, 0.0f, 10, DT_S, &out);
+    ASSERT_NEAR(out.real_pressure_bar, charged_pressure, PRESSURE_EPS);
+
+    for (i = 0; i < 100; ++i) {
+        PressureModel_Step(&params, &state, -300.0f, DT_S, &out);
+    }
+    ASSERT_NEAR(out.real_pressure_bar, 0.0f, PRESSURE_EPS);
+    ASSERT_TRUE(out.real_pressure_bar >= 0.0f);
+    return 1;
+}
+
+static int test_pressure_integrator_switch_preserves_pressure_for_one_scan(void) {
+    PressureModelParams params = make_deterministic_params();
+    PressureModelState state;
+    PressureModelOutput out;
+    float charged_pressure;
+
+    params.model_type = PRESSURE_MODEL_TYPE_PRESSURE_INTEGRATOR;
+    PressureModel_Reset(&state, 0x23232323u);
+    run_steps(&params, &state, 400.0f, 20, DT_S, &out);
+    charged_pressure = out.real_pressure_bar;
+
+    params.model_type = PRESSURE_MODEL_TYPE_FIRST_ORDER;
+    params.first_order_k_bar_per_rpm = 0.0f;
+    params.first_order_tau_s = 0.0f;
+    PressureModel_Step(&params, &state, 0.0f, DT_S, &out);
+    ASSERT_NEAR(out.real_pressure_bar, charged_pressure, PRESSURE_EPS);
+    ASSERT_TRUE(state.active_model_type == PRESSURE_MODEL_TYPE_FIRST_ORDER);
+    return 1;
+}
+
 static int test_first_order_tau_zero_matches_gain_times_actual_rpm(void) {
     PressureModelParams params = make_first_order_params(0.25f, 0.0f, 0.0f);
     PressureModelState state;
@@ -650,6 +719,30 @@ int main(void) {
     } else {
         ++failed;
         printf("FAIL test_first_order_zero_input_holds_zero_pressure\n");
+    }
+
+    if (test_pressure_integrator_matches_system_gain()) {
+        ++passed;
+        printf("PASS test_pressure_integrator_matches_system_gain\n");
+    } else {
+        ++failed;
+        printf("FAIL test_pressure_integrator_matches_system_gain\n");
+    }
+
+    if (test_pressure_integrator_zero_and_reverse_speed_do_not_create_negative_pressure()) {
+        ++passed;
+        printf("PASS test_pressure_integrator_zero_and_reverse_speed_do_not_create_negative_pressure\n");
+    } else {
+        ++failed;
+        printf("FAIL test_pressure_integrator_zero_and_reverse_speed_do_not_create_negative_pressure\n");
+    }
+
+    if (test_pressure_integrator_switch_preserves_pressure_for_one_scan()) {
+        ++passed;
+        printf("PASS test_pressure_integrator_switch_preserves_pressure_for_one_scan\n");
+    } else {
+        ++failed;
+        printf("FAIL test_pressure_integrator_switch_preserves_pressure_for_one_scan\n");
     }
 
     if (test_first_order_tau_zero_matches_gain_times_actual_rpm()) {

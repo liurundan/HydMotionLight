@@ -178,6 +178,9 @@
 							<type>
 								<REAL />
 							</type>
+							<documentation>
+								<xhtml:p><![CDATA[MODEL_TYPE=1: static gain in bar/rpm. MODEL_TYPE=2: integrator gain in bar/rpm normalized to a 1 s reference interval.]]></xhtml:p>
+							</documentation>
 						</variable>
 						<variable name="TTAU">
 							<type>

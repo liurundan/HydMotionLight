@@ -320,6 +320,9 @@ void __mcl_cmd_updatePressureModel(HYD_PRESSUREMODEL *data__)
     target_motor_speed = __GET_VAR(data__->MOTOR_RPM);
     g_pressure_model_params.model_type = (unsigned char)__GET_VAR(data__->MODEL_TYPE);
     g_pressure_model_params.first_order_k_bar_per_rpm = (float)__GET_VAR(data__->K_NUM);
+    g_pressure_model_params.pressure_integrator_gain_bar_per_rpm_s =
+        (float)__GET_VAR(data__->K_NUM) /
+        PRESSURE_MODEL_INTEGRATOR_REFERENCE_TIME_S;
     g_pressure_model_params.first_order_tau_s = (float)__GET_VAR(data__->TTAU);
     g_pressure_model_params.first_order_delay_s = (float)__GET_VAR(data__->DELAYTIME);
     if (g_pressure_model_have_time && current_time > g_pressure_model_last_time_s) {
