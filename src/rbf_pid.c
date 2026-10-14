@@ -25,12 +25,12 @@
 #endif
 
 /* ==================== 具名常量（含单位） ==================== */
-static const float RBF_PID_ERROR_DEADBAND_RATIO = 0.0004f;  /* 误差死区 = 0.04%*压力量程 */
+static const float RBF_PID_ERROR_DEADBAND_RATIO = 0.0002f;  /* 误差死区 = 0.04%*压力量程 */
 static const float RBF_PID_ERROR_DEADBAND_MIN   = 0.05f;    /* 误差死区下限 [bar] */
 static const float RBF_PID_SOFT_CAP_RATIO       = 1.05f;    /* 软限幅 = P_set*1.05/K */
 static const float RBF_PID_NEAR_TARGET_RATIO    = 0.08f;    /* 近目标判定: |e|<=8%*|P_set| */
 static const float RBF_PID_WEIGHT_LIMIT         = 5.0f;     /* RBF 权重钳位 */
-static const float RBF_PID_STEADY_DEADZONE_RATIO= 0.005f;   /* RBF冻结死区 = 0.5%*量程 */
+static const float RBF_PID_STEADY_DEADZONE_RATIO= 0.01f;   /* RBF冻结死区 = 0.5%*量程 */
 static const float RBF_PID_STEADY_DE_RATIO      = 1.0f;     /* 误差变化率死区系数 */
 static const float RBF_PID_INCR_I_LIMIT         = 0.08f;    /* 增量I项单步限幅 [L/min] */
 static const float RBF_PID_VEL_DAMP_LIMIT       = 1.0f;     /* 速度阻尼项限幅 [L/min] */
@@ -45,7 +45,7 @@ static const float RBF_PID_KD_STEP_LIMIT = 0.002f;
 
 /* Kd 强制唤醒 / Ki L2 惩罚 */
 #define ETA_KD_BOOST 0.5f
-#define LAMBDA_KI 0.0005f
+#define LAMBDA_KI 0.005f
 #define KI_CENTER 0.0f
 
 /* 稳态判定（外层 Status 用，单位明确） */
@@ -396,7 +396,8 @@ static int rbf_pid_step_rbf_nn(RBF_PID_Handle *pid, float error)
         if (!is_steady &&
             pid->learning_enabled &&
             !(pid->fault_flags & RBF_PID_FAULT_JACOBIAN_SIGN) &&
-            !rbf_pid_same_direction_saturation(pid)) {
+            !rbf_pid_same_direction_saturation(pid))
+        {
 
             error_rbf_n = y_n - y_hat_n;
 
@@ -502,7 +503,9 @@ static void rbf_pid_step_adaptive_gains(RBF_PID_Handle *pid, float error)
 
         if (error_diverging && kd_at_floor) {
             delta = fmaxf(ETA_KD_BOOST * fabsf(de_n) * sign(pid->Jacobian), 0.0f);
-        } else {
+        }
+        else
+        {
             grad = pid->eta_d * e_n * pid->Jacobian * fabsf(dde_n);
             if (error * de < 0.0f) {
                 delta = fmaxf(grad, 0.0f);
@@ -580,6 +583,9 @@ static void rbf_pid_step_incremental_output(RBF_PID_Handle *pid, float error)
         pid->Output = pid->u_prev + pid->du + f_velfb + ff_delta;
     }
 
+//    if(fabsf(error) < 5.0f) {
+//    	output_min = 0.0f;
+//    }
     pid->Output = clampf(output_min, pid->Output, output_max);
     pid->output_saturated = (pid->Output <= output_min + 1.0e-6f) ||
                             (pid->Output >= output_max - 1.0e-6f);
@@ -587,6 +593,8 @@ static void rbf_pid_step_incremental_output(RBF_PID_Handle *pid, float error)
     pid->fLastActPress2 = pid->fLastActPress;
     pid->fLastActPress = pid->P_actual;
     pid->last_ref = pid->P_set;
+
+
 }
 
 /* ==================== 外层稳态判定（Status 用） ==================== */

@@ -42,10 +42,10 @@
 #define RBF_MOMENTUM_STEPS 2    /* 在线更新使用的历史快照数 */
 
 /* ---------- PID 参数限幅内置窗（初始化/复位恢复到该窗口） ---------- */
-#define PID_MIN_KP 0.4f
-#define PID_MAX_KP 0.9f
-#define PID_MIN_KI 0.0013f      /* 0.0008 */
-#define PID_MAX_KI 0.0046f
+#define PID_MIN_KP 0.2f
+#define PID_MAX_KP 0.5f
+#define PID_MIN_KI 0.015f      /* 0.0008 */
+#define PID_MAX_KI 0.018f
 #define PID_MIN_KD 0.015f
 #define PID_MAX_KD 0.035f
 
