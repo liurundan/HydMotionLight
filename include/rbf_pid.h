@@ -44,7 +44,9 @@
 /* ---------- PID 参数限幅内置窗（初始化/复位恢复到该窗口） ---------- */
 #define PID_MIN_KP 0.2f
 #define PID_MAX_KP 0.5f
-#define PID_MIN_KI 0.015f      /* 0.0008 */
+//#define PID_MIN_KI 0.015f      /* test pressure closed-loop*/
+//#define PID_MAX_KI 0.018f
+#define PID_MIN_KI 0.015f      /* unit aciton */
 #define PID_MAX_KI 0.018f
 #define PID_MIN_KD 0.015f
 #define PID_MAX_KD 0.035f

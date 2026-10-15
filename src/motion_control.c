@@ -3586,13 +3586,13 @@ void HYD_MotionControlFB_Init(HYD_MotionControlFB* fb) {
     fb->_params.maxDeceleration = 500.0f;
     fb->_params.maxFlow = 90.0f; // 1800/20=90L/min
     fb->_params.pressureRampRate = 10.0f;
-    fb->_params.pressureKp = 0.35f;
+    fb->_params.pressureKp = 0.55f;
     fb->_params.pressureKpHigh = 0.0f;
     fb->_params.pressureGainBand = 0.2f;
-    fb->_params.pressureKi = 0.25f;
+    fb->_params.pressureKi = 0.08f;
     fb->_params.pressureKd = 0.01f;
     fb->_params.pressureIntegralLimit = 10.0f;
-    fb->_params.pressureDeadband = 0.0001f;
+    fb->_params.pressureDeadband = 0.005f; //0.0001f;
     fb->_params.pressureFilterAlpha = 1.0f;
     fb->_params.pressureDerivativeFilterAlpha = 0.5f;
     fb->_params.velocityKp = 0.0f;
@@ -3601,7 +3601,7 @@ void HYD_MotionControlFB_Init(HYD_MotionControlFB* fb) {
     fb->_params.flowToPumpSpeedGain = 20.0f;
     fb->_params.pumpSpeedLimit = 1800.0f;
     fb->_params.pressureControllerType = (HYD_REAL)HYD_PRESSURE_CONTROLLER_PI;
-    fb->_params.defaultTargetFlow = 5.0f;
+    fb->_params.defaultTargetFlow = 5.0f; // 5.0;
     fb->_params.useSimulation = false;
     fb->_params.ksysBarPerRpm = 0.0f;
 

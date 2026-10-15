@@ -584,7 +584,7 @@ static void rbf_pid_step_incremental_output(RBF_PID_Handle *pid, float error)
     }
 
 //    if(fabsf(error) < 5.0f) {
-//    	output_min = 0.0f;
+//    	output_min = 0.05f; // 1 rpm
 //    }
     pid->Output = clampf(output_min, pid->Output, output_max);
     pid->output_saturated = (pid->Output <= output_min + 1.0e-6f) ||
