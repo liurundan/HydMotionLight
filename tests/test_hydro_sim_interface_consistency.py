@@ -42,12 +42,36 @@ POUS = {
             "K_NUM",
             "TTAU",
             "DELAYTIME",
+            "PHYSICAL_PARAMS_ENABLE",
+            "PHYSICAL_CHAMBER_VOLUME_M3",
+            "PHYSICAL_GAS_FRACTION",
+            "PHYSICAL_PUMP_LEAK_C0_M3_PA_S",
+            "PHYSICAL_OUTLET_LEAK_M3_PA_S",
+            "PHYSICAL_CYLINDER_LEAK_M3_PA_S",
+            "PHYSICAL_RATED_MOTOR_TORQUE_NM",
+            "PHYSICAL_FLOW_RIPPLE_RATIO",
+            "PHYSICAL_PRESSURE_RIPPLE_RATIO",
+            "PHYSICAL_SENSOR_NOISE_STD_BAR",
+            "PHYSICAL_MOTOR_NOISE_STD_RPM",
+            "PHYSICAL_PROCESS_NOISE_STD_M3_S",
+            "PHYSICAL_SENSOR_DELAY_S",
+            "PHYSICAL_SENSOR_QUANTIZATION_BAR",
+            "PHYSICAL_MOTOR_NATURAL_FREQ_HZ",
+            "PHYSICAL_MOTOR_DAMPING",
+            "PHYSICAL_MOTOR_ACCEL_LIMIT_RPM_S",
+            "PHYSICAL_TORQUE_LIMIT_PERMILLE",
+            "PHYSICAL_RELIEF_SET_PA",
+            "PHYSICAL_RELIEF_DEADBAND_PA",
+            "PHYSICAL_RELIEF_ORIFICE_COEFF_M3_S_SQRT_PA",
+            "PHYSICAL_RELIEF_HYSTERESIS_PA",
         ],
         "outputs": [
             "ACTIVE",
+            "RAW_PRESSURE_BAR",
             "MEASURED_PRESSURE_BAR",
             "REAL_PRESSURE_BAR",
             "ACTUAL_MOTOR_RPM",
+            "PUMP_TORQUE_PERMILLE",
         ],
     },
 }
@@ -179,6 +203,21 @@ def main() -> int:
         source_type, body = source
         if source_type != expected["c_type"]:
             return fail(f"{expected['function']} uses {source_type}, expected {expected['c_type']}")
+
+        # The pressure-model adapter keeps the override copy in a helper so the
+        # scan function remains readable. Include that helper when validating
+        # the PLC input read contract.
+        if expected["function"] == "__mcl_cmd_updatePressureModel":
+            helper_match = re.search(
+                r"static\s+void\s+PressureModelFb_ApplyPhysicalOverrides\s*\([^\{]+\{",
+                SOURCE.read_text(encoding="utf-8"),
+            )
+            if helper_match:
+                helper_start = helper_match.start()
+                helper_end = SOURCE.read_text(encoding="utf-8").find("\n}\n", helper_start)
+                if helper_end >= 0:
+                    source_text = SOURCE.read_text(encoding="utf-8")
+                    body += source_text[helper_start:helper_end + 3]
 
         reads = set(re.findall(r"__GET_VAR\(data__->([A-Za-z0-9_]+)\)", body))
         writes = set(re.findall(r"__SET_VAR\(data__->,\s*([A-Za-z0-9_]+)", body))

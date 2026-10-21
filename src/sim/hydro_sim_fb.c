@@ -10,6 +10,7 @@ static HYD_HydraulicSimFB _sim_fb[HYD_MAX_HYDRAULIC_SIM_FB];
 static int g_axis_slot_by_id[HYD_MAX_HYDRAULIC_SIM_FB];
 static unsigned int NextAllocatedHydraulicSimFB = 0U;
 static PressureModelParams g_pressure_model_params;
+static PressureModelParams g_pressure_model_defaults;
 static PressureModelState g_pressure_model_state;
 static int g_pressure_model_initialized = 0;
 static int g_pressure_model_have_time = 0;
@@ -21,8 +22,10 @@ static void PressureModelFb_ClearAxisFeedback(void);
 
 static void PressureModelFb_ResetOutputs(HYD_PRESSUREMODEL *data__) {
     __SET_VAR(data__->, REAL_PRESSURE_BAR,, 0.0f);
+    __SET_VAR(data__->, RAW_PRESSURE_BAR,, 0.0f);
     __SET_VAR(data__->, MEASURED_PRESSURE_BAR,, 0.0f);
     __SET_VAR(data__->, ACTUAL_MOTOR_RPM,, 0.0f);
+    __SET_VAR(data__->, PUMP_TORQUE_PERMILLE,, 0.0f);
     __SET_VAR(data__->, ACTIVE,, 0);
 }
 
@@ -39,9 +42,55 @@ static void PressureModelFb_EnsureInitialized(void) {
         return;
     }
 
-    PressureModel_InitParams(&g_pressure_model_params);
+    PressureModel_InitParams(&g_pressure_model_defaults);
+    g_pressure_model_params = g_pressure_model_defaults;
     PressureModelFb_ResetState();
     g_pressure_model_initialized = 1;
+}
+
+static void PressureModelFb_ApplyPhysicalOverrides(const HYD_PRESSUREMODEL *data__) {
+    PressureModelPhysicalParams *physical;
+
+    if (data__ == NULL || !__GET_VAR(data__->PHYSICAL_PARAMS_ENABLE)) return;
+
+    physical = &g_pressure_model_params.physical;
+    physical->chamber_volume_m3 = (float)__GET_VAR(data__->PHYSICAL_CHAMBER_VOLUME_M3);
+    physical->gas_fraction = (float)__GET_VAR(data__->PHYSICAL_GAS_FRACTION);
+    physical->pump_leak_c0_m3_pa_s =
+        (float)__GET_VAR(data__->PHYSICAL_PUMP_LEAK_C0_M3_PA_S);
+    physical->outlet_leak_m3_pa_s =
+        (float)__GET_VAR(data__->PHYSICAL_OUTLET_LEAK_M3_PA_S);
+    physical->cylinder_leak_m3_pa_s =
+        (float)__GET_VAR(data__->PHYSICAL_CYLINDER_LEAK_M3_PA_S);
+    physical->rated_motor_torque_nm =
+        (float)__GET_VAR(data__->PHYSICAL_RATED_MOTOR_TORQUE_NM);
+    g_pressure_model_params.flow_ripple_ratio =
+        (float)__GET_VAR(data__->PHYSICAL_FLOW_RIPPLE_RATIO);
+    g_pressure_model_params.pressure_ripple_ratio =
+        (float)__GET_VAR(data__->PHYSICAL_PRESSURE_RIPPLE_RATIO);
+    g_pressure_model_params.sensor_noise_std_bar =
+        (float)__GET_VAR(data__->PHYSICAL_SENSOR_NOISE_STD_BAR);
+    g_pressure_model_params.motor_noise_std_rpm =
+        (float)__GET_VAR(data__->PHYSICAL_MOTOR_NOISE_STD_RPM);
+    g_pressure_model_params.process_noise_std_m3_s =
+        (float)__GET_VAR(data__->PHYSICAL_PROCESS_NOISE_STD_M3_S);
+    physical->sensor_delay_s = (float)__GET_VAR(data__->PHYSICAL_SENSOR_DELAY_S);
+    physical->sensor_quantization_bar =
+        (float)__GET_VAR(data__->PHYSICAL_SENSOR_QUANTIZATION_BAR);
+    physical->motor_natural_freq_hz =
+        (float)__GET_VAR(data__->PHYSICAL_MOTOR_NATURAL_FREQ_HZ);
+    physical->motor_damping = (float)__GET_VAR(data__->PHYSICAL_MOTOR_DAMPING);
+    physical->motor_accel_limit_rpm_s =
+        (float)__GET_VAR(data__->PHYSICAL_MOTOR_ACCEL_LIMIT_RPM_S);
+    physical->motor_torque_limit_permille =
+        (float)__GET_VAR(data__->PHYSICAL_TORQUE_LIMIT_PERMILLE);
+    physical->relief_set_pa = (float)__GET_VAR(data__->PHYSICAL_RELIEF_SET_PA);
+    physical->relief_deadband_pa =
+        (float)__GET_VAR(data__->PHYSICAL_RELIEF_DEADBAND_PA);
+    physical->relief_orifice_coeff_m3_s_sqrt_pa =
+        (float)__GET_VAR(data__->PHYSICAL_RELIEF_ORIFICE_COEFF_M3_S_SQRT_PA);
+    physical->relief_hysteresis_pa =
+        (float)__GET_VAR(data__->PHYSICAL_RELIEF_HYSTERESIS_PA);
 }
 
 static int Hyd_IsValidAxisType(int axis_type) {
@@ -318,6 +367,7 @@ void __mcl_cmd_updatePressureModel(HYD_PRESSUREMODEL *data__)
 
     current_time = __GET_VAR(data__->TIME_S);
     target_motor_speed = __GET_VAR(data__->MOTOR_RPM);
+    g_pressure_model_params = g_pressure_model_defaults;
     g_pressure_model_params.model_type = (unsigned char)__GET_VAR(data__->MODEL_TYPE);
     g_pressure_model_params.first_order_k_bar_per_rpm = (float)__GET_VAR(data__->K_NUM);
     g_pressure_model_params.pressure_integrator_gain_bar_per_rpm_s =
@@ -325,6 +375,7 @@ void __mcl_cmd_updatePressureModel(HYD_PRESSUREMODEL *data__)
         PRESSURE_MODEL_INTEGRATOR_REFERENCE_TIME_S;
     g_pressure_model_params.first_order_tau_s = (float)__GET_VAR(data__->TTAU);
     g_pressure_model_params.first_order_delay_s = (float)__GET_VAR(data__->DELAYTIME);
+    PressureModelFb_ApplyPhysicalOverrides(data__);
     if (g_pressure_model_have_time && current_time > g_pressure_model_last_time_s) {
         dt_s = current_time - g_pressure_model_last_time_s;
     } else {
@@ -354,7 +405,9 @@ void __mcl_cmd_updatePressureModel(HYD_PRESSUREMODEL *data__)
     }
 
     __SET_VAR(data__->, REAL_PRESSURE_BAR,, out.real_pressure_bar);
+    __SET_VAR(data__->, RAW_PRESSURE_BAR,, out.raw_pressure_bar);
     __SET_VAR(data__->, MEASURED_PRESSURE_BAR,, out.measured_pressure_bar);
     __SET_VAR(data__->, ACTUAL_MOTOR_RPM,, out.actual_motor_rpm);
+    __SET_VAR(data__->, PUMP_TORQUE_PERMILLE,, out.pumpFeedback.torquePermille);
     __SET_VAR(data__->, ACTIVE,, 1);
 }

@@ -65,6 +65,17 @@ and `test_hydro_sim_fb` retain the legacy branch, controller-hold, relief, switc
 FB lifecycle contracts. `scripts/analyze_pressure_model_data.py` regenerates
 `docs/pressure-model-calibration.md` directly from the supplied CSV files.
 
+## PLC adapter contract
+
+`HYD_PressureModel.PHYSICAL_PARAMS_ENABLE` gates the calibrated physical override set.
+When it is false, the adapter starts from `PressureModel_InitParams` every scan and
+only applies the legacy model fields. When it is true, the PLC fields copy the
+calibrated chamber, gas, leakage, ripple, sensor, motor, torque-limit, and relief
+parameters into `PressureModelParams` before the 1 ms step. The adapter publishes
+`RAW_PRESSURE_BAR`, `MEASURED_PRESSURE_BAR`, `REAL_PRESSURE_BAR`,
+`ACTUAL_MOTOR_RPM`, and `PUMP_TORQUE_PERMILLE`, so the PLC can distinguish the
+disturbance layer from the real pressure state.
+
 ## Limits
 
 The calibrated profile is intended for the supplied dead-head and pressure-hold cases.
