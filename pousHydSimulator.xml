@@ -179,7 +179,7 @@
 								<REAL />
 							</type>
 							<documentation>
-								<xhtml:p><![CDATA[MODEL_TYPE=1: static gain in bar/rpm. MODEL_TYPE=2: integrator gain in bar/rpm normalized to a 1 s reference interval.]]></xhtml:p>
+								<xhtml:p><![CDATA[MODEL_TYPE=0: calibrated dead-head physical model using the embedded experimental defaults. MODEL_TYPE=1: static gain in bar/rpm. MODEL_TYPE=2: integrator gain in bar/rpm normalized to a 1 s reference interval.]]></xhtml:p>
 							</documentation>
 						</variable>
 						<variable name="TTAU">
@@ -192,35 +192,6 @@
 								<REAL />
 							</type>
 						</variable>
-						<variable name="PHYSICAL_PARAMS_ENABLE">
-							<type>
-								<BOOL />
-							</type>
-							<documentation>
-								<xhtml:p><![CDATA[TRUE applies the physical dead-head parameter set below; FALSE keeps PressureModel_InitParams defaults for backward compatibility.]]></xhtml:p>
-							</documentation>
-						</variable>
-						<variable name="PHYSICAL_CHAMBER_VOLUME_M3"><type><REAL /></type></variable>
-						<variable name="PHYSICAL_GAS_FRACTION"><type><REAL /></type></variable>
-						<variable name="PHYSICAL_PUMP_LEAK_C0_M3_PA_S"><type><REAL /></type></variable>
-						<variable name="PHYSICAL_OUTLET_LEAK_M3_PA_S"><type><REAL /></type></variable>
-						<variable name="PHYSICAL_CYLINDER_LEAK_M3_PA_S"><type><REAL /></type></variable>
-						<variable name="PHYSICAL_RATED_MOTOR_TORQUE_NM"><type><REAL /></type></variable>
-						<variable name="PHYSICAL_FLOW_RIPPLE_RATIO"><type><REAL /></type></variable>
-						<variable name="PHYSICAL_PRESSURE_RIPPLE_RATIO"><type><REAL /></type></variable>
-						<variable name="PHYSICAL_SENSOR_NOISE_STD_BAR"><type><REAL /></type></variable>
-						<variable name="PHYSICAL_MOTOR_NOISE_STD_RPM"><type><REAL /></type></variable>
-						<variable name="PHYSICAL_PROCESS_NOISE_STD_M3_S"><type><REAL /></type></variable>
-						<variable name="PHYSICAL_SENSOR_DELAY_S"><type><REAL /></type></variable>
-						<variable name="PHYSICAL_SENSOR_QUANTIZATION_BAR"><type><REAL /></type></variable>
-						<variable name="PHYSICAL_MOTOR_NATURAL_FREQ_HZ"><type><REAL /></type></variable>
-						<variable name="PHYSICAL_MOTOR_DAMPING"><type><REAL /></type></variable>
-						<variable name="PHYSICAL_MOTOR_ACCEL_LIMIT_RPM_S"><type><REAL /></type></variable>
-						<variable name="PHYSICAL_TORQUE_LIMIT_PERMILLE"><type><REAL /></type></variable>
-						<variable name="PHYSICAL_RELIEF_SET_PA"><type><REAL /></type></variable>
-						<variable name="PHYSICAL_RELIEF_DEADBAND_PA"><type><REAL /></type></variable>
-						<variable name="PHYSICAL_RELIEF_ORIFICE_COEFF_M3_S_SQRT_PA"><type><REAL /></type></variable>
-						<variable name="PHYSICAL_RELIEF_HYSTERESIS_PA"><type><REAL /></type></variable>
 					</inputVars>
 					<outputVars>
 						<variable name="ACTIVE">

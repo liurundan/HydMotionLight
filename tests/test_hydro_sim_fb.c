@@ -427,63 +427,27 @@ static void test_pressure_model_fb_exposes_first_order_inputs(void) {
                 "PressureModel FB should expose DELAYTIME");
 }
 
-static void test_pressure_model_fb_applies_physical_parameter_overrides(void) {
-    HYD_PRESSUREMODEL default_cmd;
-    HYD_PRESSUREMODEL override_cmd;
-    double default_pressure;
+static void test_pressure_model_fb_model_type_zero_uses_calibrated_defaults(void) {
+    HYD_PRESSUREMODEL cmd;
     int i;
 
-    reset_pressure_model_cmd(&default_cmd);
-    default_cmd.ENABLE.value = false;
-    __mcl_cmd_updatePressureModel(&default_cmd);
-    default_cmd.ENABLE.value = true;
-    default_cmd.MOTOR_RPM.value = 20.0;
-    for (i = 0; i < 1000; ++i) {
-        default_cmd.TIME_S.value = 0.001 * (double)i;
-        __mcl_cmd_updatePressureModel(&default_cmd);
-    }
-    default_pressure = default_cmd.REAL_PRESSURE_BAR.value;
-
-    memset(&override_cmd, 0, sizeof(override_cmd));
-    override_cmd.ENABLE.value = false;
-    __mcl_cmd_updatePressureModel(&override_cmd);
-    override_cmd.ENABLE.value = true;
-    override_cmd.MODEL_TYPE.value = PRESSURE_MODEL_TYPE_PHYSICAL;
-    override_cmd.MOTOR_RPM.value = 20.0;
-    override_cmd.PHYSICAL_PARAMS_ENABLE.value = true;
-    override_cmd.PHYSICAL_CHAMBER_VOLUME_M3.value = 1.4e-3;
-    override_cmd.PHYSICAL_GAS_FRACTION.value = 0.00002;
-    override_cmd.PHYSICAL_PUMP_LEAK_C0_M3_PA_S.value = 3.4e-13;
-    override_cmd.PHYSICAL_OUTLET_LEAK_M3_PA_S.value = 1.7e-13;
-    override_cmd.PHYSICAL_CYLINDER_LEAK_M3_PA_S.value = 1.7e-13;
-    override_cmd.PHYSICAL_RATED_MOTOR_TORQUE_NM.value = 350.0;
-    override_cmd.PHYSICAL_FLOW_RIPPLE_RATIO.value = 0.0;
-    override_cmd.PHYSICAL_PRESSURE_RIPPLE_RATIO.value = 0.0;
-    override_cmd.PHYSICAL_SENSOR_NOISE_STD_BAR.value = 0.0;
-    override_cmd.PHYSICAL_MOTOR_NOISE_STD_RPM.value = 0.0;
-    override_cmd.PHYSICAL_PROCESS_NOISE_STD_M3_S.value = 0.0;
-    override_cmd.PHYSICAL_SENSOR_DELAY_S.value = 0.0;
-    override_cmd.PHYSICAL_SENSOR_QUANTIZATION_BAR.value = 0.0;
-    override_cmd.PHYSICAL_MOTOR_NATURAL_FREQ_HZ.value = 12.0;
-    override_cmd.PHYSICAL_MOTOR_DAMPING.value = 1.0;
-    override_cmd.PHYSICAL_MOTOR_ACCEL_LIMIT_RPM_S.value = 20000.0;
-    override_cmd.PHYSICAL_TORQUE_LIMIT_PERMILLE.value = 1000.0;
-    override_cmd.PHYSICAL_RELIEF_SET_PA.value = 25.0e6;
-    override_cmd.PHYSICAL_RELIEF_DEADBAND_PA.value = 0.2e6;
-    override_cmd.PHYSICAL_RELIEF_ORIFICE_COEFF_M3_S_SQRT_PA.value = 1.0e-8;
-    override_cmd.PHYSICAL_RELIEF_HYSTERESIS_PA.value = 0.5e6;
-    override_cmd.PHYSICAL_PARAMS_ENABLE.value = true;
+    memset(&cmd, 0, sizeof(cmd));
+    cmd.ENABLE.value = false;
+    __mcl_cmd_updatePressureModel(&cmd);
+    cmd.ENABLE.value = true;
+    cmd.MODEL_TYPE.value = 0u;
+    cmd.MOTOR_RPM.value = 20.0;
 
     for (i = 0; i < 1000; ++i) {
-        override_cmd.TIME_S.value = 0.001 * (double)i;
-        __mcl_cmd_updatePressureModel(&override_cmd);
+        cmd.TIME_S.value = 0.001 * (double)i;
+        __mcl_cmd_updatePressureModel(&cmd);
     }
 
-    ASSERT_TRUE(override_cmd.REAL_PRESSURE_BAR.value < default_pressure * 0.80,
-                "Physical chamber-volume override should change trapped-oil pressure dynamics");
-    ASSERT_TRUE(override_cmd.RAW_PRESSURE_BAR.value >= 0.0,
+    ASSERT_TRUE(cmd.REAL_PRESSURE_BAR.value > 30.0,
+                "MODEL_TYPE=0 should enable the calibrated dead-head defaults");
+    ASSERT_TRUE(cmd.RAW_PRESSURE_BAR.value >= 0.0,
                 "Pressure model FB should expose raw pressure");
-    ASSERT_TRUE(isfinite(override_cmd.PUMP_TORQUE_PERMILLE.value),
+    ASSERT_TRUE(isfinite(cmd.PUMP_TORQUE_PERMILLE.value),
                 "Pressure model FB should expose derived pump torque");
 }
 
@@ -711,7 +675,7 @@ int main(void) {
     test_move_maps_direction_two_to_negative();
     test_pressure_model_fb_persists_state_and_resets_on_disable();
     test_pressure_model_fb_exposes_first_order_inputs();
-    test_pressure_model_fb_applies_physical_parameter_overrides();
+    test_pressure_model_fb_model_type_zero_uses_calibrated_defaults();
     test_pressure_model_fb_negative_speed_depressurizes_without_reset();
     test_pressure_model_fb_first_order_mode_outputs_equal_real_and_measured();
     test_pressure_model_fb_integrator_mode_builds_pressure_from_rpm();
