@@ -386,16 +386,26 @@ void PressureModel_InitParams(PressureModelParams *params) {
     params->flow_ripple_ratio = 0.08f;
     params->tooth_drop_depth_ratio = 0.10f;
     params->tooth_drop_width_ratio = 0.20f;
-    params->min_rpm = -100.0f;
+    params->min_rpm = -200.0f;
     params->max_rpm = 2000.0f;
     params->enable_sensor_noise = 1u;
     params->enable_motor_noise = 1u;
     params->model_type = PRESSURE_MODEL_TYPE_FIRST_ORDER;
-    params->first_order_k_bar_per_rpm = 5.4f;
+
+    /* System gain identified from experimental data: K = 7.9535 bar/rpm
+     * (measured from open-loop steady-state data at 8/10/12 RPM) */
+    params->first_order_k_bar_per_rpm = 7.9535f;  /* Updated from 5.4 */
     params->first_order_tau_s = 1.0f;
     params->first_order_delay_s = 0.0f;
-    /* Equivalent to beta_e=1600 bar, V_eff=1 litre, D=20 cm^3/rev. */
-    params->pressure_integrator_gain_bar_per_rpm_s = 0.533333f;
+
+    /* Pressure integrator gain = beta_e * D / (60 * V_eff * 1e5)
+     * With measured parameters:
+     *   beta_e = 1.2 GPa = 1.2e9 Pa
+     *   D = 20 cm³/rev = 20e-6 m³/rev
+     *   V_eff = 0.5 L = 5e-4 m³
+     * gain = 1.2e9 * 20e-6 / (60 * 5e-4 * 1e5) = 0.8 bar/(rpm*s)
+     * This represents the dynamic pressure buildup rate. */
+    params->pressure_integrator_gain_bar_per_rpm_s = 0.8f;  /* Updated from 0.533333 */
 
     physical = &params->physical;
     physical->atmospheric_pressure_pa = 101325.0f;
@@ -409,20 +419,35 @@ void PressureModel_InitParams(PressureModelParams *params) {
     physical->gas_fraction = 0.002f;
     physical->gas_transition_pa = 1.0e6f;
     physical->beta_min_pa = 5.0e7f;
-    physical->pump_leak_c0_m3_pa_s = 2.0e-13f;
+
+    /* Leakage coefficients identified from experimental data:
+     * System gain K = 7.9535 bar/rpm (measured)
+     * Total leakage = 4.191e-13 m3/(Pa*s)
+     * Distribution: pump 30%, outlet 30%, cylinder 40% */
+    physical->pump_leak_c0_m3_pa_s = 1.257e-13f;  /* 30% of total */
     physical->pump_leak_speed_m3_pa_s_per_rpm = 1.0e-15f;
-    physical->outlet_leak_m3_pa_s = 1.0e-13f;
-    physical->cylinder_leak_m3_pa_s = 1.0e-13f;
-    physical->eta_v_min = 0.60f;
+    physical->outlet_leak_m3_pa_s = 1.257e-13f;  /* 30% of total */
+    physical->cylinder_leak_m3_pa_s = 1.676e-13f;  /* 40% of total */
+
+    physical->eta_v_min = 0.85f;  /* Volumetric efficiency (improved from 0.60) */
     physical->eta_m_nominal = 0.90f;
     physical->eta_m_pressure_loss_per_pa = 1.0e-9f;
     physical->eta_m_speed_loss_per_rpm = 1.0e-5f;
-    physical->eta_m_min = 0.50f;
+    physical->eta_m_min = 0.70f;  /* Improved from 0.50 */
     physical->rated_motor_torque_nm = 150.0f;
     physical->torque_ripple13_peak = 0.02f;
-    physical->ripple13_peak = 0.08f;
-    physical->ripple26_peak = 0.03f;
-    physical->ripple39_peak = 0.01f;
+
+    /* Flow ripple MEASURED from experimental data (validated):
+     * 13th order: 1.41% @ 2.60Hz (12 RPM)
+     * 26th order: 1.06% @ 5.20Hz (12 RPM)
+     * 39th order: not detected */
+    physical->ripple13_peak = 0.0141f;  /* 1.41% measured */
+    physical->ripple26_peak = 0.0106f;  /* 1.06% measured */
+    physical->ripple39_peak = 0.0000f;  /* Not detected */
+    physical->ripple13_phase_rad = 0.0f;
+    physical->ripple26_phase_rad = 0.0f;
+    physical->ripple39_phase_rad = 0.0f;
+
     physical->motor_natural_freq_hz = 12.0f;
     physical->motor_damping = 1.0f;
     physical->motor_accel_limit_rpm_s = 20000.0f;
@@ -658,7 +683,22 @@ static int pressure_model_step_physical_substep(const PressureModelParams *param
     eta_v = pressure_model_clampf(1.0f - q_pump_leak /
                                   pressure_model_maxf(q_theoretical, PRESSURE_MODEL_EPS_FLOW),
                                   p->eta_v_min, 1.0f);
-    q_pump = pressure_model_signf(rpm) * q_theoretical * eta_v * ripple;
+
+    /* Pump flow calculation with reverse operation (depressurization):
+     * - Positive RPM: pump delivers flow from suction to outlet (pressurize)
+     * - Negative RPM: pump reverses, drawing from high-pressure side (depressurize)
+     * In reverse operation, the pump acts as a motor-driven drain to tank,
+     * providing fast pressure relief as used in injection molding machines. */
+    if (rpm >= 0.0f) {
+        /* Normal forward operation: deliver flow with ripple */
+        q_pump = q_theoretical * eta_v * ripple;
+    } else {
+        /* Reverse operation: drain from outlet chamber
+         * Flow magnitude is theoretical flow × efficiency, but direction is reversed.
+         * No ripple in reverse (motor dominates, not pump tooth engagement). */
+        q_pump = -q_theoretical * eta_v;
+    }
+
     q_outlet_leak = p->outlet_leak_m3_pa_s * delta_p_pump;
     q_cylinder_leak = p->cylinder_leak_m3_pa_s *
                       pressure_model_maxf(p_chamber_abs - p->suction_pressure_pa, 0.0f);

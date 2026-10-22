@@ -30,7 +30,7 @@ static const float RBF_PID_ERROR_DEADBAND_MIN   = 0.05f;    /* 误差死区下�
 static const float RBF_PID_SOFT_CAP_RATIO       = 1.05f;    /* 软限幅 = P_set*1.05/K */
 static const float RBF_PID_NEAR_TARGET_RATIO    = 0.08f;    /* 近目标判定: |e|<=8%*|P_set| */
 static const float RBF_PID_WEIGHT_LIMIT         = 5.0f;     /* RBF 权重钳位 */
-static const float RBF_PID_STEADY_DEADZONE_RATIO= 0.01f;   /* RBF冻结死区 = 0.5%*量程 */
+static const float RBF_PID_STEADY_DEADZONE_RATIO= 0.002f;   /* RBF冻结死区 = 0.5%*量程 */
 static const float RBF_PID_STEADY_DE_RATIO      = 1.0f;     /* 误差变化率死区系数 */
 static const float RBF_PID_INCR_I_LIMIT         = 0.08f;    /* 增量I项单步限幅 [L/min] */
 static const float RBF_PID_VEL_DAMP_LIMIT       = 1.0f;     /* 速度阻尼项限幅 [L/min] */

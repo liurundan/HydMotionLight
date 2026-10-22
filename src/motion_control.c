@@ -3601,7 +3601,7 @@ void HYD_MotionControlFB_Init(HYD_MotionControlFB* fb) {
     fb->_params.flowToPumpSpeedGain = 20.0f;
     fb->_params.pumpSpeedLimit = 1800.0f;
     fb->_params.pressureControllerType = (HYD_REAL)HYD_PRESSURE_CONTROLLER_PI;
-    fb->_params.defaultTargetFlow = 5.0f; // 5.0;
+    fb->_params.defaultTargetFlow = 0.0f; // 5.0;
     fb->_params.useSimulation = false;
     fb->_params.ksysBarPerRpm = 0.0f;
 

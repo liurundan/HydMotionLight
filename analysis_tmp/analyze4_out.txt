@@ -1,0 +1,202 @@
+================================================================================================
+1. SENSOR NOISE FLOOR AND FILTER CHARACTERISATION
+--- P_set=50 bar, n=5727 ---
+  raw rms=0.3235  filt rms=0.3201  (raw-filt) rms=0.0535 bar
+       0.5-   5.0 Hz : raw= 0.1511 filt= 0.1510 filt/raw= 1.000 diff= 0.0033
+       5.0-  20.0 Hz : raw= 0.2423 filt= 0.2420 filt/raw= 0.999 diff= 0.0153
+      20.0-  50.0 Hz : raw= 0.1243 filt= 0.1215 filt/raw= 0.977 diff= 0.0323
+      50.0- 150.0 Hz : raw= 0.0678 filt= 0.0643 filt/raw= 0.949 diff= 0.0260
+     150.0- 300.0 Hz : raw= 0.0212 filt= 0.0099 filt/raw= 0.466 diff= 0.0212
+     300.0- 500.0 Hz : raw= 0.0235 filt= 0.0051 filt/raw= 0.218 diff= 0.0202
+  white-noise floor estimate (200-500 Hz): raw=0.0293 filt=0.0081 bar rms
+  raw LSB=0.00400 bar -> quantisation noise=0.00115 bar rms (negligible: 0.357% of signal)
+--- P_set=80 bar, n=6333 ---
+  raw rms=0.4847  filt rms=0.4813  (raw-filt) rms=0.0674 bar
+       0.5-   5.0 Hz : raw= 0.1741 filt= 0.1741 filt/raw= 1.000 diff= 0.0045
+       5.0-  20.0 Hz : raw= 0.3797 filt= 0.3790 filt/raw= 0.998 diff= 0.0276
+      20.0-  50.0 Hz : raw= 0.1913 filt= 0.1878 filt/raw= 0.982 diff= 0.0442
+      50.0- 150.0 Hz : raw= 0.0929 filt= 0.0889 filt/raw= 0.957 diff= 0.0327
+     150.0- 300.0 Hz : raw= 0.0201 filt= 0.0094 filt/raw= 0.468 diff= 0.0200
+     300.0- 500.0 Hz : raw= 0.0222 filt= 0.0049 filt/raw= 0.219 diff= 0.0190
+  white-noise floor estimate (200-500 Hz): raw=0.0276 filt=0.0076 bar rms
+  raw LSB=0.00400 bar -> quantisation noise=0.00115 bar rms (negligible: 0.238% of signal)
+--- P_set=100 bar, n=6484 ---
+  raw rms=0.6274  filt rms=0.6232  (raw-filt) rms=0.0810 bar
+       0.5-   5.0 Hz : raw= 0.1965 filt= 0.1965 filt/raw= 1.000 diff= 0.0040
+       5.0-  20.0 Hz : raw= 0.4838 filt= 0.4829 filt/raw= 0.998 diff= 0.0365
+      20.0-  50.0 Hz : raw= 0.2688 filt= 0.2649 filt/raw= 0.986 diff= 0.0556
+      50.0- 150.0 Hz : raw= 0.1033 filt= 0.0989 filt/raw= 0.958 diff= 0.0361
+     150.0- 300.0 Hz : raw= 0.0205 filt= 0.0099 filt/raw= 0.483 diff= 0.0203
+     300.0- 500.0 Hz : raw= 0.0221 filt= 0.0049 filt/raw= 0.221 diff= 0.0189
+  white-noise floor estimate (200-500 Hz): raw=0.0274 filt=0.0075 bar rms
+  raw LSB=0.00400 bar -> quantisation noise=0.00115 bar rms (negligible: 0.184% of signal)
+--- P_set=120 bar, n=5211 ---
+  raw rms=0.7495  filt rms=0.7447  (raw-filt) rms=0.1007 bar
+       0.5-   5.0 Hz : raw= 0.2887 filt= 0.2886 filt/raw= 1.000 diff= 0.0074
+       5.0-  20.0 Hz : raw= 0.5566 filt= 0.5556 filt/raw= 0.998 diff= 0.0415
+      20.0-  50.0 Hz : raw= 0.4130 filt= 0.4075 filt/raw= 0.987 diff= 0.0820
+      50.0- 150.0 Hz : raw= 0.1045 filt= 0.0999 filt/raw= 0.955 diff= 0.0375
+     150.0- 300.0 Hz : raw= 0.0193 filt= 0.0091 filt/raw= 0.473 diff= 0.0192
+     300.0- 500.0 Hz : raw= 0.0220 filt= 0.0048 filt/raw= 0.219 diff= 0.0189
+  white-noise floor estimate (200-500 Hz): raw=0.0269 filt=0.0073 bar rms
+  raw LSB=0.00400 bar -> quantisation noise=0.00115 bar rms (negligible: 0.154% of signal)
+--- P_set=140 bar, n=6517 ---
+  raw rms=0.8704  filt rms=0.8640  (raw-filt) rms=0.1274 bar
+       0.5-   5.0 Hz : raw= 0.2678 filt= 0.2677 filt/raw= 1.000 diff= 0.0076
+       5.0-  20.0 Hz : raw= 0.6191 filt= 0.6179 filt/raw= 0.998 diff= 0.0474
+      20.0-  50.0 Hz : raw= 0.5397 filt= 0.5329 filt/raw= 0.987 diff= 0.1046
+      50.0- 150.0 Hz : raw= 0.1435 filt= 0.1375 filt/raw= 0.958 diff= 0.0500
+     150.0- 300.0 Hz : raw= 0.0196 filt= 0.0094 filt/raw= 0.479 diff= 0.0194
+     300.0- 500.0 Hz : raw= 0.0212 filt= 0.0045 filt/raw= 0.211 diff= 0.0184
+  white-noise floor estimate (200-500 Hz): raw=0.0264 filt=0.0072 bar rms
+  raw LSB=0.00400 bar -> quantisation noise=0.00115 bar rms (negligible: 0.133% of signal)
+
+================================================================================================
+2. PLANT IDENTIFICATION (dead-headed pressure-hold, flow-domain)
+   model: C_h dP/dt = Q_pump - P/R_h ; G(s)=P/Q = R_h/(1+s*R_h*C_h)
+  P_set=  50.0 bar  Q_leak= 0.4325 L/min  n=  8.651 rpm  R_h=P/Q= 115.592 bar/(L/min)  leak= 8.6511 mL/min/bar
+  P_set=  80.0 bar  Q_leak= 0.6205 L/min  n= 12.410 rpm  R_h=P/Q= 128.922 bar/(L/min)  leak= 7.7566 mL/min/bar
+  P_set= 100.0 bar  Q_leak= 0.7796 L/min  n= 15.593 rpm  R_h=P/Q= 128.171 bar/(L/min)  leak= 7.8021 mL/min/bar
+  P_set= 120.0 bar  Q_leak= 0.9493 L/min  n= 18.987 rpm  R_h=P/Q= 126.182 bar/(L/min)  leak= 7.9251 mL/min/bar
+  P_set= 140.0 bar  Q_leak= 1.1348 L/min  n= 22.697 rpm  R_h=P/Q= 123.005 bar/(L/min)  leak= 8.1297 mL/min/bar
+  step->  50.0 bar : Q_peak= 6.680 L/min  dP/dt=   681.5 bar/s  => C_h = Q/(dP/dt) =  9.8013 mL/bar
+  step->  80.0 bar : Q_peak= 5.389 L/min  dP/dt=   794.9 bar/s  => C_h = Q/(dP/dt) =  6.7802 mL/bar
+  step-> 100.0 bar : Q_peak= 5.046 L/min  dP/dt=   789.9 bar/s  => C_h = Q/(dP/dt) =  6.3874 mL/bar
+  step-> 120.0 bar : Q_peak= 5.466 L/min  dP/dt=   788.8 bar/s  => C_h = Q/(dP/dt) =  6.9304 mL/bar
+  step-> 140.0 bar : Q_peak= 5.304 L/min  dP/dt=   797.4 bar/s  => C_h = Q/(dP/dt) =  6.6514 mL/bar
+  step->  50.0 bar : Q_peak= 5.394 L/min  dP/dt=   791.1 bar/s  => C_h = Q/(dP/dt) =  6.8183 mL/bar
+  ==> R_h=124.374 bar/(L/min)   C_h=7.2282 mL/bar   tau=R_h*C_h=0.8990 s  (899.0 ms)
+      V/beta_e = 7.228 mL/bar  (e.g. V=0.5 L & beta_e=900 bar -> 0.556 mL/bar)
+
+================================================================================================
+3. CONTROLLER RECONSTRUCTION FROM n_cmd / P AT RIPPLE FREQUENCIES
+   incremental PID: C(w) = Kp + Ki/(j*w*Ts) + Kd*(j*w*Ts)   [ (L/min)/bar ]
+   expected: |P/n_cmd| = 1/|C| * (1/20) [bar/rpm] if n_cmd = -C*P
+--- P_set=80 bar  shaft=12.392 rpm  revs=1 ---
+   ord    f(Hz)      |P|      |n|   |n|/|P|  rpm/bar  L/min/bar     pred    err%   ph(n-P)
+    13    2.685   0.1514   0.9701    6.4083    6.408     0.3204   0.4590   -30.2    -116.9
+    26    5.370   0.2778   1.5560    5.6009    5.601     0.2800   0.3151   -11.1    -140.0
+    39    8.055   0.1875   0.8760    4.6727    4.673     0.2336   0.2805   -16.7    -141.0
+    52   10.740   0.2466   1.1416    4.6298    4.630     0.2315   0.2673   -13.4    -150.8
+    65   13.424   0.1531   0.6474    4.2296    4.230     0.2115   0.2610   -19.0    -149.2
+    78   16.109   0.1071   0.4342    4.0527    4.053     0.2026   0.2575   -21.3    -147.9
+    91   18.794   0.1077   0.4533    4.2075    4.208     0.2104   0.2554   -17.6    -148.1
+   104   21.479   0.0691   0.3054    4.4188    4.419     0.2209   0.2540   -13.0    -148.4
+--- P_set=100 bar  shaft=15.591 rpm  revs=1 ---
+   ord    f(Hz)      |P|      |n|   |n|/|P|  rpm/bar  L/min/bar     pred    err%   ph(n-P)
+     1    0.260   0.0768   0.8707   11.3350   11.335     0.5668   3.9889   -85.8     137.4
+     2    0.520   0.0341   0.4166   12.2021   12.202     0.6101   2.0061   -69.6     -66.8
+    13    3.378   0.2759   1.6552    5.9990    5.999     0.3000   0.3949   -24.0    -111.1
+    26    6.756   0.4703   2.6839    5.7073    5.707     0.2854   0.2926    -2.5    -145.0
+    39   10.134   0.2273   1.1331    4.9858    4.986     0.2493   0.2694    -7.5    -140.0
+    52   13.512   0.3358   1.5745    4.6883    4.688     0.2344   0.2608   -10.1    -150.9
+    65   16.890   0.1924   0.9016    4.6849    4.685     0.2342   0.2568    -8.8    -146.0
+    78   20.269   0.1325   0.6063    4.5749    4.575     0.2287   0.2545   -10.1    -145.3
+    91   23.647   0.1279   0.5837    4.5644    4.564     0.2282   0.2532    -9.9    -146.1
+   104   27.025   0.0836   0.3933    4.7035    4.703     0.2352   0.2523    -6.8    -142.5
+--- P_set=120 bar  shaft=18.906 rpm  revs=1 ---
+   ord    f(Hz)      |P|      |n|   |n|/|P|  rpm/bar  L/min/bar     pred    err%   ph(n-P)
+     1    0.315   0.0650   0.6803   10.4661   10.466     0.5233   3.2926   -84.1     164.0
+     2    0.630   0.0412   0.3609    8.7683    8.768     0.4384   1.6604   -73.6    -152.2
+     3    0.945   0.0350   0.1695    4.8447    4.845     0.2422   1.1224   -78.4     122.7
+    13    4.096   0.4616   2.4605    5.3307    5.331     0.2665   0.3549   -24.9     -98.7
+    26    8.193   0.5907   3.8058    6.4433    6.443     0.3222   0.2795    15.3    -147.8
+    39   12.289   0.2409   1.2760    5.2974    5.297     0.2649   0.2632     0.6    -126.5
+    52   16.385   0.4160   2.0779    4.9956    4.996     0.2498   0.2572    -2.9    -146.7
+    65   20.481   0.2507   1.2603    5.0280    5.028     0.2514   0.2544    -1.2    -142.7
+    78   24.578   0.1740   0.8488    4.8783    4.878     0.2439   0.2529    -3.6    -139.7
+    91   28.674   0.1771   0.8398    4.7412    4.741     0.2371   0.2520    -5.9    -142.4
+   104   32.770   0.1299   0.6534    5.0295    5.030     0.2515   0.2514     0.0    -140.0
+--- P_set=140 bar  shaft=22.708 rpm  revs=2 ---
+   ord    f(Hz)      |P|      |n|   |n|/|P|  rpm/bar  L/min/bar     pred    err%   ph(n-P)
+     1    0.378   0.0256   0.6210   24.2666   24.267     1.2133   2.7447   -55.8     136.4
+     2    0.757   0.0519   0.2003    3.8570    3.857     0.1929   1.3892   -86.1    -174.0
+     3    1.135   0.0609   0.1246    2.0455    2.046     0.1023   0.9446   -89.2    -133.8
+    13    4.920   0.3742   2.4826    6.6341    6.634     0.3317   0.3262     1.7     -70.6
+    26    9.840   0.6045   4.0379    6.6792    6.679     0.3340   0.2706    23.4    -143.9
+    39   14.760   0.2730   1.5831    5.7996    5.800     0.2900   0.2590    12.0    -126.4
+    52   19.681   0.4793   2.3495    4.9022    4.902     0.2451   0.2548    -3.8    -144.3
+    65   24.601   0.2979   1.4623    4.9081    4.908     0.2454   0.2529    -3.0    -141.6
+    78   29.521   0.2140   1.0416    4.8679    4.868     0.2434   0.2518    -3.4    -140.9
+    91   34.441   0.2151   0.9990    4.6445    4.644     0.2322   0.2512    -7.6    -143.0
+   104   39.361   0.1542   0.7792    5.0542    5.054     0.2527   0.2508     0.8    -142.8
+  mean measured |C| (f>3Hz) = 0.2532 (L/min)/bar, sd=0.0333
+  -> equivalent Kp ~ 0.253 (L/min)/bar = 5.063 rpm/bar
+
+  DC loop gain L0 = Kp*R_h = 31.49   (S(0)=1/(1+L0)=0.0308)
+  crossover w_c = L0/tau = 35.02 rad/s -> f_c = 5.57 Hz
+  13th order at 22.73 rpm = 4.93 Hz ; 26th = 9.85 Hz ; 52nd = 19.70 Hz
+  => the ripple band (5-35 Hz) sits AT or ABOVE crossover: |L|<=1, so S>=0.5
+
+================================================================================================
+4. MEASURED SENSITIVITY S(f) AND IMPLIED LOOP DELAY
+   P_set  ord    f(Hz)   A_open  A_close       S  S_model  S_model+delay
+    80.0    1    0.207   1.4374   0.0137   0.010    0.047    0.047 (td=0 ms)
+   100.0    1    0.260   1.3985   0.0768   0.055    0.055    0.055 (td=59 ms)
+   120.0    1    0.315   1.5368   0.0650   0.042    0.063    0.063 (td=0 ms)
+    80.0    2    0.413   0.2155   0.0089   0.041    0.078    0.078 (td=0 ms)
+   100.0    2    0.520   0.4022   0.0341   0.085    0.095    0.095 (td=0 ms)
+   120.0    2    0.630   0.4417   0.0412   0.093    0.113    0.113 (td=0 ms)
+    80.0    3    0.620   0.0909   0.0093   0.103    0.111    0.111 (td=0 ms)
+   100.0    3    0.780   0.2110   0.0129   0.061    0.138    0.138 (td=0 ms)
+   120.0    3    0.945   0.1092   0.0350   0.320    0.165    0.175 (td=59 ms)
+    80.0   13    2.685   0.9974   0.1514   0.152    0.424    0.424 (td=0 ms)
+   100.0   13    3.378   1.0729   0.2759   0.257    0.507    0.507 (td=0 ms)
+   120.0   13    4.096   1.0975   0.4616   0.421    0.581    0.581 (td=0 ms)
+    80.0   26    5.370   0.6885   0.2778   0.404    0.683    0.683 (td=0 ms)
+   100.0   26    6.756   0.9443   0.4703   0.498    0.762    0.762 (td=0 ms)
+   120.0   26    8.193   1.0561   0.5907   0.559    0.819    0.819 (td=0 ms)
+    80.0   39    8.055   0.2185   0.1875   0.858    0.814    0.855 (td=2 ms)
+   100.0   39   10.134   0.2350   0.2273   0.967    0.870    0.975 (td=46 ms)
+   120.0   39   12.289   0.2049   0.2409   1.176    0.906    1.157 (td=34 ms)
+    80.0   52   10.740   0.2875   0.2466   0.858    0.882    0.860 (td=48 ms)
+   100.0   52   13.512   0.3096   0.3358   1.085    0.920    1.091 (td=5 ms)
+   120.0   52   16.385   0.3177   0.4160   1.309    0.944    1.304 (td=22 ms)
+    80.0   65   13.424   0.1119   0.1531   1.368    0.919    1.369 (td=27 ms)
+   100.0   65   16.890   0.1415   0.1924   1.360    0.947    1.357 (td=20 ms)
+   120.0   65   20.481   0.1481   0.2507   1.692    0.963    1.373 (td=12 ms)
+    80.0   78   16.109   0.0683   0.1071   1.569    0.942    1.528 (td=16 ms)
+   100.0   78   20.269   0.0807   0.1325   1.642    0.962    1.378 (td=12 ms)
+   120.0   78   24.578   0.0814   0.1740   2.137    0.974    1.293 (td=51 ms)
+    80.0   91   18.794   0.0659   0.1077   1.635    0.956    1.421 (td=13 ms)
+   100.0   91   23.647   0.0793   0.1279   1.613    0.972    1.308 (td=53 ms)
+   120.0   91   28.674   0.0884   0.1771   2.005    0.980    1.241 (td=9 ms)
+   120.0  104   32.770   0.0546   0.1299   2.380    0.985    1.205 (td=38 ms)
+  implied equivalent loop delay (f>4Hz) : mean=20.4 ms  median=16 ms
+
+================================================================================================
+5. QUANTIFIED IMPROVEMENT SCENARIOS (140 bar case, shaft 22.73 rpm)
+  measured total: rms=0.8893 bar  p2p=6.8840 bar
+  deterministic(1..119) rms=0.8008 bar  broadband residual rms=0.3868 bar
+  angle-sync FF cancel 13th only          : residual rms=0.8490 bar  -> est p2p=3.396 bar  (4.5% reduction)
+  angle-sync FF cancel 13+26              : residual rms=0.7335 bar  -> est p2p=2.934 bar  (17.5% reduction)
+  angle-sync FF cancel 13+26+39+52        : residual rms=0.6213 bar  -> est p2p=2.485 bar  (30.1% reduction)
+  angle-sync FF cancel 13,26,39,52,65,78  : residual rms=0.5645 bar  -> est p2p=2.258 bar  (36.5% reduction)
+  angle-sync FF cancel all o>=13          : residual rms=0.4060 bar  -> est p2p=1.624 bar  (54.3% reduction)
+
+  scenario: reduce displacement xN and raise speed xN (same mean flow):
+     N  shaft rpm      f13      f26   |Z|@f13   |Z|@f26  A13 rel  A26 rel   est p2p
+     1       22.7     4.93     9.85     4.468     2.235    1.000    1.000     2.770
+     2       45.5     9.85    19.70     2.235     1.118    0.500    0.500     1.678
+     4       90.9    19.70    39.40     1.118     0.559    0.250    0.250     1.266
+     8      181.9    39.40    78.80     0.559     0.279    0.125    0.125     1.139
+    16      363.7    78.80   157.60     0.279     0.140    0.063    0.063     1.105
+    32      727.4   157.60   315.21     0.140     0.070    0.031    0.031     1.097
+
+  scenario: measurement low-pass alpha (1-pole IIR @1ms) + Kp scaling
+   fc(Hz)   alpha  att@f13  att@f26  att@f52      L0  fc_loop
+      5.0  0.0309    0.712    0.453    0.246   31.49     5.57
+      8.0  0.0490    0.852    0.631    0.376   31.49     5.57
+     12.0  0.0726    0.925    0.773    0.521   31.49     5.57
+     20.0  0.1181    0.971    0.897    0.713   31.49     5.57
+     30.0  0.1718    0.987    0.950    0.836   31.49     5.57
+     50.0  0.2696    0.995    0.981    0.931   31.49     5.57
+    100.0  0.4665    0.999    0.995    0.982   31.49     5.57
+
+================================================================================================
+6. ACTUATOR AUTHORITY / SATURATION CHECK (closed loop)
+  P_set=  50.0 : n_cmd min=   4.292 max=  14.944 mean=   8.651 p2p=  10.652 rpm  (p2p/mean= 123.1%)  flow min= 0.2146 max= 0.7472 L/min  negative-flow frac= 0.00%
+  P_set=  80.0 : n_cmd min=   3.329 max=  22.284 mean=  12.410 p2p=  18.955 rpm  (p2p/mean= 152.7%)  flow min= 0.1664 max= 1.1142 L/min  negative-flow frac= 0.00%
+  P_set= 100.0 : n_cmd min=  -0.911 max=  25.721 mean=  15.593 p2p=  26.632 rpm  (p2p/mean= 170.8%)  flow min=-0.0456 max= 1.2860 L/min  negative-flow frac= 0.08%
+  P_set= 120.0 : n_cmd min=   0.525 max=  32.486 mean=  18.987 p2p=  31.961 rpm  (p2p/mean= 168.3%)  flow min= 0.0262 max= 1.6243 L/min  negative-flow frac= 0.00%
+  P_set= 140.0 : n_cmd min=  -1.884 max=  37.524 mean=  22.697 p2p=  39.408 rpm  (p2p/mean= 173.6%)  flow min=-0.0942 max= 1.8762 L/min  negative-flow frac= 0.06%

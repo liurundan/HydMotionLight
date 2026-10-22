@@ -1,0 +1,343 @@
+==================================================================================================
+FILE open-8-10-12_rpm.csv
+
+##################################################################################################
+# open-8-10-12_rpm.csv cmd=8   samples=17495 (17.50s)  window idx[4119:21614]
+##################################################################################################
+P_raw  mean=  42.207 sd= 4.6850 p2p= 18.928 bar
+P_filt mean=  42.206 sd= 4.6851 p2p= 18.867 bar  (filter variance reduction -0.00%)
+shaft  true speed=  7.9648 rpm  rev period=  7.533 s  revs in window=2.3
+n_cmd  mean=  8.0000 sd= 0.0000 p2p=  0.000 rpm (sd/mean=0.0%)
+flow   mean= -7.2000 sd= 0.0000 p2p=  0.000 L/min
+torque mean= -50.492 sd= 6.2750 p2p= 36.700 %
+n_fb   unique values=[-14.6338, 0.0, 14.6484, 29.2822] count=4
+encoder: position LSB=0.087800 deg -> 4100 counts/rev (12.0 bit); speed LSB=1 count/ms=14.6333 rpm
+split @1000ms MA: trend_p2p= 16.468 trend_sd= 4.591 | fast_p2p=  4.841 fast_sd= 0.866 bar
+split @200ms MA: trend_p2p= 17.309 trend_sd= 4.644 | fast_p2p=  2.870 fast_sd= 0.450 bar
+PSD (HP-detrend 1000 ms): windows=7 df=0.2441 Hz  residual var=0.7831 -> rms=0.8849 bar (raw sd=4.6850)
+     0.03-   0.3 Hz var=  0.00115 rms= 0.0339 share=  0.15%
+     0.30-   1.0 Hz var=  0.00979 rms= 0.0989 share=  1.25%
+     1.00-   3.0 Hz var=  0.49761 rms= 0.7054 share= 63.55%
+     3.00-  10.0 Hz var=  0.24937 rms= 0.4994 share= 31.85%
+    10.00-  30.0 Hz var=  0.00758 rms= 0.0870 share=  0.97%
+    30.00-  80.0 Hz var=  0.01500 rms= 0.1225 share=  1.92%
+    80.00- 200.0 Hz var=  0.00108 rms= 0.0329 share=  0.14%
+   200.00- 500.0 Hz var=  0.00082 rms= 0.0286 share=  0.10%
+   peaks: 1.709Hz rms=0.707 amp=1.000 | 3.418Hz rms=0.396 amp=0.559 | 9.521Hz rms=0.221 amp=0.312 | 6.836Hz rms=0.177 amp=0.250 | 5.127Hz rms=0.108 amp=0.153 | 0.977Hz rms=0.633 amp=0.895 | 8.545Hz rms=0.112 amp=0.158 | 50.293Hz rms=0.095 amp=0.134
+   dominant 1.709 Hz -> shaft order = 12.87 (rev freq 0.1327 Hz)
+order[P_raw]: revs=2 sync_p2p=9.2372 sync_rms=2.3100 tot_rms=4.6850 resid_rms=3.8122 var_explained=24.3%  top(order,amp)=[(0.7, 3.164), (2.11, 1.03), (1.41, 0.842), (2.81, 0.731), (13.36, 0.635)]
+order[torque]: revs=2 sync_p2p=20.2807 sync_rms=3.6350 tot_rms=6.2750 resid_rms=4.7931 var_explained=33.6%  top(order,amp)=[(0.7, 3.708), (13.36, 1.291), (1.41, 1.271), (26.02, 1.227), (71.72, 1.194)]
+order[n_cmd]: revs=2 sync_p2p=0.0000 sync_rms=0.0000 tot_rms=0.0000 resid_rms=0.0000 var_explained=0.0%  top(order,amp)=[(0.7, 0.0), (1.41, 0.0), (2.11, 0.0), (2.81, 0.0), (3.52, 0.0)]
+
+##################################################################################################
+# open-8-10-12_rpm.csv cmd=10   samples=21512 (21.51s)  window idx[30695:52207]
+##################################################################################################
+P_raw  mean=  59.714 sd= 3.4377 p2p= 13.208 bar
+P_filt mean=  59.714 sd= 3.4374 p2p= 13.136 bar  (filter variance reduction 0.02%)
+shaft  true speed=  9.9763 rpm  rev period=  6.014 s  revs in window=3.6
+n_cmd  mean= 10.0000 sd= 0.0000 p2p=  0.000 rpm (sd/mean=0.0%)
+flow   mean= -7.2000 sd= 0.0000 p2p=  0.000 L/min
+torque mean= -67.610 sd= 5.3378 p2p= 34.400 %
+n_fb   unique values=[-14.6338, 0.0, 14.6484, 29.2822] count=4
+encoder: position LSB=0.087800 deg -> 4100 counts/rev (12.0 bit); speed LSB=1 count/ms=14.6333 rpm
+split @1000ms MA: trend_p2p= 10.243 trend_sd= 3.262 | fast_p2p=  5.099 fast_sd= 0.880 bar
+split @200ms MA: trend_p2p= 11.682 trend_sd= 3.353 | fast_p2p=  3.871 fast_sd= 0.572 bar
+PSD (HP-detrend 1000 ms): windows=9 df=0.2441 Hz  residual var=0.7124 -> rms=0.8441 bar (raw sd=3.4377)
+     0.03-   0.3 Hz var=  0.00271 rms= 0.0520 share=  0.38%
+     0.30-   1.0 Hz var=  0.01190 rms= 0.1091 share=  1.67%
+     1.00-   3.0 Hz var=  0.39780 rms= 0.6307 share= 55.84%
+     3.00-  10.0 Hz var=  0.22043 rms= 0.4695 share= 30.94%
+    10.00-  30.0 Hz var=  0.05772 rms= 0.2402 share=  8.10%
+    30.00-  80.0 Hz var=  0.01843 rms= 0.1358 share=  2.59%
+    80.00- 200.0 Hz var=  0.00109 rms= 0.0330 share=  0.15%
+   200.00- 500.0 Hz var=  0.00079 rms= 0.0282 share=  0.11%
+   peaks: 2.197Hz rms=0.624 amp=0.882 | 4.395Hz rms=0.399 amp=0.565 | 11.963Hz rms=0.191 amp=0.269 | 8.545Hz rms=0.200 amp=0.283 | 1.221Hz rms=0.351 amp=0.496 | 6.592Hz rms=0.120 amp=0.170 | 10.742Hz rms=0.105 amp=0.148 | 0.244Hz rms=0.127 amp=0.180
+   dominant 2.197 Hz -> shaft order = 13.21 (rev freq 0.1663 Hz)
+order[P_raw]: revs=3 sync_p2p=4.6892 sync_rms=1.0212 tot_rms=3.4377 resid_rms=3.3015 var_explained=8.8%  top(order,amp)=[(0.7, 0.856), (12.66, 0.747), (13.36, 0.704), (26.02, 0.541), (1.41, 0.332)]
+order[torque]: revs=3 sync_p2p=16.0484 sync_rms=2.9180 tot_rms=5.3378 resid_rms=4.1159 var_explained=29.9%  top(order,amp)=[(13.36, 1.802), (12.66, 1.719), (26.02, 1.319), (0.7, 1.3), (71.72, 1.169)]
+order[n_cmd]: revs=3 sync_p2p=0.0000 sync_rms=0.0000 tot_rms=0.0000 resid_rms=0.0000 var_explained=0.0%  top(order,amp)=[(0.7, 0.0), (1.41, 0.0), (2.11, 0.0), (2.81, 0.0), (3.52, 0.0)]
+
+##################################################################################################
+# open-8-10-12_rpm.csv cmd=12   samples=18540 (18.54s)  window idx[59474:78014]
+##################################################################################################
+P_raw  mean=  73.562 sd= 3.3101 p2p= 13.416 bar
+P_filt mean=  73.562 sd= 3.3097 p2p= 13.391 bar  (filter variance reduction 0.02%)
+shaft  true speed= 11.9951 rpm  rev period=  5.002 s  revs in window=3.7
+n_cmd  mean= 12.0000 sd= 0.0000 p2p=  0.000 rpm (sd/mean=0.0%)
+flow   mean= -7.2000 sd= 0.0000 p2p=  0.000 L/min
+torque mean= -80.645 sd= 5.2396 p2p= 34.700 %
+n_fb   unique values=[0.0, 14.6484, 29.2822, 43.9453] count=4
+encoder: position LSB=0.087800 deg -> 4100 counts/rev (12.0 bit); speed LSB=1 count/ms=14.6333 rpm
+split @1000ms MA: trend_p2p=  9.999 trend_sd= 3.107 | fast_p2p=  5.025 fast_sd= 0.907 bar
+split @200ms MA: trend_p2p= 11.600 trend_sd= 3.200 | fast_p2p=  4.408 fast_sd= 0.712 bar
+PSD (HP-detrend 1000 ms): windows=8 df=0.2441 Hz  residual var=0.7923 -> rms=0.8901 bar (raw sd=3.3101)
+     0.03-   0.3 Hz var=  0.00426 rms= 0.0653 share=  0.54%
+     0.30-   1.0 Hz var=  0.01302 rms= 0.1141 share=  1.64%
+     1.00-   3.0 Hz var=  0.36246 rms= 0.6021 share= 45.75%
+     3.00-  10.0 Hz var=  0.29480 rms= 0.5430 share= 37.21%
+    10.00-  30.0 Hz var=  0.09903 rms= 0.3147 share= 12.50%
+    30.00-  80.0 Hz var=  0.01466 rms= 0.1211 share=  1.85%
+    80.00- 200.0 Hz var=  0.00106 rms= 0.0326 share=  0.13%
+   200.00- 500.0 Hz var=  0.00074 rms= 0.0273 share=  0.09%
+   peaks: 2.686Hz rms=0.586 amp=0.829 | 5.127Hz rms=0.514 amp=0.727 | 10.498Hz rms=0.203 amp=0.287 | 14.404Hz rms=0.158 amp=0.223 | 7.812Hz rms=0.148 amp=0.209 | 1.465Hz rms=0.204 amp=0.289 | 12.939Hz rms=0.119 amp=0.169 | 0.244Hz rms=0.140 amp=0.198
+   dominant 2.686 Hz -> shaft order = 13.43 (rev freq 0.1999 Hz)
+order[P_raw]: revs=3 sync_p2p=6.0249 sync_rms=1.2215 tot_rms=3.3101 resid_rms=3.0510 var_explained=13.6%  top(order,amp)=[(0.7, 1.235), (13.36, 0.735), (12.66, 0.734), (26.02, 0.642), (2.11, 0.477)]
+order[torque]: revs=3 sync_p2p=15.4927 sync_rms=3.3231 tot_rms=5.2396 resid_rms=3.8605 var_explained=40.2%  top(order,amp)=[(13.36, 2.538), (12.66, 2.162), (26.02, 1.696), (0.7, 1.496), (72.42, 1.015)]
+order[n_cmd]: revs=3 sync_p2p=0.0000 sync_rms=0.0000 tot_rms=0.0000 resid_rms=0.0000 var_explained=0.0%  top(order,amp)=[(0.7, 0.0), (1.41, 0.0), (2.11, 0.0), (2.81, 0.0), (3.52, 0.0)]
+==================================================================================================
+FILE open-15-20_rpmp.csv
+
+##################################################################################################
+# open-15-20_rpmp.csv cmd=15   samples=27201 (27.20s)  window idx[9448:36649]
+##################################################################################################
+P_raw  mean=  98.331 sd= 4.7583 p2p= 23.116 bar
+P_filt mean=  98.331 sd= 4.7586 p2p= 23.088 bar  (filter variance reduction -0.01%)
+shaft  true speed= 14.9915 rpm  rev period=  4.002 s  revs in window=6.8
+n_cmd  mean= 15.0000 sd= 0.0000 p2p=  0.000 rpm (sd/mean=0.0%)
+flow   mean= -7.2000 sd= 0.0000 p2p=  0.000 L/min
+torque mean=-103.090 sd= 6.7762 p2p= 45.700 %
+n_fb   unique values=[0.0, 14.6484, 29.2822, 43.9453] count=4
+encoder: position LSB=0.087800 deg -> 4100 counts/rev (12.0 bit); speed LSB=1 count/ms=14.6333 rpm
+split @1000ms MA: trend_p2p= 18.732 trend_sd= 4.520 | fast_p2p=  7.037 fast_sd= 1.139 bar
+split @200ms MA: trend_p2p= 20.287 trend_sd= 4.638 | fast_p2p=  5.791 fast_sd= 1.024 bar
+PSD (HP-detrend 1000 ms): windows=12 df=0.2441 Hz  residual var=1.2500 -> rms=1.1180 bar (raw sd=4.7583)
+     0.03-   0.3 Hz var=  0.01426 rms= 0.1194 share=  1.14%
+     0.30-   1.0 Hz var=  0.01914 rms= 0.1383 share=  1.53%
+     1.00-   3.0 Hz var=  0.10601 rms= 0.3256 share=  8.48%
+     3.00-  10.0 Hz var=  0.96276 rms= 0.9812 share= 77.02%
+    10.00-  30.0 Hz var=  0.12118 rms= 0.3481 share=  9.69%
+    30.00-  80.0 Hz var=  0.01663 rms= 0.1289 share=  1.33%
+    80.00- 200.0 Hz var=  0.00105 rms= 0.0324 share=  0.08%
+   200.00- 500.0 Hz var=  0.00074 rms= 0.0272 share=  0.06%
+   peaks: 3.174Hz rms=0.744 amp=1.052 | 6.592Hz rms=0.655 amp=0.927 | 9.766Hz rms=0.222 amp=0.314 | 12.939Hz rms=0.223 amp=0.316 | 0.244Hz rms=0.204 amp=0.288 | 1.953Hz rms=0.203 amp=0.288 | 16.113Hz rms=0.141 amp=0.200 | 0.732Hz rms=0.234 amp=0.331
+   dominant 3.174 Hz -> shaft order = 12.70 (rev freq 0.2499 Hz)
+order[P_raw]: revs=6 sync_p2p=7.5421 sync_rms=1.5920 tot_rms=4.7583 resid_rms=4.6843 var_explained=11.2%  top(order,amp)=[(0.7, 1.863), (26.02, 0.911), (12.66, 0.823), (13.36, 0.753), (1.41, 0.565)]
+order[torque]: revs=6 sync_p2p=20.5660 sync_rms=4.3700 tot_rms=6.7762 resid_rms=5.2010 var_explained=41.6%  top(order,amp)=[(12.66, 3.393), (13.36, 3.301), (26.02, 2.474), (0.7, 2.314), (71.72, 1.271)]
+order[n_cmd]: revs=6 sync_p2p=0.0000 sync_rms=0.0000 tot_rms=0.0000 resid_rms=0.0000 var_explained=0.0%  top(order,amp)=[(0.7, 0.0), (1.41, 0.0), (2.11, 0.0), (2.81, 0.0), (3.52, 0.0)]
+
+##################################################################################################
+# open-15-20_rpmp.csv cmd=20   samples=20174 (20.17s)  window idx[46447:66621]
+##################################################################################################
+P_raw  mean= 125.505 sd= 4.2746 p2p= 21.160 bar
+P_filt mean= 125.504 sd= 4.2746 p2p= 21.053 bar  (filter variance reduction -0.00%)
+shaft  true speed= 19.9551 rpm  rev period=  3.007 s  revs in window=6.7
+n_cmd  mean= 20.0000 sd= 0.0000 p2p=  0.000 rpm (sd/mean=0.0%)
+flow   mean= -7.2000 sd= 0.0000 p2p=  0.000 L/min
+torque mean=-127.597 sd= 7.2124 p2p= 46.100 %
+n_fb   unique values=[0.0, 14.6484, 29.2822, 43.9453] count=4
+encoder: position LSB=0.087800 deg -> 4100 counts/rev (12.0 bit); speed LSB=1 count/ms=14.6333 rpm
+split @1000ms MA: trend_p2p= 16.671 trend_sd= 3.822 | fast_p2p=  7.818 fast_sd= 1.249 bar
+split @200ms MA: trend_p2p= 18.112 trend_sd= 4.093 | fast_p2p=  7.464 fast_sd= 1.215 bar
+PSD (HP-detrend 1000 ms): windows=8 df=0.2441 Hz  residual var=1.4851 -> rms=1.2187 bar (raw sd=4.2746)
+     0.03-   0.3 Hz var=  0.04899 rms= 0.2213 share=  3.30%
+     0.30-   1.0 Hz var=  0.07546 rms= 0.2747 share=  5.08%
+     1.00-   3.0 Hz var=  0.03766 rms= 0.1941 share=  2.54%
+     3.00-  10.0 Hz var=  1.11635 rms= 1.0566 share= 75.17%
+    10.00-  30.0 Hz var=  0.16252 rms= 0.4031 share= 10.94%
+    30.00-  80.0 Hz var=  0.02695 rms= 0.1642 share=  1.81%
+    80.00- 200.0 Hz var=  0.00110 rms= 0.0332 share=  0.07%
+   200.00- 500.0 Hz var=  0.00071 rms= 0.0266 share=  0.05%
+   peaks: 8.545Hz rms=0.799 amp=1.129 | 4.395Hz rms=0.681 amp=0.962 | 0.244Hz rms=0.374 amp=0.529 | 8.057Hz rms=0.787 amp=1.113 | 12.939Hz rms=0.263 amp=0.372 | 0.732Hz rms=0.390 amp=0.551 | 17.334Hz rms=0.199 amp=0.281 | 2.686Hz rms=0.172 amp=0.243
+   dominant 8.545 Hz -> shaft order = 25.69 (rev freq 0.3326 Hz)
+order[P_raw]: revs=6 sync_p2p=7.9971 sync_rms=1.5261 tot_rms=4.2746 resid_rms=4.0197 var_explained=12.7%  top(order,amp)=[(0.7, 1.435), (26.02, 1.053), (12.66, 0.927), (13.36, 0.837), (1.41, 0.655)]
+order[torque]: revs=6 sync_p2p=27.0603 sync_rms=5.3902 tot_rms=7.2124 resid_rms=4.4623 var_explained=55.9%  top(order,amp)=[(12.66, 4.654), (13.36, 4.221), (26.02, 3.248), (25.31, 1.602), (71.72, 1.424)]
+order[n_cmd]: revs=6 sync_p2p=0.0000 sync_rms=0.0000 tot_rms=0.0000 resid_rms=0.0000 var_explained=0.0%  top(order,amp)=[(0.7, 0.0), (1.41, 0.0), (2.11, 0.0), (2.81, 0.0), (3.52, 0.0)]
+==================================================================================================
+FILE close-50-80-100-120-140_bar_deg.csv
+
+##################################################################################################
+# close-50-80-100-120-140_bar_deg.csv cmd=50   samples=6872 (6.87s)  window idx[5939:12811]
+##################################################################################################
+P_raw  mean=  49.998 sd= 0.3189 p2p=  2.192 bar
+P_filt mean=  49.999 sd= 0.3154 p2p=  2.124 bar  (filter variance reduction 2.15%)
+shaft  true speed=  8.6002 rpm  rev period=  6.977 s  revs in window=1.0
+n_cmd  mean=  8.6116 sd= 1.7310 p2p= 10.652 rpm (sd/mean=20.1%)
+flow   mean=  0.4306 sd= 0.0866 p2p=  0.533 L/min
+torque mean= -58.875 sd= 3.4856 p2p= 24.000 %
+n_fb   unique values=[0.0, 14.6484, 29.2822] count=3
+encoder: position LSB=0.087800 deg -> 4100 counts/rev (12.0 bit); speed LSB=1 count/ms=14.6333 rpm
+split @1000ms MA: trend_p2p=  0.072 trend_sd= 0.011 | fast_p2p=  2.206 fast_sd= 0.322 bar
+split @200ms MA: trend_p2p=  0.413 trend_sd= 0.077 | fast_p2p=  2.013 fast_sd= 0.309 bar
+PSD (HP-detrend 1000 ms): windows=2 df=0.2441 Hz  residual var=0.0969 -> rms=0.3113 bar (raw sd=0.3189)
+     0.03-   0.3 Hz var=  0.00000 rms= 0.0003 share=  0.00%
+     0.30-   1.0 Hz var=  0.00001 rms= 0.0026 share=  0.01%
+     1.00-   3.0 Hz var=  0.00451 rms= 0.0672 share=  4.66%
+     3.00-  10.0 Hz var=  0.04342 rms= 0.2084 share= 44.81%
+    10.00-  30.0 Hz var=  0.02812 rms= 0.1677 share= 29.02%
+    30.00-  80.0 Hz var=  0.01915 rms= 0.1384 share= 19.77%
+    80.00- 200.0 Hz var=  0.00083 rms= 0.0288 share=  0.86%
+   200.00- 500.0 Hz var=  0.00085 rms= 0.0291 share=  0.88%
+   peaks: 3.662Hz rms=0.123 amp=0.173 | 10.498Hz rms=0.150 amp=0.211 | 9.766Hz rms=0.142 amp=0.201 | 7.568Hz rms=0.120 amp=0.170 | 7.080Hz rms=0.118 amp=0.166 | 1.953Hz rms=0.067 amp=0.095 | 49.072Hz rms=0.069 amp=0.097 | 5.859Hz rms=0.066 amp=0.094
+   dominant 3.662 Hz -> shaft order = 25.55 (rev freq 0.1433 Hz)
+order[P_raw]: <1 revolution
+order[torque]: <1 revolution
+order[n_cmd]: <1 revolution
+n_cmd peaks: 1.953Hz amp=0.9028 | 3.662Hz amp=1.0660 | 10.498Hz amp=0.9836 | 9.766Hz amp=0.9360
+amplitude ratio P/n_cmd at dominant freq = 0.192 bar/rpm (P peak 0.1735 bar @ 3.662 Hz, n peak 0.9028 rpm @ 1.953 Hz)
+xcorr(P, n_cmd): best lag=-48 ms  norm=-0.660  (P leads n_cmd)
+xcorr(P, torque): best lag=-1 ms  norm=1.052
+
+##################################################################################################
+# close-50-80-100-120-140_bar_deg.csv cmd=80   samples=7599 (7.60s)  window idx[21553:29152]
+##################################################################################################
+P_raw  mean=  79.996 sd= 0.4883 p2p=  3.936 bar
+P_filt mean=  79.996 sd= 0.4850 p2p=  3.880 bar  (filter variance reduction 1.36%)
+shaft  true speed= 12.4583 rpm  rev period=  4.816 s  revs in window=1.6
+n_cmd  mean= 12.4870 sd= 2.5723 p2p= 18.955 rpm (sd/mean=20.6%)
+flow   mean=  0.6243 sd= 0.1286 p2p=  0.948 L/min
+torque mean= -86.368 sd= 4.4662 p2p= 29.000 %
+n_fb   unique values=[0.0, 14.6484, 29.2822, 43.9453] count=4
+encoder: position LSB=0.087800 deg -> 4100 counts/rev (12.0 bit); speed LSB=1 count/ms=14.6333 rpm
+split @1000ms MA: trend_p2p=  0.107 trend_sd= 0.019 | fast_p2p=  3.934 fast_sd= 0.490 bar
+split @200ms MA: trend_p2p=  0.569 trend_sd= 0.097 | fast_p2p=  3.736 fast_sd= 0.478 bar
+PSD (HP-detrend 1000 ms): windows=2 df=0.2441 Hz  residual var=0.2551 -> rms=0.5050 bar (raw sd=0.4883)
+     0.03-   0.3 Hz var=  0.00000 rms= 0.0004 share=  0.00%
+     0.30-   1.0 Hz var=  0.00000 rms= 0.0021 share=  0.00%
+     1.00-   3.0 Hz var=  0.01908 rms= 0.1381 share=  7.48%
+     3.00-  10.0 Hz var=  0.09018 rms= 0.3003 share= 35.35%
+    10.00-  30.0 Hz var=  0.11195 rms= 0.3346 share= 43.89%
+    30.00-  80.0 Hz var=  0.03237 rms= 0.1799 share= 12.69%
+    80.00- 200.0 Hz var=  0.00073 rms= 0.0270 share=  0.29%
+   200.00- 500.0 Hz var=  0.00076 rms= 0.0276 share=  0.30%
+   peaks: 5.615Hz rms=0.257 amp=0.364 | 11.475Hz rms=0.168 amp=0.238 | 2.686Hz rms=0.146 amp=0.207 | 10.010Hz rms=0.136 amp=0.192 | 13.916Hz rms=0.140 amp=0.198 | 7.568Hz rms=0.111 amp=0.158 | 15.869Hz rms=0.123 amp=0.173 | 48.828Hz rms=0.095 amp=0.134
+   dominant 5.615 Hz -> shaft order = 27.04 (rev freq 0.2076 Hz)
+order[P_raw]: revs=1 sync_p2p=3.5642 sync_rms=0.5090 tot_rms=0.4883 resid_rms=0.0000 var_explained=108.6%  top(order,amp)=[(26.02, 0.353), (52.03, 0.278), (71.72, 0.219), (12.66, 0.218), (13.36, 0.198)]
+order[torque]: revs=1 sync_p2p=24.8216 sync_rms=4.7200 tot_rms=4.4662 resid_rms=0.0000 var_explained=111.7%  top(order,amp)=[(12.66, 3.45), (13.36, 3.187), (0.7, 2.045), (26.02, 1.533), (117.42, 1.081)]
+order[n_cmd]: revs=1 sync_p2p=18.1701 sync_rms=2.6972 tot_rms=2.5723 resid_rms=0.0000 var_explained=109.9%  top(order,amp)=[(26.02, 1.996), (12.66, 1.535), (52.03, 1.244), (0.7, 1.216), (13.36, 1.113)]
+n_cmd peaks: 5.615Hz amp=1.9453 | 2.686Hz amp=1.4900 | 11.475Hz amp=1.1183 | 10.010Hz amp=0.9002
+amplitude ratio P/n_cmd at dominant freq = 0.187 bar/rpm (P peak 0.3641 bar @ 5.615 Hz, n peak 1.9453 rpm @ 5.615 Hz)
+xcorr(P, n_cmd): best lag=-31 ms  norm=-0.484  (P leads n_cmd)
+xcorr(P, torque): best lag=-201 ms  norm=1.050
+
+##################################################################################################
+# close-50-80-100-120-140_bar_deg.csv cmd=100   samples=7781 (7.78s)  window idx[37343:45124]
+##################################################################################################
+P_raw  mean=  99.925 sd= 0.6297 p2p=  4.588 bar
+P_filt mean=  99.925 sd= 0.6257 p2p=  4.512 bar  (filter variance reduction 1.28%)
+shaft  true speed= 15.6275 rpm  rev period=  3.839 s  revs in window=2.0
+n_cmd  mean= 15.6566 sd= 3.4865 p2p= 26.632 rpm (sd/mean=22.3%)
+flow   mean=  0.7828 sd= 0.1743 p2p=  1.332 L/min
+torque mean=-104.039 sd= 5.2842 p2p= 33.700 %
+n_fb   unique values=[-14.6338, 0.0, 14.6484, 29.2822, 43.9453] count=5
+encoder: position LSB=0.087800 deg -> 4100 counts/rev (12.0 bit); speed LSB=1 count/ms=14.6333 rpm
+split @1000ms MA: trend_p2p=  0.218 trend_sd= 0.042 | fast_p2p=  4.596 fast_sd= 0.633 bar
+split @200ms MA: trend_p2p=  0.791 trend_sd= 0.139 | fast_p2p=  4.739 fast_sd= 0.638 bar
+PSD (HP-detrend 1000 ms): windows=2 df=0.2441 Hz  residual var=0.3862 -> rms=0.6215 bar (raw sd=0.6297)
+     0.03-   0.3 Hz var=  0.00002 rms= 0.0043 share=  0.00%
+     0.30-   1.0 Hz var=  0.00094 rms= 0.0306 share=  0.24%
+     1.00-   3.0 Hz var=  0.01694 rms= 0.1301 share=  4.39%
+     3.00-  10.0 Hz var=  0.15859 rms= 0.3982 share= 41.06%
+    10.00-  30.0 Hz var=  0.16352 rms= 0.4044 share= 42.34%
+    30.00-  80.0 Hz var=  0.04468 rms= 0.2114 share= 11.57%
+    80.00- 200.0 Hz var=  0.00080 rms= 0.0284 share=  0.21%
+   200.00- 500.0 Hz var=  0.00073 rms= 0.0270 share=  0.19%
+   peaks: 6.836Hz rms=0.301 amp=0.426 | 6.348Hz rms=0.301 amp=0.426 | 3.418Hz rms=0.204 amp=0.289 | 12.695Hz rms=0.174 amp=0.246 | 14.160Hz rms=0.177 amp=0.251 | 17.578Hz rms=0.153 amp=0.217 | 9.521Hz rms=0.148 amp=0.210 | 15.869Hz rms=0.126 amp=0.178
+   dominant 6.836 Hz -> shaft order = 26.25 (rev freq 0.2605 Hz)
+order[P_raw]: revs=2 sync_p2p=3.8712 sync_rms=0.6110 tot_rms=0.6297 resid_rms=0.2026 var_explained=94.1%  top(order,amp)=[(26.02, 0.458), (52.03, 0.346), (13.36, 0.278), (71.72, 0.238), (39.38, 0.22)]
+order[torque]: revs=2 sync_p2p=28.2504 sync_rms=4.8454 tot_rms=5.2842 resid_rms=1.9036 var_explained=84.1%  top(order,amp)=[(12.66, 3.875), (13.36, 3.837), (26.02, 2.455), (71.72, 1.585), (52.03, 1.343)]
+order[n_cmd]: revs=2 sync_p2p=20.6649 sync_rms=3.1863 tot_rms=3.4865 resid_rms=1.1629 var_explained=83.5%  top(order,amp)=[(26.02, 2.658), (52.03, 1.65), (13.36, 1.548), (12.66, 1.381), (71.72, 1.072)]
+n_cmd peaks: 3.418Hz amp=2.0688 | 6.836Hz amp=2.5460 | 6.348Hz amp=2.5309 | 9.521Hz amp=1.1867
+amplitude ratio P/n_cmd at dominant freq = 0.206 bar/rpm (P peak 0.4256 bar @ 6.836 Hz, n peak 2.0688 rpm @ 3.418 Hz)
+xcorr(P, n_cmd): best lag=-30 ms  norm=-0.506  (P leads n_cmd)
+xcorr(P, torque): best lag=-160 ms  norm=1.164
+
+##################################################################################################
+# close-50-80-100-120-140_bar_deg.csv cmd=120   samples=6254 (6.25s)  window idx[52333:58587]
+##################################################################################################
+P_raw  mean= 119.770 sd= 0.7627 p2p=  6.028 bar
+P_filt mean= 119.770 sd= 0.7580 p2p=  5.933 bar  (filter variance reduction 1.22%)
+shaft  true speed= 19.0104 rpm  rev period=  3.156 s  revs in window=2.0
+n_cmd  mean= 19.0909 sd= 4.5062 p2p= 33.023 rpm (sd/mean=23.6%)
+flow   mean=  0.9545 sd= 0.2253 p2p=  1.651 L/min
+torque mean=-122.285 sd= 6.4236 p2p= 41.900 %
+n_fb   unique values=[-14.6338, 0.0, 14.6484, 29.2822, 43.9453, 58.5791] count=6
+encoder: position LSB=0.087800 deg -> 4100 counts/rev (12.0 bit); speed LSB=1 count/ms=14.6333 rpm
+split @1000ms MA: trend_p2p=  0.341 trend_sd= 0.057 | fast_p2p=  5.920 fast_sd= 0.754 bar
+split @200ms MA: trend_p2p=  1.126 trend_sd= 0.148 | fast_p2p=  6.158 fast_sd= 0.783 bar
+PSD (HP-detrend 1000 ms): windows=2 df=0.2441 Hz  residual var=0.5388 -> rms=0.7340 bar (raw sd=0.7627)
+     0.03-   0.3 Hz var=  0.00001 rms= 0.0036 share=  0.00%
+     0.30-   1.0 Hz var=  0.00058 rms= 0.0240 share=  0.11%
+     1.00-   3.0 Hz var=  0.00839 rms= 0.0916 share=  1.56%
+     3.00-  10.0 Hz var=  0.24005 rms= 0.4899 share= 44.56%
+    10.00-  30.0 Hz var=  0.21026 rms= 0.4585 share= 39.03%
+    30.00-  80.0 Hz var=  0.07795 rms= 0.2792 share= 14.47%
+    80.00- 200.0 Hz var=  0.00079 rms= 0.0282 share=  0.15%
+   200.00- 500.0 Hz var=  0.00072 rms= 0.0267 share=  0.13%
+   peaks: 8.545Hz rms=0.398 amp=0.563 | 7.812Hz rms=0.408 amp=0.577 | 4.150Hz rms=0.239 amp=0.338 | 17.090Hz rms=0.238 amp=0.336 | 15.869Hz rms=0.165 amp=0.234 | 7.324Hz rms=0.299 amp=0.423 | 23.438Hz rms=0.147 amp=0.208 | 25.635Hz rms=0.118 amp=0.166
+   dominant 8.545 Hz -> shaft order = 26.97 (rev freq 0.3168 Hz)
+order[P_raw]: revs=1 sync_p2p=5.8419 sync_rms=0.7784 tot_rms=0.7627 resid_rms=0.0000 var_explained=104.2%  top(order,amp)=[(26.02, 0.584), (52.03, 0.389), (23.91, 0.284), (38.67, 0.259), (12.66, 0.255)]
+order[torque]: revs=1 sync_p2p=35.9868 sync_rms=6.6035 tot_rms=6.4236 resid_rms=0.0000 var_explained=105.7%  top(order,amp)=[(13.36, 5.182), (12.66, 4.928), (26.02, 3.324), (1.41, 1.735), (52.03, 1.733)]
+order[n_cmd]: revs=1 sync_p2p=31.5800 sync_rms=4.2711 tot_rms=4.5062 resid_rms=0.0000 var_explained=89.8%  top(order,amp)=[(26.02, 3.535), (12.66, 1.965), (52.03, 1.895), (23.91, 1.515), (26.72, 1.402)]
+n_cmd peaks: 8.545Hz amp=3.5076 | 7.812Hz amp=3.5505 | 4.150Hz amp=2.4112 | 17.090Hz amp=1.8551
+amplitude ratio P/n_cmd at dominant freq = 0.161 bar/rpm (P peak 0.5630 bar @ 8.545 Hz, n peak 3.5076 rpm @ 8.545 Hz)
+xcorr(P, n_cmd): best lag=201 ms  norm=-0.518  (n_cmd leads P)
+xcorr(P, torque): best lag=120 ms  norm=1.326
+
+##################################################################################################
+# close-50-80-100-120-140_bar_deg.csv cmd=140   samples=7821 (7.82s)  window idx[66316:74137]
+##################################################################################################
+P_raw  mean= 139.595 sd= 0.8822 p2p=  6.884 bar
+P_filt mean= 139.594 sd= 0.8758 p2p=  6.788 bar  (filter variance reduction 1.45%)
+shaft  true speed= 22.7313 rpm  rev period=  2.640 s  revs in window=3.0
+n_cmd  mean= 22.7547 sd= 5.5073 p2p= 39.408 rpm (sd/mean=24.2%)
+flow   mean=  1.1377 sd= 0.2754 p2p=  1.970 L/min
+torque mean=-138.763 sd= 7.5801 p2p= 50.100 %
+n_fb   unique values=[-14.6338, 0.0, 14.6484, 29.2822, 43.9453, 58.5791] count=6
+encoder: position LSB=0.087800 deg -> 4100 counts/rev (12.0 bit); speed LSB=1 count/ms=14.6333 rpm
+split @1000ms MA: trend_p2p=  0.247 trend_sd= 0.049 | fast_p2p=  6.898 fast_sd= 0.881 bar
+split @200ms MA: trend_p2p=  0.657 trend_sd= 0.114 | fast_p2p=  7.073 fast_sd= 0.879 bar
+PSD (HP-detrend 1000 ms): windows=2 df=0.2441 Hz  residual var=0.7592 -> rms=0.8713 bar (raw sd=0.8822)
+     0.03-   0.3 Hz var=  0.00002 rms= 0.0043 share=  0.00%
+     0.30-   1.0 Hz var=  0.00185 rms= 0.0430 share=  0.24%
+     1.00-   3.0 Hz var=  0.01248 rms= 0.1117 share=  1.64%
+     3.00-  10.0 Hz var=  0.22412 rms= 0.4734 share= 29.52%
+    10.00-  30.0 Hz var=  0.37513 rms= 0.6125 share= 49.41%
+    30.00-  80.0 Hz var=  0.14407 rms= 0.3796 share= 18.98%
+    80.00- 200.0 Hz var=  0.00085 rms= 0.0291 share=  0.11%
+   200.00- 500.0 Hz var=  0.00070 rms= 0.0264 share=  0.09%
+   peaks: 9.277Hz rms=0.412 amp=0.583 | 10.010Hz rms=0.449 amp=0.636 | 5.127Hz rms=0.305 amp=0.432 | 20.508Hz rms=0.270 amp=0.381 | 19.043Hz rms=0.245 amp=0.347 | 28.564Hz rms=0.175 amp=0.248 | 23.682Hz rms=0.172 amp=0.244 | 30.762Hz rms=0.135 amp=0.191
+   dominant 9.277 Hz -> shaft order = 24.49 (rev freq 0.3789 Hz)
+order[P_raw]: revs=2 sync_p2p=5.3362 sync_rms=0.8767 tot_rms=0.8822 resid_rms=0.2592 var_explained=98.8%  top(order,amp)=[(26.02, 0.636), (52.03, 0.492), (12.66, 0.416), (13.36, 0.337), (23.91, 0.321)]
+order[torque]: revs=2 sync_p2p=38.6170 sync_rms=7.3068 tot_rms=7.5801 resid_rms=2.2922 var_explained=92.9%  top(order,amp)=[(12.66, 6.018), (13.36, 5.892), (26.02, 3.819), (52.03, 2.48), (71.72, 1.848)]
+order[n_cmd]: revs=2 sync_p2p=30.2897 sync_rms=4.7839 tot_rms=5.5073 resid_rms=1.5253 var_explained=75.5%  top(order,amp)=[(26.02, 4.229), (13.36, 2.407), (52.03, 2.401), (12.66, 1.943), (25.31, 1.743)]
+n_cmd peaks: 10.010Hz amp=4.2364 | 4.883Hz amp=3.2320 | 9.277Hz amp=3.7604 | 20.508Hz amp=2.1631
+amplitude ratio P/n_cmd at dominant freq = 0.138 bar/rpm (P peak 0.5829 bar @ 9.277 Hz, n peak 4.2364 rpm @ 10.010 Hz)
+xcorr(P, n_cmd): best lag=-28 ms  norm=-0.541  (P leads n_cmd)
+xcorr(P, torque): best lag=-104 ms  norm=1.217
+
+==================================================================================================
+CLOSED-LOOP STEP RESPONSE (from pressure command transitions)
+step   0.00 ->  50.00 bar : t10=0.028s t50=0.05s t90=0.105s rise=0.077s overshoot=  3.18% peak=  51.59bar @0.207s  n_cmd max= 133.59 mean=  9.867 rpm
+step   0.90 ->  80.00 bar : t10=0.028s t50=0.064s t90=0.136s rise=0.108s overshoot=  2.57% peak=  82.03bar @0.447s  n_cmd max= 107.79 mean= 13.643 rpm
+step   2.23 -> 100.00 bar : t10=0.029s t50=0.077s t90=0.158s rise=0.129s overshoot=  2.62% peak= 102.56bar @0.274s  n_cmd max= 100.91 mean= 16.915 rpm
+step   0.26 -> 120.00 bar : t10=0.033s t50=0.09s t90=0.189s rise=0.156s overshoot=  2.28% peak= 122.73bar @1.156s  n_cmd max= 109.33 mean= 20.937 rpm
+step   0.53 -> 140.00 bar : t10=0.034s t50=0.102s t90=0.223s rise=0.189s overshoot=  2.18% peak= 143.05bar @2.279s  n_cmd max= 106.07 mean= 24.546 rpm
+step   0.67 ->  50.00 bar : t10=0.024s t50=0.045s t90=0.106s rise=0.082s overshoot=  2.53% peak=  51.25bar @2.769s  n_cmd max= 107.88 mean= 11.729 rpm
+
+==================================================================================================
+SUMMARY (steady-state windows)
+case                                     P_mean    P_sd   P_p2p    shaft    n_sd     flow   f_dom     amp  bar/rpm
+open-8-10-12_rpm.csv cmd=8                42.21   4.685  18.928    7.965   0.000  -7.2000   1.709   1.000      nan
+open-8-10-12_rpm.csv cmd=10               59.71   3.438  13.208    9.976   0.000  -7.2000   2.197   0.882      nan
+open-8-10-12_rpm.csv cmd=12               73.56   3.310  13.416   11.995   0.000  -7.2000   2.686   0.829      nan
+open-15-20_rpmp.csv cmd=15                98.33   4.758  23.116   14.991   0.000  -7.2000   3.174   1.052      nan
+open-15-20_rpmp.csv cmd=20               125.50   4.275  21.160   19.955   0.000  -7.2000   8.545   1.129      nan
+close-50-80-100-120-140_bar_deg.csv cm    50.00   0.319   2.192    8.600   1.731   0.4306   3.662   0.173    0.184
+close-50-80-100-120-140_bar_deg.csv cm    80.00   0.488   3.936   12.458   2.572   0.6243   5.615   0.364    0.190
+close-50-80-100-120-140_bar_deg.csv cm    99.93   0.630   4.588   15.628   3.487   0.7828   6.836   0.426    0.181
+close-50-80-100-120-140_bar_deg.csv cm   119.77   0.763   6.028   19.010   4.506   0.9545   8.545   0.563    0.169
+close-50-80-100-120-140_bar_deg.csv cm   139.59   0.882   6.884   22.731   5.507   1.1377   9.277   0.583    0.160
+
+OPEN-LOOP static characteristic (dead-headed pump):
+   n=  7.965 rpm  P= 42.207 bar  sd= 4.685  p2p=18.928  |T|= 50.49%  bar/rpm= 5.299  %/bar=1.1963  leak L/min=0.0199
+   n=  9.976 rpm  P= 59.714 bar  sd= 3.438  p2p=13.208  |T|= 67.61%  bar/rpm= 5.986  %/bar=1.1322  leak L/min=0.0249
+   n= 11.995 rpm  P= 73.562 bar  sd= 3.310  p2p=13.416  |T|= 80.65%  bar/rpm= 6.133  %/bar=1.0963  leak L/min=0.0300
+   n= 14.991 rpm  P= 98.331 bar  sd= 4.758  p2p=23.116  |T|=103.09%  bar/rpm= 6.559  %/bar=1.0484  leak L/min=0.0375
+   n= 19.955 rpm  P=125.505 bar  sd= 4.275  p2p=21.160  |T|=127.60%  bar/rpm= 6.289  %/bar=1.0167  leak L/min=0.0499
+   linear fit P = 6.9566*n + -10.409  [bar]
+CLOSED-LOOP steady operating points (flow = leakage compensation):
+   P=  50.00 bar  n_cmd=  8.612 rpm  flow= 0.4306 L/min  |T|= 58.87%  K_flow2rpm=20.000 rpm/(L/min)  leak_coef= 8.6118 mL/min/bar  |T|/P=1.1775 %/bar
+   P=  80.00 bar  n_cmd= 12.487 rpm  flow= 0.6243 L/min  |T|= 86.37%  K_flow2rpm=20.000 rpm/(L/min)  leak_coef= 7.8047 mL/min/bar  |T|/P=1.0796 %/bar
+   P=  99.93 bar  n_cmd= 15.657 rpm  flow= 0.7828 L/min  |T|=104.04%  K_flow2rpm=20.000 rpm/(L/min)  leak_coef= 7.8341 mL/min/bar  |T|/P=1.0412 %/bar
+   P= 119.77 bar  n_cmd= 19.091 rpm  flow= 0.9545 L/min  |T|=122.28%  K_flow2rpm=20.000 rpm/(L/min)  leak_coef= 7.9698 mL/min/bar  |T|/P=1.0210 %/bar
+   P= 139.59 bar  n_cmd= 22.755 rpm  flow= 1.1377 L/min  |T|=138.76%  K_flow2rpm=20.000 rpm/(L/min)  leak_coef= 8.1503 mL/min/bar  |T|/P=0.9940 %/bar
