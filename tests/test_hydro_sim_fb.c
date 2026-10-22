@@ -427,6 +427,30 @@ static void test_pressure_model_fb_exposes_first_order_inputs(void) {
                 "PressureModel FB should expose DELAYTIME");
 }
 
+static void test_pressure_model_fb_model_type_zero_uses_calibrated_defaults(void) {
+    HYD_PRESSUREMODEL cmd;
+    int i;
+
+    memset(&cmd, 0, sizeof(cmd));
+    cmd.ENABLE.value = false;
+    __mcl_cmd_updatePressureModel(&cmd);
+    cmd.ENABLE.value = true;
+    cmd.MODEL_TYPE.value = 0u;
+    cmd.MOTOR_RPM.value = 20.0;
+
+    for (i = 0; i < 1000; ++i) {
+        cmd.TIME_S.value = 0.001 * (double)i;
+        __mcl_cmd_updatePressureModel(&cmd);
+    }
+
+    ASSERT_TRUE(cmd.REAL_PRESSURE_BAR.value > 30.0,
+                "MODEL_TYPE=0 should enable the calibrated dead-head defaults");
+    ASSERT_TRUE(cmd.RAW_PRESSURE_BAR.value >= 0.0,
+                "Pressure model FB should expose raw pressure");
+    ASSERT_TRUE(isfinite(cmd.PUMP_TORQUE_PERMILLE.value),
+                "Pressure model FB should expose derived pump torque");
+}
+
 static void test_pressure_model_fb_negative_speed_depressurizes_without_reset(void) {
     HYD_PRESSUREMODEL reverse_cmd;
     HYD_PRESSUREMODEL leak_cmd;
@@ -651,6 +675,7 @@ int main(void) {
     test_move_maps_direction_two_to_negative();
     test_pressure_model_fb_persists_state_and_resets_on_disable();
     test_pressure_model_fb_exposes_first_order_inputs();
+    test_pressure_model_fb_model_type_zero_uses_calibrated_defaults();
     test_pressure_model_fb_negative_speed_depressurizes_without_reset();
     test_pressure_model_fb_first_order_mode_outputs_equal_real_and_measured();
     test_pressure_model_fb_integrator_mode_builds_pressure_from_rpm();

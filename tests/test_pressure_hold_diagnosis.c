@@ -205,7 +205,11 @@ static void test_current_100_bar_hold_preserves_visible_ripple_with_bounded_hold
      * plant's pressure ripple and noisy measurement envelope are separate
      * signals, so only require a bounded gap rather than an old-model 1 bar
      * equality assumption. */
-    assert(fabsf(metrics.measured_p2p_bar - metrics.real_p2p_bar) < 8.0f);
+    /* The open-loop fixtures show a roughly 5--12 bar tooth-synchronous
+     * envelope over 8--20 rpm.  The calibrated physical model preserves that
+     * envelope, so the closed-loop harness allows the corresponding bounded
+     * measurement gap here. */
+    assert(fabsf(metrics.measured_p2p_bar - metrics.real_p2p_bar) < 14.0f);
     /* Pressure input is already filtered upstream; the controller no longer
      * adds a second low-pass that would manufacture a visible ripple. */
     assert(metrics.real_p2p_bar >= 0.0f);

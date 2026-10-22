@@ -179,7 +179,7 @@
 								<REAL />
 							</type>
 							<documentation>
-								<xhtml:p><![CDATA[MODEL_TYPE=1: static gain in bar/rpm. MODEL_TYPE=2: integrator gain in bar/rpm normalized to a 1 s reference interval.]]></xhtml:p>
+								<xhtml:p><![CDATA[MODEL_TYPE=0: calibrated dead-head physical model using the embedded experimental defaults. MODEL_TYPE=1: static gain in bar/rpm. MODEL_TYPE=2: integrator gain in bar/rpm normalized to a 1 s reference interval.]]></xhtml:p>
 							</documentation>
 						</variable>
 						<variable name="TTAU">
@@ -199,6 +199,7 @@
 								<BOOL />
 							</type>
 						</variable>
+						<variable name="RAW_PRESSURE_BAR"><type><REAL /></type></variable>
 						<variable name="MEASURED_PRESSURE_BAR">
 							<type>
 								<REAL />
@@ -214,6 +215,7 @@
 								<REAL />
 							</type>
 						</variable>
+						<variable name="PUMP_TORQUE_PERMILLE"><type><REAL /></type></variable>
 					</outputVars>
 				</interface>
 				<body>

@@ -10,6 +10,7 @@ static HYD_HydraulicSimFB _sim_fb[HYD_MAX_HYDRAULIC_SIM_FB];
 static int g_axis_slot_by_id[HYD_MAX_HYDRAULIC_SIM_FB];
 static unsigned int NextAllocatedHydraulicSimFB = 0U;
 static PressureModelParams g_pressure_model_params;
+static PressureModelParams g_pressure_model_defaults;
 static PressureModelState g_pressure_model_state;
 static int g_pressure_model_initialized = 0;
 static int g_pressure_model_have_time = 0;
@@ -21,8 +22,10 @@ static void PressureModelFb_ClearAxisFeedback(void);
 
 static void PressureModelFb_ResetOutputs(HYD_PRESSUREMODEL *data__) {
     __SET_VAR(data__->, REAL_PRESSURE_BAR,, 0.0f);
+    __SET_VAR(data__->, RAW_PRESSURE_BAR,, 0.0f);
     __SET_VAR(data__->, MEASURED_PRESSURE_BAR,, 0.0f);
     __SET_VAR(data__->, ACTUAL_MOTOR_RPM,, 0.0f);
+    __SET_VAR(data__->, PUMP_TORQUE_PERMILLE,, 0.0f);
     __SET_VAR(data__->, ACTIVE,, 0);
 }
 
@@ -39,7 +42,8 @@ static void PressureModelFb_EnsureInitialized(void) {
         return;
     }
 
-    PressureModel_InitParams(&g_pressure_model_params);
+    PressureModel_InitParams(&g_pressure_model_defaults);
+    g_pressure_model_params = g_pressure_model_defaults;
     PressureModelFb_ResetState();
     g_pressure_model_initialized = 1;
 }
@@ -318,6 +322,7 @@ void __mcl_cmd_updatePressureModel(HYD_PRESSUREMODEL *data__)
 
     current_time = __GET_VAR(data__->TIME_S);
     target_motor_speed = __GET_VAR(data__->MOTOR_RPM);
+    g_pressure_model_params = g_pressure_model_defaults;
     g_pressure_model_params.model_type = (unsigned char)__GET_VAR(data__->MODEL_TYPE);
     g_pressure_model_params.first_order_k_bar_per_rpm = (float)__GET_VAR(data__->K_NUM);
     g_pressure_model_params.pressure_integrator_gain_bar_per_rpm_s =
@@ -354,7 +359,9 @@ void __mcl_cmd_updatePressureModel(HYD_PRESSUREMODEL *data__)
     }
 
     __SET_VAR(data__->, REAL_PRESSURE_BAR,, out.real_pressure_bar);
+    __SET_VAR(data__->, RAW_PRESSURE_BAR,, out.raw_pressure_bar);
     __SET_VAR(data__->, MEASURED_PRESSURE_BAR,, out.measured_pressure_bar);
     __SET_VAR(data__->, ACTUAL_MOTOR_RPM,, out.actual_motor_rpm);
+    __SET_VAR(data__->, PUMP_TORQUE_PERMILLE,, out.pumpFeedback.torquePermille);
     __SET_VAR(data__->, ACTIVE,, 1);
 }

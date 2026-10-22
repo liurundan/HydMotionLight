@@ -111,6 +111,8 @@ typedef struct {
     float motor_noise_std_rpm;
     float process_noise_std_m3_s;
     float flow_ripple_ratio;
+    /* Sensor-visible periodic pressure ripple relative to real pressure. */
+    float pressure_ripple_ratio;
     float tooth_drop_depth_ratio;
     float tooth_drop_width_ratio;
     float min_rpm;
@@ -161,6 +163,7 @@ typedef struct {
 } PressureModelState;
 
 typedef struct {
+    float raw_pressure_bar;
     float measured_pressure_bar;
     float real_pressure_bar;
     float actual_motor_rpm;
