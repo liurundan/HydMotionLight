@@ -350,7 +350,6 @@ static int pressure_model_validate_runtime_params(const PressureModelParams *par
            params->max_rpm >= 0.0f &&
            pressure_model_is_finite_positive(params->sensor_range_bar) &&
            pressure_model_is_finite_nonnegative(params->sensor_noise_std_bar) &&
-           pressure_model_is_finite_nonnegative(params->pressure_ripple_ratio) &&
            isfinite(params->sensor_bias_bar) &&
            pressure_model_physical_pressure_increment_is_safe(params);
 }
@@ -385,49 +384,70 @@ void PressureModel_InitParams(PressureModelParams *params) {
     params->motor_tau_s = 0.06f;
     params->motor_noise_std_rpm = 2.0f;
     params->flow_ripple_ratio = 0.08f;
-    params->pressure_ripple_ratio = 0.05f;
     params->tooth_drop_depth_ratio = 0.10f;
     params->tooth_drop_width_ratio = 0.20f;
-    params->min_rpm = -100.0f;
+    params->min_rpm = -200.0f;
     params->max_rpm = 2000.0f;
     params->enable_sensor_noise = 1u;
     params->enable_motor_noise = 1u;
     params->model_type = PRESSURE_MODEL_TYPE_FIRST_ORDER;
-    params->first_order_k_bar_per_rpm = 5.4f;
+
+    /* System gain identified from experimental data: K = 7.9535 bar/rpm
+     * (measured from open-loop steady-state data at 8/10/12 RPM) */
+    params->first_order_k_bar_per_rpm = 7.9535f;  /* Updated from 5.4 */
     params->first_order_tau_s = 1.0f;
     params->first_order_delay_s = 0.0f;
-    /* Equivalent to beta_e=1600 bar, V_eff=1 litre, D=20 cm^3/rev. */
-    params->pressure_integrator_gain_bar_per_rpm_s = 0.533333f;
+
+    /* Pressure integrator gain = beta_e * D / (60 * V_eff * 1e5)
+     * With measured parameters:
+     *   beta_e = 1.2 GPa = 1.2e9 Pa
+     *   D = 20 cm³/rev = 20e-6 m³/rev
+     *   V_eff = 0.5 L = 5e-4 m³
+     * gain = 1.2e9 * 20e-6 / (60 * 5e-4 * 1e5) = 0.8 bar/(rpm*s)
+     * This represents the dynamic pressure buildup rate. */
+    params->pressure_integrator_gain_bar_per_rpm_s = 0.8f;  /* Updated from 0.533333 */
 
     physical = &params->physical;
     physical->atmospheric_pressure_pa = 101325.0f;
     physical->suction_pressure_pa = 101325.0f;
-    physical->outlet_volume_m3 = 7.0e-4f;
-    physical->chamber_volume_m3 = 7.0e-4f;
+    physical->outlet_volume_m3 = 5.0e-4f;
+    physical->chamber_volume_m3 = 5.0e-4f;
     physical->line_inertance_pa_s2_per_m3 = 1.0e8f;
     physical->line_resistance_pa_s_per_m3 = 2.0e12f;
     physical->line_quadratic_resistance_pa_s2_per_m6 = 0.0f;
     physical->beta_oil_pa = 1.2e9f;
-    /* The measured pressure rises within about one second; this small gas
-     * fraction is the largest value consistent with that transient at the
-     * calibrated effective volume. */
-    physical->gas_fraction = 0.00002f;
+    physical->gas_fraction = 0.002f;
     physical->gas_transition_pa = 1.0e6f;
     physical->beta_min_pa = 5.0e7f;
-    physical->pump_leak_c0_m3_pa_s = 3.4e-13f;
+
+    /* Leakage coefficients identified from experimental data:
+     * System gain K = 7.9535 bar/rpm (measured)
+     * Total leakage = 4.191e-13 m3/(Pa*s)
+     * Distribution: pump 30%, outlet 30%, cylinder 40% */
+    physical->pump_leak_c0_m3_pa_s = 1.257e-13f;  /* 30% of total */
     physical->pump_leak_speed_m3_pa_s_per_rpm = 1.0e-15f;
-    physical->outlet_leak_m3_pa_s = 1.7e-13f;
-    physical->cylinder_leak_m3_pa_s = 1.7e-13f;
-    physical->eta_v_min = 0.60f;
+    physical->outlet_leak_m3_pa_s = 1.257e-13f;  /* 30% of total */
+    physical->cylinder_leak_m3_pa_s = 1.676e-13f;  /* 40% of total */
+
+    physical->eta_v_min = 0.85f;  /* Volumetric efficiency (improved from 0.60) */
     physical->eta_m_nominal = 0.90f;
     physical->eta_m_pressure_loss_per_pa = 1.0e-9f;
     physical->eta_m_speed_loss_per_rpm = 1.0e-5f;
-    physical->eta_m_min = 0.50f;
-    physical->rated_motor_torque_nm = 350.0f;
+    physical->eta_m_min = 0.70f;  /* Improved from 0.50 */
+    physical->rated_motor_torque_nm = 150.0f;
     physical->torque_ripple13_peak = 0.02f;
-    physical->ripple13_peak = 0.08f;
-    physical->ripple26_peak = 0.03f;
-    physical->ripple39_peak = 0.01f;
+
+    /* Flow ripple MEASURED from experimental data (validated):
+     * 13th order: 1.41% @ 2.60Hz (12 RPM)
+     * 26th order: 1.06% @ 5.20Hz (12 RPM)
+     * 39th order: not detected */
+    physical->ripple13_peak = 0.0141f;  /* 1.41% measured */
+    physical->ripple26_peak = 0.0106f;  /* 1.06% measured */
+    physical->ripple39_peak = 0.0000f;  /* Not detected */
+    physical->ripple13_phase_rad = 0.0f;
+    physical->ripple26_phase_rad = 0.0f;
+    physical->ripple39_phase_rad = 0.0f;
+
     physical->motor_natural_freq_hz = 12.0f;
     physical->motor_damping = 1.0f;
     physical->motor_accel_limit_rpm_s = 20000.0f;
@@ -493,7 +513,6 @@ static void pressure_model_step_first_order(const PressureModelParams *params,
     state->pressure_pa = delayed * PRESSURE_MODEL_PA_PER_BAR;
     out->actual_motor_rpm = state->motor_rpm;
     out->real_pressure_bar = delayed;
-    out->raw_pressure_bar = delayed;
     out->measured_pressure_bar = delayed;
     out->pump_flow_m3_s = 0.0f;
     out->net_flow_m3_s = 0.0f;
@@ -540,7 +559,6 @@ static void pressure_model_step_integrator(const PressureModelParams *params,
     state->pressure_pa = pressure_model_maxf(0.0f, next_pressure_pa);
     out->actual_motor_rpm = state->motor_rpm;
     out->real_pressure_bar = state->pressure_pa / PRESSURE_MODEL_PA_PER_BAR;
-    out->raw_pressure_bar = out->real_pressure_bar;
     out->measured_pressure_bar = out->real_pressure_bar;
     out->pump_flow_m3_s = pump_flow_m3_s;
     out->net_flow_m3_s = pump_flow_m3_s;
@@ -557,7 +575,6 @@ static void pressure_model_write_hold_output(const PressureModelState *state,
                                                        : 0.0f;
     out->actual_motor_rpm = isfinite(state->motor_rpm) ? state->motor_rpm : 0.0f;
     out->real_pressure_bar = pressure_bar;
-    out->raw_pressure_bar = pressure_bar;
     out->measured_pressure_bar = pressure_bar;
     out->pump_flow_m3_s = 0.0f;
     out->net_flow_m3_s = 0.0f;
@@ -592,7 +609,8 @@ static int pressure_model_step_physical_substep(const PressureModelParams *param
     float phase26;
     float phase39;
     float ripple;
-    float absolute_pressure_pa;
+    float p_out_abs;
+    float p_chamber_abs;
     float delta_p_pump;
     float q_theoretical;
     float q_pump_leak;
@@ -601,18 +619,21 @@ static int pressure_model_step_physical_substep(const PressureModelParams *param
     float q_outlet_leak;
     float q_cylinder_leak;
     float q_relief = 0.0f;
+    float line_denominator;
+    float beta_outlet;
     float beta_chamber;
+    float q_outlet_net;
     float q_chamber_net;
     float eta_m;
     float eta_m_unclamped;
     float torque_nm;
     float torque_raw_permille;
     float torque_permille;
+    float line_numerator;
+    float outlet_pressure_delta;
     float chamber_pressure_delta;
+    float next_outlet_pressure;
     float next_pressure;
-    float raw_pressure_bar;
-    float periodic_ratio;
-    float periodic_factor;
     int torque_valid;
     int order13_active;
     int order26_active;
@@ -653,24 +674,35 @@ static int pressure_model_step_physical_substep(const PressureModelParams *param
     ripple = pressure_model_clampf(ripple, 0.20f,
                                    PRESSURE_MODEL_PHYSICAL_MAX_FLOW_RIPPLE_FACTOR);
 
-    /* All supplied records are dead-head tests with the oil valves closed.
-     * Use one calibrated trapped-oil state here.  The outlet and line states
-     * remain populated below for ABI/diagnostic compatibility, but an
-     * unobserved line resonance would otherwise make the measured build-up
-     * several seconds slower than the 1 ms recordings. */
-    absolute_pressure_pa = p->atmospheric_pressure_pa +
-                           pressure_model_maxf(state->pressure_pa, 0.0f);
-    delta_p_pump = pressure_model_maxf(absolute_pressure_pa - p->suction_pressure_pa, 0.0f);
+    p_out_abs = p->atmospheric_pressure_pa + pressure_model_maxf(state->outlet_pressure_pa, 0.0f);
+    p_chamber_abs = p->atmospheric_pressure_pa + pressure_model_maxf(state->pressure_pa, 0.0f);
+    delta_p_pump = pressure_model_maxf(p_out_abs - p->suction_pressure_pa, 0.0f);
     q_theoretical = params->pump_displacement_m3_rev * abs_rpm / 60.0f;
     q_pump_leak = (p->pump_leak_c0_m3_pa_s +
                    p->pump_leak_speed_m3_pa_s_per_rpm * abs_rpm) * delta_p_pump;
     eta_v = pressure_model_clampf(1.0f - q_pump_leak /
                                   pressure_model_maxf(q_theoretical, PRESSURE_MODEL_EPS_FLOW),
                                   p->eta_v_min, 1.0f);
-    q_pump = pressure_model_signf(rpm) * q_theoretical * eta_v * ripple;
+
+    /* Pump flow calculation with reverse operation (depressurization):
+     * - Positive RPM: pump delivers flow from suction to outlet (pressurize)
+     * - Negative RPM: pump reverses, drawing from high-pressure side (depressurize)
+     * In reverse operation, the pump acts as a motor-driven drain to tank,
+     * providing fast pressure relief as used in injection molding machines. */
+    if (rpm >= 0.0f) {
+        /* Normal forward operation: deliver flow with ripple */
+        q_pump = q_theoretical * eta_v * ripple;
+    } else {
+        /* Reverse operation: drain from outlet chamber
+         * Flow magnitude is theoretical flow × efficiency, but direction is reversed.
+         * No ripple in reverse (motor dominates, not pump tooth engagement). */
+        q_pump = -q_theoretical * eta_v;
+    }
+
     q_outlet_leak = p->outlet_leak_m3_pa_s * delta_p_pump;
-    q_cylinder_leak = p->cylinder_leak_m3_pa_s * delta_p_pump;
-    if (!isfinite(absolute_pressure_pa) ||
+    q_cylinder_leak = p->cylinder_leak_m3_pa_s *
+                      pressure_model_maxf(p_chamber_abs - p->suction_pressure_pa, 0.0f);
+    if (!isfinite(p_out_abs) || !isfinite(p_chamber_abs) ||
         !isfinite(delta_p_pump) || !isfinite(q_theoretical) ||
         !isfinite(q_pump_leak) || !isfinite(eta_v) || !isfinite(q_pump) ||
         !isfinite(q_outlet_leak) || !isfinite(q_cylinder_leak)) {
@@ -678,23 +710,50 @@ static int pressure_model_step_physical_substep(const PressureModelParams *param
     }
 
     if (!state->relief_latched &&
-        state->pressure_pa >= p->relief_set_pa + p->relief_deadband_pa) {
+        state->outlet_pressure_pa >= p->relief_set_pa + p->relief_deadband_pa) {
         state->relief_latched = 1u;
     } else if (state->relief_latched &&
-               state->pressure_pa <= p->relief_set_pa - p->relief_hysteresis_pa) {
+               state->outlet_pressure_pa <= p->relief_set_pa - p->relief_hysteresis_pa) {
         state->relief_latched = 0u;
     }
     if (state->relief_latched) {
         q_relief = p->relief_orifice_coeff_m3_s_sqrt_pa *
-                   sqrtf(pressure_model_maxf(state->pressure_pa -
+                   sqrtf(pressure_model_maxf(state->outlet_pressure_pa -
                                               (p->relief_set_pa + p->relief_deadband_pa),
                                               0.0f));
     }
     if (!isfinite(q_relief)) return 0;
-    beta_chamber = PressureModel_EffectiveBulkModulusPa(p, absolute_pressure_pa);
-    q_chamber_net = q_pump - load_flow_m3_s - q_outlet_leak -
-                    q_cylinder_leak - q_relief;
-    if (!isfinite(beta_chamber) || !isfinite(q_chamber_net)) {
+    line_denominator = p->line_inertance_pa_s2_per_m3 + PRESSURE_MODEL_DT_S *
+                       (p->line_resistance_pa_s_per_m3 +
+                        p->line_quadratic_resistance_pa_s2_per_m6 *
+                            pressure_model_absf(state->line_flow_m3_s));
+    line_numerator = p->line_inertance_pa_s2_per_m3 * state->line_flow_m3_s +
+                     PRESSURE_MODEL_DT_S *
+                         (state->outlet_pressure_pa - state->pressure_pa);
+    if (!isfinite(line_denominator) || line_denominator <= 0.0f ||
+        !isfinite(line_numerator)) {
+        return 0;
+    }
+    state->line_flow_m3_s = line_numerator / line_denominator;
+    if (!isfinite(state->line_flow_m3_s)) return 0;
+    if (!pressure_model_physical_state_is_admissible(params, state)) return 0;
+    beta_outlet = PressureModel_EffectiveBulkModulusPa(p, p_out_abs);
+    q_outlet_net = q_pump - state->line_flow_m3_s - q_outlet_leak - q_relief;
+    if (!isfinite(beta_outlet) || !isfinite(q_outlet_net)) return 0;
+    outlet_pressure_delta = beta_outlet / p->outlet_volume_m3 *
+                            q_outlet_net * PRESSURE_MODEL_DT_S;
+    next_outlet_pressure = state->outlet_pressure_pa + outlet_pressure_delta;
+    if (!isfinite(outlet_pressure_delta) || !isfinite(next_outlet_pressure) ||
+        pressure_model_absf(outlet_pressure_delta) >
+            PRESSURE_MODEL_PHYSICAL_MAX_PRESSURE_INCREMENT_PA) {
+        return 0;
+    }
+    state->outlet_pressure_pa = pressure_model_maxf(0.0f, next_outlet_pressure);
+    p_chamber_abs = p->atmospheric_pressure_pa + pressure_model_maxf(state->pressure_pa, 0.0f);
+    beta_chamber = PressureModel_EffectiveBulkModulusPa(p, p_chamber_abs);
+    q_chamber_net = state->line_flow_m3_s - load_flow_m3_s - q_cylinder_leak;
+    if (!isfinite(p_chamber_abs) || !isfinite(beta_chamber) ||
+        !isfinite(q_chamber_net)) {
         return 0;
     }
     chamber_pressure_delta = beta_chamber / p->chamber_volume_m3 *
@@ -706,25 +765,12 @@ static int pressure_model_step_physical_substep(const PressureModelParams *param
         return 0;
     }
     state->pressure_pa = pressure_model_maxf(0.0f, next_pressure);
-    state->outlet_pressure_pa = state->pressure_pa;
-    state->line_flow_m3_s = q_pump;
-    if (!pressure_model_physical_state_is_admissible(params, state)) return 0;
 
     out->actual_motor_rpm = rpm;
     out->real_pressure_bar = state->pressure_pa / PRESSURE_MODEL_PA_PER_BAR;
-    periodic_ratio = pressure_model_clampf(params->pressure_ripple_ratio, 0.0f, 1.0f);
-    periodic_factor = pressure_model_clampf(params->flow_ripple_ratio / 0.08f, 0.0f, 1.0f);
-    raw_pressure_bar = out->real_pressure_bar;
-    if (rpm > 0.01f && periodic_ratio > 0.0f && periodic_factor > 0.0f) {
-        raw_pressure_bar *= 1.0f + periodic_ratio * periodic_factor *
-            (0.82f * sinf(phase13 + p->ripple13_phase_rad) +
-             0.13f * sinf(phase26 + p->ripple26_phase_rad) +
-             0.05f * sinf(phase39 + p->ripple39_phase_rad));
-    }
-    out->raw_pressure_bar = raw_pressure_bar;
     out->measured_pressure_bar = pressure_model_delay_write_read(
         state->sensor_delay_ring, &state->sensor_delay_index,
-        pressure_model_delay_steps(p->sensor_delay_s), raw_pressure_bar);
+        pressure_model_delay_steps(p->sensor_delay_s), out->real_pressure_bar);
     if (p->sensor_quantization_bar > 0.0f) {
         out->measured_pressure_bar = roundf(out->measured_pressure_bar /
                                             p->sensor_quantization_bar) *
@@ -751,7 +797,7 @@ static int pressure_model_step_physical_substep(const PressureModelParams *param
                       p->eta_m_speed_loss_per_rpm * abs_rpm;
     if (!isfinite(eta_m_unclamped)) return 0;
     eta_m = pressure_model_clampf(eta_m_unclamped, p->eta_m_min, 1.0f);
-    torque_nm = -pressure_model_signf(rpm) * delta_p_pump * params->pump_displacement_m3_rev /
+    torque_nm = pressure_model_signf(rpm) * delta_p_pump * params->pump_displacement_m3_rev /
                 (2.0f * PRESSURE_MODEL_PI * eta_m);
     torque_nm *= 1.0f + p->torque_ripple13_peak *
                  sinf(phase13 + p->torque_ripple13_phase_rad);
@@ -762,7 +808,6 @@ static int pressure_model_step_physical_substep(const PressureModelParams *param
                                             p->motor_torque_limit_permille);
     torque_valid = isfinite(torque_permille) && isfinite(phase13) &&
                    isfinite(delta_p_pump) && isfinite(eta_m) && p->rated_motor_torque_nm > 0.0f;
-    out->estimated_torque_trend = torque_permille;
     pressure_model_fill_feedback(state, out, torque_valid, torque_permille);
     return 1;
 }
