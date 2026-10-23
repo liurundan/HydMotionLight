@@ -4363,6 +4363,25 @@ static HYD_BOOL HYD_ApplyActiveRbfDebugGain(HYD_MotionControlFB* fb,
         RBF_PID_SetParamLimits(
             &fb->_pressureController.rbfPid,
             minKp, maxKp, minKi, maxKi, minKd, maxKd);
+
+        /* SetParameter is a commissioning override for the current adaptive
+         * gains, not only a window update.  SetParamLimits() clamps the old
+         * gain into the new window, which leaves a stale higher gain when the
+         * requested value is below the previous minimum. */
+        switch (parameter) {
+            case HYD_PARAM_PRESSURE_KP:
+                fb->_pressureController.rbfPid.KP = (float)value;
+                break;
+            case HYD_PARAM_PRESSURE_KI:
+                fb->_pressureController.rbfPid.KI = (float)value;
+                break;
+            case HYD_PARAM_PRESSURE_KD:
+                fb->_pressureController.rbfPid.KD = (float)value;
+                fb->_pressureController.rbfPid.pid_mode_kd = (float)value;
+                break;
+            default:
+                return false;
+        }
     }
 
     return true;

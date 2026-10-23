@@ -249,6 +249,22 @@ static void test_rbf_gain_write_updates_active_runtime_window(void) {
     IEC_VAL(wp.EN) = true;
     IEC_VAL(wp.AXISID) = 0;
     IEC_VAL(wp.EXECUTE) = true;
+    IEC_VAL(wp.PARAMETERNUMBER) = HYD_PARAM_PRESSURE_KP;
+    IEC_VAL(wp.VALUE) = 0.1;
+    __mcl_cmd_WriteParameter(&wp);
+    ASSERT_TRUE(IEC_VAL(wp.DONE) == true,
+                "RBF KP write should accept a value below the previous minKp");
+    ASSERT_FLOAT_EQ(fb->_activeSegment.pressureRbfConfig.minKp, 0.1f, 0.0001f,
+                    "Lower RBF KP write should update active minKp");
+    ASSERT_FLOAT_EQ(fb->_activeSegment.pressureRbfConfig.maxKp, 0.4f, 0.0001f,
+                    "Lower RBF KP write should update active maxKp");
+    ASSERT_FLOAT_EQ(fb->_pressureController.rbfPid.KP, 0.1f, 0.0001f,
+                    "Lower RBF KP write should update the live KP instead of retaining the old value");
+
+    memset(&wp, 0, sizeof(wp));
+    IEC_VAL(wp.EN) = true;
+    IEC_VAL(wp.AXISID) = 0;
+    IEC_VAL(wp.EXECUTE) = true;
     IEC_VAL(wp.PARAMETERNUMBER) = HYD_PARAM_PRESSURE_KI;
     IEC_VAL(wp.VALUE) = 0.02;
     __mcl_cmd_WriteParameter(&wp);
@@ -284,7 +300,7 @@ static void test_rbf_gain_write_updates_active_runtime_window(void) {
                                    &fb->_pressureController,
                                    &input,
                                    &output);
-    ASSERT_FLOAT_EQ(fb->_pressureController.rbfPid.min_KP, 0.7f, 0.0001f,
+    ASSERT_FLOAT_EQ(fb->_pressureController.rbfPid.min_KP, 0.1f, 0.0001f,
                     "The next RBF control cycle should preserve min_KP");
     ASSERT_FLOAT_EQ(fb->_pressureController.rbfPid.min_KI, 0.02f, 0.0001f,
                     "The next RBF control cycle should preserve min_KI");
@@ -302,7 +318,7 @@ static void test_rbf_gain_write_updates_active_runtime_window(void) {
                 "Non-finite RBF KP write should not set DONE");
     ASSERT_TRUE(IEC_VAL(wp.ERROR) == true,
                 "Non-finite RBF KP write should set ERROR");
-    ASSERT_FLOAT_EQ(fb->_activeSegment.pressureRbfConfig.minKp, 0.7f, 0.0001f,
+    ASSERT_FLOAT_EQ(fb->_activeSegment.pressureRbfConfig.minKp, 0.1f, 0.0001f,
                     "Rejected RBF KP write should preserve the active window");
 
     fb->_activeSegment.pressureController = HYD_PRESSURE_CONTROLLER_PID;
@@ -317,7 +333,7 @@ static void test_rbf_gain_write_updates_active_runtime_window(void) {
                 "Classic PID KP write should retain the existing behavior");
     ASSERT_FLOAT_EQ(fb->_params.pressureKp, 2.5f, 0.0001f,
                     "Classic PID KP write should update _params");
-    ASSERT_FLOAT_EQ(fb->_activeSegment.pressureRbfConfig.minKp, 0.7f, 0.0001f,
+    ASSERT_FLOAT_EQ(fb->_activeSegment.pressureRbfConfig.minKp, 0.1f, 0.0001f,
                     "Classic PID KP write should not update the RBF window");
 }
 
