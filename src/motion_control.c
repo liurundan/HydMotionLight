@@ -41,6 +41,10 @@ static HYD_BOOL HYD_QueuePendingCommand(HYD_MotionControlFB* fb,
                                         HYD_UINT segmentIndex,
                                         HYD_TIME timestamp);
 static HYD_BOOL HYD_IsValidPressureControllerParameter(HYD_REAL value);
+static HYD_BOOL HYD_IsActiveRbfPidSegment(const HYD_MotionControlFB* fb);
+static HYD_BOOL HYD_ApplyActiveRbfDebugGain(HYD_MotionControlFB* fb,
+                                            HYD_ParameterNumber parameter,
+                                            HYD_REAL value);
 static void HYD_MotionControlFB_RunRunningState(HYD_MotionControlFB* fb);
 static HYD_BOOL HYD_RunRunningStateStopping(HYD_MotionControlFB* fb,
                                             const HYD_MotionSegment* segment,
@@ -4218,11 +4222,29 @@ HYD_BOOL HYD_MotionControlFB_WriteParameter(HYD_MotionControlFB* fb, int paramNu
         case HYD_PARAM_MAX_DECELERATION:               fb->_params.maxDeceleration = value; break;
         case HYD_PARAM_MAX_FLOW:                       fb->_params.maxFlow = value; break;
         case HYD_PARAM_PRESSURE_RAMP_RATE:             fb->_params.pressureRampRate = value; break;
-        case HYD_PARAM_PRESSURE_KP:                    fb->_params.pressureKp = value; break;
+        case HYD_PARAM_PRESSURE_KP:
+            if (HYD_IsActiveRbfPidSegment(fb) &&
+                !HYD_ApplyActiveRbfDebugGain(fb, HYD_PARAM_PRESSURE_KP, value)) {
+                return false;
+            }
+            fb->_params.pressureKp = value;
+            break;
         case HYD_PARAM_PRESSURE_KP_HIGH:               fb->_params.pressureKpHigh = value; break;
         case HYD_PARAM_PRESSURE_GAIN_BAND:             fb->_params.pressureGainBand = value; break;
-        case HYD_PARAM_PRESSURE_KI:                    fb->_params.pressureKi = value; break;
-        case HYD_PARAM_PRESSURE_KD:                    fb->_params.pressureKd = value; break;
+        case HYD_PARAM_PRESSURE_KI:
+            if (HYD_IsActiveRbfPidSegment(fb) &&
+                !HYD_ApplyActiveRbfDebugGain(fb, HYD_PARAM_PRESSURE_KI, value)) {
+                return false;
+            }
+            fb->_params.pressureKi = value;
+            break;
+        case HYD_PARAM_PRESSURE_KD:
+            if (HYD_IsActiveRbfPidSegment(fb) &&
+                !HYD_ApplyActiveRbfDebugGain(fb, HYD_PARAM_PRESSURE_KD, value)) {
+                return false;
+            }
+            fb->_params.pressureKd = value;
+            break;
         case HYD_PARAM_PRESSURE_INTEGRAL_LIMIT:        fb->_params.pressureIntegralLimit = value; break;
         case HYD_PARAM_PRESSURE_DEADBAND:              fb->_params.pressureDeadband = value; break;
         case HYD_PARAM_PRESSURE_FILTER_ALPHA:          fb->_params.pressureFilterAlpha = value; break;
@@ -4255,6 +4277,94 @@ HYD_BOOL HYD_MotionControlFB_WriteParameter(HYD_MotionControlFB* fb, int paramNu
             break;
         default: return false;
     }
+    return true;
+}
+
+static HYD_BOOL HYD_IsActiveRbfPidSegment(const HYD_MotionControlFB* fb)
+{
+    HYD_PressureControllerType controller;
+
+    if (fb == NULL || !fb->_activeSegmentValid ||
+        fb->_activeSegment.mode != HYD_MODE_PRESSURE_CLOSED_LOOP) {
+        return false;
+    }
+
+    controller = fb->_activeSegment.pressureController;
+    return controller == HYD_PRESSURE_CONTROLLER_RBF_PID ||
+           controller == HYD_PRESSURE_CONTROLLER_RBF_PI;
+}
+
+static HYD_BOOL HYD_ApplyActiveRbfDebugGain(HYD_MotionControlFB* fb,
+                                            HYD_ParameterNumber parameter,
+                                            HYD_REAL value)
+{
+    HYD_REAL maxValue;
+    HYD_RbfPidConfig* config;
+    float minKp;
+    float maxKp;
+    float minKi;
+    float maxKi;
+    float minKd;
+    float maxKd;
+
+    if (fb == NULL || !HYD_IsActiveRbfPidSegment(fb) ||
+        !isfinite(value) || value <= 0.0) {
+        return false;
+    }
+
+    maxValue = value + (HYD_REAL)0.3;
+    if (!isfinite(maxValue)) {
+        return false;
+    }
+
+    config = &fb->_activeSegment.pressureRbfConfig;
+    switch (parameter) {
+        case HYD_PARAM_PRESSURE_KP:
+            config->minKp = value;
+            config->maxKp = maxValue;
+            break;
+        case HYD_PARAM_PRESSURE_KI:
+            config->minKi = value;
+            config->maxKi = maxValue;
+            break;
+        case HYD_PARAM_PRESSURE_KD:
+            config->minKd = value;
+            config->maxKd = maxValue;
+            break;
+        default:
+            return false;
+    }
+
+    if (fb->_pressureController.rbfInitialized) {
+        minKp = fb->_pressureController.rbfPid.min_KP;
+        maxKp = fb->_pressureController.rbfPid.max_KP;
+        minKi = fb->_pressureController.rbfPid.min_KI;
+        maxKi = fb->_pressureController.rbfPid.max_KI;
+        minKd = fb->_pressureController.rbfPid.min_KD;
+        maxKd = fb->_pressureController.rbfPid.max_KD;
+
+        switch (parameter) {
+            case HYD_PARAM_PRESSURE_KP:
+                minKp = (float)value;
+                maxKp = (float)maxValue;
+                break;
+            case HYD_PARAM_PRESSURE_KI:
+                minKi = (float)value;
+                maxKi = (float)maxValue;
+                break;
+            case HYD_PARAM_PRESSURE_KD:
+                minKd = (float)value;
+                maxKd = (float)maxValue;
+                break;
+            default:
+                return false;
+        }
+
+        RBF_PID_SetParamLimits(
+            &fb->_pressureController.rbfPid,
+            minKp, maxKp, minKi, maxKi, minKd, maxKd);
+    }
+
     return true;
 }
 
