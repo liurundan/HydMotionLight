@@ -386,7 +386,7 @@ void PressureModel_InitParams(PressureModelParams *params) {
     params->flow_ripple_ratio = 0.08f;
     params->tooth_drop_depth_ratio = 0.10f;
     params->tooth_drop_width_ratio = 0.20f;
-    params->min_rpm = -200.0f;
+    params->min_rpm = -1000.0f;
     params->max_rpm = 2000.0f;
     params->enable_sensor_noise = 1u;
     params->enable_motor_noise = 1u;

@@ -306,6 +306,7 @@ static HYD_MotionSegment buildPressureSegment(
     seg.pressureKp = fb->_params.pressureKp;
     seg.pressureKi = fb->_params.pressureKi;
     seg.pressureKd = fb->_params.pressureKd;
+
     seg.pressureIntegralLimit = fb->_params.pressureIntegralLimit;
     seg.pressureDeadband = fb->_params.pressureDeadband;
     seg.pressureFilterAlpha = fb->_params.pressureFilterAlpha;

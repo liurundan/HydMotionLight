@@ -16,24 +16,25 @@
 #include <math.h>
 #include <string.h>
 #include "debug_values.h"
+#include "motion_control.h"
 
 #define EPS 1e-6f
 
 /* 微分滤波系数，可由 hyd_config.h 覆盖 */
 #ifndef HYD_THRESH_RBF_DERIV_FILTER_ALPHA
-#define HYD_THRESH_RBF_DERIV_FILTER_ALPHA 0.3f
+#define HYD_THRESH_RBF_DERIV_FILTER_ALPHA 0.5f
 #endif
 
 /* ==================== 具名常量（含单位） ==================== */
-static const float RBF_PID_ERROR_DEADBAND_RATIO = 0.0002f;  /* 误差死区 = 0.04%*压力量程 */
+static const float RBF_PID_ERROR_DEADBAND_RATIO = 0.001f;  /* 误差死区 = 0.04%*压力量程 */
 static const float RBF_PID_ERROR_DEADBAND_MIN   = 0.05f;    /* 误差死区下限 [bar] */
 static const float RBF_PID_SOFT_CAP_RATIO       = 1.05f;    /* 软限幅 = P_set*1.05/K */
 static const float RBF_PID_NEAR_TARGET_RATIO    = 0.08f;    /* 近目标判定: |e|<=8%*|P_set| */
 static const float RBF_PID_WEIGHT_LIMIT         = 5.0f;     /* RBF 权重钳位 */
 static const float RBF_PID_STEADY_DEADZONE_RATIO= 0.002f;   /* RBF冻结死区 = 0.5%*量程 */
 static const float RBF_PID_STEADY_DE_RATIO      = 1.0f;     /* 误差变化率死区系数 */
-static const float RBF_PID_INCR_I_LIMIT         = 0.08f;    /* 增量I项单步限幅 [L/min] */
-static const float RBF_PID_VEL_DAMP_LIMIT       = 1.0f;     /* 速度阻尼项限幅 [L/min] */
+static const float RBF_PID_INCR_I_LIMIT         = 0.05f;    /* 增量I项单步限幅 [L/min] */
+static const float RBF_PID_VEL_DAMP_LIMIT       = 0.15f;     /* 速度阻尼项限幅 [L/min] */
 
 /* 增益单步步长限幅（防梯度异常导致参数突跳） */
 static const float RBF_PID_KP_STEP_LIMIT = 0.01f;
@@ -55,7 +56,8 @@ static const float RBF_PID_STEADY_DU_LIMIT     = 2.0f;   /* [L/min] */
 static const float RBF_PID_STEADY_MIN_SETPOINT = 5.0f;   /* [bar] */
 
 /* 速度阻尼方向门控阈值 [bar/step]：单步压力上升超过该值才启用阻尼。 */
-static const float RBF_PID_VEL_DAMP_RISE_THRESH = 0.31f;
+static const float RBF_PID_VEL_DAMP_RISE_THRESH = 0.02f;
+static HYD_PumpFeedback PumpFeedback;
 
 /* ==================== 基础工具 ==================== */
 static float sign(float x)
@@ -98,6 +100,34 @@ static void sort_pair(float *low, float *high)
 }
 
 /* ==================== 内部解析 ==================== */
+#define RIPPLE_MU           1.0f    /* 权步长 [1/s]，现场可在 0.5~2.0 调整 */
+#define RIPPLE_OUT_LIMIT    0.15f   /* 前馈输出限幅 [L/min] */
+
+static float ripple_ff_update(RIPPLE_FF *ff, float theta_rad, float error, float ts)
+{
+    float u = 0.0f;
+    int k;
+
+    if (ff->warmup < 200U) {          /* 前 200 ms 只观测不输出，防启动冲击 */
+        ff->warmup++;
+    }
+
+    for (k = 0; k < RIPPLE_HARMONICS; ++k) {
+        float ph = RIPPLE_TEETH * (float)(k + 1) * theta_rad;
+        float c  = cosf(ph);
+        float s  = sinf(ph);
+        ff->a_cos[k] += RIPPLE_MU * ts * error * c;
+        ff->a_sin[k] += RIPPLE_MU * ts * error * s;
+        ff->a_cos[k] = clampf(-0.30f, ff->a_cos[k], 0.30f);   /* 防止发散 */
+        ff->a_sin[k] = clampf(-0.30f, ff->a_sin[k], 0.30f);
+        u += ff->a_cos[k] * c + ff->a_sin[k] * s;
+    }
+
+    ff->out = (ff->warmup >= 200U) ? clampf(-RIPPLE_OUT_LIMIT, u, RIPPLE_OUT_LIMIT)
+                                   : 0.0f;
+    ff->theta_prev = theta_rad;
+    return ff->out;
+}
 
 /* v3.2：流量归一化标尺（辨识器 x[0] = u / flow_scale） */
 static float rbf_pid_effective_flow_scale(const RBF_PID_Handle *pid)
@@ -470,7 +500,7 @@ static void rbf_pid_step_adaptive_gains(RBF_PID_Handle *pid, float error)
     float de, dde;
     float e_n, de_n, dde_n;
     float grad, delta;
-
+    float learning_rate = 1.0f;
     if (!pid->learning_enabled) return;
     if (pid->fault_flags & (RBF_PID_FAULT_JACOBIAN_SIGN |
                             RBF_PID_FAULT_NETWORK)) return;
@@ -483,13 +513,16 @@ static void rbf_pid_step_adaptive_gains(RBF_PID_Handle *pid, float error)
     de_n  = de / pressure_scale;
     dde_n = dde / pressure_scale;
 
+    if(rbf_pid_near_target(pid)) {
+		learning_rate = 0.5f; /* 近目标段减半学习率，抑制过冲 */
+	}
     /* ---- Kp：ΔKp = ηp * e_n * J * de_n ---- */
-    grad = pid->eta_p * e_n * pid->Jacobian * de_n;
+    grad = pid->eta_p * e_n * pid->Jacobian * de_n * learning_rate;
     grad = clampf(-RBF_PID_KP_STEP_LIMIT, grad, RBF_PID_KP_STEP_LIMIT);
     pid->KP = clampf(pid->min_KP, pid->KP + grad, pid->max_KP);
 
     /* ---- Ki：ΔKi = ηi * e_n * J * e_n − λ(KI−center) ---- */
-    grad = pid->eta_i * e_n * pid->Jacobian * e_n - LAMBDA_KI * (pid->KI - KI_CENTER);
+    grad = (pid->eta_i * e_n * pid->Jacobian * e_n - LAMBDA_KI * (pid->KI - KI_CENTER)) * learning_rate;
     delta = clampf(-RBF_PID_KI_STEP_LIMIT, grad, RBF_PID_KI_STEP_LIMIT);
     pid->KI = clampf(pid->min_KI, pid->KI + delta, pid->max_KI);
 
@@ -506,7 +539,7 @@ static void rbf_pid_step_adaptive_gains(RBF_PID_Handle *pid, float error)
         }
         else
         {
-            grad = pid->eta_d * e_n * pid->Jacobian * fabsf(dde_n);
+            grad = pid->eta_d * e_n * pid->Jacobian * fabsf(dde_n) * learning_rate;
             if (error * de < 0.0f) {
                 delta = fmaxf(grad, 0.0f);
             } else {
@@ -578,6 +611,16 @@ static void rbf_pid_step_incremental_output(RBF_PID_Handle *pid, float error)
             ff_delta = pid->feedforward_flow - pid->feedforward_flow_prev;
         }
         pid->feedforward_flow_prev = pid->feedforward_flow;
+
+
+        HYD_MotionControl_GetPumpFeedback(&PumpFeedback);
+        pid->pump_angle_rad = PumpFeedback.angleDeg * ( (float)M_PI / 180.0f);
+        float u_ff_ripple = ripple_ff_update(&pid->ripple_ff, pid->pump_angle_rad,
+                                            error, RBF_PID_FIXED_SAMPLING_PERIOD) * 0.01;
+
+        HYD_Debug_SetValue(3,pid->Jacobian);
+        HYD_Debug_SetValue(4,u_ff_ripple);
+
 
         pid->du = !isfinite(du) ? 0.0f : du;
         pid->Output = pid->u_prev + pid->du + f_velfb + ff_delta;
