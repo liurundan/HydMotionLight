@@ -265,6 +265,29 @@ static void HYD_ResolveRbfPidConfig(const HYD_MotionSegment* segment, HYD_RbfPid
         segment->pressureRbfConfig.disablePressureAccelFeedforward > 0.0 ? 1.0 : 0.0;
 }
 
+static HYD_BOOL HYD_IsCenteredDebugGainWindow(HYD_REAL center,
+                                             HYD_REAL minValue,
+                                             HYD_REAL maxValue)
+{
+    HYD_REAL expectedMin;
+    HYD_REAL expectedMax;
+    HYD_REAL tolerance;
+
+    if (!isfinite(center) || center <= 0.0 ||
+        !isfinite(minValue) || !isfinite(maxValue)) {
+        return HYD_FALSE;
+    }
+
+    expectedMin = center *
+        ((HYD_REAL)1.0 - (HYD_REAL)HYD_RBF_DEBUG_GAIN_WINDOW_RATIO);
+    expectedMax = center *
+        ((HYD_REAL)1.0 + (HYD_REAL)HYD_RBF_DEBUG_GAIN_WINDOW_RATIO);
+    tolerance = ((HYD_REAL)1.0 + fabs(center)) * (HYD_REAL)HYD_RBF_CFG_EPS;
+
+    return fabs(minValue - expectedMin) <= tolerance &&
+           fabs(maxValue - expectedMax) <= tolerance;
+}
+
 /* 压力归一化标量解析（供 Apply 与配置指纹比较共用，避免逻辑漂移） */
 static HYD_REAL HYD_ResolvePressureNormalizationScale(const HYD_MotionSegment* segment)
 {
@@ -460,6 +483,28 @@ static void HYD_ApplyRbfPidConfig(HYD_PressureControllerState* state,
     wasRbfInitialized = state->rbfInitialized;
     HYD_EnsureRbfPidInitialized(state, config->samplingPeriod, config->outputMax,
                                 flowToPumpSpeedGain, pumpSpeedLimit);
+
+    /* A PLC debug window is centered on the segment gain. If the controller
+     * is reinitialized after the active source segment is reloaded, restore
+     * that center instead of starting from RBF_PID_Init's default gain. */
+    if (!wasRbfInitialized && segment != NULL) {
+        if (HYD_IsCenteredDebugGainWindow(segment->pressureKp,
+                                          segment->pressureRbfConfig.minKp,
+                                          segment->pressureRbfConfig.maxKp)) {
+            state->rbfPid.KP = (float)segment->pressureKp;
+        }
+        if (HYD_IsCenteredDebugGainWindow(segment->pressureKi,
+                                          segment->pressureRbfConfig.minKi,
+                                          segment->pressureRbfConfig.maxKi)) {
+            state->rbfPid.KI = (float)segment->pressureKi;
+        }
+        if (HYD_IsCenteredDebugGainWindow(segment->pressureKd,
+                                          segment->pressureRbfConfig.minKd,
+                                          segment->pressureRbfConfig.maxKd)) {
+            state->rbfPid.KD = (float)segment->pressureKd;
+            state->rbfPid.pid_mode_kd = (float)segment->pressureKd;
+        }
+    }
 
     /* A prior config refresh may already have clamped the live gain to the
      * built-in defaults. Restore the latest debug value before applying the

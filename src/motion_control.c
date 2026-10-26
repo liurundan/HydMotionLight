@@ -4294,6 +4294,35 @@ static HYD_BOOL HYD_IsActiveRbfPidSegment(const HYD_MotionControlFB* fb)
            controller == HYD_PRESSURE_CONTROLLER_RBF_PI;
 }
 
+static void HYD_SetRbfDebugGainOnSegment(HYD_MotionSegment* segment,
+                                         HYD_ParameterNumber parameter,
+                                         HYD_REAL value,
+                                         HYD_REAL minValue,
+                                         HYD_REAL maxValue)
+{
+    if (segment == NULL) return;
+
+    switch (parameter) {
+        case HYD_PARAM_PRESSURE_KP:
+            segment->pressureKp = value;
+            segment->pressureRbfConfig.minKp = minValue;
+            segment->pressureRbfConfig.maxKp = maxValue;
+            break;
+        case HYD_PARAM_PRESSURE_KI:
+            segment->pressureKi = value;
+            segment->pressureRbfConfig.minKi = minValue;
+            segment->pressureRbfConfig.maxKi = maxValue;
+            break;
+        case HYD_PARAM_PRESSURE_KD:
+            segment->pressureKd = value;
+            segment->pressureRbfConfig.minKd = minValue;
+            segment->pressureRbfConfig.maxKd = maxValue;
+            break;
+        default:
+            break;
+    }
+}
+
 static HYD_BOOL HYD_ApplyActiveRbfDebugGain(HYD_MotionControlFB* fb,
                                             HYD_ParameterNumber parameter,
                                             HYD_REAL value)
@@ -4301,7 +4330,6 @@ static HYD_BOOL HYD_ApplyActiveRbfDebugGain(HYD_MotionControlFB* fb,
     const HYD_REAL gainWindowRatio = (HYD_REAL)HYD_RBF_DEBUG_GAIN_WINDOW_RATIO;
     HYD_REAL minValue;
     HYD_REAL maxValue;
-    HYD_RbfPidConfig* config;
     float runtimeValue;
     float runtimeMinValue;
     float runtimeMaxValue;
@@ -4330,22 +4358,17 @@ static HYD_BOOL HYD_ApplyActiveRbfDebugGain(HYD_MotionControlFB* fb,
         return false;
     }
 
-    config = &fb->_activeSegment.pressureRbfConfig;
-    switch (parameter) {
-        case HYD_PARAM_PRESSURE_KP:
-            config->minKp = minValue;
-            config->maxKp = maxValue;
-            break;
-        case HYD_PARAM_PRESSURE_KI:
-            config->minKi = minValue;
-            config->maxKi = maxValue;
-            break;
-        case HYD_PARAM_PRESSURE_KD:
-            config->minKd = minValue;
-            config->maxKd = maxValue;
-            break;
-        default:
-            return false;
+    HYD_SetRbfDebugGainOnSegment(&fb->_activeSegment, parameter,
+                                 value, minValue, maxValue);
+    if (fb->_activeSegmentSource == HYD_SEGMENT_SOURCE_DIRECT &&
+        fb->DIRECT_SEGMENT_VALID) {
+        HYD_SetRbfDebugGainOnSegment(&fb->DIRECT_SEGMENT, parameter,
+                                     value, minValue, maxValue);
+    } else if (fb->_activeSegmentSource == HYD_SEGMENT_SOURCE_RECIPE &&
+               fb->STATE.currentSegmentIndex < fb->RECIPE_SIZE) {
+        HYD_SetRbfDebugGainOnSegment(
+            &fb->RECIPE[fb->STATE.currentSegmentIndex], parameter,
+            value, minValue, maxValue);
     }
 
     /* Keep the PLC override authoritative when later config application

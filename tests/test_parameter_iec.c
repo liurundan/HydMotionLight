@@ -207,9 +207,15 @@ static void test_rbf_gain_write_updates_active_runtime_window(void) {
     fb->_activeSegmentValid = true;
     fb->_activeSegment.mode = HYD_MODE_PRESSURE_CLOSED_LOOP;
     fb->_activeSegment.pressureController = HYD_PRESSURE_CONTROLLER_RBF_PID;
+    fb->_activeSegment.pressureKp = fb->_params.pressureKp;
+    fb->_activeSegment.pressureKi = fb->_params.pressureKi;
+    fb->_activeSegment.pressureKd = fb->_params.pressureKd;
     fb->_activeSegment.targetPressure = 100.0f;
     fb->_activeSegment.maxFlow = 20.0f;
     fb->_activeSegment.systemGain = 30.0f;
+    fb->_activeSegmentSource = HYD_SEGMENT_SOURCE_DIRECT;
+    fb->DIRECT_SEGMENT_VALID = true;
+    fb->DIRECT_SEGMENT = fb->_activeSegment;
     HYD_PressureController_InitState(&fb->_pressureController, 0.0, 0.0, 0.0);
 
     memset(&input, 0, sizeof(input));
@@ -236,6 +242,12 @@ static void test_rbf_gain_write_updates_active_runtime_window(void) {
                     "Pre-init KP write should replace the default lower bound");
     ASSERT_FLOAT_EQ(fb->_activeSegment.pressureRbfConfig.maxKp, 0.6f, 0.0001f,
                     "Pre-init KP write should replace the default upper bound");
+    ASSERT_FLOAT_EQ(fb->DIRECT_SEGMENT.pressureKp, 0.5f, 0.0001f,
+                    "Pre-init KP write should update the direct segment source gain");
+    ASSERT_FLOAT_EQ(fb->DIRECT_SEGMENT.pressureRbfConfig.minKp, 0.4f, 0.0001f,
+                    "Pre-init KP write should update the direct source lower bound");
+    ASSERT_FLOAT_EQ(fb->DIRECT_SEGMENT.pressureRbfConfig.maxKp, 0.6f, 0.0001f,
+                    "Pre-init KP write should update the direct source upper bound");
 
     memset(&wp, 0, sizeof(wp));
     IEC_VAL(wp.EN) = true;
@@ -246,6 +258,12 @@ static void test_rbf_gain_write_updates_active_runtime_window(void) {
     __mcl_cmd_WriteParameter(&wp);
     ASSERT_TRUE(IEC_VAL(wp.DONE) == true,
                 "RBF KI write before controller initialization should succeed");
+    ASSERT_FLOAT_EQ(fb->DIRECT_SEGMENT.pressureKi, 0.02f, 0.0001f,
+                    "Pre-init KI write should update the direct segment source gain");
+    ASSERT_FLOAT_EQ(fb->DIRECT_SEGMENT.pressureRbfConfig.minKi, 0.016f, 0.0001f,
+                    "Pre-init KI write should update the direct source lower bound");
+    ASSERT_FLOAT_EQ(fb->DIRECT_SEGMENT.pressureRbfConfig.maxKi, 0.024f, 0.0001f,
+                    "Pre-init KI write should update the direct source upper bound");
 
     memset(&wp, 0, sizeof(wp));
     IEC_VAL(wp.EN) = true;
@@ -256,6 +274,12 @@ static void test_rbf_gain_write_updates_active_runtime_window(void) {
     __mcl_cmd_WriteParameter(&wp);
     ASSERT_TRUE(IEC_VAL(wp.DONE) == true,
                 "RBF KD write before controller initialization should succeed");
+    ASSERT_FLOAT_EQ(fb->DIRECT_SEGMENT.pressureKd, 0.04f, 0.0001f,
+                    "Pre-init KD write should update the direct segment source gain");
+    ASSERT_FLOAT_EQ(fb->DIRECT_SEGMENT.pressureRbfConfig.minKd, 0.032f, 0.0001f,
+                    "Pre-init KD write should update the direct source lower bound");
+    ASSERT_FLOAT_EQ(fb->DIRECT_SEGMENT.pressureRbfConfig.maxKd, 0.048f, 0.0001f,
+                    "Pre-init KD write should update the direct source upper bound");
 
     HYD_PressureController_Execute(&fb->_activeSegment,
                                    &fb->_pressureController,
@@ -315,6 +339,12 @@ static void test_rbf_gain_write_updates_active_runtime_window(void) {
                     "Lower RBF KP write should replace the live max_KP");
     ASSERT_FLOAT_EQ(fb->_pressureController.rbfPid.KP, 0.3f, 0.0001f,
                     "Lower RBF KP write should make the requested value live");
+    ASSERT_FLOAT_EQ(fb->DIRECT_SEGMENT.pressureKp, 0.3f, 0.0001f,
+                    "Lower RBF KP write should update the direct segment source gain");
+    ASSERT_FLOAT_EQ(fb->DIRECT_SEGMENT.pressureRbfConfig.minKp, 0.24f, 0.0001f,
+                    "Lower RBF KP write should persist its source lower bound");
+    ASSERT_FLOAT_EQ(fb->DIRECT_SEGMENT.pressureRbfConfig.maxKp, 0.36f, 0.0001f,
+                    "Lower RBF KP write should persist its source upper bound");
 
     memset(&wp, 0, sizeof(wp));
     IEC_VAL(wp.EN) = true;
@@ -374,9 +404,7 @@ static void test_rbf_gain_write_updates_active_runtime_window(void) {
 
     /* A later configuration refresh may resolve zero segment limits back to
      * the header defaults. The PLC debug override must retain precedence. */
-    fallbackSegment = fb->_activeSegment;
-    memset(&fallbackSegment.pressureRbfConfig, 0,
-           sizeof(fallbackSegment.pressureRbfConfig));
+    fallbackSegment = fb->DIRECT_SEGMENT;
     for (cycle = 0; cycle < 10; ++cycle) {
         input.outputMax = (cycle % 2 == 0) ? 19.5f : 20.0f;
         input.timestamp += 0.001f;
@@ -405,6 +433,23 @@ static void test_rbf_gain_write_updates_active_runtime_window(void) {
                     fb->_pressureController.rbfPid.KD <= 0.048f + 0.0001f,
                     "Default config refresh must keep adaptive KD in the debug window");
     }
+
+    /* Reinitializing the pressure controller must also recover the debug
+     * center and window from the persisted direct segment source. */
+    input.outputMax = 20.0f;
+    input.timestamp += 0.001f;
+    HYD_PressureController_InitState(&fb->_pressureController, 0.0f, 0.0f,
+                                     input.timestamp);
+    HYD_PressureController_Execute(&fb->DIRECT_SEGMENT,
+                                   &fb->_pressureController,
+                                   &input,
+                                   &output);
+    ASSERT_FLOAT_EQ(fb->_pressureController.rbfPid.min_KP, 0.24f, 0.0001f,
+                    "Controller reinitialization must retain the direct source KP minimum");
+    ASSERT_FLOAT_EQ(fb->_pressureController.rbfPid.max_KP, 0.36f, 0.0001f,
+                    "Controller reinitialization must retain the direct source KP maximum");
+    ASSERT_FLOAT_EQ(fb->_pressureController.rbfPid.KP, 0.3f, 0.0001f,
+                    "Controller reinitialization must restore the requested KP center");
 
     memset(&wp, 0, sizeof(wp));
     IEC_VAL(wp.EN) = true;
@@ -460,6 +505,67 @@ static void test_read_status_reports_applied_pressure_controller(void) {
     ASSERT_TRUE(IEC_VAL(rs.PRESSURECONTROLLERAPPLIED) ==
                     (IEC_INT)HYD_PRESSURE_CONTROLLER_NONE,
                 "ReadStatus should clear applied controller when disabled");
+}
+
+static void test_rbf_debug_gain_persists_to_recipe_source(void) {
+    HYD_MotionControlFB* fb;
+    HYD_PressureControllerInput input;
+    HYD_PressureControllerOutput output;
+    HYD_WRITEPARAMETER wp;
+
+    __HydMotion_framework_Init();
+    ensure_axis_allocated();
+    fb = __MK_GetPublic_MotionControlFB(0);
+    ASSERT_TRUE(fb != NULL, "RBF recipe source test should have an allocated FB");
+
+    memset(&fb->_activeSegment, 0, sizeof(fb->_activeSegment));
+    fb->_activeSegmentValid = true;
+    fb->_activeSegment.mode = HYD_MODE_PRESSURE_CLOSED_LOOP;
+    fb->_activeSegment.pressureController = HYD_PRESSURE_CONTROLLER_RBF_PID;
+    fb->_activeSegment.pressureKp = fb->_params.pressureKp;
+    fb->_activeSegment.pressureKi = fb->_params.pressureKi;
+    fb->_activeSegment.pressureKd = fb->_params.pressureKd;
+    fb->_activeSegment.targetPressure = 100.0f;
+    fb->_activeSegment.maxFlow = 20.0f;
+    fb->_activeSegment.systemGain = 30.0f;
+    fb->_activeSegmentSource = HYD_SEGMENT_SOURCE_RECIPE;
+    fb->STATE.currentSegmentIndex = 0U;
+    fb->RECIPE_SIZE = 1U;
+    fb->RECIPE[0] = fb->_activeSegment;
+    HYD_PressureController_InitState(&fb->_pressureController, 0.0, 0.0, 0.0);
+
+    memset(&wp, 0, sizeof(wp));
+    IEC_VAL(wp.EN) = true;
+    IEC_VAL(wp.AXISID) = 0;
+    IEC_VAL(wp.EXECUTE) = true;
+    IEC_VAL(wp.PARAMETERNUMBER) = HYD_PARAM_PRESSURE_KP;
+    IEC_VAL(wp.VALUE) = 0.3;
+    __mcl_cmd_WriteParameter(&wp);
+    ASSERT_TRUE(IEC_VAL(wp.DONE) == true,
+                "RBF KP write on an active recipe segment should succeed");
+    ASSERT_FLOAT_EQ(fb->RECIPE[0].pressureKp, 0.3f, 0.0001f,
+                    "RBF KP write should update the recipe source center");
+    ASSERT_FLOAT_EQ(fb->RECIPE[0].pressureRbfConfig.minKp, 0.24f, 0.0001f,
+                    "RBF KP write should persist the recipe source lower bound");
+    ASSERT_FLOAT_EQ(fb->RECIPE[0].pressureRbfConfig.maxKp, 0.36f, 0.0001f,
+                    "RBF KP write should persist the recipe source upper bound");
+
+    memset(&input, 0, sizeof(input));
+    input.outputMin = -5.0f;
+    input.outputMax = 20.0f;
+    input.flowToPumpSpeedGain = 20.0f;
+    input.pumpSpeedLimit = 1800.0f;
+    input.timestamp = 0.001f;
+    HYD_PressureController_InitState(&fb->_pressureController, 0.0f, 0.0f,
+                                     input.timestamp);
+    HYD_PressureController_Execute(&fb->RECIPE[0], &fb->_pressureController,
+                                   &input, &output);
+    ASSERT_FLOAT_EQ(fb->_pressureController.rbfPid.min_KP, 0.24f, 0.0001f,
+                    "Recipe reinitialization should retain the debug KP minimum");
+    ASSERT_FLOAT_EQ(fb->_pressureController.rbfPid.max_KP, 0.36f, 0.0001f,
+                    "Recipe reinitialization should retain the debug KP maximum");
+    ASSERT_FLOAT_EQ(fb->_pressureController.rbfPid.KP, 0.3f, 0.0001f,
+                    "Recipe reinitialization should restore the debug KP center");
 }
 
 static void test_read_status_reports_mechanism_state(void) {
@@ -667,6 +773,7 @@ int main(void) {
     test_invalid_axisid_iec();
     test_segment_builder_uses_fb_params();
     test_rbf_gain_write_updates_active_runtime_window();
+    test_rbf_debug_gain_persists_to_recipe_source();
     test_read_status_reports_applied_pressure_controller();
     test_read_status_reports_mechanism_state();
     test_pressure_handle_maps_percent_to_its_absolute_flow_limit();
