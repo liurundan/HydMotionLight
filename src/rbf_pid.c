@@ -26,15 +26,15 @@
 #endif
 
 /* ==================== 具名常量（含单位） ==================== */
-static const float RBF_PID_ERROR_DEADBAND_RATIO = 0.001f;  /* 误差死区 = 0.04%*压力量程 */
+static const float RBF_PID_ERROR_DEADBAND_RATIO = 0.002f;  /* 误差死区 = 0.04%*压力量程 */
 static const float RBF_PID_ERROR_DEADBAND_MIN   = 0.05f;    /* 误差死区下限 [bar] */
 static const float RBF_PID_SOFT_CAP_RATIO       = 1.05f;    /* 软限幅 = P_set*1.05/K */
 static const float RBF_PID_NEAR_TARGET_RATIO    = 0.08f;    /* 近目标判定: |e|<=8%*|P_set| */
 static const float RBF_PID_WEIGHT_LIMIT         = 5.0f;     /* RBF 权重钳位 */
 static const float RBF_PID_STEADY_DEADZONE_RATIO= 0.002f;   /* RBF冻结死区 = 0.5%*量程 */
 static const float RBF_PID_STEADY_DE_RATIO      = 1.0f;     /* 误差变化率死区系数 */
-static const float RBF_PID_INCR_I_LIMIT         = 0.05f;    /* 增量I项单步限幅 [L/min] */
-static const float RBF_PID_VEL_DAMP_LIMIT       = 0.15f;     /* 速度阻尼项限幅 [L/min] */
+static const float RBF_PID_INCR_I_LIMIT         = 0.08f;    /* 增量I项单步限幅 [L/min] */
+static const float RBF_PID_VEL_DAMP_LIMIT       = 0.5f;     /* 速度阻尼项限幅 [L/min] */
 
 /* 增益单步步长限幅（防梯度异常导致参数突跳） */
 static const float RBF_PID_KP_STEP_LIMIT = 0.01f;
@@ -56,7 +56,7 @@ static const float RBF_PID_STEADY_DU_LIMIT     = 2.0f;   /* [L/min] */
 static const float RBF_PID_STEADY_MIN_SETPOINT = 5.0f;   /* [bar] */
 
 /* 速度阻尼方向门控阈值 [bar/step]：单步压力上升超过该值才启用阻尼。 */
-static const float RBF_PID_VEL_DAMP_RISE_THRESH = 0.02f;
+static const float RBF_PID_VEL_DAMP_RISE_THRESH = 0.31f;
 static HYD_PumpFeedback PumpFeedback;
 
 /* ==================== 基础工具 ==================== */
@@ -98,36 +98,160 @@ static void sort_pair(float *low, float *high)
         *high = temp;
     }
 }
+/* 角度归一化到 [0, 2*pi) */
+static inline float ripple_norm_angle(float theta)
+{
+    float t = fmodf(theta, RIPPLE_TWO_PI);
+    if (t < 0.0f) {
+        t += RIPPLE_TWO_PI;
+    }
+    return t;
+}
 
-/* ==================== 内部解析 ==================== */
-#define RIPPLE_MU           1.0f    /* 权步长 [1/s]，现场可在 0.5~2.0 调整 */
-#define RIPPLE_OUT_LIMIT    0.15f   /* 前馈输出限幅 [L/min] */
+/* 计算带回绕校正的角度增量 (-pi, pi] */
+static inline float ripple_delta_angle(float theta_cur, float theta_prev)
+{
+    float d = theta_cur - theta_prev;
+    if (d >  (float)M_PI) {
+        d -= RIPPLE_TWO_PI;
+    } else if (d < -(float)M_PI) {
+        d += RIPPLE_TWO_PI;
+    }
+    return d;
+}
 
-static float ripple_ff_update(RIPPLE_FF *ff, float theta_rad, float error, float ts)
+/*---------------------------------------------------------------------------
+ * 3. 初始化
+ *-------------------------------------------------------------------------*/
+static void ripple_ff_init(RIPPLE_FF *ff, float lag_comp_s)
+{
+    int k;
+    if (ff == NULL) {
+        return;
+    }
+    for (k = 0; k < RIPPLE_HARMONICS; ++k) {
+        ff->a_cos[k] = 0.0f;
+        ff->a_sin[k] = 0.0f;
+    }
+    ff->theta_prev = 0.0f;
+    ff->lag_comp_s = lag_comp_s;   /* 泵->执行器->传感器滞后, 如 0.01~0.05s */
+    ff->out        = 0.0f;
+    ff->warmup     = 0U;
+    ff->state      = RIPPLE_STATE_INIT;
+    ff->speed_lpf  = 0.0f;
+}
+
+/*---------------------------------------------------------------------------
+ * 4. 系数冻结(如工况切换、报警时调用)
+ *-------------------------------------------------------------------------*/
+static void ripple_ff_freeze(RIPPLE_FF *ff)
+{
+    if (ff != NULL) {
+        ff->state = RIPPLE_STATE_FROZEN;
+        ff->out   = 0.0f;
+    }
+}
+
+/*---------------------------------------------------------------------------
+ * 5. 主更新函数
+ *    theta_rad : 泵轴角 [rad] (单圈或多圈累计均可, 内部归一化)
+ *    error     : PID 控制误差 (补偿方向与纹波同向时为正, 现场确认符号)
+ *    omega     : 泵轴角速度 [rad/s] (可用编码器速度, 与 theta 同源)
+ *    ts        : 采样周期 [s]
+ *    返回      : 前馈补偿量 [L/min]
+ *-------------------------------------------------------------------------*/
+static float ripple_ff_update(RIPPLE_FF *ff, float theta_rad,
+                              float error, float omega, float ts)
 {
     float u = 0.0f;
     int k;
 
-    if (ff->warmup < 200U) {          /* 前 200 ms 只观测不输出，防启动冲击 */
-        ff->warmup++;
+    if ((ff == NULL) || (ts <= 0.0f)) {
+        return 0.0f;
     }
 
+    /*--- 5.1 角度归一化 + 回绕校正的速度估计 ---*/
+    float theta_n   = ripple_norm_angle(theta_rad);
+    float dtheta    = ripple_delta_angle(theta_n, ff->theta_prev);
+    float speed_raw = fabsf(dtheta) / ts;           /* 反转也正确 */
+    ff->speed_lpf  += 0.2f * (speed_raw - ff->speed_lpf);  /* 一阶低通 */
+    /* omega 有效性检查: 编码器速度可用则优先, 否则用本地估计 */
+    if (!isfinite(omega) || (omega <= 0.0f)) {
+        omega = ff->speed_lpf;
+    } else {
+        omega = 0.5f * (omega + ff->speed_lpf);     /* 简单融合 */
+    }
+
+    /*--- 5.2 状态机 ---*/
+    if (ff->state == RIPPLE_STATE_INIT) {
+        ff->theta_prev = theta_n;
+        ff->state      = RIPPLE_STATE_WARMUP;
+        ff->warmup     = 0U;
+        ff->out        = 0.0f;
+        return 0.0f;
+    }
+
+    if (ff->state == RIPPLE_STATE_WARMUP) {
+        if (ff->warmup < RIPPLE_WARMUP_N) {
+            ff->warmup++;                            /* 真正"只观测": 系数不动 */
+            ff->theta_prev = theta_n;
+            ff->out = 0.0f;
+            return 0.0f;
+        }
+        ff->state = RIPPLE_STATE_RUN;
+    }
+
+    /*--- 5.3 使能条件: 速度下限 + 奈奎斯特保护 ---*/
+    float f_max = RIPPLE_TEETH * (float)RIPPLE_HARMONICS * omega / RIPPLE_TWO_PI;
+    float fs    = 1.0f / ts;
+    int enable  = (ff->speed_lpf >= RIPPLE_W_MIN) &&
+                  (f_max < RIPPLE_NYQ_RATIO * 0.5f * fs);
+
+    if (!enable) {
+        ff->state = RIPPLE_STATE_FROZEN;
+        ff->out   = 0.0f;
+        ff->theta_prev = theta_n;
+        return 0.0f;
+    }
+    ff->state = RIPPLE_STATE_RUN;
+
+    /*--- 5.4 相位超前补偿: 抵消系统纯滞后 ---*/
+    float theta_comp = theta_n + omega * ff->lag_comp_s;
+
+    /*--- 5.5 NLMS 归一化系数更新 ---*/
+    {
+        float cs[RIPPLE_HARMONICS];
+        float sn[RIPPLE_HARMONICS];
+        float power = 1e-6f;
+
+        for (k = 0; k < RIPPLE_HARMONICS; ++k) {
+            float ph = RIPPLE_TEETH * (float)(k + 1) * theta_comp;
+            cs[k] = cosf(ph);
+            sn[k] = sinf(ph);
+            power += cs[k] * cs[k] + sn[k] * sn[k];
+        }
+
+        float mu_eff = RIPPLE_MU * ts / power;      /* 归一化步长 */
+        for (k = 0; k < RIPPLE_HARMONICS; ++k) {
+            ff->a_cos[k] += mu_eff * error * cs[k] - RIPPLE_LAMBDA * ff->a_cos[k];
+            ff->a_sin[k] += mu_eff * error * sn[k] - RIPPLE_LAMBDA * ff->a_sin[k];
+            ff->a_cos[k]  = clampf(-RIPPLE_COEF_LIMIT, RIPPLE_COEF_LIMIT, ff->a_cos[k]);
+            ff->a_sin[k]  = clampf(-RIPPLE_COEF_LIMIT, RIPPLE_COEF_LIMIT, ff->a_sin[k]);
+        }
+    }
+
+    /*--- 5.6 前馈输出合成 (用未补偿角度, 输出与当前扰动对齐) ---*/
     for (k = 0; k < RIPPLE_HARMONICS; ++k) {
-        float ph = RIPPLE_TEETH * (float)(k + 1) * theta_rad;
-        float c  = cosf(ph);
-        float s  = sinf(ph);
-        ff->a_cos[k] += RIPPLE_MU * ts * error * c;
-        ff->a_sin[k] += RIPPLE_MU * ts * error * s;
-        ff->a_cos[k] = clampf(-0.30f, ff->a_cos[k], 0.30f);   /* 防止发散 */
-        ff->a_sin[k] = clampf(-0.30f, ff->a_sin[k], 0.30f);
-        u += ff->a_cos[k] * c + ff->a_sin[k] * s;
+        float ph = RIPPLE_TEETH * (float)(k + 1) * theta_n;
+        u += ff->a_cos[k] * cosf(ph) + ff->a_sin[k] * sinf(ph);
     }
 
-    ff->out = (ff->warmup >= 200U) ? clampf(-RIPPLE_OUT_LIMIT, u, RIPPLE_OUT_LIMIT)
-                                   : 0.0f;
-    ff->theta_prev = theta_rad;
+    ff->out       = clampf(-RIPPLE_OUT_LIMIT, u, RIPPLE_OUT_LIMIT);
+    ff->theta_prev = theta_n;
     return ff->out;
 }
+
+
 
 /* v3.2：流量归一化标尺（辨识器 x[0] = u / flow_scale） */
 static float rbf_pid_effective_flow_scale(const RBF_PID_Handle *pid)
@@ -614,9 +738,14 @@ static void rbf_pid_step_incremental_output(RBF_PID_Handle *pid, float error)
 
 
         HYD_MotionControl_GetPumpFeedback(&PumpFeedback);
-        pid->pump_angle_rad = PumpFeedback.angleDeg * ( (float)M_PI / 180.0f);
-        float u_ff_ripple = ripple_ff_update(&pid->ripple_ff, pid->pump_angle_rad,
-                                            error, RBF_PID_FIXED_SAMPLING_PERIOD) * 0.01;
+        float pump_angle_rad = PumpFeedback.angleDeg * ( (float)M_PI / 180.0f);      /* 泵轴机械角 [rad] */
+        float speed = PumpFeedback.rpm * ( (float)M_PI / 30.0f);
+        /* 估计角速度也可由驱动器直接提供, 此处由结构内部自动估计 */
+        float u_ff_ripple = ripple_ff_update(&pid->ripple_ff,
+                                                pump_angle_rad,
+                                                error,
+												speed,          /* omega<=0 时内部估计 */
+												RBF_PID_FIXED_SAMPLING_PERIOD) * RIPPLE_FF_GAIN;
 
         HYD_Debug_SetValue(3,pid->Jacobian);
         HYD_Debug_SetValue(4,u_ff_ripple);

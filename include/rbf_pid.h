@@ -42,7 +42,7 @@
 #define RBF_MOMENTUM_STEPS 2    /* 在线更新使用的历史快照数 */
 
 /* ---------- PID 参数限幅内置窗（初始化/复位恢复到该窗口） ---------- */
-#define PID_MIN_KP 0.2f
+#define PID_MIN_KP 0.4f
 #define PID_MAX_KP 0.5f
 //#define PID_MIN_KI 0.015f      /* test pressure closed-loop*/
 //#define PID_MAX_KI 0.018f
@@ -68,7 +68,7 @@
 /* ---------- 压力速度阻尼默认增益 ---------- */
 /* 单位 [L/min / (bar/step)]，按 1ms 采样周期标定；
    含义：实际压力单步变化 1 bar，输出增量被反向压制 0.15 L/min */
-#define RBF_PID_DEFAULT_PRESSURE_VEL_DAMP_GAIN 0.10f
+#define RBF_PID_DEFAULT_PRESSURE_VEL_DAMP_GAIN 0.15f
 
 /* ---------- 故障标志位（fault_flags） ---------- */
 #define RBF_PID_FAULT_NONE 0x0000u
@@ -76,15 +76,43 @@
 #define RBF_PID_FAULT_INPUT_INVALID   0x0002u /* 本拍设定/反馈无效，保持上一安全输出 */
 #define RBF_PID_FAULT_NETWORK         0x0004u /* 网络参数被清洗，本拍冻结自适应 */
 
-#define RIPPLE_HARMONICS 4          /* 补偿 13/26/39/52 阶 */
-#define RIPPLE_TEETH     13.0f
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
+/*---------------------------------------------------------------------------
+ * 1. 数据定义
+ *-------------------------------------------------------------------------*/
+#define RIPPLE_HARMONICS    4          /* 补偿 13/26/39/52 阶            */
+#define RIPPLE_TEETH        13.0f      /* 泵齿数                          */
+#define RIPPLE_MU           1.0f       /* NLMS 归一化步长 (0.5~2.0 现场调)*/
+#define RIPPLE_LAMBDA       0.002f     /* 泄漏系数, 防系数直流漂移        */
+#define RIPPLE_OUT_LIMIT    0.15f      /* 前馈输出限幅 [L/min]            */
+#define RIPPLE_COEF_LIMIT   0.30f      /* 单个系数限幅                    */
+#define RIPPLE_WARMUP_N     200U       /* 预热拍数, 冻结更新只观测        */
+#define RIPPLE_W_MIN        2.0f       /* 最低更新角速度 [rad/s]          */
+#define RIPPLE_NYQ_RATIO    0.40f      /* 最高阶纹波频率 < 0.4*fs/2 才启用*/
+#define RIPPLE_FF_GAIN      0.05f      /* [L/min] -> 控制量 增益(原*0.01) */
+#define RIPPLE_TWO_PI       6.28318530717958647692f
+
+typedef enum {
+    RIPPLE_STATE_INIT = 0,   /* 上电/复位, 系数清零            */
+    RIPPLE_STATE_WARMUP,     /* 预热中: 输出=0, 系数冻结        */
+    RIPPLE_STATE_RUN,        /* 正常运行: 更新+输出             */
+    RIPPLE_STATE_FROZEN      /* 低速/混叠保护: 输出=0, 系数冻结 */
+} RIPPLE_State_e;
 
 typedef struct {
-    float a_cos[RIPPLE_HARMONICS];
-    float a_sin[RIPPLE_HARMONICS];
-    float theta_prev;
-    float out;
-    uint16_t warmup;
+    /* --- 自适应系数 --- */
+    float a_cos[RIPPLE_HARMONICS];   /* cos 基系数                      */
+    float a_sin[RIPPLE_HARMONICS];   /* sin 基系数                      */
+    /* --- 状态量 --- */
+    float   theta_prev;      /* 上一拍归一化角度 [0,2pi)         */
+    float   lag_comp_s;      /* 系统纯滞后补偿时间 [s], 现场标定 */
+    float   out;             /* 当前前馈输出 [L/min]             */
+    uint32_t warmup;         /* 预热计数器                       */
+    RIPPLE_State_e state;    /* 状态机                           */
+    float   speed_lpf;       /* 角速度低通值 [rad/s]             */
 } RIPPLE_FF;
 /**
  * @brief 反馈控制模式
@@ -201,7 +229,7 @@ typedef struct {
     uint32_t fault_flags;
 
     RIPPLE_FF ripple_ff;
-    float      pump_angle_rad;      /* 泵轴机械角 [rad] */
+
 } RBF_PID_Handle;
 
 /* ========================= API ========================= */
