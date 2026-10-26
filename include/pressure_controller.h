@@ -4,6 +4,10 @@
 #include "common_types.h"
 #include "rbf_pid.h"
 
+#define HYD_RBF_GAIN_OVERRIDE_KP 0x01u
+#define HYD_RBF_GAIN_OVERRIDE_KI 0x02u
+#define HYD_RBF_GAIN_OVERRIDE_KD 0x04u
+
 typedef struct {
     HYD_REAL targetPressure;
     HYD_REAL measuredPressure;
@@ -21,6 +25,7 @@ typedef struct {
     HYD_BOOL initialized;
     HYD_BOOL trackingRequested;
     HYD_BOOL rbfInitialized;
+    HYD_UINT8 pendingRbfGainOverrideMask;
     HYD_REAL integralOutput;
     HYD_REAL previousError;
     HYD_REAL previousFilteredPressure;

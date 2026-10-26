@@ -211,19 +211,66 @@ static void test_rbf_gain_write_updates_active_runtime_window(void) {
     HYD_PressureController_InitState(&fb->_pressureController, 0.0, 0.0, 0.0);
 
     memset(&input, 0, sizeof(input));
-    input.targetPressure = 100.0f;
+    input.targetPressure = 0.0f;
     input.measuredPressure = 0.0f;
     input.outputMin = -5.0f;
     input.outputMax = 20.0f;
     input.flowToPumpSpeedGain = 20.0f;
     input.pumpSpeedLimit = 1800.0f;
     input.timestamp = 0.001f;
+
+    /* A live gain write can arrive after segment activation but before the
+     * first pressure-controller Execute has initialized the RBF PID. */
+    memset(&wp, 0, sizeof(wp));
+    IEC_VAL(wp.EN) = true;
+    IEC_VAL(wp.AXISID) = 0;
+    IEC_VAL(wp.EXECUTE) = true;
+    IEC_VAL(wp.PARAMETERNUMBER) = HYD_PARAM_PRESSURE_KP;
+    IEC_VAL(wp.VALUE) = 0.5;
+    __mcl_cmd_WriteParameter(&wp);
+    ASSERT_TRUE(IEC_VAL(wp.DONE) == true,
+                "RBF KP write before controller initialization should succeed");
+    ASSERT_FLOAT_EQ(fb->_activeSegment.pressureRbfConfig.minKp, 0.4f, 0.0001f,
+                    "Pre-init KP write should replace the default lower bound");
+    ASSERT_FLOAT_EQ(fb->_activeSegment.pressureRbfConfig.maxKp, 0.6f, 0.0001f,
+                    "Pre-init KP write should replace the default upper bound");
+
+    memset(&wp, 0, sizeof(wp));
+    IEC_VAL(wp.EN) = true;
+    IEC_VAL(wp.AXISID) = 0;
+    IEC_VAL(wp.EXECUTE) = true;
+    IEC_VAL(wp.PARAMETERNUMBER) = HYD_PARAM_PRESSURE_KI;
+    IEC_VAL(wp.VALUE) = 0.02;
+    __mcl_cmd_WriteParameter(&wp);
+    ASSERT_TRUE(IEC_VAL(wp.DONE) == true,
+                "RBF KI write before controller initialization should succeed");
+
+    memset(&wp, 0, sizeof(wp));
+    IEC_VAL(wp.EN) = true;
+    IEC_VAL(wp.AXISID) = 0;
+    IEC_VAL(wp.EXECUTE) = true;
+    IEC_VAL(wp.PARAMETERNUMBER) = HYD_PARAM_PRESSURE_KD;
+    IEC_VAL(wp.VALUE) = 0.04;
+    __mcl_cmd_WriteParameter(&wp);
+    ASSERT_TRUE(IEC_VAL(wp.DONE) == true,
+                "RBF KD write before controller initialization should succeed");
+
     HYD_PressureController_Execute(&fb->_activeSegment,
                                    &fb->_pressureController,
                                    &input,
                                    &output);
     ASSERT_TRUE(fb->_pressureController.rbfInitialized,
                 "RBF gain test should initialize the runtime controller");
+    ASSERT_FLOAT_EQ(fb->_pressureController.rbfPid.KP, 0.5f, 0.0001f,
+                    "Controller initialization should apply the latest requested KP");
+    ASSERT_FLOAT_EQ(fb->_pressureController.rbfPid.min_KP, 0.4f, 0.0001f,
+                    "Controller initialization should use the latest KP lower bound");
+    ASSERT_FLOAT_EQ(fb->_pressureController.rbfPid.max_KP, 0.6f, 0.0001f,
+                    "Controller initialization should use the latest KP upper bound");
+    ASSERT_FLOAT_EQ(fb->_pressureController.rbfPid.KI, 0.02f, 0.0001f,
+                    "Controller initialization should apply the latest requested KI");
+    ASSERT_FLOAT_EQ(fb->_pressureController.rbfPid.KD, 0.04f, 0.0001f,
+                    "Controller initialization should apply the latest requested KD");
 
     memset(&wp, 0, sizeof(wp));
     IEC_VAL(wp.EN) = true;
@@ -254,16 +301,18 @@ static void test_rbf_gain_write_updates_active_runtime_window(void) {
     __mcl_cmd_WriteParameter(&wp);
     ASSERT_TRUE(IEC_VAL(wp.DONE) == true,
                 "RBF KP write should accept a value below the previous minKp");
+    ASSERT_TRUE(IEC_VAL(wp.ERROR) == false,
+                "Downward RBF KP write should not set ERROR");
     ASSERT_FLOAT_EQ(fb->_activeSegment.pressureRbfConfig.minKp, 0.08f, 0.0001f,
-                    "Lower RBF KP write should preserve the relative lower bound");
+                    "Lower RBF KP write should replace the active lower bound");
     ASSERT_FLOAT_EQ(fb->_activeSegment.pressureRbfConfig.maxKp, 0.12f, 0.0001f,
-                    "Lower RBF KP write should preserve the relative upper bound");
+                    "Lower RBF KP write should replace the active upper bound");
     ASSERT_FLOAT_EQ(fb->_pressureController.rbfPid.min_KP, 0.08f, 0.0001f,
-                    "Lower RBF KP write should update the live min_KP");
+                    "Lower RBF KP write should replace the live min_KP");
     ASSERT_FLOAT_EQ(fb->_pressureController.rbfPid.max_KP, 0.12f, 0.0001f,
-                    "Lower RBF KP write should update the live max_KP");
+                    "Lower RBF KP write should replace the live max_KP");
     ASSERT_FLOAT_EQ(fb->_pressureController.rbfPid.KP, 0.1f, 0.0001f,
-                    "Lower RBF KP write should make the requested value the live KP");
+                    "Lower RBF KP write should make the requested value live");
 
     memset(&wp, 0, sizeof(wp));
     IEC_VAL(wp.EN) = true;

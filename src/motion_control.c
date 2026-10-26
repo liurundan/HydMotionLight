@@ -4394,6 +4394,30 @@ static HYD_BOOL HYD_ApplyActiveRbfDebugGain(HYD_MotionControlFB* fb,
             default:
                 return false;
         }
+    } else {
+        /* The first control cycle initializes RBF_PID and clears its handle.
+         * Keep this commissioning value pending so initialization cannot
+         * replace it with the built-in default gain. */
+        switch (parameter) {
+            case HYD_PARAM_PRESSURE_KP:
+                fb->_pressureController.rbfPid.KP = runtimeValue;
+                fb->_pressureController.pendingRbfGainOverrideMask |=
+                    HYD_RBF_GAIN_OVERRIDE_KP;
+                break;
+            case HYD_PARAM_PRESSURE_KI:
+                fb->_pressureController.rbfPid.KI = runtimeValue;
+                fb->_pressureController.pendingRbfGainOverrideMask |=
+                    HYD_RBF_GAIN_OVERRIDE_KI;
+                break;
+            case HYD_PARAM_PRESSURE_KD:
+                fb->_pressureController.rbfPid.KD = runtimeValue;
+                fb->_pressureController.rbfPid.pid_mode_kd = runtimeValue;
+                fb->_pressureController.pendingRbfGainOverrideMask |=
+                    HYD_RBF_GAIN_OVERRIDE_KD;
+                break;
+            default:
+                return false;
+        }
     }
 
     return true;
