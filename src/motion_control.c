@@ -4298,8 +4298,13 @@ static HYD_BOOL HYD_ApplyActiveRbfDebugGain(HYD_MotionControlFB* fb,
                                             HYD_ParameterNumber parameter,
                                             HYD_REAL value)
 {
+    const HYD_REAL gainWindowRatio = (HYD_REAL)0.20;
+    HYD_REAL minValue;
     HYD_REAL maxValue;
     HYD_RbfPidConfig* config;
+    float runtimeValue;
+    float runtimeMinValue;
+    float runtimeMaxValue;
     float minKp;
     float maxKp;
     float minKi;
@@ -4312,23 +4317,31 @@ static HYD_BOOL HYD_ApplyActiveRbfDebugGain(HYD_MotionControlFB* fb,
         return false;
     }
 
-    maxValue = value + (HYD_REAL)0.3;
-    if (!isfinite(maxValue)) {
+    /* Keep the adaptive window proportional to the requested gain. */
+    minValue = value * ((HYD_REAL)1.0 - gainWindowRatio);
+    maxValue = value * ((HYD_REAL)1.0 + gainWindowRatio);
+    runtimeValue = (float)value;
+    runtimeMinValue = (float)minValue;
+    runtimeMaxValue = (float)maxValue;
+    if (!isfinite(minValue) || !isfinite(maxValue) ||
+        !isfinite(runtimeValue) || !isfinite(runtimeMinValue) ||
+        !isfinite(runtimeMaxValue) || runtimeValue <= 0.0f ||
+        runtimeMinValue <= 0.0f || runtimeMaxValue <= 0.0f) {
         return false;
     }
 
     config = &fb->_activeSegment.pressureRbfConfig;
     switch (parameter) {
         case HYD_PARAM_PRESSURE_KP:
-            config->minKp = value;
+            config->minKp = minValue;
             config->maxKp = maxValue;
             break;
         case HYD_PARAM_PRESSURE_KI:
-            config->minKi = value;
+            config->minKi = minValue;
             config->maxKi = maxValue;
             break;
         case HYD_PARAM_PRESSURE_KD:
-            config->minKd = value;
+            config->minKd = minValue;
             config->maxKd = maxValue;
             break;
         default:
@@ -4345,16 +4358,16 @@ static HYD_BOOL HYD_ApplyActiveRbfDebugGain(HYD_MotionControlFB* fb,
 
         switch (parameter) {
             case HYD_PARAM_PRESSURE_KP:
-                minKp = (float)value;
-                maxKp = (float)maxValue;
+                minKp = runtimeMinValue;
+                maxKp = runtimeMaxValue;
                 break;
             case HYD_PARAM_PRESSURE_KI:
-                minKi = (float)value;
-                maxKi = (float)maxValue;
+                minKi = runtimeMinValue;
+                maxKi = runtimeMaxValue;
                 break;
             case HYD_PARAM_PRESSURE_KD:
-                minKd = (float)value;
-                maxKd = (float)maxValue;
+                minKd = runtimeMinValue;
+                maxKd = runtimeMaxValue;
                 break;
             default:
                 return false;
@@ -4364,20 +4377,19 @@ static HYD_BOOL HYD_ApplyActiveRbfDebugGain(HYD_MotionControlFB* fb,
             &fb->_pressureController.rbfPid,
             minKp, maxKp, minKi, maxKi, minKd, maxKd);
 
-        /* SetParameter is a commissioning override for the current adaptive
-         * gains, not only a window update.  SetParamLimits() clamps the old
-         * gain into the new window, which leaves a stale higher gain when the
-         * requested value is below the previous minimum. */
+        /* Treat SetParameter as a commissioning override for the current
+         * adaptive gain: the requested value is the window center and must
+         * become the live gain immediately, rather than only changing limits. */
         switch (parameter) {
             case HYD_PARAM_PRESSURE_KP:
-                fb->_pressureController.rbfPid.KP = (float)value;
+                fb->_pressureController.rbfPid.KP = runtimeValue;
                 break;
             case HYD_PARAM_PRESSURE_KI:
-                fb->_pressureController.rbfPid.KI = (float)value;
+                fb->_pressureController.rbfPid.KI = runtimeValue;
                 break;
             case HYD_PARAM_PRESSURE_KD:
-                fb->_pressureController.rbfPid.KD = (float)value;
-                fb->_pressureController.rbfPid.pid_mode_kd = (float)value;
+                fb->_pressureController.rbfPid.KD = runtimeValue;
+                fb->_pressureController.rbfPid.pid_mode_kd = runtimeValue;
                 break;
             default:
                 return false;
