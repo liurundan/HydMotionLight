@@ -4298,7 +4298,7 @@ static HYD_BOOL HYD_ApplyActiveRbfDebugGain(HYD_MotionControlFB* fb,
                                             HYD_ParameterNumber parameter,
                                             HYD_REAL value)
 {
-    const HYD_REAL gainWindowRatio = (HYD_REAL)0.20;
+    const HYD_REAL gainWindowRatio = (HYD_REAL)HYD_RBF_DEBUG_GAIN_WINDOW_RATIO;
     HYD_REAL minValue;
     HYD_REAL maxValue;
     HYD_RbfPidConfig* config;
@@ -4343,6 +4343,28 @@ static HYD_BOOL HYD_ApplyActiveRbfDebugGain(HYD_MotionControlFB* fb,
         case HYD_PARAM_PRESSURE_KD:
             config->minKd = minValue;
             config->maxKd = maxValue;
+            break;
+        default:
+            return false;
+    }
+
+    /* Keep the PLC override authoritative when later config application
+     * resolves an empty segment window back to the library defaults. */
+    switch (parameter) {
+        case HYD_PARAM_PRESSURE_KP:
+            fb->_pressureController.rbfDebugGainOverrideMask |=
+                HYD_RBF_GAIN_OVERRIDE_KP;
+            fb->_activeSegment.pressureKp = value;
+            break;
+        case HYD_PARAM_PRESSURE_KI:
+            fb->_pressureController.rbfDebugGainOverrideMask |=
+                HYD_RBF_GAIN_OVERRIDE_KI;
+            fb->_activeSegment.pressureKi = value;
+            break;
+        case HYD_PARAM_PRESSURE_KD:
+            fb->_pressureController.rbfDebugGainOverrideMask |=
+                HYD_RBF_GAIN_OVERRIDE_KD;
+            fb->_activeSegment.pressureKd = value;
             break;
         default:
             return false;
@@ -4395,25 +4417,18 @@ static HYD_BOOL HYD_ApplyActiveRbfDebugGain(HYD_MotionControlFB* fb,
                 return false;
         }
     } else {
-        /* The first control cycle initializes RBF_PID and clears its handle.
-         * Keep this commissioning value pending so initialization cannot
-         * replace it with the built-in default gain. */
+        /* Keep the requested value visible until the first controller
+         * initialization applies the active segment's debug window. */
         switch (parameter) {
             case HYD_PARAM_PRESSURE_KP:
                 fb->_pressureController.rbfPid.KP = runtimeValue;
-                fb->_pressureController.pendingRbfGainOverrideMask |=
-                    HYD_RBF_GAIN_OVERRIDE_KP;
                 break;
             case HYD_PARAM_PRESSURE_KI:
                 fb->_pressureController.rbfPid.KI = runtimeValue;
-                fb->_pressureController.pendingRbfGainOverrideMask |=
-                    HYD_RBF_GAIN_OVERRIDE_KI;
                 break;
             case HYD_PARAM_PRESSURE_KD:
                 fb->_pressureController.rbfPid.KD = runtimeValue;
                 fb->_pressureController.rbfPid.pid_mode_kd = runtimeValue;
-                fb->_pressureController.pendingRbfGainOverrideMask |=
-                    HYD_RBF_GAIN_OVERRIDE_KD;
                 break;
             default:
                 return false;

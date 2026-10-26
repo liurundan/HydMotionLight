@@ -7,6 +7,7 @@
 #define HYD_RBF_GAIN_OVERRIDE_KP 0x01u
 #define HYD_RBF_GAIN_OVERRIDE_KI 0x02u
 #define HYD_RBF_GAIN_OVERRIDE_KD 0x04u
+#define HYD_RBF_DEBUG_GAIN_WINDOW_RATIO 0.20f
 
 typedef struct {
     HYD_REAL targetPressure;
@@ -25,7 +26,7 @@ typedef struct {
     HYD_BOOL initialized;
     HYD_BOOL trackingRequested;
     HYD_BOOL rbfInitialized;
-    HYD_UINT8 pendingRbfGainOverrideMask;
+    HYD_UINT8 rbfDebugGainOverrideMask; /* Active segment PLC debug gains. */
     HYD_REAL integralOutput;
     HYD_REAL previousError;
     HYD_REAL previousFilteredPressure;

@@ -429,23 +429,65 @@ static void HYD_ApplyRbfPidConfig(HYD_PressureControllerState* state,
                                   HYD_BOOL forceApply)
 {
     HYD_REAL pressureScale;
-    HYD_UINT8 pendingGainOverrides;
-    float requestedKp;
-    float requestedKi;
-    float requestedKd;
+    HYD_PressureResolvedConfig effectiveConfig;
+    HYD_BOOL wasRbfInitialized;
 
     if (state == NULL || config == NULL) return;
 
-    pendingGainOverrides = state->pendingRbfGainOverrideMask;
-    requestedKp = state->rbfPid.KP;
-    requestedKi = state->rbfPid.KI;
-    requestedKd = state->rbfPid.KD;
+    effectiveConfig = *config;
+    if (segment != NULL) {
+        if (state->rbfDebugGainOverrideMask & HYD_RBF_GAIN_OVERRIDE_KP) {
+            effectiveConfig.rbf.minKp = segment->pressureKp *
+                ((HYD_REAL)1.0 - (HYD_REAL)HYD_RBF_DEBUG_GAIN_WINDOW_RATIO);
+            effectiveConfig.rbf.maxKp = segment->pressureKp *
+                ((HYD_REAL)1.0 + (HYD_REAL)HYD_RBF_DEBUG_GAIN_WINDOW_RATIO);
+        }
+        if (state->rbfDebugGainOverrideMask & HYD_RBF_GAIN_OVERRIDE_KI) {
+            effectiveConfig.rbf.minKi = segment->pressureKi *
+                ((HYD_REAL)1.0 - (HYD_REAL)HYD_RBF_DEBUG_GAIN_WINDOW_RATIO);
+            effectiveConfig.rbf.maxKi = segment->pressureKi *
+                ((HYD_REAL)1.0 + (HYD_REAL)HYD_RBF_DEBUG_GAIN_WINDOW_RATIO);
+        }
+        if (state->rbfDebugGainOverrideMask & HYD_RBF_GAIN_OVERRIDE_KD) {
+            effectiveConfig.rbf.minKd = segment->pressureKd *
+                ((HYD_REAL)1.0 - (HYD_REAL)HYD_RBF_DEBUG_GAIN_WINDOW_RATIO);
+            effectiveConfig.rbf.maxKd = segment->pressureKd *
+                ((HYD_REAL)1.0 + (HYD_REAL)HYD_RBF_DEBUG_GAIN_WINDOW_RATIO);
+        }
+    }
+    config = &effectiveConfig;
 
+    wasRbfInitialized = state->rbfInitialized;
     HYD_EnsureRbfPidInitialized(state, config->samplingPeriod, config->outputMax,
                                 flowToPumpSpeedGain, pumpSpeedLimit);
 
-    if (!forceApply && pendingGainOverrides == 0U &&
-        HYD_RbfPidConfigMatches(state, config, segment)) {
+    /* A prior config refresh may already have clamped the live gain to the
+     * built-in defaults. Restore the latest debug value before applying the
+     * persistent debug window; gains still adapt normally inside that window. */
+    if (segment != NULL &&
+        (state->rbfDebugGainOverrideMask & HYD_RBF_GAIN_OVERRIDE_KP) &&
+        (!wasRbfInitialized || !isfinite(state->rbfPid.KP) ||
+         state->rbfPid.KP < (float)config->rbf.minKp ||
+         state->rbfPid.KP > (float)config->rbf.maxKp)) {
+        state->rbfPid.KP = (float)segment->pressureKp;
+    }
+    if (segment != NULL &&
+        (state->rbfDebugGainOverrideMask & HYD_RBF_GAIN_OVERRIDE_KI) &&
+        (!wasRbfInitialized || !isfinite(state->rbfPid.KI) ||
+         state->rbfPid.KI < (float)config->rbf.minKi ||
+         state->rbfPid.KI > (float)config->rbf.maxKi)) {
+        state->rbfPid.KI = (float)segment->pressureKi;
+    }
+    if (segment != NULL &&
+        (state->rbfDebugGainOverrideMask & HYD_RBF_GAIN_OVERRIDE_KD) &&
+        (!wasRbfInitialized || !isfinite(state->rbfPid.KD) ||
+         state->rbfPid.KD < (float)config->rbf.minKd ||
+         state->rbfPid.KD > (float)config->rbf.maxKd)) {
+        state->rbfPid.KD = (float)segment->pressureKd;
+        state->rbfPid.pid_mode_kd = (float)segment->pressureKd;
+    }
+
+    if (!forceApply && HYD_RbfPidConfigMatches(state, config, segment)) {
         return;
     }
 
@@ -476,20 +518,13 @@ static void HYD_ApplyRbfPidConfig(HYD_PressureControllerState* state,
         (float)HYD_ResolvePositiveOrDefault(config->outputMax,
                                             (HYD_REAL)state->rbfPid.fMaxFlow));
 
-    state->rbfPid.KP = (pendingGainOverrides & HYD_RBF_GAIN_OVERRIDE_KP) ?
-                       requestedKp :
-                       (float)HYD_ClampReal((HYD_REAL)state->rbfPid.KP,
+    state->rbfPid.KP = (float)HYD_ClampReal((HYD_REAL)state->rbfPid.KP,
                                             config->rbf.minKp, config->rbf.maxKp);
-    state->rbfPid.KI = (pendingGainOverrides & HYD_RBF_GAIN_OVERRIDE_KI) ?
-                       requestedKi :
-                       (float)HYD_ClampReal((HYD_REAL)state->rbfPid.KI,
+    state->rbfPid.KI = (float)HYD_ClampReal((HYD_REAL)state->rbfPid.KI,
                                             config->rbf.minKi, config->rbf.maxKi);
-    state->rbfPid.KD = (pendingGainOverrides & HYD_RBF_GAIN_OVERRIDE_KD) ?
-                       requestedKd :
-                       (float)HYD_ClampReal((HYD_REAL)state->rbfPid.KD,
+    state->rbfPid.KD = (float)HYD_ClampReal((HYD_REAL)state->rbfPid.KD,
                                             config->rbf.minKd, config->rbf.maxKd);
     state->rbfPid.pid_mode_kd = state->rbfPid.KD;
-    state->pendingRbfGainOverrideMask = 0U;
 
     if (config->strategy == HYD_PRESSURE_CONTROLLER_RBF_PI) {
         state->rbfPid.KD = 0.0f;
