@@ -423,35 +423,6 @@ typedef HYD_REAL HYD_TIME;
  * 单位：秒。 */
 #define HYD_THRESH_SOFT_LIMIT_FAULT_DEBOUNCE_S   0.50f
 
-/* --- RBF-PID 数值死区与滤波（src/rbf_pid.c） --- */
-
-/* 设定值归一化绝对值低于该阈值视为"零设定"，直接清零输出，避免
- * 控制器在小目标下放大噪声。
- * 单位：归一化（无量纲）。原值：rbf_pid.c:327,345 `1e-6f`. */
-#define HYD_THRESH_RBF_SETPOINT_ZERO_EPS     1e-6f
-
-/* 设定值零判定时的反馈死区——只有反馈也接近零才置 0 输出。
- * 单位：归一化（无量纲）。原值：rbf_pid.c:327,345 `0.02f`. */
-#define HYD_THRESH_RBF_FEEDBACK_ZERO_BAND    0.02f
-
-/* 前馈加速度补偿激活的最小压力二阶差分（绝对值）.
- * 单位：归一化压力的二阶差分（无量纲）。fddPress 为 fActPress（即
- * pid->Feedback，归一化压力）的二阶差分，量纲同为归一化（无量纲）。
- * 原值：rbf_pid.c:312,314 `0.0001f`. */
-#define HYD_THRESH_RBF_FF_ACCEL_DEAD_BAND    0.0001f
-
-/* 一阶低通滤波器系数（微分项 raw_de 滤波）.
- * `delta_temp = (1 - alpha) * prev + alpha * raw_de`.
- * 原值：rbf_pid.c:297 `0.12f`. */
-#define HYD_THRESH_RBF_DERIV_FILTER_ALPHA    0.12f
-
-/* 自适应学习率缩放下界（误差归一化后）.
- * 原值：rbf_pid.c:273 `0.01f`. */
-#define HYD_THRESH_RBF_ETA_SCALE_MIN         0.01f
-
-/* 自适应学习率缩放倍数（误差归一化 × 倍数 → eta_scale，再 clamp 到 [min,1]）.
- * 原值：rbf_pid.c:273 `4.0f`. */
-#define HYD_THRESH_RBF_ETA_SCALE_GAIN        4.0f
 
 #define HYD_MAX_AXIS_MOTION  20 /* 最大液压轴数量，包括合模、射胶、顶出、座台、中子等 */
 

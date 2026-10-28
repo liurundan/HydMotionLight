@@ -46,8 +46,8 @@
 #define PID_MAX_KP 0.5f
 //#define PID_MIN_KI 0.015f      /* test pressure closed-loop*/
 //#define PID_MAX_KI 0.018f
-#define PID_MIN_KI 0.005f      /* unit aciton */
-#define PID_MAX_KI 0.008f
+#define PID_MIN_KI 0.015f      /* unit aciton */
+#define PID_MAX_KI 0.018f
 #define PID_MIN_KD 0.015f
 #define PID_MAX_KD 0.035f
 
@@ -72,7 +72,7 @@
 
 /* ---------- 故障标志位（fault_flags） ---------- */
 #define RBF_PID_FAULT_NONE 0x0000u
-#define RBF_PID_FAULT_JACOBIAN_SIGN 0x0001u /* Jacobian 持续为负，自适应已冻结 */
+#define RBF_PID_FAULT_JACOBIAN_SIGN   0x0001u /* Jacobian 持续为负，自适应已冻结 */
 #define RBF_PID_FAULT_INPUT_INVALID   0x0002u /* 本拍设定/反馈无效，保持上一安全输出 */
 #define RBF_PID_FAULT_NETWORK         0x0004u /* 网络参数被清洗，本拍冻结自适应 */
 

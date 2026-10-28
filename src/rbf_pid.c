@@ -19,15 +19,12 @@
 #include "motion_control.h"
 
 #define EPS 1e-6f
+#define HYD_THRESH_RBF_DERIV_FILTER_ALPHA 0.12f
 
-/* 微分滤波系数，可由 hyd_config.h 覆盖 */
-#ifndef HYD_THRESH_RBF_DERIV_FILTER_ALPHA
-#define HYD_THRESH_RBF_DERIV_FILTER_ALPHA 0.5f
-#endif
 
 /* ==================== 具名常量（含单位） ==================== */
-static const float RBF_PID_ERROR_DEADBAND_RATIO = 0.002f;  /* 误差死区 = 0.04%*压力量程 */
-static const float RBF_PID_ERROR_DEADBAND_MIN   = 0.05f;    /* 误差死区下限 [bar] */
+static const float RBF_PID_ERROR_DEADBAND_RATIO = 0.01f;  /* 误差死区 = 0.04%*压力量程 0.002 */
+static const float RBF_PID_ERROR_DEADBAND_MIN   = 0.1f;    /* 误差死区下限 [bar] 0.05*/
 static const float RBF_PID_SOFT_CAP_RATIO       = 1.05f;    /* 软限幅 = P_set*1.05/K */
 static const float RBF_PID_NEAR_TARGET_RATIO    = 0.08f;    /* 近目标判定: |e|<=8%*|P_set| */
 static const float RBF_PID_WEIGHT_LIMIT         = 5.0f;     /* RBF 权重钳位 */
@@ -35,7 +32,7 @@ static const float RBF_PID_STEADY_DEADZONE_RATIO= 0.002f;   /* RBF冻结死区 =
 static const float RBF_PID_STEADY_DE_RATIO      = 1.0f;     /* 误差变化率死区系数 */
 static const float RBF_PID_INCR_I_LIMIT         = 0.08f;    /* 增量I项单步限幅 [L/min] */
 static const float RBF_PID_VEL_DAMP_LIMIT       = 0.5f;     /* 速度阻尼项限幅 [L/min] */
-
+static const float RBF_PID_VEL_DAMP_RISE_THRESH = 0.31f;    /* 速度阻尼方向门控阈值 [bar/step]：单步压力上升超过该值才启用阻尼。 */
 /* 增益单步步长限幅（防梯度异常导致参数突跳） */
 static const float RBF_PID_KP_STEP_LIMIT = 0.01f;
 static const float RBF_PID_KI_STEP_LIMIT = 0.0002f;
@@ -46,8 +43,8 @@ static const float RBF_PID_KD_STEP_LIMIT = 0.002f;
 
 /* Kd 强制唤醒 / Ki L2 惩罚 */
 #define ETA_KD_BOOST 0.5f
-#define LAMBDA_KI 0.005f
-#define KI_CENTER 0.0f
+#define LAMBDA_KI    0.005f
+#define KI_CENTER    0.0f
 
 /* 稳态判定（外层 Status 用，单位明确） */
 static const float RBF_PID_STEADY_E_LIMIT      = 5.0f;   /* [bar] */
@@ -55,8 +52,8 @@ static const float RBF_PID_STEADY_T_LIMIT      = 0.2f;   /* [s] */
 static const float RBF_PID_STEADY_DU_LIMIT     = 2.0f;   /* [L/min] */
 static const float RBF_PID_STEADY_MIN_SETPOINT = 5.0f;   /* [bar] */
 
-/* 速度阻尼方向门控阈值 [bar/step]：单步压力上升超过该值才启用阻尼。 */
-static const float RBF_PID_VEL_DAMP_RISE_THRESH = 0.31f;
+static const float FF_RIPPLE_LAG_COMP_S        = 0.0f;   /* /* 泵->执行器->传感器滞后, 如 0.01~0.05s [s] */
+
 static HYD_PumpFeedback PumpFeedback;
 
 /* ==================== 基础工具 ==================== */
@@ -235,8 +232,8 @@ static float ripple_ff_update(RIPPLE_FF *ff, float theta_rad,
         for (k = 0; k < RIPPLE_HARMONICS; ++k) {
             ff->a_cos[k] += mu_eff * error * cs[k] - RIPPLE_LAMBDA * ff->a_cos[k];
             ff->a_sin[k] += mu_eff * error * sn[k] - RIPPLE_LAMBDA * ff->a_sin[k];
-            ff->a_cos[k]  = clampf(-RIPPLE_COEF_LIMIT, RIPPLE_COEF_LIMIT, ff->a_cos[k]);
-            ff->a_sin[k]  = clampf(-RIPPLE_COEF_LIMIT, RIPPLE_COEF_LIMIT, ff->a_sin[k]);
+            ff->a_cos[k]  = clampf(-RIPPLE_COEF_LIMIT, ff->a_cos[k], RIPPLE_COEF_LIMIT);
+            ff->a_sin[k]  = clampf(-RIPPLE_COEF_LIMIT, ff->a_sin[k], RIPPLE_COEF_LIMIT);
         }
     }
 
@@ -741,11 +738,18 @@ static void rbf_pid_step_incremental_output(RBF_PID_Handle *pid, float error)
         float pump_angle_rad = PumpFeedback.angleDeg * ( (float)M_PI / 180.0f);      /* 泵轴机械角 [rad] */
         float speed = PumpFeedback.rpm * ( (float)M_PI / 30.0f);
         /* 估计角速度也可由驱动器直接提供, 此处由结构内部自动估计 */
-        float u_ff_ripple = ripple_ff_update(&pid->ripple_ff,
-                                                pump_angle_rad,
-                                                error,
-												speed,          /* omega<=0 时内部估计 */
-												RBF_PID_FIXED_SAMPLING_PERIOD) * RIPPLE_FF_GAIN;
+        float u_ff_ripple = 0.0f;
+        if( rbf_pid_near_target(pid) ) {
+        	u_ff_ripple = ripple_ff_update(&pid->ripple_ff,
+                    pump_angle_rad,
+                    error,
+					speed,          /* omega<=0 时内部估计 */
+					RBF_PID_FIXED_SAMPLING_PERIOD) * RIPPLE_FF_GAIN;
+		}
+        else{
+        	ripple_ff_freeze(&pid->ripple_ff);
+        }
+
 
         HYD_Debug_SetValue(3,pid->Jacobian);
         HYD_Debug_SetValue(4,u_ff_ripple);
@@ -834,6 +838,8 @@ void RBF_PID_Init(RBF_PID_Handle *pid, float sampling_period,
 
     rbf_pid_init_network(pid);
     (void)rbf_pid_sanitize_network(pid);
+
+    ripple_ff_init(&pid->ripple_ff, FF_RIPPLE_LAG_COMP_S);
 }
 
 static float rbf_pid_hold_safe_output(RBF_PID_Handle *pid)
@@ -980,6 +986,7 @@ void RBF_PID_SetParamLimits(RBF_PID_Handle *pid, float min_kp, float max_kp,
     pid->KP = clampf(pid->min_KP, pid->KP, pid->max_KP);
     pid->KI = clampf(pid->min_KI, pid->KI, pid->max_KI);
     pid->KD = clampf(pid->min_KD, pid->KD, pid->max_KD);
+
 }
 
 void RBF_PID_SetLearningRates(RBF_PID_Handle *pid, float eta_w, float eta_c,
