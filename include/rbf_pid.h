@@ -42,12 +42,12 @@
 #define RBF_MOMENTUM_STEPS 2    /* 在线更新使用的历史快照数 */
 
 /* ---------- PID 参数限幅内置窗（初始化/复位恢复到该窗口） ---------- */
-#define PID_MIN_KP 0.4f
+#define PID_MIN_KP 0.2f
 #define PID_MAX_KP 0.5f
 //#define PID_MIN_KI 0.015f      /* test pressure closed-loop*/
 //#define PID_MAX_KI 0.018f
-#define PID_MIN_KI 0.015f      /* unit aciton */
-#define PID_MAX_KI 0.018f
+#define PID_MIN_KI 0.005f      /* unit aciton */
+#define PID_MAX_KI 0.008f
 #define PID_MIN_KD 0.015f
 #define PID_MAX_KD 0.035f
 
@@ -68,7 +68,7 @@
 /* ---------- 压力速度阻尼默认增益 ---------- */
 /* 单位 [L/min / (bar/step)]，按 1ms 采样周期标定；
    含义：实际压力单步变化 1 bar，输出增量被反向压制 0.15 L/min */
-#define RBF_PID_DEFAULT_PRESSURE_VEL_DAMP_GAIN 0.15f
+#define RBF_PID_DEFAULT_PRESSURE_VEL_DAMP_GAIN 0.10f
 
 /* ---------- 故障标志位（fault_flags） ---------- */
 #define RBF_PID_FAULT_NONE 0x0000u
