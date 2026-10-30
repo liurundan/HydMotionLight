@@ -22,10 +22,22 @@ HYD_BOOL HYD_SegmentCompletion_IsPositionReachedRaw(
     const HYD_MotionSegment* segment,
     const HYD_AxisRef* axisRef,
     HYD_REAL positionTolerance) {
+    return HYD_SegmentCompletion_IsPositionReachedRawWithDirection(
+        segment,
+        axisRef,
+        positionTolerance,
+        HYD_DIRECTION_POSITIVE);
+}
+
+HYD_BOOL HYD_SegmentCompletion_IsPositionReachedRawWithDirection(
+    const HYD_MotionSegment* segment,
+    const HYD_AxisRef* axisRef,
+    HYD_REAL positionTolerance,
+    HYD_MotionDirection lastActiveDirection) {
     HYD_MotionDirection direction;
 
     direction = HYD_Segment_ResolveDirection(segment, axisRef,
-                                              HYD_DIRECTION_POSITIVE);
+                                              lastActiveDirection);
     if (direction == HYD_DIRECTION_POSITIVE) {
         return axisRef->position >= segment->targetPosition - positionTolerance;
     }
@@ -124,7 +136,11 @@ HYD_BOOL HYD_SegmentCompletion_CheckWithContext(const HYD_SegmentCompletionConte
     switch (segment->endCondition) {
         case HYD_END_POSITION:
             rawComplete =
-                HYD_SegmentCompletion_IsPositionReachedRaw(segment, axisRef, positionTolerance) &&
+                HYD_SegmentCompletion_IsPositionReachedRawWithDirection(
+                    segment,
+                    axisRef,
+                    positionTolerance,
+                    context->lastActiveDirection) &&
                 HYD_SegmentCompletion_IsPositionVelocitySettled(segment, axisRef, references);
             break;
         case HYD_END_TIME:
@@ -160,6 +176,7 @@ HYD_BOOL HYD_SegmentCompletion_Check(const HYD_MotionSegment* segment,
     context.segment = segment;
     context.axisRef = axisRef;
     context.references = &references;
+    context.lastActiveDirection = HYD_DIRECTION_POSITIVE;
     context.timestamp = (axisRef != NULL) ? axisRef->timestamp : 0.0;
     context.candidateStartTime = NULL;
     context.candidateActive = NULL;

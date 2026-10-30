@@ -30,6 +30,14 @@ HYD_BOOL HYD_MotionValidator_ValidateStartRequest(const HYD_MotionControlFB* fb,
                                                    size_t segmentIndex,
                                                    HYD_DiagnosticCode* code);
 
+/* Validates a start against a logical handover position instead of the
+ * current feedback sample. Used by continuous-absolute direct handovers. */
+HYD_BOOL HYD_MotionValidator_ValidateStartRequestAtPosition(
+    const HYD_MotionControlFB* fb,
+    size_t segmentIndex,
+    HYD_REAL referencePosition,
+    HYD_DiagnosticCode* code);
+
 /**
  * @brief Validate a next segment request
  * @param fb Pointer to motion control function block

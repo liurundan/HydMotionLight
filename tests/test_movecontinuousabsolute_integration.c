@@ -669,6 +669,107 @@ static void test_omitted_direction_reaches_position_and_end_velocity(void) {
                 "Axis velocity should remain non-zero after the omitted-direction case reaches sustain");
 }
 
+static void test_current_direction_does_not_complete_from_wrong_side(void) {
+    HYD_MOVECONTINUOUSABSOLUTE cmd;
+    HYD_MotionControlFB* core;
+    int axisId;
+
+    __HydMotion_framework_Init();
+    axisId = create_manual_axis();
+    ASSERT_TRUE(axisId >= 0, "CreateMotion should allocate a manual axis for CURRENT direction completion");
+    if (axisId < 0) {
+        return;
+    }
+
+    core = __MK_GetPublic_MotionControlFB(axisId);
+    ASSERT_TRUE(core != NULL, "Public motion FB should be available for CURRENT direction completion");
+    if (core == NULL) {
+        return;
+    }
+
+    ASSERT_TRUE(set_axis_feedback(axisId, 200.0f, 0.0f, 0.0f, 0.0f, 0.0f),
+                "Manual feedback should place the axis on the positive side of the target");
+    core->_lastActiveDirection = HYD_DIRECTION_NEGATIVE;
+
+    init_movecontinuousabsolute(&cmd, axisId, 10.0f, 20.0f, 0.0f,
+                                HYD_DIRECTION_CURRENT,
+                                HYD_DIRECTION_CURRENT);
+    rising_edge_scan(&cmd);
+    ASSERT_TRUE(IEC_VAL(cmd.ERROR) == false,
+                "CURRENT direction should accept a target below the current position");
+
+    __HydMotion_framework_Publish();
+    hold_true_scan(&cmd);
+
+    ASSERT_TRUE(IEC_VAL(cmd.POSITIONREACHED) == false,
+                "CURRENT negative direction must not report POSITIONREACHED before crossing the target");
+    ASSERT_TRUE(core->_directContinuousAbsolute.phase == HYD_CONTABS_PHASE_APPROACH,
+                "CURRENT negative direction must remain in APPROACH before crossing the target");
+}
+
+static void test_chained_movecontinuousabsolute_accepts_lagging_feedback(void) {
+    HYD_MOVECONTINUOUSABSOLUTE first;
+    HYD_MOVECONTINUOUSABSOLUTE second;
+    HYD_MotionControlFB* core;
+    int axisId;
+
+    __HydMotion_framework_Init();
+    axisId = create_manual_axis();
+    ASSERT_TRUE(axisId >= 0, "CreateMotion should allocate a manual axis for lagging-feedback validation");
+    if (axisId < 0) {
+        return;
+    }
+
+    core = __MK_GetPublic_MotionControlFB(axisId);
+    ASSERT_TRUE(core != NULL, "Public motion FB should be available for lagging-feedback validation");
+    if (core == NULL) {
+        return;
+    }
+
+    /* The first command has logically reached 200, while the feedback still
+     * contains the old position 0 when the next PLC command is scanned. */
+    init_movecontinuousabsolute(&first, axisId, 200.0f, 20.0f, 5.0f,
+                                HYD_DIRECTION_POSITIVE,
+                                HYD_DIRECTION_POSITIVE);
+    rising_edge_scan(&first);
+    ASSERT_TRUE(IEC_VAL(first.ERROR) == false,
+                "The first continuous absolute command should be accepted");
+
+    init_movecontinuousabsolute(&second, axisId, 10.0f, 20.0f, 5.0f,
+                                HYD_DIRECTION_NEGATIVE,
+                                HYD_DIRECTION_NEGATIVE);
+    rising_edge_scan(&second);
+
+    ASSERT_TRUE(IEC_VAL(second.ERROR) == false,
+                "A chained negative command should not be rejected by one-scan-old feedback");
+    ASSERT_TRUE(IEC_VAL(second.BUSY) == true,
+                "The chained negative command should own the axis after takeover");
+    ASSERT_TRUE(core->DIRECT_SEGMENT.targetPosition == 10.0f,
+                "The chained command should replace the active target after takeover");
+
+    __HydMotion_framework_Init();
+    axisId = create_manual_axis();
+    ASSERT_TRUE(axisId >= 0,
+                "CreateMotion should allocate an axis for the incompatible logical-target guard");
+    if (axisId < 0) {
+        return;
+    }
+
+    init_movecontinuousabsolute(&first, axisId, 200.0f, 20.0f, 5.0f,
+                                HYD_DIRECTION_POSITIVE,
+                                HYD_DIRECTION_POSITIVE);
+    rising_edge_scan(&first);
+    init_movecontinuousabsolute(&second, axisId, 250.0f, 20.0f, 5.0f,
+                                HYD_DIRECTION_NEGATIVE,
+                                HYD_DIRECTION_NEGATIVE);
+    rising_edge_scan(&second);
+
+    ASSERT_TRUE(IEC_VAL(second.ERROR) == true,
+                "A negative command beyond the previous logical target must remain rejected");
+    ASSERT_TRUE(IEC_VAL(second.ERRORID) == HYD_DIAG_CODE_COMMAND_NOT_ALLOWED,
+                "An incompatible logical target should retain COMMAND_NOT_ALLOWED");
+}
+
 static void test_negative_same_direction_latches_inendvelocity_on_target_crossing(void) {
     HYD_MOVECONTINUOUSABSOLUTE cmd;
     int axisId;
@@ -1291,6 +1392,8 @@ int main(void) {
     test_same_direction_reaches_position_and_end_velocity();
     test_same_direction_keeps_velocity_across_position_to_sustain_switch();
     test_omitted_direction_reaches_position_and_end_velocity();
+    test_current_direction_does_not_complete_from_wrong_side();
+    test_chained_movecontinuousabsolute_accepts_lagging_feedback();
     test_negative_same_direction_latches_inendvelocity_on_target_crossing();
     test_adapt_lowers_crossing_velocity_when_distance_is_too_short_to_accelerate();
     test_adapt_raises_crossing_velocity_when_distance_is_too_short_to_decelerate();

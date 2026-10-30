@@ -1678,9 +1678,11 @@ static HYD_BOOL HYD_PrimeSegmentControllers(HYD_MotionControlFB* fb,
 
 static HYD_BOOL HYD_BeginSegment(HYD_MotionControlFB* fb,
                                  size_t segmentIndex,
-                                 HYD_TIME timestamp) {
+                                 HYD_TIME timestamp,
+                                 const HYD_REAL* referencePosition) {
     HYD_DiagnosticCode code = HYD_DIAG_CODE_NONE;
     HYD_BOOL preserveFlowCarryover;
+    HYD_BOOL startContextValid;
     const HYD_MotionSegment* sourceSegment;
     size_t resolvedSegmentIndex;
     HYD_SegmentSource resolvedSource;
@@ -1689,7 +1691,14 @@ static HYD_BOOL HYD_BeginSegment(HYD_MotionControlFB* fb,
         return false;
     }
 
-    if (!HYD_MotionValidator_ValidateStartRequest(fb, segmentIndex, &code)) {
+    if (referencePosition != NULL) {
+        startContextValid = HYD_MotionValidator_ValidateStartRequestAtPosition(
+            fb, segmentIndex, *referencePosition, &code);
+    } else {
+        startContextValid = HYD_MotionValidator_ValidateStartRequest(
+            fb, segmentIndex, &code);
+    }
+    if (!startContextValid) {
         HYD_SafetyStateManager_ApplyIdleState(fb, false, false);
         HYD_ResetReadyContextPreview(fb);
         HYD_StateReporter_ReportDiagnostic(fb,
@@ -1792,7 +1801,7 @@ static HYD_BOOL HYD_AdvanceToNextSegment(HYD_MotionControlFB* fb,
     }
 
     if (fb->STATE.currentSegmentIndex + 1U < fb->RECIPE_SIZE) {
-        return HYD_BeginSegment(fb, fb->STATE.currentSegmentIndex + 1U, timestamp);
+        return HYD_BeginSegment(fb, fb->STATE.currentSegmentIndex + 1U, timestamp, NULL);
     }
 
     HYD_SafetyStateManager_ApplyIdleState(fb, true, true);
@@ -1835,7 +1844,7 @@ static HYD_BOOL HYD_StartPendingDirectSlot(HYD_MotionControlFB* fb,
      * sees the recipe batch id change in the same scan that the source
      * transitions to DIRECT. */
     fb->_recipeBatchId++;
-    if (!HYD_BeginSegment(fb, 0U, timestamp)) {
+    if (!HYD_BeginSegment(fb, 0U, timestamp, NULL)) {
         fb->USE_RECIPE = savedUseRecipe;
         return false;
     }
@@ -2091,7 +2100,7 @@ static HYD_BOOL HYD_MotionControlFB_ConsumePendingCommand(HYD_MotionControlFB* f
              * NOT bump _recipeBatchId — multi-segment recipe progress must
              * not look like external takeover. */
             fb->_recipeBatchId++;
-            return HYD_BeginSegment(fb, segmentIndex, timestamp);
+            return HYD_BeginSegment(fb, segmentIndex, timestamp, NULL);
         case HYD_CMD_NEXT:
             (void)HYD_AdvanceToNextSegment(fb, timestamp);
             return true;
@@ -2754,7 +2763,11 @@ static void HYD_UpdateExecutionDiagnostics(HYD_MotionControlFB* fb,
      * is driving toward a target position, regardless of end condition. */
     if (segment->mode == HYD_MODE_POSITION &&
         positionTolerance > 0.0 &&
-        HYD_SegmentCompletion_IsPositionReachedRaw(segment, &fb->AXIS_REF, positionTolerance) &&
+        HYD_SegmentCompletion_IsPositionReachedRawWithDirection(
+            segment,
+            &fb->AXIS_REF,
+            positionTolerance,
+            fb->_lastActiveDirection) &&
         velocityReferenceAbs < settledVelocityTolerance &&
         actualVelocityAbs < settledVelocityTolerance) {
         isStartupPhase = HYD_IsStartupSuppressActive(elapsed, fb->_positionCriteria.startupSuppressTime);
@@ -3109,9 +3122,11 @@ static void HYD_MotionControlFB_RunRunningState(HYD_MotionControlFB* fb) {
     if (fb->_directOwnerKind == HYD_DIRECT_CMD_MOVE_CONTINUOUS_ABSOLUTE &&
         fb->_directContinuousAbsolute.valid &&
         fb->_directContinuousAbsolute.phase == HYD_CONTABS_PHASE_APPROACH &&
-        HYD_SegmentCompletion_IsPositionReachedRaw(segment,
-                                                   &fb->AXIS_REF,
-                                                   HYD_Segment_GetPositionTolerance(segment))) {
+        HYD_SegmentCompletion_IsPositionReachedRawWithDirection(
+            segment,
+            &fb->AXIS_REF,
+            HYD_Segment_GetPositionTolerance(segment),
+            fb->_lastActiveDirection)) {
         HYD_MotionSegment sustainSegment =
             HYD_BuildContinuousAbsoluteSustainSegment(fb,
                                                       &fb->_directContinuousAbsolute,
@@ -3354,6 +3369,7 @@ static HYD_BOOL HYD_RunRunningStateCompletion(HYD_MotionControlFB* fb,
     completionContext.segment = segment;
     completionContext.axisRef = &fb->AXIS_REF;
     completionContext.references = executionReference;
+    completionContext.lastActiveDirection = fb->_lastActiveDirection;
     completionContext.timestamp = HYD_GetCurrentSegmentTime(fb);
     completionContext.candidateStartTime = &fb->_completionCandidateStartTime;
     completionContext.candidateActive = &fb->_completionCandidateActive;
@@ -3903,6 +3919,14 @@ HYD_DirectStartResult HYD_MotionControlFB_StartDirectCommand(HYD_MotionControlFB
                    (HYD_IsSegmentEndlessForBuffering(&fb->_activeSegment) ||
                     fb->_directOwnerKind == HYD_DIRECT_CMD_MOVE_CONTINUOUS_ABSOLUTE));
     positionTolerance = HYD_Segment_GetPositionTolerance(segment);
+    referencePosition = fb->AXIS_REF.position;
+    if (kind == HYD_DIRECT_CMD_MOVE_CONTINUOUS_ABSOLUTE && activeDirect &&
+        fb->_directOwnerKind == HYD_DIRECT_CMD_MOVE_CONTINUOUS_ABSOLUTE) {
+        /* A continuous-absolute handover follows the previous logical target.
+         * This avoids rejecting a valid reverse command when sensor feedback
+         * is still one PLC scan behind the completed approach position. */
+        referencePosition = HYD_ResolveDirectCommandLogicalStartPosition(fb);
+    }
 
     if (bufferMode != HYD_BUFFER_MODE_ABORT && fb->_directPendingValid) {
         HYD_ReportDirectCommandDiagnostic(fb,
@@ -3920,7 +3944,7 @@ HYD_DirectStartResult HYD_MotionControlFB_StartDirectCommand(HYD_MotionControlFB
         if (HYD_DirectCommandNeedsPositionDirectionCheck(segment) &&
             !HYD_IsForcedDirectionTargetCompatible(segment->direction,
                                                    segment->targetPosition,
-                                                   fb->AXIS_REF.position,
+                                                   referencePosition,
                                                    positionTolerance)) {
             HYD_ReportDirectCommandDiagnostic(fb,
                                               segment,
@@ -3942,7 +3966,13 @@ HYD_DirectStartResult HYD_MotionControlFB_StartDirectCommand(HYD_MotionControlFB
         if (activeDirect || fb->STATE.active || HYD_MotionControlFB_IsBusy(fb)) {
             HYD_AbortNow(fb, timestamp);
         }
-        if (!HYD_BeginSegment(fb, 0U, timestamp)) {
+        if (!HYD_BeginSegment(
+                fb,
+                0U,
+                timestamp,
+                (kind == HYD_DIRECT_CMD_MOVE_CONTINUOUS_ABSOLUTE && activeDirect)
+                    ? &referencePosition
+                    : NULL)) {
             fb->USE_RECIPE = savedUseRecipe;
             return HYD_DIRECT_START_REJECTED;
         }
@@ -3999,7 +4029,7 @@ HYD_DirectStartResult HYD_MotionControlFB_StartDirectCommand(HYD_MotionControlFB
     if (HYD_DirectCommandNeedsPositionDirectionCheck(segment) &&
         !HYD_IsForcedDirectionTargetCompatible(segment->direction,
                                                segment->targetPosition,
-                                               fb->AXIS_REF.position,
+                                               referencePosition,
                                                positionTolerance)) {
         HYD_ReportDirectCommandDiagnostic(fb,
                                           segment,
@@ -4012,7 +4042,7 @@ HYD_DirectStartResult HYD_MotionControlFB_StartDirectCommand(HYD_MotionControlFB
     fb->DIRECT_SEGMENT_VALID = true;
     savedUseRecipe = fb->USE_RECIPE;
     fb->USE_RECIPE = false;
-    if (!HYD_BeginSegment(fb, 0U, timestamp)) {
+    if (!HYD_BeginSegment(fb, 0U, timestamp, NULL)) {
         fb->USE_RECIPE = savedUseRecipe;
         return HYD_DIRECT_START_REJECTED;
     }

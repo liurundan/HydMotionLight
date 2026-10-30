@@ -64,9 +64,11 @@ HYD_FbState HYD_MotionValidator_ResolveEffectiveFbState(const HYD_MotionControlF
     return fb->FB_STATE;
 }
 
-HYD_BOOL HYD_MotionValidator_ValidateStartRequest(const HYD_MotionControlFB* fb,
-                                                   size_t segmentIndex,
-                                                   HYD_DiagnosticCode* code) {
+static HYD_BOOL HYD_MotionValidator_ValidateStartRequestWithAxisRef(
+    const HYD_MotionControlFB* fb,
+    size_t segmentIndex,
+    const HYD_AxisRef* axisRef,
+    HYD_DiagnosticCode* code) {
     const HYD_MotionSegment* segment;
     size_t resolvedSegmentIndex;
 
@@ -99,8 +101,38 @@ HYD_BOOL HYD_MotionValidator_ValidateStartRequest(const HYD_MotionControlFB* fb,
                                             &fb->cylinderConfig) &&
         HYD_RecipeValidator_ValidateStartContext(segment,
                                                  resolvedSegmentIndex,
-                                                 &fb->AXIS_REF,
+                                                 axisRef,
                                                  code);
+}
+
+HYD_BOOL HYD_MotionValidator_ValidateStartRequest(const HYD_MotionControlFB* fb,
+                                                   size_t segmentIndex,
+                                                   HYD_DiagnosticCode* code) {
+    return HYD_MotionValidator_ValidateStartRequestWithAxisRef(
+        fb,
+        segmentIndex,
+        (fb != NULL) ? &fb->AXIS_REF : NULL,
+        code);
+}
+
+HYD_BOOL HYD_MotionValidator_ValidateStartRequestAtPosition(
+    const HYD_MotionControlFB* fb,
+    size_t segmentIndex,
+    HYD_REAL referencePosition,
+    HYD_DiagnosticCode* code) {
+    HYD_AxisRef axisRef;
+
+    if (fb == NULL) {
+        return false;
+    }
+
+    axisRef = fb->AXIS_REF;
+    axisRef.position = referencePosition;
+    return HYD_MotionValidator_ValidateStartRequestWithAxisRef(
+        fb,
+        segmentIndex,
+        &axisRef,
+        code);
 }
 
 HYD_BOOL HYD_MotionValidator_ValidateNextRequest(const HYD_MotionControlFB* fb,
