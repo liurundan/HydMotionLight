@@ -566,7 +566,6 @@ FUNCTION_BLOCK FB_HydAxis
   iDir := uiDir;
 
   rPres    := MAX(UINT_TO_REAL(uiPres), 0.0) * 0.1;              // bar
-  rEndVel  := UINT_TO_REAL(uiEndSpd) * 0.1 * 0.01 * rMaxSpeed;   // mm/s
   rPos     := UDINT_TO_REAL(udiPos) * 0.01;                      // mm
   rFlowPercent := LIMIT(5, UINT_TO_REAL(uiSpd)*0.1, 100);        // %
 
@@ -587,6 +586,8 @@ FUNCTION_BLOCK FB_HydAxis
       rMaxSpeed    := rMaxSpeedDir;
   END_IF
 
+  // 方向能力确定后再换算末速度，避免方向切换时沿用上一方向的最大速度。
+  rEndVel  := UINT_TO_REAL(uiEndSpd) * 0.1 * 0.01 * rMaxSpeed;   // mm/s
   rVel := UINT_TO_REAL(uiSpd) * 0.1 * 0.01 * rMaxSpeed;          // mm/s
 
   IF rMaxSpeedDir > 0.0 THEN

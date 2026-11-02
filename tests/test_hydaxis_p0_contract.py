@@ -17,6 +17,63 @@ def section_between(start: str, end: str) -> str:
 
 
 class HydAxisP0ContractTest(unittest.TestCase):
+    def test_position_segment_parameters_are_latched_and_used(self):
+        declarations = section_between("rPos : REAL;", "END_VAR")
+        position_logic = section_between("// 3.1 新段触发", "// 3.2 在线速度更新")
+        move_call = section_between("fbMoveContAbs(", "fbMoveVel(")
+
+        self.assertIn("rPosActive", declarations)
+        self.assertIn("rVelActive", declarations)
+        self.assertIn("rEndVelActive", declarations)
+        self.assertIn("iDirActive", declarations)
+        self.assertIn("rPosActive := rPos", position_logic)
+        self.assertIn("rVelActive := rVel", position_logic)
+        self.assertIn("rEndVelActive := rEndVel", position_logic)
+        self.assertIn("POSITION   := rPosActive", move_call)
+        self.assertIn("VELOCITY   := rVelActive", move_call)
+        self.assertIn("ENDVELOCITY:= rEndVelActive", move_call)
+        self.assertIn("ENDVELOCITYDIRECTION := iDirActive", move_call)
+
+    def test_status_output_exposes_library_state_and_clears_band_flags(self):
+        outputs = section_between("VAR_OUTPUT", "END_VAR")
+        status_read = section_between(
+            "fbHYD_ReadStatus(", "//=====================================================================\n  // 9. 状态输出汇总"
+        )
+        output_logic = section_between("// 9. 状态输出汇总", "END_FUNCTION_BLOCK")
+
+        self.assertIn("uiAxisState", outputs)
+        self.assertIn("uiAxisState := iAxisState", status_read)
+        self.assertIn("bInVelocity := FALSE", output_logic)
+        self.assertIn("bInPressure := FALSE", output_logic)
+        self.assertIn("2:  bDone := fbMoveVel.InVelocity", output_logic)
+        self.assertIn("3:  bDone := fbPresHdl.INPRESSURE", output_logic)
+
+    def test_pump_limit_is_shared_and_max_speed_validated(self):
+        startup = section_between("fbCalcMaxSpeed(", "IF iMechBaseClass = 1 THEN")
+
+        self.assertIn("rPumpMaxRPM", startup)
+        self.assertIn("SetPumpConfig( rPumpDisplacement, rPumpMaxRPM )", startup)
+        self.assertIn("IF NOT fbCalcMaxSpeed.bValid THEN", startup)
+
+    def test_pressure_ramp_restarts_from_actual_pressure(self):
+        pressure_logic = section_between(
+            "// 6. 压力斜率动态计算", "// 7. 底层 FB 统一调用区"
+        )
+
+        self.assertIn("rPrevPres   := stHydAxisRef.rActPressure", pressure_logic)
+        self.assertIn("rPresLastCycle := stHydAxisRef.rActPressure", pressure_logic)
+
+    def test_end_velocity_uses_selected_direction_speed_limit(self):
+        conversion = section_between(
+            "rPres    :=", "rVelSigned :="
+        )
+        speed_selection_end = conversion.index("END_IF", conversion.index("// 2. 方向相关最大速度"))
+        end_velocity_index = conversion.index("rEndVel  :=")
+        velocity_index = conversion.index("rVel :=")
+
+        self.assertGreater(end_velocity_index, speed_selection_end)
+        self.assertLess(end_velocity_index, velocity_index)
+
     def test_transition_step_preserves_start_stop_and_estop_edges(self):
         segment_trigger = section_between("bNewSeg :=", "IF bNewSeg THEN")
         transition_step = section_between("105: // 运行过渡步", "200: // 正常停止")
