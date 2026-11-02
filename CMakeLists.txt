@@ -312,6 +312,9 @@ add_test(NAME test_interface_layout_consistency
 add_test(NAME test_hydro_sim_interface_consistency
          COMMAND ${CMAKE_COMMAND} -E env PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}
                  python3 ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_hydro_sim_interface_consistency.py)
+add_test(NAME test_hydaxis_p0_contract
+         COMMAND ${CMAKE_COMMAND} -E env PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}
+                 python3 ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_hydaxis_p0_contract.py)
 
 add_test(NAME test_negative_flow COMMAND test_negative_flow)
 add_test(NAME test_toggle_kinematics COMMAND test_toggle_kinematics)
