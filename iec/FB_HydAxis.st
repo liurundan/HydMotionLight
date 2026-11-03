@@ -438,12 +438,13 @@ FUNCTION_BLOCK FB_HydAxis
 
   METHOD PRIVATE CalcSegmentRamp : BOOL
     VAR
-      rVel0Signed : REAL;
+      rVel0Magnitude : REAL;
       rDeltaV : REAL;
       rDeltaVAbs : REAL;
       rDecSegRaw : REAL;
       tAcc : REAL;
       tDec : REAL;
+      bDirectionChange : BOOL;
     END_VAR
     (*----------------------------------------------------------------------
       段间斜率计算 (命令侧差值方式), 由主体在 bNewSeg 拍调用
@@ -463,19 +464,28 @@ FUNCTION_BLOCK FB_HydAxis
 
     IF uiMode <> 3 THEN
         //--- V0 决策 ---
-        rVel0Signed := INT_TO_REAL(iDirSignLastSeg) * CalcStartVelocity();
-        rVelSigned  := INT_TO_REAL(iDirSign) * rVel;
+        rVel0Magnitude := CalcStartVelocity();
 
-        rDeltaV    := rVelSigned - rVel0Signed;
+        bDirectionChange := (rVel0Magnitude > rDeltaVDeadZone)
+                            AND (iDirSignLastSeg <> 0)
+                            AND (iDirSign <> 0)
+                            AND (iDirSignLastSeg <> iDirSign);
+        IF bDirectionChange THEN
+            // 反向段先按旧方向速度减到零，不把两方向速度差合并计算。
+            rDeltaV := -rVel0Magnitude;
+        ELSE
+            // 用速度幅值比较；负方向从静止启动同样属于加速。
+            rDeltaV := rVel - rVel0Magnitude;
+        END_IF
         rDeltaVAbs := MAX(ABS(rDeltaV), rDeltaVDeadZone);
 
         //--- 段末减速度 rDecSeg ---
         //    位置段: V1 → EndVel (EndVel=0 时 = V1/uiDec)
         //    速度段: V1 → 0 (完备性, 实际停止由 rStopDec 管)
         IF uiMode = 1 THEN
-            rDecSegRaw := ABS(rVelSigned - INT_TO_REAL(iDirSign) * rEndVel);
+            rDecSegRaw := ABS(rVel - rEndVel);
         ELSE
-            rDecSegRaw := ABS(rVelSigned);
+            rDecSegRaw := rVel;
         END_IF
         rDecSeg := LIMIT( rDecMin, MAX(rDecSegRaw, rDeltaVDeadZone) / tDec, rDecMax );
 
@@ -490,14 +500,14 @@ FUNCTION_BLOCK FB_HydAxis
         ELSIF rDeltaV < -rDeltaVDeadZone THEN
             // 向下过渡: DECELERATION 管过渡, 段末值暂存待切换
             rDec := LIMIT( rDecMin, rDeltaVAbs / tDec, rDecMax );
-            rAcc := LIMIT( rAccMin, ABS(rVelSigned) / tAcc, rAccMax );  // 过渡期兜底
+            rAcc := LIMIT( rAccMin, rVel / tAcc, rAccMax );  // 过渡期兜底
             bTransDecel := TRUE;
             rTransTimer := 0.0;
             rTransTime  := rDeltaVAbs / rDec;   // 按钳位后实际减速度
 
         ELSE
             // ΔV 死区: 无过渡
-            rAcc := LIMIT( rAccMin, ABS(rVelSigned) / tAcc, rAccMax );
+            rAcc := LIMIT( rAccMin, rVel / tAcc, rAccMax );
             rDec := rDecSeg;
             bTransDecel := FALSE;
             rTransTimer := 0.0;
@@ -511,7 +521,7 @@ FUNCTION_BLOCK FB_HydAxis
         END_IF
 
         //--- 过渡期间速度包络 (停止减速参考) ---
-        rVelTransMax := MAX(ABS(rVel0Signed), ABS(rVelSigned));
+        rVelTransMax := MAX(rVel0Magnitude, rVel);
     END_IF
 
     //--- 锁存本段命令侧参数 ---

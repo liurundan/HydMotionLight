@@ -17,6 +17,19 @@ def section_between(start: str, end: str) -> str:
 
 
 class HydAxisP0ContractTest(unittest.TestCase):
+    def test_negative_direction_from_rest_is_an_acceleration_transition(self):
+        ramp = section_between(
+            "METHOD PRIVATE CalcSegmentRamp", "END_METHOD"
+        )
+
+        self.assertIn("rVel0Magnitude : REAL;", ramp)
+        self.assertIn("bDirectionChange : BOOL;", ramp)
+        self.assertIn("rVel0Magnitude := CalcStartVelocity();", ramp)
+        self.assertIn("rVel0Magnitude > rDeltaVDeadZone", ramp)
+        self.assertIn("IF bDirectionChange THEN", ramp)
+        self.assertIn("rDeltaV := -rVel0Magnitude;", ramp)
+        self.assertIn("rDeltaV := rVel - rVel0Magnitude;", ramp)
+
     def test_position_segment_parameters_are_latched_and_used(self):
         declarations = section_between("rPos : REAL;", "END_VAR")
         position_logic = section_between("// 3.1 新段触发", "// 3.2 在线速度更新")
