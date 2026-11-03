@@ -3016,21 +3016,22 @@ static void HYD_MotionControlFB_RunRunningState(HYD_MotionControlFB* fb) {
     limiterInput.protectionAction = fb->DIAGNOSTIC.protectionAction;
     limiterInput.derateRatio = HYD_Segment_GetDerateRatio(segment);
 
-    /*
-     * 压力限制参数：
-     * effectiveMaxPressure = 取 segment.maxPressure 和 fb.PRESSURE_LIMIT 中较小的非零值。
-     * 两者都为 0 时不启用压力限制。
-     */
+    /* 压力限制参数：位置/速度运动段取 segment.maxPressure 和
+     * fb.PRESSURE_LIMIT 中较小的非零值。压力闭环段由压力控制器自身
+     * 管理目标压力，不复用本段运动限幅状态。 */
     {
         HYD_REAL segMax = segment->maxPressure;
         HYD_REAL fbMax = fb->PRESSURE_LIMIT;
         HYD_REAL effective = 0.0;
-        if (segMax > 0.0 && fbMax > 0.0) {
-            effective = (segMax < fbMax) ? segMax : fbMax;
-        } else if (segMax > 0.0) {
-            effective = segMax;
-        } else if (fbMax > 0.0) {
-            effective = fbMax;
+        if (segment->mode == HYD_MODE_POSITION ||
+            segment->mode == HYD_MODE_SPEED_RAMP) {
+            if (segMax > 0.0 && fbMax > 0.0) {
+                effective = (segMax < fbMax) ? segMax : fbMax;
+            } else if (segMax > 0.0) {
+                effective = segMax;
+            } else if (fbMax > 0.0) {
+                effective = fbMax;
+            }
         }
         limiterInput.effectiveMaxPressure = effective;
     }
@@ -3093,9 +3094,8 @@ static void HYD_MotionControlFB_RunRunningState(HYD_MotionControlFB* fb) {
         fb->STATE.limitFlags |= HYD_LIMIT_FLAG_DERATE;
     }
 
-    /* 如果 limiter 报告了 FAULT 级诊断，升级 protectionAction 为 STOP */
-    if (limiterOutput.diagnosticCode == HYD_DIAG_CODE_OVER_PRESSURE_LIMIT_FAULT ||
-        limiterOutput.diagnosticCode == HYD_DIAG_CODE_SOFT_LIMIT_VIOLATED) {
+    /* 段压力限幅是运行状态，由工艺层判断堵转；软限位越界仍由库停止。 */
+    if (limiterOutput.diagnosticCode == HYD_DIAG_CODE_SOFT_LIMIT_VIOLATED) {
         fb->DIAGNOSTIC.protectionAction = HYD_PROTECTION_ACTION_STOP;
         fb->DIAGNOSTIC.code = limiterOutput.diagnosticCode;
         fb->DIAGNOSTIC.severity = HYD_DIAG_SEVERITY_FAULT;

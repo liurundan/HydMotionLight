@@ -262,7 +262,7 @@ static void test_continuousupdate_direction_flip_restarts_from_zero(void) {
         "Continuous-update direction flip pump-speed magnitude should ramp upward monotonically from zero");
 }
 
-static void test_pressure_limit_derates_output_and_faults(void) {
+static void test_pressure_limit_derates_output_without_fault(void) {
     HYD_MOVEVELOCITY mv;
     HYD_MotionControlFB* fb;
     HYD_REAL unrestricted_pump_speed;
@@ -270,7 +270,7 @@ static void test_pressure_limit_derates_output_and_faults(void) {
     HYD_REAL axis_limited_pump_speed;
     int axis_id;
 
-    printf("--- Test: MoveVelocity pressure limit should derate then fault ---\n");
+    printf("--- Test: MoveVelocity pressure limit should derate without fault ---\n");
 
     __HydMotion_framework_Init();
     axis_id = create_sim_axis_with_gain(100.0f);
@@ -327,18 +327,20 @@ static void test_pressure_limit_derates_output_and_faults(void) {
                 axis_limited_pump_speed < unrestricted_pump_speed * 0.72f,
                 "The lower axis pressure limit should override the command pressure limit");
 
-    for (int step = 0; step < 2000 && !IEC_VAL(mv.ERROR); ++step) {
+    for (int step = 0; step < 2000; ++step) {
         fb->AXIS_REF.pressure = 110.0f;
         __HydMotion_framework_Publish();
         hold_movevelocity_scan(&mv);
     }
 
-    ASSERT_TRUE(IEC_VAL(mv.ERROR) == true,
-                "Sustained pressure limiting should surface ERROR on MoveVelocity");
-    ASSERT_TRUE(IEC_VAL(mv.ERRORID) == HYD_DIAG_CODE_OVER_PRESSURE_LIMIT_FAULT,
-                "Sustained pressure limiting should report the pressure-limit fault code");
-    ASSERT_TRUE(IEC_VAL(mv.BUSY) == false && IEC_VAL(mv.ACTIVE) == false,
-                "Pressure-limit fault should clear MoveVelocity busy and active outputs");
+    ASSERT_TRUE(IEC_VAL(mv.ERROR) == false,
+                "Sustained process pressure limiting should not surface ERROR on MoveVelocity");
+    ASSERT_TRUE(IEC_VAL(mv.BUSY) == true && IEC_VAL(mv.ACTIVE) == true,
+                "Sustained pressure limiting should keep MoveVelocity busy and active");
+    ASSERT_TRUE((fb->STATE.limitFlags & HYD_LIMIT_FLAG_PRESSURE) != 0u,
+                "Sustained pressure limiting should expose the pressure limit status");
+    ASSERT_TRUE(fb->DIAGNOSTIC.code == HYD_DIAG_CODE_NONE,
+                "Process pressure limiting should not create a library diagnostic");
     ASSERT_TRUE(IEC_VAL(mv.COMMANDABORTED) == false,
                 "Pressure-limit fault should not be reported as command preemption");
 }
@@ -348,7 +350,7 @@ int main(void) {
 
     test_reverse_restart_after_stop_starts_from_zero();
     test_continuousupdate_direction_flip_restarts_from_zero();
-    test_pressure_limit_derates_output_and_faults();
+    test_pressure_limit_derates_output_without_fault();
 
     printf("\nTests passed: %d/%d\n", tests_passed, tests_run);
     return (tests_passed == tests_run) ? 0 : 1;

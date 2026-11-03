@@ -397,19 +397,22 @@ typedef HYD_REAL HYD_TIME;
  * 单位：无量纲。 */
 #define HYD_THRESH_PRESSURE_LIMIT_KP             3.0f
 
-/* 压力限制最小缩放比：比例限速的下限，不允许完全停泵。
- * 完全停泵由 FAULT/STOP 保护层负责。
- * 单位：无量纲 [0, 1)。 */
-#define HYD_THRESH_PRESSURE_LIMIT_MIN_SCALE      0.1f
+/* 压力限制最小缩放比：比例限速的下限。
+ * 位置/速度段没有压力限幅故障升级；压力明显高于限制时允许将正向流量
+ * 降到零，避免在堵转状态下持续憋压。单位：无量纲 [0, 1]。 */
+#define HYD_THRESH_PRESSURE_LIMIT_MIN_SCALE      0.0f
 
-/* 压力限制 WARNING 触发前的 debounce 时长。
- * 取较宽值避免瞬态压力尖峰误报（如射胶段切换瞬间）。
- * 单位：秒。 */
+/* 压力限幅释放回差比例。限压状态只有在压力低于
+ * maxPressure * (1 - ratio) 后才解除，避免限制点附近反复进出。 */
+#define HYD_THRESH_PRESSURE_LIMIT_HYSTERESIS_RATIO 0.02f
+
+/* 限压状态下输出恢复速率，单位 1/s。压力下降后逐步恢复流量，避免
+ * 在限制点附近一次性恢复满流量再次把压力推过上限。 */
+#define HYD_THRESH_PRESSURE_LIMIT_SCALE_RELEASE_RATE 2.0f
+
+/* Retained for source compatibility with older integrations. Process
+ * pressure limiting no longer escalates these timers to a library fault. */
 #define HYD_THRESH_PRESSURE_LIMIT_DEBOUNCE_S     0.20f
-
-/* 压力限制 WARNING → FAULT 升级时长。
- * 射胶段压力波动较大，取 1.0s 避免误停机。
- * 单位：秒。 */
 #define HYD_THRESH_PRESSURE_LIMIT_FAULT_ESCALATION_S  1.0f
 
 /* --- 软限位保护阈值（src/output_limiter.c） --- */

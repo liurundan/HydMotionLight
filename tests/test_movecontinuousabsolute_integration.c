@@ -1127,7 +1127,7 @@ static void test_pressure_limit_can_hold_positionreached_true_while_inendvelocit
                 "Pressure limiting should allow a scan where POSITIONREACHED stays true while INENDVELOCITY remains false");
 }
 
-static void test_pressure_limit_fault_surfaces_as_error(void) {
+static void test_pressure_limit_stays_running_without_error(void) {
     HYD_MOVECONTINUOUSABSOLUTE cmd;
     HYD_MotionControlFB* fb;
     int axisId;
@@ -1139,7 +1139,7 @@ static void test_pressure_limit_fault_surfaces_as_error(void) {
         return;
     }
     fb = __MK_GetPublic_MotionControlFB(axisId);
-    ASSERT_TRUE(fb != NULL, "Fault-escalation test should expose the public FB");
+    ASSERT_TRUE(fb != NULL, "Pressure-limit test should expose the public FB");
     if (fb == NULL) {
         return;
     }
@@ -1160,10 +1160,14 @@ static void test_pressure_limit_fault_surfaces_as_error(void) {
         }
     }
 
-    ASSERT_TRUE(IEC_VAL(cmd.ERROR) == true,
-                "Fault-level pressure limiting should surface ERROR on the command");
-    ASSERT_TRUE(IEC_VAL(cmd.BUSY) == false,
-                "Fault-level pressure limiting should clear Busy on the command");
+    ASSERT_TRUE(IEC_VAL(cmd.ERROR) == false,
+                "Process pressure limiting should not surface ERROR on the command");
+    ASSERT_TRUE(IEC_VAL(cmd.BUSY) == true,
+                "Process pressure limiting should keep MoveContinuousAbsolute busy");
+    ASSERT_TRUE((fb->STATE.limitFlags & HYD_LIMIT_FLAG_PRESSURE) != 0u,
+                "MoveContinuousAbsolute should expose the pressure limit status");
+    ASSERT_TRUE(fb->DIAGNOSTIC.code == HYD_DIAG_CODE_NONE,
+                "Process pressure limiting should not create a library diagnostic");
 }
 
 static void test_chained_same_direction_segments_keep_end_velocity_on_takeover_scan(void) {
@@ -1400,7 +1404,7 @@ int main(void) {
     test_reverse_sustain_delays_inendvelocity();
     test_plc_pressure_feedback_and_movecontinuousabsolute_limit_use_bar();
     test_pressure_limit_can_hold_positionreached_true_while_inendvelocity_stays_false();
-    test_pressure_limit_fault_surfaces_as_error();
+    test_pressure_limit_stays_running_without_error();
     test_chained_same_direction_segments_keep_end_velocity_on_takeover_scan();
     test_low_acceleration_start_does_not_false_trip_position_deviation();
     test_stop_takes_over_and_sets_commandaborted();

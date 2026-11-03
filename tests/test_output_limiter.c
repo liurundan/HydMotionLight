@@ -164,7 +164,7 @@ static void test_pressure_limit_proportional_reduction(void) {
     printf("test_pressure_limit_proportional_reduction PASSED\n");
 }
 
-static void test_pressure_limit_min_scale_clamp(void) {
+static void test_pressure_limit_zero_scale_clamp(void) {
     HYD_OutputLimiterInput input;
     HYD_OutputLimiterState state;
     HYD_OutputLimiterOutput output;
@@ -178,7 +178,7 @@ static void test_pressure_limit_min_scale_clamp(void) {
     input.pumpSpeedLimit = 3000.0;
     input.protectionAction = HYD_PROTECTION_ACTION_NONE;
 
-    /* 30 bar / 20 bar: overRatio=50%, scale = 1.0 - 3.0*0.5 = -0.5 -> clamp to 0.1 */
+    /* 30 bar / 20 bar: overRatio=50%, scale = 1.0 - 3.0*0.5 = -0.5 -> clamp to 0.0 */
     input.actualPressure = 30.0;
     input.effectiveMaxPressure = 20.0;
     input.strokeMm = 0.0;
@@ -186,9 +186,10 @@ static void test_pressure_limit_min_scale_clamp(void) {
 
     HYD_OutputLimiter_ExecuteWithProtection(&input, &state, &output);
 
-    /* 100.0 * 0.1 = 10.0 */
-    assert_real_eq(output.commandFlow, 10.0, 0.01, "pressure limit min scale");
-    printf("test_pressure_limit_min_scale_clamp PASSED\n");
+    assert(output.pressureLimitActive == true);
+    assert_real_eq(output.commandFlow, 0.0, 0.01, "pressure limit zero scale");
+    assert_real_eq(output.pumpSpeed, 0.0, 0.01, "pressure limit zero pump speed");
+    printf("test_pressure_limit_zero_scale_clamp PASSED\n");
 }
 
 static void test_soft_limit_extend_deceleration(void) {
@@ -285,7 +286,7 @@ static void test_protection_takes_min_scale(void) {
     printf("test_protection_takes_min_scale PASSED\n");
 }
 
-static void test_pressure_limit_fault_escalation(void) {
+static void test_pressure_limit_stays_non_fault_and_hysteretic(void) {
     HYD_OutputLimiterInput input;
     HYD_OutputLimiterState state;
     HYD_OutputLimiterOutput output;
@@ -302,22 +303,52 @@ static void test_pressure_limit_fault_escalation(void) {
     input.effectiveMaxPressure = 20.0;
     input.strokeMm = 0.0;
 
-    /* t=0: 首次超压，debounce 未过 → NONE */
+    /* t=0: 首次超压，保持限压状态但不产生诊断。 */
     input.currentTime = 0.0;
     HYD_OutputLimiter_ExecuteWithProtection(&input, &state, &output);
+    assert(output.pressureLimitActive == true);
     assert(output.diagnosticCode == HYD_DIAG_CODE_NONE);
 
-    /* t=0.25s: debounce(0.2s) 已过 → WARNING */
+    /* t=0.25s: 持续超压仍不升级为 WARNING/FAULT。 */
     input.currentTime = 0.25;
     HYD_OutputLimiter_ExecuteWithProtection(&input, &state, &output);
-    assert(output.diagnosticCode == HYD_DIAG_CODE_OVER_PRESSURE_LIMIT);
+    assert(output.pressureLimitActive == true);
+    assert(output.diagnosticCode == HYD_DIAG_CODE_NONE);
 
-    /* t=1.3s: debounce(0.2) + escalation(1.0) = 1.2s 已过 → FAULT */
+    /* t=1.3s: 即使长期超压，也保持非故障限压。 */
     input.currentTime = 1.3;
     HYD_OutputLimiter_ExecuteWithProtection(&input, &state, &output);
-    assert(output.diagnosticCode == HYD_DIAG_CODE_OVER_PRESSURE_LIMIT_FAULT);
+    assert(output.pressureLimitActive == true);
+    assert(output.diagnosticCode == HYD_DIAG_CODE_NONE);
 
-    printf("test_pressure_limit_fault_escalation PASSED\n");
+    /* 限制点附近抖动时，回差保持限压状态，不反复恢复满流量。 */
+    input.actualPressure = 19.9;
+    input.currentTime = 1.31;
+    HYD_OutputLimiter_ExecuteWithProtection(&input, &state, &output);
+    assert(output.pressureLimitActive == true);
+    assert(output.commandFlow < 100.0);
+
+    input.actualPressure = 20.1;
+    input.currentTime = 1.32;
+    HYD_OutputLimiter_ExecuteWithProtection(&input, &state, &output);
+    assert(output.pressureLimitActive == true);
+    assert(output.commandFlow < 100.0);
+
+    /* 低于限制值减回差后，输出按速率逐步恢复；恢复完成才解除限压。 */
+    input.actualPressure = 19.5;
+    input.currentTime = 2.0;
+    HYD_OutputLimiter_ExecuteWithProtection(&input, &state, &output);
+    assert(output.pressureLimitActive == true);
+    assert(output.commandFlow < 100.0);
+
+    for (int step = 1; step <= 5; ++step) {
+        input.currentTime = (HYD_TIME)(2.0 + step * 0.1);
+        HYD_OutputLimiter_ExecuteWithProtection(&input, &state, &output);
+    }
+    assert(output.pressureLimitActive == false);
+    assert_real_eq(output.commandFlow, 100.0, 0.01, "pressure limit hysteresis release");
+
+    printf("test_pressure_limit_stays_non_fault_and_hysteretic PASSED\n");
 }
 
 static void test_no_protection_when_disabled(void) {
@@ -418,11 +449,11 @@ int main(void) {
     test_invalid_ratio_uses_default_derate();
     test_segment_derate_ratio_overrides_default();
     test_pressure_limit_proportional_reduction();
-    test_pressure_limit_min_scale_clamp();
+    test_pressure_limit_zero_scale_clamp();
     test_soft_limit_extend_deceleration();
     test_soft_limit_does_not_block_retract();
     test_protection_takes_min_scale();
-    test_pressure_limit_fault_escalation();
+    test_pressure_limit_stays_non_fault_and_hysteretic();
     test_no_protection_when_disabled();
     test_allow_negative_flow_passes_negative_input();
     test_allow_negative_flow_clamps_to_min();

@@ -182,7 +182,8 @@ static HYD_MotionSegment buildPositionSegment(
     return seg;
 }
 
-/* 构建速度控制运动段 (MoveVelocity用) */
+/* 构建速度控制运动段 (MoveVelocity用)。maxPressure 是工艺限幅参数：
+ * 超限时由核心限幅器降低实际流量，运动块保持运行态。 */
 static HYD_MotionSegment buildVelocitySegment(
     HYD_REAL velocity,
     HYD_REAL acceleration,
@@ -230,6 +231,7 @@ static HYD_MotionSegment buildContinuousAbsoluteApproachSegment(
                                                  direction,
                                                  fb);
 
+    /* approach 与 sustain 共用同一个工艺压力限幅，堵转判断由 PLC 负责。 */
     seg.maxPressure = pressureLimit;
     seg.velocityTolerance = fb->_params.velocityTolerance;
 
