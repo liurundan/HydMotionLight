@@ -369,6 +369,11 @@ typedef HYD_REAL HYD_TIME;
 #define HYD_THRESH_STOP_TIMEOUT_IDEAL_MULT   5.0f
 #define HYD_THRESH_STOP_TIMEOUT_SLACK_S      1.0f
 
+/* 液压轴在指令流量归零后通常仍需依靠摩擦和油液压缩性自然收敛。
+ * 未显式配置 segment.timeoutLimit 时，为这段自然停机保留最小观察窗口。
+ * 该值是安全兜底的默认值，设备可在标定后通过 segment.timeoutLimit 覆盖。 */
+#define HYD_THRESH_STOP_TIMEOUT_NATURAL_MIN_S 30.0f
+
 /* --- 压力 ceiling 诊断 debounce / startup-suppress（motion_control.c Init） --- */
 
 /* PRESSURE_CEILING_EXCEEDED 触发前的 debounce 时长。短于一般 pressure

@@ -95,6 +95,45 @@ static void test_normal_stop_does_not_false_alarm(void) {
     printf("test_normal_stop_does_not_false_alarm PASSED\n");
 }
 
+static void test_natural_stop_settling_does_not_false_alarm(void) {
+    HYD_MotionControlFB fb;
+    int i;
+
+    HYD_MotionControlFB_Init(&fb);
+    prime_velocity_run(&fb);
+
+    fb.AXIS_REF.timestamp = 0.0;
+    assert(HYD_MotionControlFB_StartSegment(&fb, 0, 0.0));
+    /* Exercise the default hydraulic settling floor instead of an explicit
+     * segment timeout. */
+    fb._activeSegment.timeoutLimit = 0.0;
+    for (i = 0; i < 20; i++) {
+        fb.AXIS_REF.timestamp = (HYD_TIME)(i * 0.01);
+        fb.AXIS_REF.velocity = 50.0;
+        HYD_MotionControlFB_Execute(&fb);
+    }
+
+    assert(HYD_MotionControlFB_Stop(&fb, 0.20, 500.0));
+    /* Hydraulic axes may need about two seconds to coast to zero after the
+     * commanded 100 ms flow ramp has reached zero.  The stop watchdog must
+     * not classify that measured deceleration as a stuck actuator. */
+    for (i = 0; i < 300; i++) {
+        HYD_TIME elapsed = 0.20 + (HYD_TIME)((i + 1) * 0.01);
+        HYD_REAL remaining = 50.0 * (1.0 - ((HYD_REAL)(i + 1) / 200.0));
+        fb.AXIS_REF.timestamp = elapsed;
+        fb.AXIS_REF.velocity = (remaining > 0.0) ? remaining : 0.0;
+        HYD_MotionControlFB_Execute(&fb);
+        if (fb.FB_STATE == HYD_FB_STATE_DONE) {
+            break;
+        }
+    }
+
+    assert(fb.FB_STATE == HYD_FB_STATE_DONE);
+    assert(!fb.STATE.faultActive);
+    assert(fb.DIAGNOSTIC.code != HYD_DIAG_CODE_TIMEOUT);
+    printf("test_natural_stop_settling_does_not_false_alarm PASSED\n");
+}
+
 static void test_stop_branch_detects_sensor_fault(void) {
     HYD_MotionControlFB fb;
     int i;
@@ -142,9 +181,8 @@ static void test_stop_branch_detects_stuck_velocity_timeout(void) {
         HYD_MotionControlFB_Execute(&fb);
     }
 
-    /* Stop with deceleration 200 mm/s^2; ideal stop time = 50/200 = 0.25 s.
-     * Default protection threshold = 5x + 1.0 = ~2.25 s, but we run up to
-     * 30 s of monotonic-time to make the assertion robust. */
+    /* The hydraulic default floor is 3 s; run up to 30 s to keep the
+     * assertion independent of the exact calibrated threshold. */
     assert(HYD_MotionControlFB_Stop(&fb, 0.20, 200.0));
 
     for (i = 0; i < 3000; i++) {
@@ -165,6 +203,7 @@ static void test_stop_branch_detects_stuck_velocity_timeout(void) {
 int main(void) {
     test_stop_branch_detects_timestamp_rollback();
     test_normal_stop_does_not_false_alarm();
+    test_natural_stop_settling_does_not_false_alarm();
     test_stop_branch_detects_sensor_fault();
     test_stop_branch_detects_stuck_velocity_timeout();
     return 0;

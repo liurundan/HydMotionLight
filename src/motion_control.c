@@ -3318,10 +3318,18 @@ static HYD_BOOL HYD_RunRunningStateStopping(HYD_MotionControlFB* fb,
          * If the commanded deceleration ramp completes (decelMag ~= 0)
          * but feedback velocity never drops below the completion threshold
          * (stuck encoder / actuator), this branch would hang forever.
-         * Threshold = HYD_THRESH_STOP_TIMEOUT_IDEAL_MULT * ideal-stop + slack. */
+         * An explicit segment timeout remains authoritative; otherwise keep
+         * a hydraulic natural-settling floor so a short process deceleration
+         * time does not become an unrealistically short stop watchdog. */
         HYD_REAL idealStopTime = stopMag / stopDeceleration;
         HYD_REAL stopTimeoutLimit = HYD_THRESH_STOP_TIMEOUT_IDEAL_MULT * idealStopTime +
                                     HYD_THRESH_STOP_TIMEOUT_SLACK_S;
+        HYD_TIME configuredStopTimeout = HYD_Segment_GetTimeoutLimit(segment);
+        if (configuredStopTimeout > 0.0f) {
+            stopTimeoutLimit = configuredStopTimeout;
+        } else if (stopTimeoutLimit < HYD_THRESH_STOP_TIMEOUT_NATURAL_MIN_S) {
+            stopTimeoutLimit = HYD_THRESH_STOP_TIMEOUT_NATURAL_MIN_S;
+        }
         if (stopElapsed > stopTimeoutLimit) {
             fb->_directSessionState = HYD_DIRECT_SESSION_FAULT;
             HYD_StateReporter_ReportFault(fb,
