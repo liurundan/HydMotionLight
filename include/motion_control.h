@@ -180,7 +180,8 @@ typedef enum {
 typedef enum {
     HYD_CONTABS_PHASE_NONE = 0,
     HYD_CONTABS_PHASE_APPROACH,
-    HYD_CONTABS_PHASE_SUSTAIN
+    HYD_CONTABS_PHASE_SUSTAIN,
+    HYD_CONTABS_PHASE_STOPPING
 } HYD_ContinuousAbsolutePhase;
 
 typedef enum {

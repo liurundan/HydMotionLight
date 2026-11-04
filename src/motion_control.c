@@ -1000,14 +1000,12 @@ static HYD_REAL HYD_ResolveContinuousAbsoluteCrossingVelocity(
     HYD_REAL remainingDistance;
     HYD_REAL projectedVelocity;
     HYD_REAL requested;
-    HYD_REAL decel;
 
     if (fb == NULL || ctx == NULL || segment == NULL) {
         return 0.0f;
     }
 
     requested = fabs(ctx->sustainVelocity);
-    decel = (segment->maxDeceleration > 0.0f) ? segment->maxDeceleration : segment->maxAcceleration;
     remainingDistance = fabs(segment->targetPosition - fb->AXIS_REF.position);
     projectedVelocity = fabs(fb->AXIS_REF.velocity);
 
@@ -1026,13 +1024,11 @@ static HYD_REAL HYD_ResolveContinuousAbsoluteCrossingVelocity(
     }
 
     if (projectedVelocity > requested) {
-        HYD_REAL floorValue = projectedVelocity * projectedVelocity -
-                              2.0f * decel * remainingDistance;
-        HYD_REAL reachable = (floorValue > 0.0f) ? sqrt(floorValue) : 0.0f;
-        if (reachable < requested) {
-            return requested;
-        }
-        return reachable;
+        /* Adaptation may preserve the requested terminal velocity when it is
+         * reachable, but must never raise it to compensate for insufficient
+         * braking distance. On a non-reversible hydraulic axis, commanding a
+         * higher crossing target would increase overshoot. */
+        return requested;
     }
 
     return requested;
@@ -1044,15 +1040,24 @@ static HYD_BOOL HYD_IsContinuousAbsoluteVelocityReached(const HYD_MotionSegment*
     HYD_REAL configuredTolerance = 0.0f;
     HYD_REAL tolerance;
 
-    if (segment != NULL && segment->velocityTolerance > 0.0f) {
+    if (segment != NULL && segment->stableVelocityLimit > 0.0f) {
+        configuredTolerance = segment->stableVelocityLimit;
+    } else if (segment != NULL && segment->velocityTolerance > 0.0f) {
         configuredTolerance = segment->velocityTolerance;
     }
 
-    tolerance = (configuredTolerance > 0.0f)
-        ? configuredTolerance
-        : ((fabs(targetVelocity) * 0.05f) > 0.01f
+    if (configuredTolerance > 0.0f) {
+        tolerance = configuredTolerance;
+    } else if (fabs(targetVelocity) <= HYD_THRESH_DECEL_TARGET_VEL_DONE) {
+        /* Zero-end completion uses the same near-zero threshold as normal
+         * position completion so INENDVELOCITY cannot finish the process
+         * layer before the direct ticket is actually complete. */
+        tolerance = HYD_THRESH_STOP_VEL_DONE_MAG;
+    } else {
+        tolerance = ((fabs(targetVelocity) * 0.05f) > 0.01f)
             ? (fabs(targetVelocity) * 0.05f)
-            : 0.01f);
+            : 0.01f;
+    }
 
     return fabs(actualVelocity - targetVelocity) <= tolerance;
 }
@@ -3127,40 +3132,54 @@ static void HYD_MotionControlFB_RunRunningState(HYD_MotionControlFB* fb) {
             &fb->AXIS_REF,
             HYD_Segment_GetPositionTolerance(segment),
             fb->_lastActiveDirection)) {
-        HYD_MotionSegment sustainSegment =
-            HYD_BuildContinuousAbsoluteSustainSegment(fb,
-                                                      &fb->_directContinuousAbsolute,
-                                                      segment);
-        HYD_DirectContinuityState continuityState;
-        HYD_REAL signedCrossingVelocity =
-            (fb->_directContinuousAbsolute.sustainDirection == HYD_DIRECTION_NEGATIVE)
-            ? -fb->_directContinuousAbsolute.crossingVelocity
-            : fb->_directContinuousAbsolute.crossingVelocity;
-
-        HYD_CaptureDirectContinuityState(fb, &continuityState);
         fb->_directContinuousAbsolute.positionReachedLatched = true;
-        fb->_directContinuousAbsolute.phase = HYD_CONTABS_PHASE_SUSTAIN;
-        if (!limiterOutput.pressureLimitActive &&
-            HYD_IsContinuousAbsoluteVelocityReached(segment,
-                                                    signedCrossingVelocity,
-                                                    fb->_directContinuousAbsolute.sustainVelocity)) {
-            fb->_directContinuousAbsolute.inEndVelocityLatched = true;
-        }
+        if (fabs(fb->_directContinuousAbsolute.sustainVelocity) <=
+            HYD_THRESH_DECEL_TARGET_VEL_DONE) {
+            /* A zero terminal velocity is a finite positioning stop, not a
+             * zero-speed continuous segment. Keep the position planner active
+             * so its deceleration output continues until measured feedback is
+             * settled and normal position completion can finish the ticket. */
+            fb->_directContinuousAbsolute.phase = HYD_CONTABS_PHASE_STOPPING;
+        } else {
+            HYD_MotionSegment sustainSegment =
+                HYD_BuildContinuousAbsoluteSustainSegment(
+                    fb, &fb->_directContinuousAbsolute, segment);
+            HYD_DirectContinuityState continuityState;
 
-        fb->_previousSegmentMode = fb->_activeSegment.mode;
-        HYD_StateReporter_ResetTransitionFlags(fb);
-        fb->_activeSegment = sustainSegment;
-        fb->_activeSegmentValid = true;
-        fb->_activeSegmentSource = HYD_SEGMENT_SOURCE_DIRECT;
-        fb->_segmentStartTime = fb->AXIS_REF.timestamp;
-        if (!HYD_PrimeSegmentControllers(
-                fb, &fb->_activeSegment, fb->AXIS_REF.timestamp, false)) {
+            HYD_CaptureDirectContinuityState(fb, &continuityState);
+            fb->_directContinuousAbsolute.phase = HYD_CONTABS_PHASE_SUSTAIN;
+            if (!limiterOutput.pressureLimitActive &&
+                HYD_IsContinuousAbsoluteVelocityReached(segment,
+                                                        fb->AXIS_REF.velocity,
+                                                        fb->_directContinuousAbsolute.sustainVelocity)) {
+                fb->_directContinuousAbsolute.inEndVelocityLatched = true;
+            }
+
+            fb->_previousSegmentMode = fb->_activeSegment.mode;
+            HYD_StateReporter_ResetTransitionFlags(fb);
+            fb->_activeSegment = sustainSegment;
+            fb->_activeSegmentValid = true;
+            fb->_activeSegmentSource = HYD_SEGMENT_SOURCE_DIRECT;
+            fb->_segmentStartTime = fb->AXIS_REF.timestamp;
+            if (!HYD_PrimeSegmentControllers(
+                    fb, &fb->_activeSegment, fb->AXIS_REF.timestamp, false)) {
+                return;
+            }
+            HYD_RestoreDirectContinuityState(fb, &continuityState);
+            HYD_StateReporter_SetPlannedDirection(fb, fb->_activeSegment.direction);
+            HYD_StateReporter_SetFbState(fb, HYD_FB_STATE_STARTING);
             return;
         }
-        HYD_RestoreDirectContinuityState(fb, &continuityState);
-        HYD_StateReporter_SetPlannedDirection(fb, fb->_activeSegment.direction);
-        HYD_StateReporter_SetFbState(fb, HYD_FB_STATE_STARTING);
-        return;
+    }
+
+    if (fb->_directOwnerKind == HYD_DIRECT_CMD_MOVE_CONTINUOUS_ABSOLUTE &&
+        fb->_directContinuousAbsolute.valid &&
+        fb->_directContinuousAbsolute.phase == HYD_CONTABS_PHASE_STOPPING &&
+        !fb->_directContinuousAbsolute.inEndVelocityLatched &&
+        HYD_IsContinuousAbsoluteVelocityReached(segment,
+                                                fb->AXIS_REF.velocity,
+                                                fb->_directContinuousAbsolute.sustainVelocity)) {
+        fb->_directContinuousAbsolute.inEndVelocityLatched = true;
     }
 
     if (HYD_RunRunningStateCompletion(fb, segment, &plannerOutput, &executionReference)) {
@@ -3389,6 +3408,14 @@ static HYD_BOOL HYD_RunRunningStateCompletion(HYD_MotionControlFB* fb,
     }
 
     completedSegmentSource = fb->_activeSegmentSource;
+    if (completedSegmentSource == HYD_SEGMENT_SOURCE_DIRECT &&
+        fb->_directOwnerKind == HYD_DIRECT_CMD_MOVE_CONTINUOUS_ABSOLUTE &&
+        fb->_directContinuousAbsolute.valid &&
+        fb->_directContinuousAbsolute.phase == HYD_CONTABS_PHASE_STOPPING) {
+        fb->_directContinuousAbsolute.positionReachedLatched = true;
+        fb->_directContinuousAbsolute.inEndVelocityLatched = true;
+        fb->_directSessionState = HYD_DIRECT_SESSION_DONE;
+    }
     if (completedSegmentSource == HYD_SEGMENT_SOURCE_DIRECT &&
         fb->_directPendingValid) {
         HYD_RecordDirectExecutionCompleted(fb);

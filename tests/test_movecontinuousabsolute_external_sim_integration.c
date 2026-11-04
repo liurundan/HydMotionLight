@@ -485,8 +485,8 @@ static void test_movecontinuousabsolute_external_sim_axis_tracks_velocity_and_po
     ASSERT_TRUE(in_end_velocity_step > 0,
                 "MoveContinuousAbsolute should reach INENDVELOCITY against the external simulator axis");
     if (position_reached_step > 0 && in_end_velocity_step > 0) {
-        ASSERT_TRUE(position_reached_step == in_end_velocity_step,
-                    "With zero end velocity and no pressure limiting, POSITIONREACHED and INENDVELOCITY should latch together");
+        ASSERT_TRUE(in_end_velocity_step > position_reached_step,
+                    "With zero end velocity, INENDVELOCITY should wait for measured stop after POSITIONREACHED");
     }
 
     ASSERT_TRUE(saw_cruise_velocity,

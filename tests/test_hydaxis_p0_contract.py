@@ -87,6 +87,25 @@ class HydAxisP0ContractTest(unittest.TestCase):
         self.assertGreater(end_velocity_index, speed_selection_end)
         self.assertLess(end_velocity_index, velocity_index)
 
+    def test_zero_end_velocity_waits_for_runtime_stop_before_done(self):
+        declarations = section_between("rEndVelLastSeg : REAL", "rVel0 : REAL")
+        clear_latch = section_between("METHOD PRIVATE ClearSegLatch", "END_METHOD")
+        new_segment = section_between("IF bNewSeg THEN", "// 3.2 在线速度更新")
+        running_state = section_between("100: // 运行中", "105: // 运行过渡步")
+        status_output = section_between("// 9. 状态输出汇总", "END_FUNCTION_BLOCK")
+
+        self.assertIn("bZeroEndStopDone : BOOL := FALSE;", declarations)
+        self.assertIn("bZeroEndStopDone := FALSE", clear_latch)
+        self.assertIn("bZeroEndStopDone := FALSE", new_segment)
+        self.assertIn("rEndVelLastSeg <= 0.001", running_state)
+        self.assertIn("fbMoveContAbs.InEndVelocity", running_state)
+        self.assertIn("iStep := 10", running_state)
+        self.assertLess(
+            running_state.index("ELSIF rTrigStart.Q"),
+            running_state.index("ELSIF (uiActiveMode = 1)"),
+        )
+        self.assertIn("bDone := bZeroEndStopDone", status_output)
+
     def test_transition_step_preserves_start_stop_and_estop_edges(self):
         segment_trigger = section_between("bNewSeg :=", "IF bNewSeg THEN")
         transition_step = section_between("105: // 运行过渡步", "200: // 正常停止")

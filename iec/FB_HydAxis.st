@@ -143,6 +143,7 @@ FUNCTION_BLOCK FB_HydAxis
     rEndVelLastSeg : REAL := 0.0;
     uiLastSegMode : UINT := 0;
     bSegVelValid : BOOL := FALSE;
+    bZeroEndStopDone : BOOL := FALSE;
     rVel0 : REAL := 0.0;
     rVelSigned : REAL;
     bNewSeg : BOOL;
@@ -426,6 +427,7 @@ FUNCTION_BLOCK FB_HydAxis
     (* 停止/急停/复位/报警回到空闲: 段速度链断开, 下次 Start 的 V0=0 *)
 
     bSegVelValid    := FALSE;
+    bZeroEndStopDone := FALSE;
     rVelLastSeg     := 0.0;
     rEndVelLastSeg  := 0.0;
     uiLastSegMode   := 0;
@@ -622,6 +624,7 @@ FUNCTION_BLOCK FB_HydAxis
              AND (iStep = 10 OR iStep = 100 OR iStep = 105);
 
   IF bNewSeg THEN
+      bZeroEndStopDone := FALSE;
       CalcSegmentRamp();
   END_IF
 
@@ -730,7 +733,7 @@ FUNCTION_BLOCK FB_HydAxis
 
       10: // 空闲
           bCmdExecute := FALSE;
-          bDone       := FALSE;
+          bDone       := bZeroEndStopDone;
 
           IF rTrigEStop.Q THEN
               iStep := 300;
@@ -739,6 +742,7 @@ FUNCTION_BLOCK FB_HydAxis
           ELSIF rTrigReset.Q AND bAlarm THEN
               iStep := 400;
           ELSIF rTrigStart.Q AND (uiMode >= 1) AND (uiMode <= 3) THEN
+              bZeroEndStopDone := FALSE;
               uiActiveMode := uiMode;   // 段斜坡已在 §3.1 method 内计算完毕
               bCmdExecute  := TRUE;
               iStep        := 100;
@@ -765,6 +769,12 @@ FUNCTION_BLOCK FB_HydAxis
               ELSIF (uiMode >= 1) AND (uiMode <= 3) THEN
                   uiActiveMode := uiMode;
               END_IF
+          ELSIF (uiActiveMode = 1) AND (rEndVelLastSeg <= 0.001)
+                AND fbMoveContAbs.InEndVelocity THEN
+              // EndVel=0 是有限位置停机；释放 EXECUTE 后仍保持完成标志。
+              bZeroEndStopDone := TRUE;
+              bCmdExecute := FALSE;
+              iStep := 10;
           END_IF
 
           IF rTrigEStop.Q THEN
@@ -958,7 +968,7 @@ FUNCTION_BLOCK FB_HydAxis
       100, 105:
           bBusy := TRUE;
           CASE uiActiveMode OF
-              1:  bDone := fbMoveContAbs.InEndVelocity;
+              1:  bDone := bZeroEndStopDone OR fbMoveContAbs.InEndVelocity;
               2:  bDone := fbMoveVel.InVelocity;
               3:  bDone := fbPresHdl.INPRESSURE;
               ELSE

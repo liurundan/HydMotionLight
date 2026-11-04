@@ -818,6 +818,62 @@ static void test_negative_same_direction_latches_inendvelocity_on_target_crossin
                 "Negative same-direction MoveContinuousAbsolute should sustain a negative end velocity after crossing the target");
 }
 
+static void test_inendvelocity_uses_measured_axis_velocity(void) {
+    HYD_MOVECONTINUOUSABSOLUTE cmd;
+    int axisId;
+    int positionReachedStep = -1;
+    HYD_MotionControlFB* core;
+
+    __HydMotion_framework_Init();
+    axisId = create_manual_axis();
+    ASSERT_TRUE(axisId >= 0,
+                "CreateMotion should allocate a manual axis for measured end-velocity checks");
+    if (axisId < 0) {
+        return;
+    }
+    core = __MK_GetPublic_MotionControlFB(axisId);
+    ASSERT_TRUE(core != NULL,
+                "Manual measured end-velocity test should expose the public FB");
+    if (core == NULL) {
+        return;
+    }
+    ASSERT_TRUE(set_axis_feedback(axisId, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f),
+                "Manual feedback should initialize the axis before the command");
+
+    init_movecontinuousabsolute(&cmd, axisId, 1.0f, 10.0f, 5.0f,
+                                HYD_DIRECTION_POSITIVE,
+                                HYD_DIRECTION_POSITIVE);
+    IEC_VAL(cmd.ADAPTENDVELTOAVOIDOVERSHOOT) = false;
+    rising_edge_scan(&cmd);
+
+    ASSERT_TRUE(set_axis_feedback(axisId, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f),
+                "Manual feedback should move to the target while actual velocity remains below EndVelocity");
+    for (int step = 0; step < 4; step++) {
+        __HydMotion_framework_Publish();
+        hold_true_scan(&cmd);
+        if (IEC_VAL(cmd.POSITIONREACHED)) {
+            positionReachedStep = step + 1;
+            break;
+        }
+    }
+
+    ASSERT_TRUE(positionReachedStep > 0,
+                "Manual position feedback should latch POSITIONREACHED");
+    ASSERT_TRUE(IEC_VAL(cmd.INENDVELOCITY) == false,
+                "INENDVELOCITY must remain false while actual axis velocity is outside EndVelocity tolerance");
+    ASSERT_TRUE(fabsf(core->AXIS_REF.velocity) < 0.01f,
+                "The test should prove measured velocity differs from the requested nonzero end velocity");
+
+    ASSERT_TRUE(set_axis_feedback(axisId, 1.0f, 5.0f, 0.0f, 0.0f, 0.0f),
+                "Manual feedback should then report the requested end velocity");
+    for (int step = 0; step < 4 && !IEC_VAL(cmd.INENDVELOCITY); step++) {
+        __HydMotion_framework_Publish();
+        hold_true_scan(&cmd);
+    }
+    ASSERT_TRUE(IEC_VAL(cmd.INENDVELOCITY) == true,
+                "INENDVELOCITY should latch after actual axis velocity enters tolerance");
+}
+
 static void test_adapt_lowers_crossing_velocity_when_distance_is_too_short_to_accelerate(void) {
     HYD_MOVECONTINUOUSABSOLUTE cmd;
     int axisId;
@@ -882,9 +938,10 @@ static void test_adapt_lowers_crossing_velocity_when_distance_is_too_short_to_ac
                 "Adapt mode should not reverse direction before the first target reach on a short accelerate-up move");
 }
 
-static void test_adapt_raises_crossing_velocity_when_distance_is_too_short_to_decelerate(void) {
+static void test_adapt_does_not_raise_crossing_velocity_when_distance_is_too_short_to_decelerate(void) {
     HYD_MOVECONTINUOUSABSOLUTE cmd;
     HYD_MOVEVELOCITY mv;
+    HYD_MotionControlFB* core;
     int axisId;
     int positionReachedStep;
     bool reversedBeforeTarget = false;
@@ -900,6 +957,12 @@ static void test_adapt_raises_crossing_velocity_when_distance_is_too_short_to_de
     axisId = create_sim_axis();
     ASSERT_TRUE(axisId >= 0, "CreateMotion should allocate a simulation axis");
     if (axisId < 0) {
+        return;
+    }
+    core = __MK_GetPublic_MotionControlFB(axisId);
+    ASSERT_TRUE(core != NULL,
+                "Short-distance adapt test should expose the public FB");
+    if (core == NULL) {
         return;
     }
 
@@ -944,6 +1007,9 @@ static void test_adapt_raises_crossing_velocity_when_distance_is_too_short_to_de
     IEC_VAL(cmd.ADAPTENDVELTOAVOIDOVERSHOOT) = true;
     rising_edge_scan(&cmd);
 
+    ASSERT_TRUE(core->_directContinuousAbsolute.crossingVelocity <= endVelocity + 1e-4f,
+                "Adapt mode must not raise the requested crossing velocity when braking distance is insufficient");
+
     positionReachedStep = -1;
     for (int step = 0; step < MAX_SIM_STEPS; step++) {
         __HydMotion_framework_Publish();
@@ -985,6 +1051,75 @@ static void test_adapt_raises_crossing_velocity_when_distance_is_too_short_to_de
                 "Adapt mode should observe at least one valid public velocity sample on the short decelerate-down move");
     ASSERT_TRUE(reversedBeforeTarget == false,
                 "Adapt mode should not reverse direction before the first target reach on a short decelerate-down move");
+}
+
+static void test_zero_end_velocity_completes_after_position_stop(void) {
+    HYD_MOVECONTINUOUSABSOLUTE cmd;
+    HYD_MotionControlFB* core;
+    int axisId;
+    int positionReachedStep = -1;
+    int inEndVelocityStep = -1;
+    HYD_REAL finalPosition = 0.0f;
+    HYD_REAL finalVelocity = 0.0f;
+
+    __HydMotion_framework_Init();
+    axisId = create_sim_axis();
+    ASSERT_TRUE(axisId >= 0,
+                "CreateMotion should allocate a simulation axis for zero-end stop");
+    if (axisId < 0) {
+        return;
+    }
+    core = __MK_GetPublic_MotionControlFB(axisId);
+    ASSERT_TRUE(core != NULL,
+                "Zero-end stop test should expose the public FB");
+    if (core == NULL) {
+        return;
+    }
+
+    init_movecontinuousabsolute(&cmd, axisId, 20.0f, 15.0f, 0.0f,
+                                HYD_DIRECTION_POSITIVE,
+                                HYD_DIRECTION_POSITIVE);
+    IEC_VAL(cmd.ADAPTENDVELTOAVOIDOVERSHOOT) = true;
+    rising_edge_scan(&cmd);
+
+    for (int step = 0; step < MAX_SIM_STEPS; step++) {
+        __HydMotion_framework_Publish();
+        hold_true_scan(&cmd);
+
+        if (positionReachedStep < 0 && IEC_VAL(cmd.POSITIONREACHED)) {
+            positionReachedStep = step + 1;
+            ASSERT_TRUE(core->_activeSegment.mode == HYD_MODE_POSITION,
+                        "Zero EndVelocity should remain in position planning after POSITIONREACHED");
+            ASSERT_TRUE(core->_directContinuousAbsolute.phase != HYD_CONTABS_PHASE_SUSTAIN,
+                        "Zero EndVelocity should never enter the continuous SUSTAIN phase");
+        }
+        if (IEC_VAL(cmd.INENDVELOCITY) && !IEC_VAL(cmd.BUSY)) {
+            inEndVelocityStep = step + 1;
+            break;
+        }
+        if (IEC_VAL(cmd.ERROR) || IEC_VAL(cmd.COMMANDABORTED)) {
+            break;
+        }
+    }
+
+    ASSERT_TRUE(positionReachedStep > 0,
+                "Zero EndVelocity move should report target position reached");
+    ASSERT_TRUE(inEndVelocityStep > positionReachedStep,
+                "Zero EndVelocity should report end velocity only after the stop phase");
+    ASSERT_TRUE(IEC_VAL(cmd.INENDVELOCITY) == true,
+                "Zero EndVelocity should eventually report the measured stop");
+    ASSERT_TRUE(IEC_VAL(cmd.BUSY) == false,
+                "Zero EndVelocity should finish the direct command after stopping");
+
+    if (read_sim_feedback(axisId, &finalPosition, &finalVelocity, NULL, NULL)) {
+        ASSERT_TRUE(fabsf(finalVelocity) <= VELOCITY_EPSILON,
+                    "Zero-end command should be complete only when simulated feedback is stationary");
+        ASSERT_TRUE(fabsf(finalPosition - 20.0f) <= 0.1f,
+                    "Zero-end stop should settle inside the configured position tolerance");
+    } else {
+        ASSERT_TRUE(false,
+                    "ReadSimFeedback should expose the final zero-end position and velocity");
+    }
 }
 
 static void test_reverse_sustain_delays_inendvelocity(void) {
@@ -1395,12 +1530,14 @@ int main(void) {
     test_current_end_velocity_direction_uses_velocity_then_last_active_direction();
     test_same_direction_reaches_position_and_end_velocity();
     test_same_direction_keeps_velocity_across_position_to_sustain_switch();
+    test_inendvelocity_uses_measured_axis_velocity();
     test_omitted_direction_reaches_position_and_end_velocity();
     test_current_direction_does_not_complete_from_wrong_side();
     test_chained_movecontinuousabsolute_accepts_lagging_feedback();
     test_negative_same_direction_latches_inendvelocity_on_target_crossing();
     test_adapt_lowers_crossing_velocity_when_distance_is_too_short_to_accelerate();
-    test_adapt_raises_crossing_velocity_when_distance_is_too_short_to_decelerate();
+    test_adapt_does_not_raise_crossing_velocity_when_distance_is_too_short_to_decelerate();
+    test_zero_end_velocity_completes_after_position_stop();
     test_reverse_sustain_delays_inendvelocity();
     test_plc_pressure_feedback_and_movecontinuousabsolute_limit_use_bar();
     test_pressure_limit_can_hold_positionreached_true_while_inendvelocity_stays_false();

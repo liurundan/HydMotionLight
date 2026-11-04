@@ -2208,6 +2208,12 @@ void __mcl_cmd_MoveContinuousAbsolute(HYD_MOVECONTINUOUSABSOLUTE *data__)
             requestedDirection,
             pressureLimit,
             fb);
+        if (requestedEndVelocity <= HYD_THRESH_DECEL_TARGET_VEL_DONE) {
+            approachSegment.stableVelocityLimit =
+                (fb->_params.velocityTolerance > 0.0f)
+                ? fb->_params.velocityTolerance
+                : HYD_THRESH_STOP_VEL_DONE_MAG;
+        }
         approachDirection = HYD_Segment_ResolveDirection(&approachSegment,
                                                          &fb->AXIS_REF,
                                                          fb->_lastActiveDirection);
@@ -2279,7 +2285,16 @@ void __mcl_cmd_MoveContinuousAbsolute(HYD_MOVECONTINUOUSABSOLUTE *data__)
 
     if (myExecId != 0)
     {
-        if (directExecutionWasPreempted(fb, myExecId, HYD_DIRECT_CMD_MOVE_CONTINUOUS_ABSOLUTE) ||
+        if (directExecutionWasCompleted(fb, myExecId,
+                                        HYD_DIRECT_CMD_MOVE_CONTINUOUS_ABSOLUTE)) {
+            __SET_VAR(data__->, BUSY, , false);
+            __SET_VAR(data__->, POSITIONREACHED, ,
+                      fb->_directContinuousAbsolute.positionReachedLatched ? true : false);
+            __SET_VAR(data__->, INENDVELOCITY, ,
+                      fb->_directContinuousAbsolute.inEndVelocityLatched ? true : false);
+            __SET_VAR(data__->, COMMANDABORTED, , false);
+            __SET_VAR(data__->, _EXEC_ID, , (IEC_WORD)0);
+        } else if (directExecutionWasPreempted(fb, myExecId, HYD_DIRECT_CMD_MOVE_CONTINUOUS_ABSOLUTE) ||
             directExecutionLostOwnership(fb, myExecId, HYD_DIRECT_CMD_MOVE_CONTINUOUS_ABSOLUTE)) {
             __SET_VAR(data__->, COMMANDABORTED, , true);
             __SET_VAR(data__->, BUSY, , false);
