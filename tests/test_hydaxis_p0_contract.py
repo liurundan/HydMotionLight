@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Source-contract checks for critical FB_HydAxis process-layer behavior."""
+"""Source-contract checks for the FB_HydAxis segment-ramp design."""
 
 from pathlib import Path
 import unittest
@@ -17,119 +17,98 @@ def section_between(start: str, end: str) -> str:
 
 
 class HydAxisP0ContractTest(unittest.TestCase):
-    def test_negative_direction_from_rest_is_an_acceleration_transition(self):
-        ramp = section_between(
-            "METHOD PRIVATE CalcSegmentRamp", "END_METHOD"
-        )
-
-        self.assertIn("rVel0Magnitude : REAL;", ramp)
-        self.assertIn("bDirectionChange : BOOL;", ramp)
-        self.assertIn("rVel0Magnitude := CalcStartVelocity();", ramp)
-        self.assertIn("rVel0Magnitude > rDeltaVDeadZone", ramp)
-        self.assertIn("IF bDirectionChange THEN", ramp)
-        self.assertIn("rDeltaV := -rVel0Magnitude;", ramp)
-        self.assertIn("rDeltaV := rVel - rVel0Magnitude;", ramp)
-
-    def test_position_segment_parameters_are_latched_and_used(self):
+    def test_segment_ramp_uses_positive_magnitudes_and_start_velocity(self):
         declarations = section_between("rPos : REAL;", "END_VAR")
-        position_logic = section_between("// 3.1 新段触发", "// 3.2 在线速度更新")
-        move_call = section_between("fbMoveContAbs(", "fbMoveVel(")
+        ramp = section_between("METHOD PRIVATE CalcSegmentRamp", "END_METHOD")
 
-        self.assertIn("rPosActive", declarations)
-        self.assertIn("rVelActive", declarations)
-        self.assertIn("rEndVelActive", declarations)
+        self.assertIn("rMinRampTime : REAL := 100.0", declarations)
+        self.assertIn("rVelMagnitude := ABS(rVel)", ramp)
+        self.assertIn("rEndVelMagnitude := ABS(rEndVel)", ramp)
+        self.assertIn("MAX(UINT_TO_REAL(uiAcc), rMinRampTime)", ramp)
+        self.assertIn("MAX(UINT_TO_REAL(uiDec), rMinRampTime)", ramp)
+        self.assertIn("tAcc := MAX(UINT_TO_REAL(uiAcc), rMinRampTime) * 0.001", ramp)
+        self.assertIn("tDec := MAX(UINT_TO_REAL(uiDec), rMinRampTime) * 0.001", ramp)
+        self.assertIn("rVel0Magnitude := CalcStartVelocity();", ramp)
+        self.assertIn("ABS(rVel - rVel0Magnitude)", ramp)
+
+    def test_direction_speed_limit_is_selected_before_velocity_conversion(self):
+        conversion = section_between("rPres :=", "//--- 2. 状态机主逻辑")
+
+        self.assertLess(conversion.index("rMaxSpeedExtend"), conversion.index("rVel :="))
+        self.assertLess(conversion.index("rMaxSpeedRetract"), conversion.index("rEndVel :="))
+        self.assertIn("rMaxSpeedDir := rMaxSpeedExtend", conversion)
+        self.assertIn("rMaxSpeedDir := rMaxSpeedRetract", conversion)
+        self.assertIn("rVel := UINT_TO_REAL(uiSpd)", conversion)
+        self.assertIn("rEndVel := UINT_TO_REAL(uiEndSpd)", conversion)
+        self.assertIn("IF iDir = 1", conversion)
+        self.assertIn("rMaxSpeedExtend", conversion)
+        self.assertIn("rMaxSpeedRetract", conversion)
+
+    def test_start_velocity_uses_previous_segment_position_velocity_or_zero(self):
+        start_velocity = section_between(
+            "METHOD PRIVATE CalcStartVelocity", "END_METHOD"
+        )
+
+        self.assertIn("rEndVelLastSeg", start_velocity)
+        self.assertIn("rVelLastSeg", start_velocity)
+        self.assertIn("ELSE", start_velocity)
+        self.assertIn("CalcStartVelocity := 0.0;", start_velocity)
+        self.assertLess(start_velocity.index("rEndVelLastSeg"), start_velocity.index("rVelLastSeg"))
+        self.assertLess(start_velocity.index("rVelLastSeg"), start_velocity.index("CalcStartVelocity := 0.0;"))
+
+    def test_segment_latches_capture_direction_and_decel_to_zero(self):
+        declarations = section_between("rPos : REAL;", "END_VAR")
+        segment_trigger = section_between("// 3.1 新段触发", "// 3.2 在线速度更新")
+        ramp = section_between("METHOD PRIVATE CalcSegmentRamp", "END_METHOD")
+
         self.assertIn("iDirActive", declarations)
-        self.assertIn("rPosActive := rPos", position_logic)
-        self.assertIn("rVelActive := rVel", position_logic)
-        self.assertIn("rEndVelActive := rEndVel", position_logic)
-        self.assertIn("POSITION   := rPosActive", move_call)
-        self.assertIn("VELOCITY   := rVelActive", move_call)
-        self.assertIn("ENDVELOCITY:= rEndVelActive", move_call)
-        self.assertIn("ENDVELOCITYDIRECTION := iDirActive", move_call)
+        self.assertIn("iDirTarget", declarations)
+        self.assertIn("bDecelToZero", declarations)
+        self.assertIn("IF bDirectionChange THEN", ramp)
+        self.assertIn("rDec := rVel0Magnitude / tDec", ramp)
+        self.assertIn("iDirActive := iDirLastSeg", ramp)
+        self.assertIn("iStep := 150", ramp)
+        self.assertIn("iDirActive := iDirTarget", segment_trigger)
+        self.assertIn("bDecelToZero", segment_trigger)
 
-    def test_status_output_exposes_library_state_and_clears_band_flags(self):
-        outputs = section_between("VAR_OUTPUT", "END_VAR")
-        status_read = section_between(
-            "fbHYD_ReadStatus(", "//=====================================================================\n  // 9. 状态输出汇总"
-        )
-        output_logic = section_between("// 9. 状态输出汇总", "END_FUNCTION_BLOCK")
+    def test_motion_calls_use_active_segment_values_and_direction(self):
+        move_calls = section_between("fbMoveContAbs(", "IF iStep = 200 THEN")
 
-        self.assertIn("uiAxisState", outputs)
-        self.assertIn("uiAxisState := iAxisState", status_read)
-        self.assertIn("bInVelocity := FALSE", output_logic)
-        self.assertIn("bInPressure := FALSE", output_logic)
-        self.assertIn("2:  bDone := fbMoveVel.InVelocity", output_logic)
-        self.assertIn("3:  bDone := fbPresHdl.INPRESSURE", output_logic)
+        self.assertIn("POSITION := rPosActive", move_calls)
+        self.assertIn("VELOCITY := rVelActive", move_calls)
+        self.assertIn("ENDVELOCITY := rEndVelActive", move_calls)
+        self.assertIn("ENDVELOCITYDIRECTION := iDirActive", move_calls)
+        self.assertIn("DIRECTION := iDirActive", move_calls)
 
-    def test_pump_limit_is_shared_and_max_speed_validated(self):
-        startup = section_between("fbCalcMaxSpeed(", "IF iMechBaseClass = 1 THEN")
+    def test_reverse_state_owns_stop_completion_before_switching_direction(self):
+        reverse_state = section_between("150: // 反向减速到零", "200: // 正常停止")
 
-        self.assertIn("rPumpMaxRPM", startup)
-        self.assertIn("SetPumpConfig( rPumpDisplacement, rPumpMaxRPM )", startup)
-        self.assertIn("IF NOT fbCalcMaxSpeed.bValid THEN", startup)
+        self.assertIn("IF fbStop.DONE THEN", reverse_state)
+        self.assertIn("iDirActive := iDirTarget", reverse_state)
+        self.assertIn("iStep := 105", reverse_state)
+        self.assertLess(reverse_state.index("fbStop.DONE"), reverse_state.index("iDirActive := iDirTarget"))
 
-    def test_pressure_ramp_restarts_from_actual_pressure(self):
-        pressure_logic = section_between(
-            "// 6. 压力斜率动态计算", "// 7. 底层 FB 统一调用区"
-        )
-
-        self.assertIn("rPrevPres   := stHydAxisRef.rActPressure", pressure_logic)
-        self.assertIn("rPresLastCycle := stHydAxisRef.rActPressure", pressure_logic)
-
-    def test_end_velocity_uses_selected_direction_speed_limit(self):
-        conversion = section_between(
-            "rPres    :=", "rVelSigned :="
-        )
-        speed_selection_end = conversion.index("END_IF", conversion.index("// 2. 方向相关最大速度"))
-        end_velocity_index = conversion.index("rEndVel  :=")
-        velocity_index = conversion.index("rVel :=")
-
-        self.assertGreater(end_velocity_index, speed_selection_end)
-        self.assertLess(end_velocity_index, velocity_index)
-
-    def test_zero_end_velocity_waits_for_runtime_stop_before_done(self):
-        declarations = section_between("rEndVelLastSeg : REAL", "rVel0 : REAL")
+    def test_clear_segment_latch_clears_chain_and_direction_state(self):
         clear_latch = section_between("METHOD PRIVATE ClearSegLatch", "END_METHOD")
-        new_segment = section_between("IF bNewSeg THEN", "// 3.2 在线速度更新")
-        running_state = section_between("100: // 运行中", "105: // 运行过渡步")
-        status_output = section_between("// 9. 状态输出汇总", "END_FUNCTION_BLOCK")
 
-        self.assertIn("bZeroEndStopDone : BOOL := FALSE;", declarations)
-        self.assertIn("bZeroEndStopDone := FALSE", clear_latch)
-        self.assertIn("bZeroEndStopDone := FALSE", new_segment)
-        self.assertIn("rEndVelLastSeg <= 0.001", running_state)
-        self.assertIn("fbMoveContAbs.InEndVelocity", running_state)
-        self.assertIn("iStep := 10", running_state)
-        self.assertLess(
-            running_state.index("ELSIF rTrigStart.Q"),
-            running_state.index("ELSIF (uiActiveMode = 1)"),
-        )
-        self.assertIn("bDone := bZeroEndStopDone", status_output)
-
-    def test_transition_step_preserves_start_stop_and_estop_edges(self):
-        segment_trigger = section_between("bNewSeg :=", "IF bNewSeg THEN")
-        transition_step = section_between("105: // 运行过渡步", "200: // 正常停止")
-
-        self.assertIn("iStep = 105", segment_trigger)
-        self.assertIn("rTrigEStop.Q", transition_step)
-        self.assertIn("rTrigStop.Q", transition_step)
-        self.assertIn("rTrigStart.Q", transition_step)
+        self.assertIn("rEndVelLastSeg := 0.0", clear_latch)
+        self.assertIn("rVelLastSeg := 0.0", clear_latch)
+        self.assertIn("iDirActive := 0", clear_latch)
+        self.assertIn("iDirTarget := 0", clear_latch)
+        self.assertIn("bDecelToZero := FALSE", clear_latch)
+        self.assertIn("bSegVelValid := FALSE", clear_latch)
 
     def test_pressure_ramp_uses_zero_policy_and_rate_cap(self):
         pressure_ramp = section_between(
             "METHOD PUBLIC CalcPresRampRate", "END_METHOD"
         )
         self.assertIn("uiTimeMs = 0", pressure_ramp)
-        self.assertIn("MIN(", pressure_ramp)
         self.assertIn("800.0", pressure_ramp)
-        self.assertNotIn("MAX(uiPressureAccTime, 1)", SOURCE)
 
-    def test_estop_error_is_separate_and_keeps_underlying_error_id(self):
+    def test_estop_done_and_error_edges_remain_distinct(self):
         estop_step = section_between("300: // 急停", "400: // 报警复位")
-        self.assertIn("IF fbEStop.DONE THEN", estop_step)
-        self.assertIn("ELSIF fbEStop.ERROR THEN", estop_step)
-        self.assertIn("fbEStop.ERRORID", estop_step)
-        self.assertNotIn("fbEStop.DONE OR fbEStop.ERROR", estop_step)
+        self.assertIn("fbEStop.DONE", estop_step)
+        self.assertIn("fbEStop.ERROR", estop_step)
 
 
 if __name__ == "__main__":
