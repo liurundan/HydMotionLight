@@ -388,6 +388,10 @@ FUNCTION_BLOCK FB_HydAxis
     rVel := rVelMagnitude;
     rEndVel := rEndVelMagnitude;
     rVel0Magnitude := CalcStartVelocity();
+    rStopDec := MAX(rVelMagnitude / tDec, 1.0);
+    iDirTarget := iDir;
+    bDirectionChange := FALSE;
+    bDecelToZero := FALSE;
 
     IF uiMode = 1 THEN
       rDecSeg := MAX(ABS(rVelMagnitude - rEndVelMagnitude) / tDec, 1.0);
@@ -395,28 +399,44 @@ FUNCTION_BLOCK FB_HydAxis
       rDecSeg := MAX(rVelMagnitude / tDec, 1.0);
     END_IF;
 
-    rDeltaV := rVelMagnitude - rVel0Magnitude;
-    IF rDeltaV > rDeltaVDeadZone THEN
-      rAcc := rDeltaV / tAcc;
-      rDec := rDecSeg;
-      bTransDecel := FALSE;
-      rTransTime := 0.0;
-      rTransTimer := 0.0;
-    ELSIF rDeltaV < -rDeltaVDeadZone THEN
-      rAcc := MAX(rAcc, 1.0);
-      rDec := ABS(rVel - rVel0Magnitude) / tDec;
+    IF (rVel0Magnitude > rDeltaVDeadZone)
+        AND ((iDirLastSeg = 1) OR (iDirLastSeg = 2))
+        AND ((iDirTarget = 1) OR (iDirTarget = 2))
+        AND (iDirLastSeg <> iDirTarget) THEN
+      bDirectionChange := TRUE;
+      bDecelToZero := TRUE;
+      iDirActive := iDirLastSeg;
+      rDec := rVel0Magnitude / tDec;
+      rAcc := MAX(rVel / tAcc, 1.0);
+      rStopDec := rDec;
       bTransDecel := TRUE;
-      rTransTime := ABS(rVel - rVel0Magnitude) / MAX(rDec, 1.0);
+      rTransTime := rVel0Magnitude / rDec;
       rTransTimer := 0.0;
     ELSE
-      rAcc := MAX(rAcc, 1.0);
-      rDec := rDecSeg;
-      bTransDecel := FALSE;
-      rTransTime := 0.0;
-      rTransTimer := 0.0;
+      iDirActive := iDirTarget;
+
+      rDeltaV := rVelMagnitude - rVel0Magnitude;
+      IF rDeltaV > rDeltaVDeadZone THEN
+        rAcc := rDeltaV / tAcc;
+        rDec := rDecSeg;
+        bTransDecel := FALSE;
+        rTransTime := 0.0;
+        rTransTimer := 0.0;
+      ELSIF rDeltaV < -rDeltaVDeadZone THEN
+        rAcc := MAX(rAcc, 1.0);
+        rDec := ABS(rVel - rVel0Magnitude) / tDec;
+        bTransDecel := TRUE;
+        rTransTime := ABS(rVel - rVel0Magnitude) / MAX(rDec, 1.0);
+        rTransTimer := 0.0;
+      ELSE
+        rAcc := MAX(rAcc, 1.0);
+        rDec := rDecSeg;
+        bTransDecel := FALSE;
+        rTransTime := 0.0;
+        rTransTimer := 0.0;
+      END_IF;
     END_IF;
 
-    rStopDec := MAX(rVelMagnitude / tDec, 1.0);
     rVelLastSeg := rVelMagnitude;
     rEndVelLastSeg := rEndVelMagnitude;
     uiLastSegMode := uiMode;
@@ -482,6 +502,11 @@ FUNCTION_BLOCK FB_HydAxis
       ELSE
         iStep := 900;
       END_IF;
+    ELSE
+      rPosActive := rPos;
+      rVelActive := MAX(rVel, 0.0);
+      rEndVelActive := MAX(rEndVel, 0.0);
+      rPresActive := rPres;
     END_IF;
   END_IF;
 
@@ -557,7 +582,11 @@ FUNCTION_BLOCK FB_HydAxis
               
           // 2. 段切换触发
           ELSIF rTrigStart.Q THEN
-              IF uiMode = uiActiveMode THEN
+              IF bDecelToZero THEN
+                  uiActiveMode := uiMode;
+                  bCmdExecute := FALSE;
+                  iStep := 150;
+              ELSIF uiMode = uiActiveMode THEN
                   iStep := 105; 
               ELSIF uiMode >= 1 AND uiMode <= 3 THEN
                   uiActiveMode := uiMode; 
@@ -574,10 +603,28 @@ FUNCTION_BLOCK FB_HydAxis
           bDone := FALSE;      
           iStep := 100;        
 
+      150: // 反向减速到零
+          bCmdExecute := FALSE;
+          IF fbStop.DONE THEN
+              bDirectionChange := FALSE;
+              bDecelToZero := FALSE;
+              bTransDecel := FALSE;
+              rTransTime := 0.0;
+              rTransTimer := 0.0;
+              iDirActive := iDirTarget;
+              rDec := rDecSeg;
+              rVel0 := 0.0;
+              rVel0Magnitude := 0.0;
+              iStep := 105;
+          ELSIF fbStop.ERROR THEN
+              bAlarm := TRUE; dwAlarmID := fbStop.ERRORID; iStep := 900;
+          END_IF;
+
       200: // 正常停止
           IF fbStop.DONE THEN
               iStep := 10; 
               bCmdExecute := FALSE; 
+              ClearSegLatch();
           ELSIF fbStop.ERROR THEN
               bAlarm := TRUE; dwAlarmID := fbStop.ERRORID; iStep := 900;
           END_IF;
@@ -586,12 +633,14 @@ FUNCTION_BLOCK FB_HydAxis
           IF fbEStop.DONE OR fbEStop.ERROR THEN
               bAlarm := TRUE; dwAlarmID := 16#0000FFFF; iStep := 900;
               bCmdExecute := FALSE;
+              ClearSegLatch();
           END_IF;
 
       400: // 报警复位
           IF fbReset.DONE THEN
               bAlarm := FALSE; dwAlarmID := 0; iStep := 10;
               bCmdExecute := FALSE;
+              ClearSegLatch();
           ELSIF fbReset.ERROR THEN
               bAlarm := TRUE; dwAlarmID := fbReset.ERRORID; iStep := 900;
           END_IF;
@@ -634,22 +683,22 @@ FUNCTION_BLOCK FB_HydAxis
   fbMoveContAbs(
       AXISID := siAxisId, 
       EXECUTE := (uiActiveMode = 1) AND bCmdExecute, 
-      POSITION := rPos, 
-      VELOCITY := rVel,
-      ENDVELOCITY := rEndVel,    
-      ENDVELOCITYDIRECTION := iDir, 
+      POSITION := rPosActive,
+      VELOCITY := rVelActive,
+      ENDVELOCITY := rEndVelActive,
+      ENDVELOCITYDIRECTION := iDirActive,
       ACCELERATION := rAcc, 
       DECELERATION := rDec, 
       JERK := rJerk, 
-      DIRECTION := iDir,
+      DIRECTION := iDirActive,
       ADAPTENDVELTOAVOIDOVERSHOOT := TRUE,
       PRESSURELIMIT := rPres
   );
 
   fbMoveVel(
       AXISID := siAxisId, EXECUTE := (uiActiveMode = 2) AND bCmdExecute, 
-      CONTINUOUSUPDATE := TRUE, VELOCITY := rVel,
-      ACCELERATION := rAcc, DECELERATION := rDec, JERK := rJerk, DIRECTION := iDir, BUFFERMODE := 0,PRESSURELIMIT := rPres);
+      CONTINUOUSUPDATE := TRUE, VELOCITY := rVelActive,
+      ACCELERATION := rAcc, DECELERATION := rDec, JERK := rJerk, DIRECTION := iDirActive, BUFFERMODE := 0,PRESSURELIMIT := rPres);
 
   fbPresHdl(
       AXISID := siAxisId, 
@@ -661,7 +710,9 @@ FUNCTION_BLOCK FB_HydAxis
       FLOWLIMITPERCENT:=rFlowPercent, 
       BUFFERMODE := 0);
 
-  IF iStep = 200 THEN
+  IF iStep = 150 THEN
+      fbStop(AXISID := siAxisId, EXECUTE := TRUE, DECELERATION := rDec);
+  ELSIF iStep = 200 THEN
       fbStop(AXISID := siAxisId, EXECUTE := TRUE, DECELERATION := rStopDec);
   ELSE
       fbStop(AXISID := siAxisId, EXECUTE := FALSE, DECELERATION := rStopDec);
@@ -711,7 +762,7 @@ FUNCTION_BLOCK FB_HydAxis
       END_IF;
       bInVelocity := fbMoveVel.InVelocity;
       bInPressure := fbPresHdl.INPRESSURE;
-  ELSIF iStep = 200 THEN
+  ELSIF iStep = 150 OR iStep = 200 THEN
       bBusy := TRUE; bDone := FALSE;
   ELSIF iStep = 300 THEN
       bBusy := TRUE; bDone := FALSE;

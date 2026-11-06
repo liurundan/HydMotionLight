@@ -133,18 +133,33 @@ class HydAxisP0ContractTest(unittest.TestCase):
 
     def test_segment_latches_capture_direction_and_decel_to_zero(self):
         declarations = section_between("rPos : REAL;", "END_VAR")
-        segment_trigger = section_between("// 3.1 新段触发", "// 3.2 在线速度更新")
+        segment_trigger = section_between(
+            "bNewSeg := rTrigStart.Q", "//--- 2. 状态机主逻辑"
+        )
         ramp = section_between("METHOD PRIVATE CalcSegmentRamp", "END_METHOD")
 
         self.assertIn("iDirActive", declarations)
         self.assertIn("iDirTarget", declarations)
         self.assertIn("bDecelToZero", declarations)
-        self.assertIn("IF bDirectionChange THEN", ramp)
-        self.assertIn("rDec := rVel0Magnitude / tDec", ramp)
-        self.assertIn("iDirActive := iDirLastSeg", ramp)
-        self.assertIn("iStep := 150", ramp)
-        self.assertIn("iDirActive := iDirTarget", segment_trigger)
-        self.assertIn("bDecelToZero", segment_trigger)
+        stop_decel_default = ramp.index("rStopDec := MAX(rVelMagnitude / tDec, 1.0);")
+        reversal_start = ramp.index("IF (rVel0Magnitude > rDeltaVDeadZone)")
+        delta_velocity = ramp.index("rDeltaV := rVelMagnitude - rVel0Magnitude;")
+        self.assertLess(stop_decel_default, reversal_start)
+        reversal_branch = ramp[reversal_start:delta_velocity]
+        self.assertLess(reversal_start, delta_velocity)
+        self.assertIn("iDirLastSeg <> iDirTarget", reversal_branch)
+        self.assertIn("bDirectionChange := TRUE", reversal_branch)
+        self.assertIn("bDecelToZero := TRUE", reversal_branch)
+        self.assertIn("rDec := rVel0Magnitude / tDec", reversal_branch)
+        self.assertIn("rAcc := MAX(rVel / tAcc, 1.0)", reversal_branch)
+        self.assertIn("rStopDec := rDec", reversal_branch)
+        self.assertIn("iDirActive := iDirLastSeg", reversal_branch)
+        self.assertIn("rTransTimer := 0.0", reversal_branch)
+        self.assertIn("iDirActive := iDirTarget", ramp)
+        self.assertIn("rPosActive := rPos", segment_trigger)
+        self.assertIn("rVelActive := MAX(rVel, 0.0)", segment_trigger)
+        self.assertIn("rEndVelActive := MAX(rEndVel, 0.0)", segment_trigger)
+        self.assertIn("rPresActive := rPres", segment_trigger)
 
     def test_motion_calls_use_active_segment_values_and_direction(self):
         move_calls = section_between("fbMoveContAbs(", "IF iStep = 200 THEN")
@@ -157,14 +172,39 @@ class HydAxisP0ContractTest(unittest.TestCase):
 
     def test_reverse_state_owns_stop_completion_before_switching_direction(self):
         reverse_state = section_between("150: // 反向减速到零", "200: // 正常停止")
+        run_state = section_between("100: // 运行中", "105: // 运行过渡步")
+        ramp = section_between("METHOD PRIVATE CalcSegmentRamp", "END_METHOD")
+        stop_route = section_between(
+            "IF iStep = 150 THEN", "IF iStep = 300 THEN"
+        )
 
+        reverse_start = run_state.index("IF bDecelToZero THEN")
+        same_mode_retrigger = run_state.index("ELSIF uiMode = uiActiveMode THEN")
+        self.assertLess(reverse_start, same_mode_retrigger)
+        self.assertIn("uiActiveMode := uiMode", run_state[reverse_start:same_mode_retrigger])
+        self.assertIn("bCmdExecute := FALSE", run_state[reverse_start:same_mode_retrigger])
+        self.assertIn("iStep := 150", run_state[reverse_start:same_mode_retrigger])
+        self.assertIn("bCmdExecute := FALSE", reverse_state)
         self.assertIn("IF fbStop.DONE THEN", reverse_state)
+        self.assertIn("ELSIF fbStop.ERROR THEN", reverse_state)
+        self.assertIn("dwAlarmID := fbStop.ERRORID", reverse_state)
         self.assertIn("iDirActive := iDirTarget", reverse_state)
+        self.assertIn("rDec := rDecSeg", reverse_state)
+        self.assertIn("rDecSeg := MAX(ABS(rVelMagnitude - rEndVelMagnitude) / tDec, 1.0)", ramp)
+        self.assertIn("rDecSeg := MAX(rVelMagnitude / tDec, 1.0)", ramp)
+        self.assertIn("rVel0 := 0.0", reverse_state)
+        self.assertIn("rVel0Magnitude := 0.0", reverse_state)
         self.assertIn("iStep := 105", reverse_state)
+        self.assertNotIn("ClearSegLatch()", reverse_state)
         self.assertLess(reverse_state.index("fbStop.DONE"), reverse_state.index("iDirActive := iDirTarget"))
+        self.assertIn("EXECUTE := TRUE, DECELERATION := rDec", stop_route)
+        self.assertIn("EXECUTE := TRUE, DECELERATION := rStopDec", stop_route)
 
     def test_clear_segment_latch_clears_chain_and_direction_state(self):
         clear_latch = section_between("METHOD PRIVATE ClearSegLatch", "END_METHOD")
+        normal_stop = section_between("200: // 正常停止", "300: // 急停")
+        estop = section_between("300: // 急停", "400: // 报警复位")
+        reset = section_between("400: // 报警复位", "900: // 报警等待")
 
         self.assertIn("rEndVelLastSeg := 0.0", clear_latch)
         self.assertIn("rVelLastSeg := 0.0", clear_latch)
@@ -172,6 +212,9 @@ class HydAxisP0ContractTest(unittest.TestCase):
         self.assertIn("iDirTarget := 0", clear_latch)
         self.assertIn("bDecelToZero := FALSE", clear_latch)
         self.assertIn("bSegVelValid := FALSE", clear_latch)
+        self.assertIn("ClearSegLatch()", normal_stop)
+        self.assertIn("ClearSegLatch()", estop)
+        self.assertIn("ClearSegLatch()", reset)
 
     def test_pressure_ramp_uses_zero_policy_and_rate_cap(self):
         pressure_ramp = section_between(
