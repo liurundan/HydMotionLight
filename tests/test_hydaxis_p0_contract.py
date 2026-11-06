@@ -170,6 +170,27 @@ class HydAxisP0ContractTest(unittest.TestCase):
         self.assertIn("ENDVELOCITYDIRECTION := iDirActive", move_calls)
         self.assertIn("DIRECTION := iDirActive", move_calls)
 
+    def test_transition_state_honors_same_direction_segment_start_with_execute_low(self):
+        transition_state = section_between("105: // 运行过渡步", "150: // 反向减速到零")
+
+        self.assertIn("bCmdExecute := FALSE", transition_state)
+        self.assertIn("ELSIF rTrigStart.Q AND NOT bAlarm AND uiMode >= 1 AND uiMode <= 3 THEN", transition_state)
+        self.assertIn("IF bDecelToZero THEN", transition_state)
+        self.assertIn("uiActiveMode := uiMode", transition_state)
+        self.assertIn("iStep := 100", transition_state)
+        self.assertLess(transition_state.index("rTrigEStop.Q"), transition_state.index("rTrigStop.Q"))
+        self.assertLess(transition_state.index("rTrigStop.Q"), transition_state.index("rTrigStart.Q"))
+
+    def test_transition_state_routes_reversal_start_to_reverse_deceleration(self):
+        transition_state = section_between("105: // 运行过渡步", "150: // 反向减速到零")
+        reversal_branch = transition_state[transition_state.index("IF bDecelToZero THEN"):transition_state.index("ELSE")]
+
+        self.assertIn("uiActiveMode := uiMode", reversal_branch)
+        self.assertIn("iStep := 150", reversal_branch)
+        self.assertIn("bCmdExecute := FALSE", transition_state)
+        self.assertIn("ELSE", transition_state)
+        self.assertIn("iStep := 100", transition_state)
+
     def test_reverse_state_prioritizes_estop_and_stop_edges_before_completion(self):
         reverse_state = section_between("150: // 反向减速到零", "200: // 正常停止")
 

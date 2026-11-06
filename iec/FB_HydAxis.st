@@ -623,9 +623,23 @@ FUNCTION_BLOCK FB_HydAxis
           END_IF;
 
       105: // 运行过渡步
-          bCmdExecute := FALSE; 
-          bDone := FALSE;      
-          iStep := 100;        
+          bCmdExecute := FALSE;
+          bDone := FALSE;
+          IF rTrigEStop.Q THEN
+              iStep := 300;
+          ELSIF rTrigStop.Q THEN
+              iStep := 200;
+          ELSIF rTrigStart.Q AND NOT bAlarm AND uiMode >= 1 AND uiMode <= 3 THEN
+              IF bDecelToZero THEN
+                  uiActiveMode := uiMode;
+                  iStep := 150;
+              ELSE
+                  uiActiveMode := uiMode;
+                  iStep := 100;
+              END_IF;
+          ELSE
+              iStep := 100;
+          END_IF;
 
       150: // 反向减速到零
           bCmdExecute := FALSE;
