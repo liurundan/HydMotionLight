@@ -523,11 +523,10 @@ FUNCTION_BLOCK FB_HydAxis
         bTransDecel := FALSE;
       END_IF;
     ELSIF uiActiveMode = 1 THEN
-      rBrakeSpeed := MAX(rVel0Magnitude, rVelActive);
+      rBrakeSpeed := MAX(MAX(rVel0Magnitude, rVelActive), ABS(stHydAxisRef.rActVelocity));
       rDecDist := MAX((rBrakeSpeed * rBrakeSpeed - rEndVelActive * rEndVelActive)
           / (2.0 * MAX(rDecSeg, 1.0)), 0.0);
-      IF (ABS(rPosActive - stHydAxisRef.rActPosition) <= (rDecDist * 1.2))
-          OR (rTransTimer >= (rTransTime * 1.2)) THEN
+      IF ABS(rPosActive - stHydAxisRef.rActPosition) <= (rDecDist * 1.2) THEN
         rDec := rDecSeg;
         bTransDecel := FALSE;
         iStep := 105;

@@ -221,14 +221,21 @@ class HydAxisP0ContractTest(unittest.TestCase):
         position = transition[transition.index("ELSIF uiActiveMode = 1 THEN"):]
 
         self.assertIn("rDecSeg := MAX(ABS(rVelMagnitude - rEndVelMagnitude) / tDec, 1.0)", ramp)
-        self.assertIn("rBrakeSpeed := MAX(rVel0Magnitude, rVelActive);", position)
+        self.assertIn(
+            "rBrakeSpeed := MAX(MAX(rVel0Magnitude, rVelActive), ABS(stHydAxisRef.rActVelocity));",
+            position,
+        )
         self.assertIn(
             "rDecDist := MAX((rBrakeSpeed * rBrakeSpeed - rEndVelActive * rEndVelActive)",
             position,
         )
         self.assertIn("MAX(rDecSeg, 1.0)", position)
         self.assertIn("ABS(rPosActive - stHydAxisRef.rActPosition)", position)
-        self.assertIn("rTransTimer >= (rTransTime * 1.2)", position)
+        self.assertIn(
+            "IF ABS(rPosActive - stHydAxisRef.rActPosition) <= (rDecDist * 1.2) THEN",
+            position,
+        )
+        self.assertNotIn("rTransTimer", position)
         self.assertIn("rDec := rDecSeg;", position)
         self.assertIn("bTransDecel := FALSE;", position)
         self.assertIn("iStep := 105;", position)
