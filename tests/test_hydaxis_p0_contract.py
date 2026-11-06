@@ -36,8 +36,8 @@ class HydAxisP0ContractTest(unittest.TestCase):
 
         self.assertLess(conversion.index("rMaxSpeedExtend"), conversion.index("rVel :="))
         self.assertLess(conversion.index("rMaxSpeedRetract"), conversion.index("rEndVel :="))
-        self.assertIn("rMaxSpeedDir := rMaxSpeedExtend", conversion)
-        self.assertIn("rMaxSpeedDir := rMaxSpeedRetract", conversion)
+        self.assertIn("rMaxSpeedDir := stHydAxisRef.rMaxSpeedExtend", conversion)
+        self.assertIn("rMaxSpeedDir := stHydAxisRef.rMaxSpeedRetract", conversion)
         self.assertIn("rVel := UINT_TO_REAL(uiSpd)", conversion)
         self.assertIn("rEndVel := UINT_TO_REAL(uiEndSpd)", conversion)
         self.assertIn("IF iDir = 1", conversion)

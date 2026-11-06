@@ -56,8 +56,8 @@ FUNCTION_BLOCK FB_HydAxis
     rVel : REAL;
     rEndVel : REAL;
     rPres : REAL;
-    rAcc : REAL;
-    rDec : REAL;
+    rAcc : REAL := 200.0;
+    rDec : REAL := 200.0;
     rStopDec : REAL := 5000.0;
     rJerk : REAL;
     rFlowPercent : REAL;
@@ -353,6 +353,78 @@ FUNCTION_BLOCK FB_HydAxis
     ClearSegLatch := TRUE;
   END_METHOD
 
+  METHOD PRIVATE CalcSegmentRamp : BOOL
+    VAR
+      tAcc : REAL;
+      tDec : REAL;
+      rVelMagnitude : REAL;
+      rEndVelMagnitude : REAL;
+    END_VAR
+
+    tAcc := MAX(UINT_TO_REAL(uiAcc), rMinRampTime) * 0.001;
+    tDec := MAX(UINT_TO_REAL(uiDec), rMinRampTime) * 0.001;
+    rVelMagnitude := ABS(rVel);
+    rEndVelMagnitude := ABS(rEndVel);
+    rAcc := 200.0;
+    rDec := 200.0;
+
+    IF uiMode = 3 THEN
+      ClearSegLatch();
+      CalcSegmentRamp := TRUE;
+      RETURN;
+    END_IF;
+
+    IF rMaxSpeedDir <= 0.0 THEN
+      rVel := 0.0;
+      rEndVel := 0.0;
+      rAcc := 0.0;
+      rDec := 0.0;
+      CalcSegmentRamp := FALSE;
+      RETURN;
+    END_IF;
+
+    rVelMagnitude := LIMIT(0.0, rVelMagnitude, rMaxSpeedDir);
+    rEndVelMagnitude := LIMIT(0.0, rEndVelMagnitude, rMaxSpeedDir);
+    rVel := rVelMagnitude;
+    rEndVel := rEndVelMagnitude;
+    rVel0Magnitude := CalcStartVelocity();
+
+    IF uiMode = 1 THEN
+      rDecSeg := MAX(ABS(rVelMagnitude - rEndVelMagnitude) / tDec, 1.0);
+    ELSE
+      rDecSeg := MAX(rVelMagnitude / tDec, 1.0);
+    END_IF;
+
+    rDeltaV := rVelMagnitude - rVel0Magnitude;
+    IF rDeltaV > rDeltaVDeadZone THEN
+      rAcc := rDeltaV / tAcc;
+      rDec := rDecSeg;
+      bTransDecel := FALSE;
+      rTransTime := 0.0;
+      rTransTimer := 0.0;
+    ELSIF rDeltaV < -rDeltaVDeadZone THEN
+      rAcc := MAX(rAcc, 1.0);
+      rDec := ABS(rVel - rVel0Magnitude) / tDec;
+      bTransDecel := TRUE;
+      rTransTime := ABS(rVel - rVel0Magnitude) / MAX(rDec, 1.0);
+      rTransTimer := 0.0;
+    ELSE
+      rAcc := MAX(rAcc, 1.0);
+      rDec := rDecSeg;
+      bTransDecel := FALSE;
+      rTransTime := 0.0;
+      rTransTimer := 0.0;
+    END_IF;
+
+    rStopDec := MAX(rVelMagnitude / tDec, 1.0);
+    rVelLastSeg := rVelMagnitude;
+    rEndVelLastSeg := rEndVelMagnitude;
+    uiLastSegMode := uiMode;
+    iDirLastSeg := iDir;
+    bSegVelValid := TRUE;
+    CalcSegmentRamp := TRUE;
+  END_METHOD
+
   // 仅作监视调试使用
   stHydAxisRef.uiDir := uiDir;
   stHydAxisRef.udiPos := udiPos;
@@ -370,21 +442,29 @@ FUNCTION_BLOCK FB_HydAxis
   rMaxSpeed := stHydAxisRef.rMaxSpeed;
 
   rPres := MAX(UINT_TO_REAL(uiPres), 0.0)*0.1;   //压力设定 bar
-  rVel  := UINT_TO_REAL(uiSpd)*0.1*0.01*rMaxSpeed;  //速度设定
-  rEndVel := UINT_TO_REAL(uiEndSpd)*0.1*0.01*rMaxSpeed;  //终点速度
+  iDir := uiDir;
+  rMaxSpeedDir := rMaxSpeed;
+  IF iDir = 1 THEN
+    rMaxSpeedDir := stHydAxisRef.rMaxSpeedExtend;
+  ELSIF iDir = 2 THEN
+    rMaxSpeedDir := stHydAxisRef.rMaxSpeedRetract;
+  END_IF;
+  rVel := UINT_TO_REAL(uiSpd) * 0.001 * rMaxSpeedDir;  //速度设定
+  rVel := LIMIT(0.0, rVel, MAX(rMaxSpeedDir, 0.0));
+  rEndVel := UINT_TO_REAL(uiEndSpd) * 0.001 * rMaxSpeedDir;  //终点速度
+  rEndVel := LIMIT(0.0, rEndVel, MAX(rMaxSpeedDir, 0.0));
   rPos  := UDINT_TO_REAL(udiPos)*0.01;  //位置设定
   rFlowPercent := UINT_TO_REAL(uiSpd)*0.1;
   rFlowPercent := LIMIT(5, rFlowPercent, 100);
-      
-  IF uiAcc = 0 THEN rAcc := 200; ELSE rAcc  := rMaxSpeed/UINT_TO_REAL(uiAcc)*1000; END_IF;  
-  IF uiDec = 0 THEN rDec := 200; ELSE rDec  := rMaxSpeed/UINT_TO_REAL(uiDec)*1000; END_IF;  
   IF uiJerk = 0 THEN rJerk := 0; ELSE rJerk := rMaxSpeed/UINT_TO_REAL(uiJerk); END_IF;
 
-  IF rDec > 200 THEN
-    rStopDec := rDec;
+  bNewSeg := rTrigStart.Q
+      AND (uiMode >= 1) AND (uiMode <= 3)
+      AND NOT rTrigStop.Q AND NOT rTrigEStop.Q
+      AND (iStep = 10 OR iStep = 100 OR iStep = 105);
+  IF bNewSeg THEN
+    CalcSegmentRamp();
   END_IF;
-
-  iDir := uiDir;  
 
   //--- 2. 状态机主逻辑 ---
   CASE iStep OF
