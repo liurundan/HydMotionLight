@@ -112,7 +112,7 @@ class HydAxisP0ContractTest(unittest.TestCase):
 
     def test_segment_rates_remain_latched_between_new_segment_edges(self):
         declarations = section_between("rPos : REAL;", "END_VAR")
-        conversion = section_between("rPres :=", "//--- 2. 状态机主逻辑")
+        conversion = section_between("rPres :=", "//--- Terminal same-direction deceleration handoff ---")
 
         self.assertIn("rAcc : REAL := 200.0", declarations)
         self.assertIn("rDec : REAL := 200.0", declarations)
@@ -211,6 +211,60 @@ class HydAxisP0ContractTest(unittest.TestCase):
         self.assertLess(reverse_state.index("fbStop.DONE"), reverse_state.index("iDirActive := iDirTarget"))
         self.assertIn("EXECUTE := TRUE, DECELERATION := rDec", stop_route)
         self.assertIn("EXECUTE := TRUE, DECELERATION := rStopDec", stop_route)
+
+    def test_terminal_position_handoff_uses_conservative_braking_speed_and_vend(self):
+        transition = section_between(
+            "//--- Terminal same-direction deceleration handoff ---",
+            "//--- 2. 状态机主逻辑",
+        )
+        ramp = section_between("METHOD PRIVATE CalcSegmentRamp", "END_METHOD")
+        position = transition[transition.index("ELSIF uiActiveMode = 1 THEN"):]
+
+        self.assertIn("rDecSeg := MAX(ABS(rVelMagnitude - rEndVelMagnitude) / tDec, 1.0)", ramp)
+        self.assertIn("rBrakeSpeed := MAX(rVel0Magnitude, rVelActive);", position)
+        self.assertIn(
+            "rDecDist := MAX((rBrakeSpeed * rBrakeSpeed - rEndVelActive * rEndVelActive)",
+            position,
+        )
+        self.assertIn("MAX(rDecSeg, 1.0)", position)
+        self.assertIn("ABS(rPosActive - stHydAxisRef.rActPosition)", position)
+        self.assertIn("rTransTimer >= (rTransTime * 1.2)", position)
+        self.assertIn("rDec := rDecSeg;", position)
+        self.assertIn("bTransDecel := FALSE;", position)
+        self.assertIn("iStep := 105;", position)
+
+    def test_terminal_velocity_handoff_uses_in_velocity_or_timer(self):
+        transition = section_between(
+            "//--- Terminal same-direction deceleration handoff ---",
+            "//--- 2. 状态机主逻辑",
+        )
+        velocity = transition[
+            transition.index("IF uiActiveMode = 2 THEN"):
+            transition.index("ELSIF uiActiveMode = 1 THEN")
+        ]
+
+        self.assertIn("rTransTimer := rTransTimer + rCycleTime;", transition)
+        self.assertIn("IF fbMoveVel.InVelocity OR (rTransTimer >= (rTransTime * 1.2))", velocity)
+        self.assertIn("rDec := rDecSeg;", velocity)
+        self.assertIn("bTransDecel := FALSE;", velocity)
+        self.assertNotIn("iStep := 105", velocity)
+
+    def test_terminal_handoff_excludes_reverse_pressure_stop_and_alarm(self):
+        transition = section_between(
+            "//--- Terminal same-direction deceleration handoff ---",
+            "//--- 2. 状态机主逻辑",
+        )
+        guard = transition[transition.index("IF bTransDecel"):transition.index(" THEN")]
+
+        self.assertIn("(iStep = 100)", guard)
+        self.assertIn("NOT bDecelToZero", guard)
+        self.assertIn("NOT bAlarm", guard)
+        self.assertIn("NOT rTrigStop.Q", guard)
+        self.assertIn("NOT rTrigEStop.Q", guard)
+        self.assertIn("(uiActiveMode = 1) OR (uiActiveMode = 2)", guard)
+        handoff_anchor = "//--- Terminal same-direction deceleration handoff ---"
+        self.assertLess(SOURCE.index("rPresActive := rPres;"), SOURCE.index(handoff_anchor))
+        self.assertLess(SOURCE.index(handoff_anchor), SOURCE.index("CASE iStep OF"))
 
     def test_clear_segment_latch_clears_chain_and_direction_state(self):
         clear_latch = section_between("METHOD PRIVATE ClearSegLatch", "END_METHOD")

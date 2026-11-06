@@ -94,6 +94,7 @@ FUNCTION_BLOCK FB_HydAxis
     rTransTime : REAL;
     rTransTimer : REAL;
     rDecDist : REAL;
+    rBrakeSpeed : REAL;
     rPosActive : REAL;
     rVelActive : REAL;
     rEndVelActive : REAL;
@@ -507,6 +508,30 @@ FUNCTION_BLOCK FB_HydAxis
       rVelActive := MAX(rVel, 0.0);
       rEndVelActive := MAX(rEndVel, 0.0);
       rPresActive := rPres;
+    END_IF;
+  END_IF;
+
+  //--- Terminal same-direction deceleration handoff ---
+  IF bTransDecel AND (iStep = 100) AND NOT bDecelToZero
+      AND NOT bAlarm AND NOT rTrigStop.Q AND NOT rTrigEStop.Q
+      AND ((uiActiveMode = 1) OR (uiActiveMode = 2)) THEN
+    rTransTimer := rTransTimer + rCycleTime;
+
+    IF uiActiveMode = 2 THEN
+      IF fbMoveVel.InVelocity OR (rTransTimer >= (rTransTime * 1.2)) THEN
+        rDec := rDecSeg;
+        bTransDecel := FALSE;
+      END_IF;
+    ELSIF uiActiveMode = 1 THEN
+      rBrakeSpeed := MAX(rVel0Magnitude, rVelActive);
+      rDecDist := MAX((rBrakeSpeed * rBrakeSpeed - rEndVelActive * rEndVelActive)
+          / (2.0 * MAX(rDecSeg, 1.0)), 0.0);
+      IF (ABS(rPosActive - stHydAxisRef.rActPosition) <= (rDecDist * 1.2))
+          OR (rTransTimer >= (rTransTime * 1.2)) THEN
+        rDec := rDecSeg;
+        bTransDecel := FALSE;
+        iStep := 105;
+      END_IF;
     END_IF;
   END_IF;
 
