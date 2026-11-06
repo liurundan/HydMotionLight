@@ -67,13 +67,48 @@ class HydAxisP0ContractTest(unittest.TestCase):
     def test_motion_segment_rejects_unknown_direction_but_pressure_does_not(self):
         segment_gate = section_between("bNewSeg := rTrigStart.Q", "//--- 2. 状态机主逻辑")
         direction_check = segment_gate[:segment_gate.index("ELSIF NOT CalcSegmentRamp()")]
+        direction_start = direction_check.index("IF (uiMode = 1 OR uiMode = 2)")
+        direction_branch = direction_check[direction_start:]
+        step_start = direction_branch.index("IF iStep = 100 OR iStep = 105 THEN")
+        step_routes = direction_branch[step_start:direction_branch.index("END_IF;", step_start)]
+        idle_route_start = step_routes.index("ELSE")
 
         self.assertIn("(uiMode = 1 OR uiMode = 2)", direction_check)
         self.assertIn("(iDir <> 1) AND (iDir <> 2)", direction_check)
         self.assertNotIn("uiMode = 3", direction_check)
-        active_route = direction_check[:direction_check.index("ELSE")]
-        self.assertIn("iStep := 200", active_route)
-        self.assertIn("bCmdExecute := FALSE", active_route)
+        self.assertIn("bCmdExecute := FALSE", direction_branch)
+        self.assertIn("iStep := 200", step_routes[:idle_route_start])
+        self.assertIn("iStep := 900", step_routes[idle_route_start:])
+
+    def test_segment_ramp_rejects_nonpositive_speed_limit_before_division(self):
+        ramp = section_between("METHOD PRIVATE CalcSegmentRamp", "END_METHOD")
+        guard_start = ramp.index("IF rMaxSpeedDir <= 0.0 THEN")
+        guard_end = ramp.index("END_IF;", guard_start)
+        invalid_speed_path = ramp[guard_start:guard_end]
+
+        for assignment in (
+            "rVel := 0.0;",
+            "rEndVel := 0.0;",
+            "rAcc := 0.0;",
+            "rDec := 0.0;",
+            "CalcSegmentRamp := FALSE;",
+        ):
+            self.assertIn(assignment, invalid_speed_path)
+        self.assertNotIn("/", ramp[:guard_start])
+        self.assertLess(ramp.index("CalcSegmentRamp := FALSE;"), ramp.index(" / tDec"))
+
+    def test_pressure_mode_clears_segment_latch_before_speed_limit_guard(self):
+        ramp = section_between("METHOD PRIVATE CalcSegmentRamp", "END_METHOD")
+        pressure_start = ramp.index("IF uiMode = 3 THEN")
+        clear_latch = ramp.index("ClearSegLatch();", pressure_start)
+        pressure_success = ramp.index("CalcSegmentRamp := TRUE;", clear_latch)
+        pressure_return = ramp.index("RETURN;", pressure_success)
+        speed_guard = ramp.index("IF rMaxSpeedDir <= 0.0 THEN")
+
+        self.assertLess(pressure_start, clear_latch)
+        self.assertLess(clear_latch, pressure_success)
+        self.assertLess(pressure_success, pressure_return)
+        self.assertLess(pressure_return, speed_guard)
 
     def test_segment_rates_remain_latched_between_new_segment_edges(self):
         declarations = section_between("rPos : REAL;", "END_VAR")
