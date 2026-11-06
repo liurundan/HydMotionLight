@@ -1,6 +1,6 @@
 # FB_HydAxis Segment Ramp Planning Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Make `FB_HydAxis` convert millisecond acceleration/deceleration inputs into hydraulic-library rates, preserve command-side segment velocity continuity, and protect hydraulic direction changes by decelerating to zero before reversal.
 
@@ -31,7 +31,7 @@
 - Modify: `tests/test_hydaxis_p0_contract.py`
 - Test: `tests/test_hydaxis_p0_contract.py`
 
-- [ ] **Step 1: Replace the reverted-method assertions.**
+- [x] **Step 1: Replace the reverted-method assertions.**
 
 Keep `section_between()` and replace tests that require removed symbols such as `rVel0Magnitude`, `rDirSignLastSeg`, or the old pressure section anchors with these focused checks:
 
@@ -94,7 +94,7 @@ class HydAxisRampContractTest(unittest.TestCase):
 
 The existing status, pressure, and emergency-stop tests remain, but their section anchors must match the current file. Do not retain assertions for fields or comments that are absent from the current branch.
 
-- [ ] **Step 2: Run the focused test before implementation.**
+- [x] **Step 2: Run the focused test before implementation.**
 
 Run:
 
@@ -104,7 +104,7 @@ PYTHONDONTWRITEBYTECODE=1 python3 tests/test_hydaxis_p0_contract.py
 
 Expected: FAIL because `CalcSegmentRamp`, the active-direction latches, and the reverse state do not yet exist. This confirms the tests are testing the requested change.
 
-- [ ] **Step 3: Commit the failing-test contract.**
+- [x] **Step 3: Commit the failing-test contract.**
 
 ```bash
 git add tests/test_hydaxis_p0_contract.py
@@ -118,7 +118,7 @@ git commit -m "Define FB_HydAxis segment ramp contracts" -m "Constraint: IEC sou
 - Modify: `iec/FB_HydAxis.st` after the existing public configuration methods
 - Test: `tests/test_hydaxis_p0_contract.py`
 
-- [ ] **Step 1: Add the private state required by the method boundary.**
+- [x] **Step 1: Add the private state required by the method boundary.**
 
 Add these variables to the existing `VAR` block without changing public inputs or outputs:
 
@@ -153,7 +153,7 @@ Add these variables to the existing `VAR` block without changing public inputs o
 
 Use `rMinRampTime` as the fixed 100 ms floor. Keep `rVelLastSeg` and `rEndVelLastSeg` as physical nonnegative speed magnitudes.
 
-- [ ] **Step 2: Add `CalcStartVelocity`.**
+- [x] **Step 2: Add `CalcStartVelocity`.**
 
 Insert this private method before the main FB body:
 
@@ -173,7 +173,7 @@ Insert this private method before the main FB body:
   END_METHOD
 ```
 
-- [ ] **Step 3: Add `ClearSegLatch`.**
+- [x] **Step 3: Add `ClearSegLatch`.**
 
 Use one method for every stop, emergency-stop, reset, and alarm-to-idle path:
 
@@ -198,11 +198,11 @@ Use one method for every stop, emergency-stop, reset, and alarm-to-idle path:
   END_METHOD
 ```
 
-- [ ] **Step 4: Run the focused source test.**
+- [x] **Step 4: Run the focused source test.**
 
 Run the same Python command from Task 1. It should still fail on the ramp formulas, but the method/lifecycle assertions must pass. Do not move to implementation of the ramp method until the declarations and lifecycle methods are syntactically present.
 
-- [ ] **Step 5: Commit the state/lifecycle slice.**
+- [x] **Step 5: Commit the state/lifecycle slice.**
 
 ```bash
 git add iec/FB_HydAxis.st
@@ -216,7 +216,7 @@ git commit -m "Add FB_HydAxis velocity chain state" -m "Constraint: Preserve the
 - Modify: `iec/FB_HydAxis.st` method section
 - Test: `tests/test_hydaxis_p0_contract.py`
 
-- [ ] **Step 1: Resolve direction and maximum speed before converting percentages.**
+- [x] **Step 1: Resolve direction and maximum speed before converting percentages.**
 
 Replace the current direct `rMaxSpeed := stHydAxisRef.rMaxSpeed` block with:
 
@@ -248,7 +248,7 @@ Replace the current direct `rMaxSpeed := stHydAxisRef.rMaxSpeed` block with:
 
 Do not create negative `rVel` or `rEndVel` for `uiDir=2`.
 
-- [ ] **Step 2: Implement the method’s time floor and same-direction formulas.**
+- [x] **Step 2: Implement the method’s time floor and same-direction formulas.**
 
 The method must use this sequence:
 
@@ -285,7 +285,7 @@ The method must use this sequence:
 
 When the computed side is not used in the current transition, preserve a positive compatibility value (`200.0`) so the underlying motion FB still receives valid acceleration and deceleration limits.
 
-- [ ] **Step 3: Add terminal deceleration and latch the segment.**
+- [x] **Step 3: Add terminal deceleration and latch the segment.**
 
 Use the current segment’s `Vend` only for its terminal ramp and next-segment carryover:
 
@@ -307,7 +307,7 @@ Use the current segment’s `Vend` only for its terminal ramp and next-segment c
 
 For a downward same-direction transition, keep the transition `rDec` until the transition completes, then switch to `rDecSeg` through the existing `105` position retrigger or the velocity FB’s continuous update.
 
-- [ ] **Step 4: Run the focused test and inspect failure output.**
+- [x] **Step 4: Run the focused test and inspect failure output.**
 
 Run:
 
@@ -317,7 +317,7 @@ PYTHONDONTWRITEBYTECODE=1 python3 tests/test_hydaxis_p0_contract.py
 
 Expected: conversion, magnitude, and 100 ms assertions pass; reverse-state and active-call assertions remain failing until Task 4.
 
-- [ ] **Step 5: Commit the conversion and ramp method.**
+- [x] **Step 5: Commit the conversion and ramp method.**
 
 ```bash
 git add iec/FB_HydAxis.st tests/test_hydaxis_p0_contract.py
@@ -330,7 +330,7 @@ git commit -m "Calculate FB_HydAxis ramps from segment velocity deltas" -m "Cons
 - Modify: `iec/FB_HydAxis.st` state machine and motion FB calls
 - Test: `tests/test_hydaxis_p0_contract.py`
 
-- [ ] **Step 1: Detect direction changes before applying `Vset-V0`.**
+- [x] **Step 1: Detect direction changes before applying `Vset-V0`.**
 
 Inside `CalcSegmentRamp`, before the same-direction branch, add:
 
@@ -355,7 +355,7 @@ Inside `CalcSegmentRamp`, before the same-direction branch, add:
 
 The reverse path must not compute a signed `Vset-V0` transition and must not replace `iDirActive` with `iDirTarget` before the stop completes.
 
-- [ ] **Step 2: Latch active command values only on a new segment.**
+- [x] **Step 2: Latch active command values only on a new segment.**
 
 Before the state machine calls the motion FBs, use the existing start-edge gate and add:
 
@@ -380,7 +380,7 @@ Before the state machine calls the motion FBs, use the existing start-edge gate 
 
 Pressure targets may continue to update through the existing pressure path; position and velocity setpoints used by their FB calls must come from the active latches.
 
-- [ ] **Step 3: Add state `150` for hydraulic reverse deceleration.**
+- [x] **Step 3: Add state `150` for hydraulic reverse deceleration.**
 
 Insert this state before the existing normal-stop state:
 
@@ -403,7 +403,7 @@ Insert this state before the existing normal-stop state:
 
 When `bDecelToZero` is set while running, set `iStep := 150` after the current segment is latched. Preserve the pending target values in `rPosActive`, `rVelActive`, `rEndVelActive`, and `iDirTarget` while `HYD_Stop` owns the axis.
 
-- [ ] **Step 4: Route `HYD_Stop` through the reverse state with the planned deceleration.**
+- [x] **Step 4: Route `HYD_Stop` through the reverse state with the planned deceleration.**
 
 Use this call ordering:
 
@@ -419,7 +419,7 @@ Use this call ordering:
 
 This keeps ordinary stop behavior unchanged while making a planned reverse use the segment’s `uiDec`-derived rate.
 
-- [ ] **Step 5: Use active magnitudes and active direction in motion FB calls.**
+- [x] **Step 5: Use active magnitudes and active direction in motion FB calls.**
 
 Change the calls to:
 
@@ -453,11 +453,11 @@ Change the calls to:
 
 Do not pass a negative `VELOCITY` or `ENDVELOCITY` for retract.
 
-- [ ] **Step 6: Clear the chain on all lifecycle exits.**
+- [x] **Step 6: Clear the chain on all lifecycle exits.**
 
 Call `ClearSegLatch()` when normal stop, emergency stop, reset, or alarm recovery transitions back to idle. Do not clear the latches inside state `150` before `fbStop.DONE`; the pending reverse segment still needs them.
 
-- [ ] **Step 7: Run the focused source test.**
+- [x] **Step 7: Run the focused source test.**
 
 Run:
 
@@ -467,7 +467,7 @@ PYTHONDONTWRITEBYTECODE=1 python3 tests/test_hydaxis_p0_contract.py
 
 Expected: all focused source-contract tests pass.
 
-- [ ] **Step 8: Commit reverse sequencing and active calls.**
+- [x] **Step 8: Commit reverse sequencing and active calls.**
 
 ```bash
 git add iec/FB_HydAxis.st tests/test_hydaxis_p0_contract.py
@@ -480,7 +480,7 @@ git commit -m "Protect FB_HydAxis hydraulic direction changes" -m "Constraint: H
 - Modify: `iec/FB_HydAxis.st` before the main state machine and in state `100`
 - Test: `tests/test_hydaxis_p0_contract.py`
 
-- [ ] **Step 1: Add transition-completion tracking.**
+- [x] **Step 1: Add transition-completion tracking.**
 
 For same-direction downward transitions, increment `rTransTimer` by `rCycleTime` while `bTransDecel` is active. Use the existing FB capabilities:
 
@@ -510,7 +510,7 @@ For same-direction downward transitions, increment `rTransTimer` by `rCycleTime`
 
 The position path keeps the existing `105` one-scan execute drop so the library re-locks the new `DECELERATION`. The velocity path changes `rDec` online.
 
-- [ ] **Step 2: Preserve `Vend` as the next segment start.**
+- [x] **Step 2: Preserve `Vend` as the next segment start.**
 
 Do not overwrite `rEndVelLastSeg` with `rVelLastSeg`. The carryover method must continue to select:
 
@@ -521,7 +521,7 @@ Do not overwrite `rEndVelLastSeg` with `rVelLastSeg`. The carryover method must 
 
 Pressure mode must call `ClearSegLatch()` when it becomes the active mode so a later position or velocity segment starts with `V0=0`.
 
-- [ ] **Step 3: Add source-contract checks for terminal and direction behavior.**
+- [x] **Step 3: Add source-contract checks for terminal and direction behavior.**
 
 Add assertions for:
 
@@ -543,7 +543,7 @@ def test_retract_keeps_velocity_positive(self):
     self.assertIn("DIRECTION := iDirActive", SOURCE)
 ```
 
-- [ ] **Step 4: Run the focused source test and commit.**
+- [x] **Step 4: Run the focused source test and commit.**
 
 ```bash
 PYTHONDONTWRITEBYTECODE=1 python3 tests/test_hydaxis_p0_contract.py
@@ -558,7 +558,7 @@ git commit -m "Complete FB_HydAxis terminal ramp handoff" -m "Constraint: Positi
 - Inspect: `tests/test_hydaxis_p0_contract.py`
 - Test: existing CMake/CTest targets
 
-- [ ] **Step 1: Run the focused source-contract test.**
+- [x] **Step 1: Run the focused source-contract test.**
 
 ```bash
 PYTHONDONTWRITEBYTECODE=1 python3 tests/test_hydaxis_p0_contract.py
@@ -566,7 +566,7 @@ PYTHONDONTWRITEBYTECODE=1 python3 tests/test_hydaxis_p0_contract.py
 
 Expected: all tests pass, including `0→300`, `300→0`, same-direction delta selection, `Vend` carryover, 100 ms floors, and reverse-state sequencing.
 
-- [ ] **Step 2: Build the existing C targets.**
+- [x] **Step 2: Build the existing C targets.**
 
 ```bash
 cmake --build --preset unixgcc
@@ -574,19 +574,21 @@ cmake --build --preset unixgcc
 
 Expected: build completes without changing public C headers or C planner behavior.
 
-- [ ] **Step 3: Run the complete regression suite.**
+- [x] **Step 3: Run the complete regression suite.**
 
 ```bash
 ctest --test-dir out/build/unixgcc --output-on-failure
 ```
 
-Expected: all existing tests pass, especially `test_motion_planner`, `test_movecontinuousabsolute_integration`, `test_movevelocity_stop_reverse_restart`, `test_moveabsolute_stop_integration`, and `test_hydaxis_p0_contract`.
+Expected: the motion planner, direction/restart, position/stop, and HydAxis contract targets pass. If unrelated full-suite tests fail, compare them against the base checkout before attributing them to this change.
 
-- [ ] **Step 4: Review the final diff for direction and unit mistakes.**
+Observed on the implementation branch: 55/61 tests pass. The same six failing tests reproduce on the original `feature/rbf-pid-industrialization` checkout and are outside this IEC-only change: `test_parameter_iec`, `test_hydro_sim_fb`, `test_pressure_model`, `test_pressure_model_data_fit`, `test_motion_interface_unit`, and `test_toggle_mechanism_pool`.
+
+- [x] **Step 4: Review the final diff for direction and unit mistakes.**
 
 ```bash
 git diff -- iec/FB_HydAxis.st tests/test_hydaxis_p0_contract.py
-git diff --check
+git -c core.whitespace=cr-at-eol diff --check
 ```
 
 Confirm that:
@@ -597,12 +599,9 @@ Confirm that:
 - no current input overwrites latched position/velocity setpoints mid-segment;
 - stop and reset paths clear the velocity chain.
 
-- [ ] **Step 5: Commit only if the final verification changes the implementation.**
+- [x] **Step 5: Confirm whether final verification requires another implementation commit.**
 
-```bash
-git status --short
-git commit -m "Verify hydraulic segment ramp integration" -m "Constraint: Completion requires fresh source-contract, build, and CTest evidence\nRejected: declaring completion from static inspection alone | runtime regressions remain possible\nConfidence: high\nScope-risk: narrow\nDirective: Preserve positive speed magnitudes and explicit direction semantics in future edits\nTested: source contract, CMake build, full CTest\nNot-tested: physical machine acceptance without field hardware"
-```
+The final review found no additional implementation changes necessary, so no verification-only commit was created.
 
 ## Self-review checklist
 
@@ -610,3 +609,11 @@ git commit -m "Verify hydraulic segment ramp integration" -m "Constraint: Comple
 - No C-library or public IEC-interface changes are planned.
 - Every implementation task names exact files and provides the required ST/Python content or command.
 - The plan keeps source-contract testing as the executable IEC validation because this repository does not compile `iec/FB_HydAxis.st` into the C targets.
+
+## Execution Record
+
+- Completed on branch `codex/hydaxis-segment-ramp` in isolated worktree `/home/dan/project/hdy-motion-light/.worktrees/hydaxis-segment-ramp`.
+- The CMake configure and build passed. The full CTest run had 55/61 passes; the six failures listed above also fail on the base checkout.
+- `tests/test_hydaxis_p0_contract.py` passed 21/21; targeted motion/stop CTest passed 6/6.
+- The ST file is consistently CRLF; use `git -c core.whitespace=cr-at-eol diff --check` for whitespace validation.
+- `iec/FB_HydAxis.st` is not compiled by the repository CMake targets, and no IEC compiler was available in this environment. Physical-machine acceptance remains untested.
