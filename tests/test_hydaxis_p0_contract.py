@@ -170,6 +170,18 @@ class HydAxisP0ContractTest(unittest.TestCase):
         self.assertIn("ENDVELOCITYDIRECTION := iDirActive", move_calls)
         self.assertIn("DIRECTION := iDirActive", move_calls)
 
+    def test_reverse_state_prioritizes_estop_and_stop_edges_before_completion(self):
+        reverse_state = section_between("150: // 反向减速到零", "200: // 正常停止")
+
+        self.assertIn("bCmdExecute := FALSE", reverse_state)
+        self.assertIn("IF rTrigEStop.Q THEN", reverse_state)
+        self.assertIn("iStep := 300", reverse_state)
+        self.assertIn("ELSIF rTrigStop.Q THEN", reverse_state)
+        self.assertIn("iStep := 200", reverse_state)
+        self.assertLess(reverse_state.index("rTrigEStop.Q"), reverse_state.index("rTrigStop.Q"))
+        self.assertLess(reverse_state.index("rTrigStop.Q"), reverse_state.index("fbStop.DONE"))
+        self.assertLess(reverse_state.index("rTrigStop.Q"), reverse_state.index("fbStop.ERROR"))
+
     def test_reverse_state_owns_stop_completion_before_switching_direction(self):
         reverse_state = section_between("150: // 反向减速到零", "200: // 正常停止")
         run_state = section_between("100: // 运行中", "105: // 运行过渡步")
@@ -215,6 +227,13 @@ class HydAxisP0ContractTest(unittest.TestCase):
         self.assertIn("ClearSegLatch()", normal_stop)
         self.assertIn("ClearSegLatch()", estop)
         self.assertIn("ClearSegLatch()", reset)
+
+    def test_active_motion_calls_use_latched_pressure_limit(self):
+        move_calls = section_between("fbMoveContAbs(", "fbPresHdl(")
+
+        self.assertIn("PRESSURELIMIT := rPresActive", move_calls)
+        self.assertIn("PRESSURELIMIT := rPresActive", section_between("fbMoveVel(", "IF iStep = 150 THEN"))
+        self.assertIn("PRESSURE := rPres", section_between("fbPresHdl(", "IF iStep = 150 THEN"))
 
     def test_pressure_ramp_uses_zero_policy_and_rate_cap(self):
         pressure_ramp = section_between(

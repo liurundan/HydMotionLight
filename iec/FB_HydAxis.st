@@ -605,7 +605,11 @@ FUNCTION_BLOCK FB_HydAxis
 
       150: // 反向减速到零
           bCmdExecute := FALSE;
-          IF fbStop.DONE THEN
+          IF rTrigEStop.Q THEN
+              iStep := 300;
+          ELSIF rTrigStop.Q THEN
+              iStep := 200;
+          ELSIF fbStop.DONE THEN
               bDirectionChange := FALSE;
               bDecelToZero := FALSE;
               bTransDecel := FALSE;
@@ -692,13 +696,13 @@ FUNCTION_BLOCK FB_HydAxis
       JERK := rJerk, 
       DIRECTION := iDirActive,
       ADAPTENDVELTOAVOIDOVERSHOOT := TRUE,
-      PRESSURELIMIT := rPres
+      PRESSURELIMIT := rPresActive
   );
 
   fbMoveVel(
       AXISID := siAxisId, EXECUTE := (uiActiveMode = 2) AND bCmdExecute, 
       CONTINUOUSUPDATE := TRUE, VELOCITY := rVelActive,
-      ACCELERATION := rAcc, DECELERATION := rDec, JERK := rJerk, DIRECTION := iDirActive, BUFFERMODE := 0,PRESSURELIMIT := rPres);
+      ACCELERATION := rAcc, DECELERATION := rDec, JERK := rJerk, DIRECTION := iDirActive, BUFFERMODE := 0,PRESSURELIMIT := rPresActive);
 
   fbPresHdl(
       AXISID := siAxisId, 
