@@ -461,9 +461,28 @@ FUNCTION_BLOCK FB_HydAxis
   bNewSeg := rTrigStart.Q
       AND (uiMode >= 1) AND (uiMode <= 3)
       AND NOT rTrigStop.Q AND NOT rTrigEStop.Q
+      AND NOT bAlarm
       AND (iStep = 10 OR iStep = 100 OR iStep = 105);
   IF bNewSeg THEN
-    CalcSegmentRamp();
+    IF (uiMode = 1 OR uiMode = 2) AND (iDir <> 1) AND (iDir <> 2) THEN
+      bAlarm := TRUE;
+      dwAlarmID := 16#00000002;
+      bCmdExecute := FALSE;
+      IF iStep = 100 OR iStep = 105 THEN
+        iStep := 200;
+      ELSE
+        iStep := 900;
+      END_IF;
+    ELSIF NOT CalcSegmentRamp() THEN
+      bAlarm := TRUE;
+      dwAlarmID := 16#00000002;
+      bCmdExecute := FALSE;
+      IF iStep = 100 OR iStep = 105 THEN
+        iStep := 200;
+      ELSE
+        iStep := 900;
+      END_IF;
+    END_IF;
   END_IF;
 
   //--- 2. 状态机主逻辑 ---
@@ -517,7 +536,7 @@ FUNCTION_BLOCK FB_HydAxis
               iStep := 200;
           ELSIF rTrigReset.Q AND bAlarm THEN
               iStep := 400;
-          ELSIF rTrigStart.Q AND uiMode >= 1 AND uiMode <= 3 THEN
+          ELSIF rTrigStart.Q AND NOT bAlarm AND uiMode >= 1 AND uiMode <= 3 THEN
               uiActiveMode := uiMode; 
               bCmdExecute := TRUE; 
               iStep := 100;           

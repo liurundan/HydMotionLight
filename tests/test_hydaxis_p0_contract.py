@@ -44,6 +44,46 @@ class HydAxisP0ContractTest(unittest.TestCase):
         self.assertIn("rMaxSpeedExtend", conversion)
         self.assertIn("rMaxSpeedRetract", conversion)
 
+    def test_segment_ramp_rejection_blocks_motion_before_state_machine(self):
+        segment_gate = section_between("bNewSeg := rTrigStart.Q", "//--- 2. 状态机主逻辑")
+        failure_start = segment_gate.index("ELSIF NOT CalcSegmentRamp()")
+        failure_branch = segment_gate[failure_start:segment_gate.index("END_IF;", failure_start)]
+        active_route_end = failure_branch.index("ELSE")
+        active_route = failure_branch[:active_route_end]
+        idle_route = failure_branch[active_route_end:]
+
+        self.assertIn("IF NOT CalcSegmentRamp() THEN", segment_gate)
+        self.assertIn("bAlarm := TRUE", failure_branch)
+        self.assertIn("dwAlarmID := 16#00000002", failure_branch)
+        self.assertIn("bCmdExecute := FALSE", failure_branch)
+        self.assertIn("IF iStep = 100 OR iStep = 105 THEN", failure_branch)
+        self.assertIn("iStep := 200", active_route)
+        self.assertIn("bCmdExecute := FALSE", active_route)
+        self.assertIn("iStep := 900", idle_route)
+        self.assertLess(SOURCE.index("IF NOT CalcSegmentRamp()"), SOURCE.index("CASE iStep OF"))
+        idle_state = section_between("10: // 空闲", "100: // 运行中")
+        self.assertIn("rTrigStart.Q AND NOT bAlarm", idle_state)
+
+    def test_motion_segment_rejects_unknown_direction_but_pressure_does_not(self):
+        segment_gate = section_between("bNewSeg := rTrigStart.Q", "//--- 2. 状态机主逻辑")
+        direction_check = segment_gate[:segment_gate.index("ELSIF NOT CalcSegmentRamp()")]
+
+        self.assertIn("(uiMode = 1 OR uiMode = 2)", direction_check)
+        self.assertIn("(iDir <> 1) AND (iDir <> 2)", direction_check)
+        self.assertNotIn("uiMode = 3", direction_check)
+        active_route = direction_check[:direction_check.index("ELSE")]
+        self.assertIn("iStep := 200", active_route)
+        self.assertIn("bCmdExecute := FALSE", active_route)
+
+    def test_segment_rates_remain_latched_between_new_segment_edges(self):
+        declarations = section_between("rPos : REAL;", "END_VAR")
+        conversion = section_between("rPres :=", "//--- 2. 状态机主逻辑")
+
+        self.assertIn("rAcc : REAL := 200.0", declarations)
+        self.assertIn("rDec : REAL := 200.0", declarations)
+        self.assertNotRegex(conversion, r"(?m)^\s*rAcc\s*:=")
+        self.assertNotRegex(conversion, r"(?m)^\s*rDec\s*:=")
+
     def test_start_velocity_uses_previous_segment_position_velocity_or_zero(self):
         start_velocity = section_between(
             "METHOD PRIVATE CalcStartVelocity", "END_METHOD"
