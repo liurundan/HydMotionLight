@@ -75,6 +75,32 @@ FUNCTION_BLOCK FB_HydAxis
     rCycle : REAL;
     fbHYD_ReadStatus : HYD_ReadStatus;
     bConfig : BOOL;
+    iDirLastSeg : SINT;
+    iDirActive : SINT;
+    iDirTarget : SINT;
+    rMaxSpeedDir : REAL;
+    rVelLastSeg : REAL;
+    rEndVelLastSeg : REAL;
+    uiLastSegMode : UINT;
+    bSegVelValid : BOOL;
+    bDirectionChange : BOOL;
+    bDecelToZero : BOOL;
+    bTransDecel : BOOL;
+    bNewSeg : BOOL;
+    rVel0 : REAL;
+    rVel0Magnitude : REAL;
+    rDeltaV : REAL;
+    rDecSeg : REAL;
+    rTransTime : REAL;
+    rTransTimer : REAL;
+    rDecDist : REAL;
+    rPosActive : REAL;
+    rVelActive : REAL;
+    rEndVelActive : REAL;
+    rPresActive : REAL;
+    rCycleTime : REAL := 0.001;
+    rMinRampTime : REAL := 100.0;
+    rDeltaVDeadZone : REAL := 0.001;
   END_VAR
 
   METHOD PUBLIC SetVelocityToFlowGain : BOOL
@@ -284,6 +310,47 @@ FUNCTION_BLOCK FB_HydAxis
                           PARAMETERNUMBER := 15, VALUE := REAL_TO_LREAL(rKd) );
 
     SetPidKd := fbHYD_WriteParameter.Done;
+  END_METHOD
+
+  METHOD PRIVATE CalcStartVelocity : REAL
+    IF bSegVelValid THEN
+      IF uiLastSegMode = 1 THEN
+        CalcStartVelocity := MAX(rEndVelLastSeg, 0.0);
+      ELSIF uiLastSegMode = 2 THEN
+        CalcStartVelocity := MAX(rVelLastSeg, 0.0);
+      ELSE
+        CalcStartVelocity := 0.0;
+      END_IF;
+    ELSE
+      CalcStartVelocity := 0.0;
+    END_IF;
+  END_METHOD
+
+  METHOD PRIVATE ClearSegLatch : BOOL
+    iDirLastSeg := 0;
+    iDirActive := 0;
+    iDirTarget := 0;
+    rMaxSpeedDir := 0.0;
+    rVelLastSeg := 0.0;
+    rEndVelLastSeg := 0.0;
+    uiLastSegMode := 0;
+    bSegVelValid := FALSE;
+    bDirectionChange := FALSE;
+    bDecelToZero := FALSE;
+    bTransDecel := FALSE;
+    bNewSeg := FALSE;
+    rVel0 := 0.0;
+    rVel0Magnitude := 0.0;
+    rDeltaV := 0.0;
+    rDecSeg := 0.0;
+    rTransTime := 0.0;
+    rTransTimer := 0.0;
+    rDecDist := 0.0;
+    rPosActive := 0.0;
+    rVelActive := 0.0;
+    rEndVelActive := 0.0;
+    rPresActive := 0.0;
+    ClearSegLatch := TRUE;
   END_METHOD
 
   // 仅作监视调试使用
