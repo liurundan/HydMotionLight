@@ -78,7 +78,9 @@ FUNCTION_BLOCK FB_HydAxis
 
     //--- 段间速度链与方向锁存 -------------------------------------------
     // 命令侧语义：V0/Vset/Vend 恒为非负速度幅值，方向由 iDir* 独立承载。
-    // 不采用实际速度反馈重建 V0，避免液压压缩/负载造成命令斜率抖动。
+    // 职责边界：位置/速度规划、剩余距离制动包络、Vset->Vend 末端减速全部
+    // 由液压库内部完成；工艺层只按 |Vset-V0| 与 uiAcc/uiDec 计算段间斜率，
+    // 在段起点一次性下发，段内不改写、不重复计算制动距离。
     iDirLastSeg : SINT := 0;      // 上一段方向
     iDirActive : SINT := 0;       // 当前实际下发给底层 FB 的方向
     iDirTarget : SINT := 0;       // 当前工艺目标方向
@@ -88,23 +90,15 @@ FUNCTION_BLOCK FB_HydAxis
     uiLastSegMode : UINT := 0;    // 1=位置 2=速度 3=压力
     bSegVelValid : BOOL := FALSE; // 速度链是否有效
     bDirectionChange : BOOL := FALSE;
-    bDecelToZero : BOOL := FALSE; // 换向前零速阶段
-    bTransDecel : BOOL := FALSE;  // 段间过渡减速尚未完成
     bNewSeg : BOOL := FALSE;
-    bPendingReverse : BOOL := FALSE;    // 状态机跃迁挂起（CASE 后统一应用）
-    bPendingRetrigger : BOOL := FALSE;
-    rVel0 : REAL := 0.0;          // 本段起始速度幅值（监视用）
+    bPendingReverse : BOOL := FALSE;    // 速度段换向：CASE 后统一应用
     rVel0Magnitude : REAL := 0.0;
-    rDeltaV : REAL := 0.0;
-    rDecSeg : REAL := 200.0;      // 本段末端减速度 |Vset-Vend|/tDec
-    rTransTime : REAL := 0.0;
-    rTransTimer : REAL := 0.0;
-    rDecDist : REAL := 0.0;
+    rDeltaV : REAL := 0.0;        // 段间目标速度幅值差 Vset - V0
+    rRampFloorRatio : REAL := 0.05; // 斜率下限占能力值比例（现场可标定）
     rPosActive : REAL := 0.0;     // 段起点锁存的命令值
     rVelActive : REAL := 0.0;
     rEndVelActive : REAL := 0.0;
     rPresActive : REAL := 0.0;
-    rCycleTime : REAL := 0.001;   // 与主循环 rCycle 一致的扫描周期
     rMinRampTime : REAL := 100.0; // 固定 100 ms 时间下限
     rDeltaVDeadZone : REAL := 0.001;
   END_VAR
@@ -343,31 +337,39 @@ FUNCTION_BLOCK FB_HydAxis
   METHOD PRIVATE ClearSegLatch : BOOL
     bSegVelValid := FALSE;
     bDirectionChange := FALSE;
-    bDecelToZero := FALSE;
-    bTransDecel := FALSE;
     bNewSeg := FALSE;
     bPendingReverse := FALSE;
-    bPendingRetrigger := FALSE;
     iDirLastSeg := 0;
     iDirActive := 0;
     iDirTarget := 0;
     rVelLastSeg := 0.0;
     rEndVelLastSeg := 0.0;
     uiLastSegMode := 0;
-    rVel0 := 0.0;
     rVel0Magnitude := 0.0;
     rDeltaV := 0.0;
-    rTransTime := 0.0;
-    rTransTimer := 0.0;
     ClearSegLatch := TRUE;
   END_METHOD
 
-  // 由段间真实速度幅值差 |Vset-V0| 与工艺时间 uiAcc/uiDec(ms) 求底层斜率。
-  // 液压泵控轴使用"正速度幅值 + 独立方向"，本 method 不产生任何带符号速度。
+  // 段间斜率换算：由工艺段目标速度幅值差 |Vset-V0| 与 uiAcc/uiDec(ms)
+  // 计算 ACCELERATION / DECELERATION，在段起点一次性下发，段内恒定。
+  //
+  // 无段间过渡的一侧用能力值 rMaxSpeedDir/t 兜底：DECELERATION 是唯一通道，
+  // 库内 HYD_ResolveBrakingAcceleration 同时把它当作 sqrt(2*a*s) 制动包络
+  // 的 a_brake。|Vset-V0|<=rMaxSpeedDir，故段间斜率恒不超过能力值，偏小
+  // 只会更保守（提前减速）而不会过冲；但若接近 0，库内
+  // HYD_ComputeOnlineTrapezoidVelocityMagnitude 会因 a<=0 直接返回 0，
+  // 轴将跑不起来，因此统一加 rRampFloorRatio 比例下限。
+  //
+  // 位置段剩余距离制动与 Vset->Vend 末端速度由库内
+  // HYD_ComputeOnlineTrapezoidVelocityMagnitude / ContinuousAbsolute 上下文完成，
+  // 工艺层不计算制动距离、不做两阶段切换、不在段内重触发 EXECUTE。
+  // 液压泵控轴使用"正速度幅值 + 独立方向"，本 method 不产生带符号速度。
   METHOD PRIVATE CalcSegmentRamp : BOOL
     VAR
       tAcc : REAL;
       tDec : REAL;
+      aCap : REAL;
+      dCap : REAL;
     END_VAR
     CalcSegmentRamp := FALSE;
 
@@ -375,10 +377,9 @@ FUNCTION_BLOCK FB_HydAxis
     tAcc := MAX(UINT_TO_REAL(uiAcc), rMinRampTime) * 0.001;
     tDec := MAX(UINT_TO_REAL(uiDec), rMinRampTime) * 0.001;
 
-    // 2. 命令侧 V0（非负幅值），并钳在本方向能力边界内
+    // 2. 命令侧 V0（非负幅值，钳在本方向能力内）：段间斜率与换向判据
     rVel0Magnitude := CalcStartVelocity();
     rVel0Magnitude := MIN(rVel0Magnitude, MAX(rMaxSpeedDir, 0.0));
-    rVel0 := rVel0Magnitude;
     iDirTarget := iDir;
 
     // 3. 压力段断开速度链，后续运动段从 V0=0 重新开始
@@ -399,55 +400,46 @@ FUNCTION_BLOCK FB_HydAxis
         RETURN;
     END_IF;
 
-    // 5. 本段末端减速度：位置段 Vset->Vend，速度段 Vset->0。
-    //    必须先于同向分支计算，使加速段的 DECELERATION 直接取该值。
-    IF uiMode = 1 THEN
-        rDecSeg := MAX(ABS(rVel - rEndVel) / tDec, 1.0);
-    ELSE
-        rDecSeg := MAX(rVel / tDec, 1.0);
+    // 5. 段间目标速度差 -> 段起点一次性斜率；无过渡侧用能力值兜底
+    aCap := rMaxSpeedDir / tAcc;
+    dCap := rMaxSpeedDir / tDec;
+    rDeltaV := rVel - rVel0Magnitude;
+    IF rDeltaV > rDeltaVDeadZone THEN              // V0 -> Vset 加速
+        rAcc := rDeltaV / tAcc;
+        rDec := dCap;
+    ELSIF rDeltaV < -rDeltaVDeadZone THEN         // V0 -> Vset 减速
+        rAcc := aCap;
+        rDec := ABS(rVel - rVel0Magnitude) / tDec;
+    ELSE                                          // 无段间过渡
+        rAcc := aCap;
+        rDec := dCap;
     END_IF;
+    rAcc := MAX(rAcc, rRampFloorRatio * aCap);
+    rDec := MAX(rDec, rRampFloorRatio * dCap);
 
-    // 6. 方向判断先于幅值差比较：液压无反向制动能力，必须先减到零再换向
+    // 6. 方向变化保护按模式分工，工艺层只做斜率换算、不复制库内编排：
+    //    位置段(POSITION_BASED)：库内 motion_planner.c:589-610 已有方向变化
+    //    零速分支，Direct 连续换向还会 Capture/Restore 连续性状态，IEC 只需
+    //    下发目标方向，不打断命令、不进 state 150。
+    //    速度段(TIME_BASED/END_MANUAL)：库内无该分支，由 state 150 + HYD_Stop
+    //    保持旧方向减到零后再切目标方向。
     bDirectionChange := bSegVelValid
                         AND (rVel0Magnitude > rDeltaVDeadZone)
                         AND (iDirLastSeg <> 0)
                         AND (iDirTarget <> 0)
                         AND (iDirLastSeg <> iDirTarget);
 
-    IF bDirectionChange THEN
-        // 保持旧方向，按 uiDec 把幅值降到零；不计算带符号的 Vset-V0
-        bDecelToZero := TRUE;
-        bTransDecel := FALSE;
+    IF bDirectionChange AND (uiMode = 2) THEN
+        // 速度段反向不是段间过渡，不能沿用 |Vset-V0| 折算的斜率
         iDirActive := iDirLastSeg;
-        rDec := MAX(rVel0Magnitude / tDec, 1.0);
-        rAcc := MAX(rVelActive / tAcc, 1.0);
-        rTransTime := rVel0Magnitude / MAX(rDec, 1.0);
-        rTransTimer := 0.0;
+        rAcc := aCap;
+        rDec := dCap;
         bPendingReverse := TRUE;
     ELSE
-        // 同向/首段：每个新段都要重算，不能因速度链已建立而跳过
-        bDecelToZero := FALSE;
         bPendingReverse := FALSE;
-        IF NOT bSegVelValid OR (iDirActive = 0) THEN
+        // 位置段换向直接下发目标方向，由库内检测方向变化并零速保护
+        IF bDirectionChange OR NOT bSegVelValid OR (iDirActive = 0) THEN
             iDirActive := iDirTarget;
-        END_IF;
-
-        rDeltaV := rVel - rVel0Magnitude;
-        IF rDeltaV > rDeltaVDeadZone THEN
-            rAcc := rDeltaV / tAcc;
-            rDec := rDecSeg;
-            bTransDecel := FALSE;
-        ELSIF rDeltaV < -rDeltaVDeadZone THEN
-            // 段间过渡减速先占用唯一 DECELERATION 输入，完成后再切到 rDecSeg
-            rDec := ABS(rVel - rVel0Magnitude) / tDec;
-            rAcc := MAX(rVel / tAcc, 1.0);
-            bTransDecel := TRUE;
-            rTransTime := ABS(rVel - rVel0Magnitude) / MAX(rDec, 1.0);
-            rTransTimer := 0.0;
-        ELSE
-            rAcc := MAX(rVel / tAcc, 1.0);
-            rDec := rDecSeg;
-            bTransDecel := FALSE;
         END_IF;
     END_IF;
 
@@ -498,12 +490,13 @@ FUNCTION_BLOCK FB_HydAxis
   rFlowPercent := UINT_TO_REAL(uiSpd) * 0.1;
   rFlowPercent := LIMIT(5.0, rFlowPercent, 100.0);
 
-  // 1.3 兼容初值只在速度链未建立时计算。
-  //     一旦 CalcSegmentRamp 锁存了段间斜率，本段内不得被每周期覆盖。
+  // 1.3 空闲/速度链断开时给出能力兜底值（与 CalcSegmentRamp 的 aCap/dCap 一致）。
+  //     段内不改写：位置 FB 仅在 EXECUTE 上升沿锁存参数，速度段由库内
+  //     HYD_ApplyVelocityRateLimit 每周期按段起点下发的斜率平滑 V0->Vset。
   IF NOT bSegVelValid THEN
       IF rMaxSpeedDir > 0.0 THEN
-          rAcc := MAX(rMaxSpeedDir / (MAX(UINT_TO_REAL(uiAcc), rMinRampTime) * 0.001), 1.0);
-          rDec := MAX(rMaxSpeedDir / (MAX(UINT_TO_REAL(uiDec), rMinRampTime) * 0.001), 1.0);
+          rAcc := rMaxSpeedDir / (MAX(UINT_TO_REAL(uiAcc), rMinRampTime) * 0.001);
+          rDec := rMaxSpeedDir / (MAX(UINT_TO_REAL(uiDec), rMinRampTime) * 0.001);
       ELSE
           rAcc := 0.0;
           rDec := 0.0;
@@ -606,10 +599,16 @@ FUNCTION_BLOCK FB_HydAxis
               bAlarm := TRUE; dwAlarmID := wFBErrorID; iStep := 900;
               ClearSegLatch();
 
-          // 2. 段切换触发：同模式与跨模式都必须经过 105 产生 EXECUTE 上升沿
+          // 2. 段切换触发
+          // 速度段->速度段：MoveVelocity 支持 CONTINUOUSUPDATE（VELOCITY/
+          // ACCELERATION/DECELERATION/DIRECTION），1.5 节已刷新 active 命令值，
+          // 在线更新即可，不重触发 EXECUTE（重触发会重启 direct command、
+          // 丢 carriedVelocity）。
+          // 位置段及跨模式切换：MoveContinuousAbsolute 只在 EXECUTE 上升沿
+          // 锁存参数，必须经 105 产生上升沿。
           ELSIF rTrigStart.Q THEN
-              IF uiMode = uiActiveMode THEN
-                  iStep := 105;
+              IF (uiActiveMode = 2) AND (uiMode = 2) THEN
+                  uiActiveMode := uiMode;
               ELSIF uiMode >= 1 AND uiMode <= 3 THEN
                   uiActiveMode := uiMode;
                   iStep := 105;
@@ -635,18 +634,14 @@ FUNCTION_BLOCK FB_HydAxis
               iStep := 100;
           END_IF;
 
-      150: // 反向减速到零（液压换向保护）
-          // 保持 iDirActive 为上一段方向，HYD_Stop 按 uiDec 导出的斜率减速；
-          // 零速完成前不得把方向参数切到目标方向。
+      150: // 反向减速到零（仅速度段；位置段换向由库内方向变化分支处理）
+          // 保持 iDirActive 为上一段方向，HYD_Stop 按轴能力减速度 rDec 减速；
+          // 零速完成前不得把方向参数切到目标方向。rAcc/rDec 段内恒定，无需切换。
           bCmdExecute := FALSE;
           IF fbStop.DONE THEN
-              bDecelToZero := FALSE;
               bDirectionChange := FALSE;
               iDirActive := iDirTarget;
               iDirLastSeg := iDirTarget;
-              rVel0 := 0.0;
-              rDec := rDecSeg;
-              bTransDecel := FALSE;
               iStep := 105;
           ELSIF fbStop.ERROR THEN
               bAlarm := TRUE; dwAlarmID := fbStop.ERRORID; iStep := 900;
@@ -698,33 +693,13 @@ FUNCTION_BLOCK FB_HydAxis
       iStep := 150;
   END_IF;
 
-  //--- 2.6 在线过渡减速切换 ---
-  // 段间过渡减速完成后，把唯一的 DECELERATION 输入交给本段末端减速度。
-  // 速度段依赖 CONTINUOUSUPDATE 在线改值；位置段需借助 105 让 FB 重新锁存。
-  IF bTransDecel AND (iStep = 100) THEN
-      rTransTimer := rTransTimer + rCycleTime;
-      CASE uiActiveMode OF
-          2:
-              IF fbMoveVel.InVelocity OR (rTransTimer >= rTransTime * 1.2) THEN
-                  rDec := rDecSeg;
-                  bTransDecel := FALSE;
-              END_IF;
-          1:
-              rDecDist := MAX((rVelActive * rVelActive - rEndVelActive * rEndVelActive)
-                              / (2.0 * MAX(rDecSeg, 1.0)), 0.0);
-              IF (ABS(rPosActive - stHydAxisRef.rActPosition) <= rDecDist * 1.2) OR
-                 (rTransTimer >= rTransTime * 1.2) THEN
-                  rDec := rDecSeg;
-                  bTransDecel := FALSE;
-                  bPendingRetrigger := TRUE;
-              END_IF;
-      END_CASE;
-  END_IF;
-
-  IF bPendingRetrigger THEN
-      bPendingRetrigger := FALSE;
-      iStep := 105;
-  END_IF;
+  //--- 2.6 段内不改写 ACCELERATION / DECELERATION（有意留空）---
+  // 库内 HYD_ComputeOnlineTrapezoidVelocityMagnitude 已按剩余距离与
+  // maxDeceleration 完成制动包络、Vset->Vend 末端减速；段间 V0->Vset 由
+  // 库内 HYD_ApplyVelocityRateLimit 每周期按段起点下发的斜率平滑。
+  // MoveContinuousAbsolute 不支持 CONTINUOUSUPDATE，DECELERATION 仅在
+  // EXECUTE 上升沿锁存一次；段内重触发会重启 direct command 并丢失
+  // carriedVelocity，反而制造速度跳变，故此处不做任何在线切换。
 
   //--- 压力斜率动态计算逻辑  ---
   // 区分两种情形：
