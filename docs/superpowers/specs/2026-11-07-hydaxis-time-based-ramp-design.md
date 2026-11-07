@@ -15,6 +15,17 @@
 
 本次接受接口语义的破坏性变更。字段名称保持 PLC 工程绑定兼容，但字段单位和文档语义统一改为毫秒。
 
+## 1.1 敏捷实施与嵌入式约束
+
+以可运行、可测量的最小增量交付，不先建立通用轨迹框架或扩大到 jerk/S 曲线。按以下切片实现，每个切片都能单独构建和验证：
+
+1. 先完成接口单位注释、时间归一化和核心参数测试；
+2. 再完成运动规划的连续速度过渡、短行程降速和普通停止；
+3. 然后完成压力设定值定时过渡及连续更新；
+4. 最后精简 `FB_HydAxis` 并运行端到端回归。
+
+每个切片先覆盖可观察的行为，再实现满足测试的最小逻辑。优先复用现有 `HYD_MotionPlannerState`、`HYD_RampController` 和停止状态，不增加动态内存、轨迹采样缓冲区、通用调度器或重复保存的状态。只增加实现该过渡必需的定长状态字段；完成一个切片后检查结构体大小和静态内存变化。嵌入式路径保持固定周期、确定性执行和有界计算量。
+
 ## 2. 参数契约
 
 ### 2.1 运动参数
@@ -142,8 +153,10 @@ acceleration = abs(targetVelocity - startVelocity) / transitionTime
 
 - `HYD_MOVEABSOLUTE` 增加 `POSITIONREACHED` 输出；
 - `FB_HydAxis` 增加 `bPositionReached` 输出；
-- 越程停稳时 `BUSY=FALSE`、`DONE=FALSE`、`ERROR=FALSE`、`POSITIONREACHED=FALSE`；
+- 正常停稳即结束命令，故 `DONE=TRUE`、`BUSY=FALSE`、`ERROR=FALSE`；`POSITIONREACHED` 单独表示停稳位置是否进入容差。越程停稳时 `POSITIONREACHED=FALSE` 并记录 warning，避免将命令未结束和位置未到位混为一谈；
 - `HYD_MOVECONTINUOUSABSOLUTE.POSITIONREACHED` 继续表示通过位置切换点，不改变其持续运动语义。
+
+位置段结束时必须按实际停稳位置判断是否在容差内，不能仅根据单方向“已越过目标”的条件把越程判为到位。
 
 ## 5. 停止与急停
 
@@ -229,3 +242,5 @@ acceleration = abs(targetVelocity - startVelocity) / transitionTime
 - 相关 IEC、运动规划、停止、压力控制和集成测试。
 
 本设计不包含 jerk/S 曲线实现、不包含自动反向修正、不包含无关的控制器调参和硬件驱动变更。
+
+实施时不预先重写完成判定、诊断或结构体体系；只有当现有边界无法表达本设计的可观察结果时，才做局部扩展。每个实现切片通过针对性测试后再进入下一个切片，最后运行相关完整回归。若实测内存或执行时间显著增加，先缩减新增状态和计算，再考虑扩大设计范围。
