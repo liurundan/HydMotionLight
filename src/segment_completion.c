@@ -3,6 +3,7 @@
 #include <math.h>
 
 #define HYD_DEFAULT_POSITION_SETTLED_VELOCITY_TOLERANCE 0.001
+#define HYD_POSITION_NUMERIC_MARGIN 0.0002
 
 static HYD_REAL HYD_SegmentCompletion_ResolvePositionSettledVelocityTolerance(
     const HYD_MotionSegment* segment) {
@@ -35,16 +36,17 @@ HYD_BOOL HYD_SegmentCompletion_IsPositionReachedRawWithDirection(
     HYD_REAL positionTolerance,
     HYD_MotionDirection lastActiveDirection) {
     HYD_MotionDirection direction;
+    HYD_REAL effectiveTolerance = positionTolerance + HYD_POSITION_NUMERIC_MARGIN;
 
     direction = HYD_Segment_ResolveDirection(segment, axisRef,
                                               lastActiveDirection);
     if (direction == HYD_DIRECTION_POSITIVE) {
-        return axisRef->position >= segment->targetPosition - positionTolerance;
+        return axisRef->position >= segment->targetPosition - effectiveTolerance;
     }
     if (direction == HYD_DIRECTION_NEGATIVE) {
-        return axisRef->position <= segment->targetPosition + positionTolerance;
+        return axisRef->position <= segment->targetPosition + effectiveTolerance;
     }
-    return fabs(axisRef->position - segment->targetPosition) <= positionTolerance;
+    return fabs(axisRef->position - segment->targetPosition) <= effectiveTolerance;
 }
 
 static HYD_BOOL HYD_SegmentCompletion_IsPositionVelocitySettled(

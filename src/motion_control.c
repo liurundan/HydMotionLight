@@ -2,6 +2,7 @@
 #include "toggle_mechanism_pool.h"
 #include "diagnostics.h"
 #include "motion_planner.h"
+#include "motion_time.h"
 #include "pressure_controller.h"
 #include "safety_state_manager.h"
 #include "pump_converter.h"
@@ -225,8 +226,8 @@ static HYD_REAL HYD_ResolvePumpSpeedSlewRate(const HYD_MotionControlFB* fb,
     velocityFlowGain = (segment->velocityToFlowGain > 0.0f)
         ? segment->velocityToFlowGain : 1.0f;
     rate = (acceleration || segment->maxDeceleration <= 0.0f)
-        ? segment->maxAcceleration
-        : segment->maxDeceleration;
+        ? segment->maxVelocity / HYD_MotionTimeMsToSeconds(segment->maxAcceleration)
+        : segment->maxVelocity / HYD_MotionTimeMsToSeconds(segment->maxDeceleration);
     rate *= velocityFlowGain * flowGain;
 
     if (!isfinite(rate) || rate <= 0.0f) {
@@ -826,8 +827,8 @@ static HYD_REAL HYD_ResolveSegmentBrakingAccelerationForBlend(const HYD_MotionSe
         return 0.0;
     }
     return (segment->maxDeceleration > 0.0)
-        ? segment->maxDeceleration
-        : segment->maxAcceleration;
+        ? segment->maxVelocity / HYD_MotionTimeMsToSeconds(segment->maxDeceleration)
+        : segment->maxVelocity / HYD_MotionTimeMsToSeconds(segment->maxAcceleration);
 }
 
 static void HYD_ClearDirectBlendContext(HYD_MotionControlFB* fb) {
@@ -976,8 +977,10 @@ static HYD_REAL HYD_ResolveDirectBlendSwitchTolerance(const HYD_MotionSegment* a
 
     tolerance = HYD_Segment_GetPositionTolerance(activeSegment);
     deceleration = (activeSegment->maxDeceleration > 0.0f)
-        ? activeSegment->maxDeceleration
-        : activeSegment->maxAcceleration;
+        ? activeSegment->maxVelocity /
+            HYD_MotionTimeMsToSeconds(activeSegment->maxDeceleration)
+        : activeSegment->maxVelocity /
+            HYD_MotionTimeMsToSeconds(activeSegment->maxAcceleration);
     terminalVelocity = HYD_ClampReal(selectedVelocity,
                                      0.0f,
                                      activeSegment->maxVelocity);
@@ -1018,8 +1021,10 @@ static HYD_REAL HYD_ResolveContinuousAbsoluteCrossingVelocity(
     }
 
     if (projectedVelocity < requested) {
+        HYD_REAL acceleration = segment->maxVelocity /
+            HYD_MotionTimeMsToSeconds(segment->maxAcceleration);
         HYD_REAL reachable = sqrt(projectedVelocity * projectedVelocity +
-                                  2.0f * segment->maxAcceleration * remainingDistance);
+                                  2.0f * acceleration * remainingDistance);
         return HYD_ClampReal(reachable, 0.0f, requested);
     }
 
@@ -1338,7 +1343,10 @@ static HYD_BOOL HYD_ApplyLiveUpdateOverrides(const HYD_LiveUpdateRequest* reques
             seg->mode != HYD_MODE_SPEED_RAMP) {
             return false;
         }
-        seg->maxAcceleration = request->maxAcceleration;
+        if (!HYD_IsValidMotionTimeMs(request->maxAcceleration)) {
+            return false;
+        }
+        seg->maxAcceleration = HYD_NormalizeMotionTimeMs(request->maxAcceleration);
     }
 
     if ((request->flags & HYD_LIVE_UPDATE_DECELERATION) != 0U) {
@@ -1346,9 +1354,10 @@ static HYD_BOOL HYD_ApplyLiveUpdateOverrides(const HYD_LiveUpdateRequest* reques
             seg->mode != HYD_MODE_SPEED_RAMP) {
             return false;
         }
-        seg->maxDeceleration = (request->maxDeceleration > 0.0f)
-            ? request->maxDeceleration
-            : seg->maxAcceleration;
+        if (!HYD_IsValidMotionTimeMs(request->maxDeceleration)) {
+            return false;
+        }
+        seg->maxDeceleration = HYD_NormalizeMotionTimeMs(request->maxDeceleration);
     }
 
     if ((request->flags & HYD_LIVE_UPDATE_MAX_PRESSURE) != 0U) {
@@ -1374,7 +1383,10 @@ static HYD_BOOL HYD_ApplyLiveUpdateOverrides(const HYD_LiveUpdateRequest* reques
         if (seg->mode != HYD_MODE_PRESSURE_CLOSED_LOOP) {
             return false;
         }
-        seg->pressureRampRate = request->pressureRampRate;
+        if (!HYD_IsValidPressureTimeMs(request->pressureRampRate)) {
+            return false;
+        }
+        seg->pressureRampRate = HYD_NormalizePressureTimeMs(request->pressureRampRate);
     }
 
     if ((request->flags & HYD_LIVE_UPDATE_DIRECTION) != 0U) {
@@ -3241,10 +3253,15 @@ static HYD_BOOL HYD_RunRunningStateStopping(HYD_MotionControlFB* fb,
     HYD_REAL stopElapsed = HYD_GetStopElapsedTime(fb);
     HYD_REAL stopMag = fabs(fb->_stopStartVel);
     HYD_REAL stopSign = (fb->_stopStartVel >= 0.0f) ? 1.0f : -1.0f;
-    HYD_REAL stopDeceleration = (fb->_stopDeceleration > 0.0f)
+    HYD_REAL stopTimeMs = (fb->_stopDeceleration > 0.0f)
         ? fb->_stopDeceleration
-        : ((segment->maxDeceleration > 0.0f) ? segment->maxDeceleration : segment->maxAcceleration);
-    HYD_REAL decelMag = stopMag - stopDeceleration * stopElapsed;
+        : ((segment->maxDeceleration > 0.0f)
+            ? segment->maxDeceleration
+            : segment->maxAcceleration);
+    HYD_REAL stopRate = (stopMag > 0.0f)
+        ? stopMag / HYD_MotionTimeMsToSeconds(stopTimeMs)
+        : 0.0f;
+    HYD_REAL decelMag = stopMag - stopRate * stopElapsed;
     HYD_ActuationMapperOutput mapped;
     HYD_DiagnosticCode mappingCode = HYD_DIAG_CODE_NONE;
 
@@ -3313,7 +3330,7 @@ static HYD_BOOL HYD_RunRunningStateStopping(HYD_MotionControlFB* fb,
         HYD_ClearDirectPendingSlot(fb);
         HYD_SafetyStateManager_ApplyIdleState(fb, true, false);
         HYD_StateReporter_SetFbState(fb, HYD_FB_STATE_DONE);
-    } else if (stopDeceleration > 0.0f) {
+    } else if (stopRate > 0.0f) {
         /* C-4: stop-timeout safety net.
          * If the commanded deceleration ramp completes (decelMag ~= 0)
          * but feedback velocity never drops below the completion threshold
@@ -3321,7 +3338,7 @@ static HYD_BOOL HYD_RunRunningStateStopping(HYD_MotionControlFB* fb,
          * An explicit segment timeout remains authoritative; otherwise keep
          * a hydraulic natural-settling floor so a short process deceleration
          * time does not become an unrealistically short stop watchdog. */
-        HYD_REAL idealStopTime = stopMag / stopDeceleration;
+        HYD_REAL idealStopTime = stopMag / stopRate;
         HYD_REAL stopTimeoutLimit = HYD_THRESH_STOP_TIMEOUT_IDEAL_MULT * idealStopTime +
                                     HYD_THRESH_STOP_TIMEOUT_SLACK_S;
         HYD_TIME configuredStopTimeout = HYD_Segment_GetTimeoutLimit(segment);
@@ -3499,11 +3516,12 @@ static HYD_BOOL HYD_RequestHoldCommand(HYD_MotionControlFB* fb,
 static HYD_BOOL HYD_RequestStopCommand(HYD_MotionControlFB* fb,
                                        HYD_TIME timestamp,
                                        HYD_REAL deceleration) {
-    if (fb == NULL || fb->STATE.faultActive) {
+    if (fb == NULL || fb->STATE.faultActive ||
+        !HYD_IsValidMotionTimeMs(deceleration)) {
         return false;
     }
 
-    fb->_stopDeceleration = (deceleration > 0.0f) ? deceleration : 0.0f;
+    fb->_stopDeceleration = HYD_NormalizeMotionTimeMs(deceleration);
     return HYD_RequestCommandQueue(fb,
                                    HYD_CMD_STOP,
                                    0U,
@@ -3640,7 +3658,7 @@ void HYD_MotionControlFB_Init(HYD_MotionControlFB* fb) {
     fb->_params.maxAcceleration = 500.0f;
     fb->_params.maxDeceleration = 500.0f;
     fb->_params.maxFlow = 90.0f; // 1800/20=90L/min
-    fb->_params.pressureRampRate = 10.0f;
+    fb->_params.pressureRampRate = HYD_DEFAULT_PRESSURE_TIME_MS;
     fb->_params.pressureKp = 0.55f;
     fb->_params.pressureKpHigh = 0.0f;
     fb->_params.pressureGainBand = 0.2f;
@@ -3848,6 +3866,9 @@ HYD_BOOL HYD_MotionControlFB_LoadRecipe(HYD_MotionControlFB* fb,
 
     memset(fb->RECIPE, 0, sizeof(fb->RECIPE));
     memcpy(fb->RECIPE, recipe, recipeSize * sizeof(HYD_MotionSegment));
+    for (size_t index = 0U; index < recipeSize; ++index) {
+        HYD_NormalizeMotionSegmentTimes(&fb->RECIPE[index]);
+    }
     fb->RECIPE_SIZE = recipeSize;
     HYD_PrepareRecipeLoadState(fb);
     HYD_StateReporter_ClearCurrentDiagnostic(fb);
@@ -3884,6 +3905,7 @@ HYD_BOOL HYD_MotionControlFB_LoadDirectSegment(HYD_MotionControlFB* fb,
     }
 
     fb->DIRECT_SEGMENT = *segment;
+    HYD_NormalizeMotionSegmentTimes(&fb->DIRECT_SEGMENT);
     fb->DIRECT_SEGMENT_VALID = true;
     if (!fb->STATE.active && fb->FB_STATE != HYD_FB_STATE_HOLD && !fb->STATE.finished && !fb->SEGMENT_COMPLETED) {
         HYD_ResetReadyContextPreview(fb);

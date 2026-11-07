@@ -6,11 +6,14 @@
 typedef struct {
     HYD_REAL rampedPressure;
     HYD_TIME lastTimestamp;
+    HYD_REAL transitionTargetPressure;
+    HYD_REAL transitionRate;
+    HYD_TIME transitionDuration;
 } HYD_RampController;
 
 typedef struct {
     HYD_REAL targetPressure;
-    HYD_REAL rampRate;
+    HYD_REAL rampRate; /* ms pressure transition time */
     HYD_TIME currentTime;
 } HYD_RampControllerInput;
 

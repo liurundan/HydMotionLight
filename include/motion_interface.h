@@ -25,16 +25,16 @@
 
 /*
  * IEC pressure-unit contract:
- * All PLC-facing pressure values use bar and bar/s:
+ * PLC-facing pressure values use bar; pressure target transition time uses ms:
  *   HYD_AXISMOTION.SETPRESSURE / ACTPRESSURE / PRESSURERAMPRATE,
  *   HYD_MOVECONTINUOUSABSOLUTE.PRESSURELIMIT,
  *   HYD_MOVEVELOCITY.PRESSURELIMIT,
- *   HYD_PRESSUREHANDLE.PRESSURE / PRESSURERAMPRATE. PressureHandle's
+ *   HYD_PRESSUREHANDLE.PRESSURE / PRESSURERAMPRATE (ms). PressureHandle's
  *   FLOWLIMITPERCENT is a separate percentage of its 20 L/min base limit.
  *   HYD_SETAXISFEEDBACK.ACT_PRESSURE,
  *   HYD_READSIMFEEDBACK.PRESSURE.
- * The IEC adapter passes these values into HydroMotionLib without pressure-unit
- * conversion; the pressure closed-loop path consumes the same bar domain.
+ * The IEC adapter passes pressure values in bar and ramp time in ms; the
+ * pressure closed-loop path consumes the same bar domain.
  */
 
 /*
@@ -84,9 +84,11 @@ __DECLARE_STRUCT_TYPE(HYD_AXISMOTION,
     REAL SETVELOCITY;
     REAL SETFLOW;
     REAL SETPRESSURE;
+    /* Transition times in milliseconds, zero defaults to 100 milliseconds. */
     REAL ACCELERATION;
     REAL DECELERATION;
     REAL DURATION;
+    /* Pressure target transition time in milliseconds, zero defaults to 20 milliseconds. */
     REAL PRESSURERAMPRATE;
     REAL ACTPOSITION;
     REAL ACTVELOCITY;
@@ -217,6 +219,8 @@ typedef struct {
 // FUNCTION_BLOCK HYD_MoveAbsolute
 // Note: JERK and CONTINUOUSUPDATE are currently reserved compatibility pins.
 // Non-default values are rejected by the IEC adapter until runtime support exists.
+// ACCELERATION and DECELERATION are transition times in milliseconds.
+// POSITIONREACHED reports final position tolerance independently of DONE.
 // Data part
 typedef struct {
   // FB Interface - IN, OUT, IN_OUT variables
@@ -227,12 +231,14 @@ typedef struct {
   __DECLARE_VAR(BOOL,CONTINUOUSUPDATE)
   __DECLARE_VAR(REAL,POSITION)
   __DECLARE_VAR(REAL,VELOCITY)
+  /* Acceleration/deceleration transition times in milliseconds (minimum 100 milliseconds). */
   __DECLARE_VAR(REAL,ACCELERATION)
   __DECLARE_VAR(REAL,DECELERATION)
   __DECLARE_VAR(REAL,JERK)
   __DECLARE_VAR(SINT,DIRECTION)
   __DECLARE_VAR(INT,BUFFERMODE)
   __DECLARE_VAR(BOOL,DONE)
+  __DECLARE_VAR(BOOL,POSITIONREACHED)
   __DECLARE_VAR(BOOL,BUSY)
   __DECLARE_VAR(BOOL,ACTIVE)
   __DECLARE_VAR(BOOL,COMMANDABORTED)
@@ -242,6 +248,7 @@ typedef struct {
   // FB private variables - TEMP, private and located variables
   __DECLARE_VAR(BOOL,EXECUTE0)
   __DECLARE_VAR(BOOL,DONE0)
+  __DECLARE_VAR(BOOL,POSITIONREACHED0)
   __DECLARE_VAR(BOOL,ACTIVE0)
   __DECLARE_VAR(BOOL,_PENDING)
   __DECLARE_VAR(WORD,_EXEC_ID)
@@ -258,6 +265,7 @@ typedef struct {
   __DECLARE_VAR(REAL,VELOCITY)
   __DECLARE_VAR(REAL,ENDVELOCITY)
   __DECLARE_VAR(SINT,ENDVELOCITYDIRECTION)
+  /* Acceleration/deceleration transition times in milliseconds (minimum 100 milliseconds). */
   __DECLARE_VAR(REAL,ACCELERATION)
   __DECLARE_VAR(REAL,DECELERATION)
   __DECLARE_VAR(REAL,JERK)
@@ -294,6 +302,7 @@ typedef struct {
   __DECLARE_VAR(BOOL,EXECUTE)
   __DECLARE_VAR(BOOL,CONTINUOUSUPDATE)
   __DECLARE_VAR(REAL,VELOCITY)
+  /* Acceleration/deceleration transition times in milliseconds (minimum 100 milliseconds). */
   __DECLARE_VAR(REAL,ACCELERATION)
   __DECLARE_VAR(REAL,DECELERATION)
   __DECLARE_VAR(REAL,JERK)
@@ -345,6 +354,7 @@ typedef struct {
   __DECLARE_VAR(BOOL,EXECUTE)
   __DECLARE_VAR(BOOL,CONTINUOUSUPDATE)
   __DECLARE_VAR(REAL,PRESSURE)
+  /* Pressure target transition time in milliseconds, zero defaults to 20 milliseconds. */
   __DECLARE_VAR(REAL,PRESSURERAMPRATE)
   __DECLARE_VAR(REAL,DURATION)
   /* Percentage of the PressureHandle 20 L/min process cap; (0,100], default 100. */

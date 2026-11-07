@@ -225,11 +225,11 @@ typedef struct {
     uint16_t ownerTicket;
     HYD_REAL targetPosition;
     HYD_REAL maxVelocity;
-    HYD_REAL maxAcceleration;
-    HYD_REAL maxDeceleration;
+    HYD_REAL maxAcceleration; /* ms transition time */
+    HYD_REAL maxDeceleration; /* ms transition time */
     HYD_REAL maxPressure;
     HYD_REAL targetPressure;
-    HYD_REAL pressureRampRate;
+    HYD_REAL pressureRampRate; /* ms pressure transition time */
     HYD_MotionDirection direction;
     /* Absolute pressure-segment flow cap [L/min]; only used with
      * HYD_LIVE_UPDATE_MAX_FLOW. Kept at the end to preserve legacy offsets. */

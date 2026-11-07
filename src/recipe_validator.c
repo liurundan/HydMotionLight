@@ -1,6 +1,7 @@
 #include "recipe_validator.h"
 #include "rbf_pid.h"
 #include "segment_limits.h"
+#include "motion_time.h"
 #include "pump_converter.h"
 #include <math.h>
 
@@ -174,11 +175,11 @@ HYD_BOOL HYD_RecipeValidator_ValidateSegment(const HYD_MotionSegment* segment,
         return HYD_RecipeValidator_Fail(code, HYD_DIAG_CODE_SEGMENT_INVALID);
     }
 
-    if (segment->maxAcceleration < 0.0) {
+    if (!HYD_IsValidMotionTimeMs(segment->maxAcceleration)) {
         return HYD_RecipeValidator_Fail(code, HYD_DIAG_CODE_SEGMENT_INVALID);
     }
 
-    if (segment->maxDeceleration < 0.0) {
+    if (!HYD_IsValidMotionTimeMs(segment->maxDeceleration)) {
         return HYD_RecipeValidator_Fail(code, HYD_DIAG_CODE_SEGMENT_INVALID);
     }
 
@@ -190,7 +191,7 @@ HYD_BOOL HYD_RecipeValidator_ValidateSegment(const HYD_MotionSegment* segment,
         return HYD_RecipeValidator_Fail(code, HYD_DIAG_CODE_SEGMENT_INVALID);
     }
 
-    if (segment->pressureRampRate < 0.0) {
+    if (!HYD_IsValidPressureTimeMs(segment->pressureRampRate)) {
         return HYD_RecipeValidator_Fail(code, HYD_DIAG_CODE_SEGMENT_INVALID);
     }
 

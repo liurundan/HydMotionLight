@@ -1,5 +1,6 @@
 #include "motion_interface.h"
 #include "segment_limits.h"
+#include "motion_time.h"
 #include "toggle_mechanism_pool.h"
 #include <string.h>
 #include <stdio.h>
@@ -27,7 +28,7 @@ static HYD_AxisSlotState HYD_AxisSlots[HYD_MAX_AXIS_MOTION];
 static HYD_UINT16 HYD_FrameworkGeneration;
 
 static const HYD_REAL HYD_CONTABS_DIRECTION_VELOCITY_THRESHOLD = 0.01f;
-static const HYD_REAL HYD_PRESSURE_HANDLE_BASE_MAX_FLOW = 50.0f;
+static const HYD_REAL HYD_PRESSURE_HANDLE_BASE_MAX_FLOW = 20.0f;
 static const HYD_REAL HYD_SIM_PRESSURE_CREEP_VELOCITY = 1.0f;
 static const HYD_REAL HYD_SIM_PRESSURE_CREEP_MAX_STROKE = 500.0f;
 
@@ -170,8 +171,8 @@ static HYD_MotionSegment buildPositionSegment(
 
     seg.targetPosition = targetPosition;
     seg.maxVelocity = velocity;
-    seg.maxAcceleration = acceleration;
-    seg.maxDeceleration = (deceleration > 0.0f) ? deceleration : acceleration;
+    seg.maxAcceleration = HYD_NormalizeMotionTimeMs(acceleration);
+    seg.maxDeceleration = HYD_NormalizeMotionTimeMs(deceleration);
     seg.velocityToFlowGain = fb->_params.velocityToFlowGain;
 
     seg.positionTolerance = fb->_params.positionTolerance;
@@ -203,8 +204,8 @@ static HYD_MotionSegment buildVelocitySegment(
     seg.planner = HYD_PLANNER_TIME_BASED;
 
     seg.maxVelocity = velocity;
-    seg.maxAcceleration = acceleration;
-    seg.maxDeceleration = (deceleration > 0.0f) ? deceleration : acceleration;
+    seg.maxAcceleration = HYD_NormalizeMotionTimeMs(acceleration);
+    seg.maxDeceleration = HYD_NormalizeMotionTimeMs(deceleration);
     seg.velocityToFlowGain = fb->_params.velocityToFlowGain;
     seg.maxPressure = pressureLimit;
 
@@ -301,7 +302,7 @@ static HYD_MotionSegment buildPressureSegment(
     seg.maxFlow = maxFlow;
 
     seg.duration = duration;
-    seg.pressureRampRate = rampRate;
+    seg.pressureRampRate = HYD_NormalizePressureTimeMs(rampRate);
     seg.pressureCeiling  = MAX_PRESSURE;
 
     seg.pressureController = (HYD_PressureControllerType)(int)fb->_params.pressureControllerType;
@@ -343,9 +344,7 @@ static HYD_MotionSegment buildSegmentFromMotion(const HYD_AXISMOTION* motion,
     seg.maxFlow = motion->SETFLOW;
     seg.targetPressure = motion->SETPRESSURE;
     seg.maxAcceleration = motion->ACCELERATION;
-    seg.maxDeceleration = (motion->DECELERATION > 0.0f)
-        ? motion->DECELERATION
-        : motion->ACCELERATION;
+    seg.maxDeceleration = motion->DECELERATION;
     seg.duration = motion->DURATION;
     seg.pressureRampRate = motion->PRESSURERAMPRATE;
 
@@ -509,6 +508,19 @@ static HYD_BOOL directStopCanCompleteImmediately(const HYD_MotionControlFB* fb)
            fb->FB_STATE != HYD_FB_STATE_HOLD;
 }
 
+static HYD_BOOL directPositionReached(const HYD_MotionControlFB* fb,
+                                      const HYD_MotionSegment* segment)
+{
+    HYD_REAL tolerance;
+
+    if (fb == NULL || segment == NULL || segment->mode != HYD_MODE_POSITION ||
+        segment->endCondition != HYD_END_POSITION) {
+        return false;
+    }
+    tolerance = HYD_Segment_GetPositionTolerance(segment);
+    return fabs(fb->AXIS_REF.position - segment->targetPosition) <= tolerance;
+}
+
 static HYD_BOOL axisIndexIsAllocated(IEC_SINT axisIndex)
 {
     return (axisIndex >= 0) && (axisIndex < (IEC_SINT)HYD_MAX_AXIS_MOTION) &&
@@ -620,8 +632,12 @@ static HYD_BOOL applyMoveAbsoluteLiveUpdate(HYD_MotionControlFB* fb,
     request.ownerTicket = (uint16_t)execId;
     request.targetPosition = __GET_VAR(data__->POSITION);
     request.maxVelocity = __GET_VAR(data__->VELOCITY);
-    request.maxAcceleration = __GET_VAR(data__->ACCELERATION);
-    request.maxDeceleration = __GET_VAR(data__->DECELERATION);
+    if (!HYD_IsValidMotionTimeMs(__GET_VAR(data__->ACCELERATION)) ||
+        !HYD_IsValidMotionTimeMs(__GET_VAR(data__->DECELERATION))) {
+        return false;
+    }
+    request.maxAcceleration = HYD_NormalizeMotionTimeMs(__GET_VAR(data__->ACCELERATION));
+    request.maxDeceleration = HYD_NormalizeMotionTimeMs(__GET_VAR(data__->DECELERATION));
     request.direction = mapPlcOpenDirection(__GET_VAR(data__->DIRECTION));
     return HYD_MotionControlFB_ApplyLiveUpdate(fb, &request);
 }
@@ -670,8 +686,12 @@ static HYD_BOOL applyMoveVelocityLiveUpdate(HYD_MotionControlFB* fb,
     request.ownerKind = HYD_DIRECT_CMD_MOVE_VELOCITY;
     request.ownerTicket = (uint16_t)execId;
     request.maxVelocity = (IEC_REAL)fabs((double)rawVelocity);
-    request.maxAcceleration = __GET_VAR(data__->ACCELERATION);
-    request.maxDeceleration = __GET_VAR(data__->DECELERATION);
+    if (!HYD_IsValidMotionTimeMs(__GET_VAR(data__->ACCELERATION)) ||
+        !HYD_IsValidMotionTimeMs(__GET_VAR(data__->DECELERATION))) {
+        return false;
+    }
+    request.maxAcceleration = HYD_NormalizeMotionTimeMs(__GET_VAR(data__->ACCELERATION));
+    request.maxDeceleration = HYD_NormalizeMotionTimeMs(__GET_VAR(data__->DECELERATION));
     request.maxPressure = pressureLimit;
     request.direction = dir;
 
@@ -704,7 +724,13 @@ static HYD_BOOL applyPressureHandleLiveUpdate(HYD_MotionControlFB* fb,
     request.ownerKind = HYD_DIRECT_CMD_PRESSURE_HANDLE;
     request.ownerTicket = (uint16_t)execId;
     request.targetPressure = __GET_VAR(data__->PRESSURE);
-    request.pressureRampRate = __GET_VAR(data__->PRESSURERAMPRATE);
+    if (!HYD_IsValidPressureTimeMs(__GET_VAR(data__->PRESSURERAMPRATE))) {
+        if (errorId != NULL) {
+            *errorId = (IEC_WORD)HYD_DIAG_CODE_COMMAND_NOT_ALLOWED;
+        }
+        return false;
+    }
+    request.pressureRampRate = HYD_NormalizePressureTimeMs(__GET_VAR(data__->PRESSURERAMPRATE));
     request.maxFlow = maxFlow;
     return HYD_MotionControlFB_ApplyLiveUpdate(fb, &request);
 }
@@ -1688,6 +1714,12 @@ void __mcl_cmd_Stop(HYD_STOP *data__)
 
     if (execRising)
     {
+        if (!HYD_IsValidMotionTimeMs(__GET_VAR(data__->DECELERATION))) {
+            __SET_VAR(data__->, ERROR, , true);
+            __SET_VAR(data__->, ERRORID, , (IEC_WORD)HYD_DIAG_CODE_COMMAND_NOT_ALLOWED);
+            __SET_VAR(data__->, EXECUTE0, , execute);
+            return;
+        }
         HYD_MotionControlFB_Scan(fb);
 
         if (directStopCanCompleteImmediately(fb)) {
@@ -1699,7 +1731,7 @@ void __mcl_cmd_Stop(HYD_STOP *data__)
 
         HYD_MotionControlFB_Stop(fb,
                                  fb->AXIS_REF.timestamp,
-                                 __GET_VAR(data__->DECELERATION));
+                                 HYD_NormalizeMotionTimeMs(__GET_VAR(data__->DECELERATION)));
         HYD_MotionControlFB_Cycle(fb);
 
         __SET_VAR(data__->, _PENDING, , true);
@@ -1911,6 +1943,7 @@ void __mcl_cmd_MoveAbsolute(HYD_MOVEABSOLUTE *data__)
     if (!execute)
     {
         __SET_VAR(data__->, DONE, , false);
+        __SET_VAR(data__->, POSITIONREACHED, , false);
         __SET_VAR(data__->, COMMANDABORTED, , false);
         __SET_VAR(data__->, ERROR, , false);
         __SET_VAR(data__->, ERRORID, , (IEC_WORD)0);
@@ -1919,6 +1952,7 @@ void __mcl_cmd_MoveAbsolute(HYD_MOVEABSOLUTE *data__)
         __SET_VAR(data__->, _PENDING, , false);
         __SET_VAR(data__->, _EXEC_ID, , (IEC_WORD)0);
         __SET_VAR(data__->, ACTIVE0, , false);
+        __SET_VAR(data__->, POSITIONREACHED0, , false);
         __SET_VAR(data__->, EXECUTE0, , execute);
         return;
     }
@@ -1928,7 +1962,9 @@ void __mcl_cmd_MoveAbsolute(HYD_MOVEABSOLUTE *data__)
         IEC_WORD errorId = 0;
         if (!validateSupportedBufferMode(bufferMode, &errorId) ||
             !validateUnsupportedMotionOptions(__GET_VAR(data__->JERK),
-                                              &errorId)) {
+                                              &errorId) ||
+            !HYD_IsValidMotionTimeMs(__GET_VAR(data__->ACCELERATION)) ||
+            !HYD_IsValidMotionTimeMs(__GET_VAR(data__->DECELERATION))) {
             __SET_VAR(data__->, ERROR, , true);
             __SET_VAR(data__->, ERRORID, , errorId);
             __SET_VAR(data__->, EXECUTE0, , execute);
@@ -1970,6 +2006,7 @@ void __mcl_cmd_MoveAbsolute(HYD_MOVEABSOLUTE *data__)
         __SET_VAR(data__->, BUSY, , true);
         __SET_VAR(data__->, ACTIVE, , startResult == HYD_DIRECT_START_STARTED);
         __SET_VAR(data__->, DONE, , false);
+        __SET_VAR(data__->, POSITIONREACHED, , false);
         __SET_VAR(data__->, COMMANDABORTED, , false);
         __SET_VAR(data__->, ACTIVE0, , __GET_VAR(data__->ACTIVE));
         __SET_VAR(data__->, EXECUTE0, , execute);
@@ -2019,6 +2056,7 @@ void __mcl_cmd_MoveAbsolute(HYD_MOVEABSOLUTE *data__)
                         __SET_VAR(data__->, COMMANDABORTED, , false);
                     } else {
                         __SET_VAR(data__->, DONE, , true);
+                        __SET_VAR(data__->, POSITIONREACHED, , directPositionReached(fb, &fb->DIRECT_SEGMENT));
                         __SET_VAR(data__->, BUSY, , false);
                         __SET_VAR(data__->, ACTIVE, , false);
                         __SET_VAR(data__->, COMMANDABORTED, , false);
@@ -2037,6 +2075,7 @@ void __mcl_cmd_MoveAbsolute(HYD_MOVEABSOLUTE *data__)
                     __SET_VAR(data__->, COMMANDABORTED, , false);
                 } else if (fb->SEGMENT_COMPLETED || (HYD_MotionControlFB_IsDone(fb) && fb->STATE.finished)) {
                     __SET_VAR(data__->, DONE, , true);
+                    __SET_VAR(data__->, POSITIONREACHED, , directPositionReached(fb, &fb->DIRECT_SEGMENT));
                     __SET_VAR(data__->, BUSY, , false);
                     __SET_VAR(data__->, ACTIVE, , false);
                     __SET_VAR(data__->, COMMANDABORTED, , false);
@@ -2048,6 +2087,7 @@ void __mcl_cmd_MoveAbsolute(HYD_MOVEABSOLUTE *data__)
                 }
             } else {
                 __SET_VAR(data__->, DONE, , true);
+                __SET_VAR(data__->, POSITIONREACHED, , directPositionReached(fb, &fb->DIRECT_SEGMENT));
                 __SET_VAR(data__->, BUSY, , false);
                 __SET_VAR(data__->, ACTIVE, , false);
                 __SET_VAR(data__->, COMMANDABORTED, , false);
@@ -2063,6 +2103,7 @@ void __mcl_cmd_MoveAbsolute(HYD_MOVEABSOLUTE *data__)
             __SET_VAR(data__->, BUSY, , false);
             __SET_VAR(data__->, ACTIVE, , false);
             __SET_VAR(data__->, DONE, , false);
+            __SET_VAR(data__->, POSITIONREACHED, , false);
         } else if (directExecutionIsCurrentOwner(fb, myExecId, HYD_DIRECT_CMD_MOVE_ABSOLUTE)) {
             if (!applyMoveAbsoluteLiveUpdate(fb, myExecId, data__)) {
                 __SET_VAR(data__->, ERROR, , true);
@@ -2087,6 +2128,7 @@ void __mcl_cmd_MoveAbsolute(HYD_MOVEABSOLUTE *data__)
             else if (fb->SEGMENT_COMPLETED || (HYD_MotionControlFB_IsDone(fb) && fb->STATE.finished))
             {
                 __SET_VAR(data__->, DONE, , true);
+                __SET_VAR(data__->, POSITIONREACHED, , directPositionReached(fb, &fb->DIRECT_SEGMENT));
                 __SET_VAR(data__->, BUSY, , false);
                 __SET_VAR(data__->, ACTIVE, , false);
             }
@@ -2105,6 +2147,7 @@ void __mcl_cmd_MoveAbsolute(HYD_MOVEABSOLUTE *data__)
     }
 
     __SET_VAR(data__->, ACTIVE0, , __GET_VAR(data__->ACTIVE));
+    __SET_VAR(data__->, POSITIONREACHED0, , __GET_VAR(data__->POSITIONREACHED));
     __SET_VAR(data__->, EXECUTE0, , execute);
 }
 
@@ -2190,9 +2233,8 @@ void __mcl_cmd_MoveContinuousAbsolute(HYD_MOVECONTINUOUSABSOLUTE *data__)
             !isfinite(rawEndVelocity) ||
             !isfinite(requestedEndVelocity) ||
             !isfinite(__GET_VAR(data__->POSITION)) ||
-            !isfinite(__GET_VAR(data__->ACCELERATION)) ||
-            !(__GET_VAR(data__->ACCELERATION) > 0.0f) ||
-            !isfinite(__GET_VAR(data__->DECELERATION)) ||
+            !HYD_IsValidMotionTimeMs(__GET_VAR(data__->ACCELERATION)) ||
+            !HYD_IsValidMotionTimeMs(__GET_VAR(data__->DECELERATION)) ||
             !isfinite(pressureLimit)) {
             __SET_VAR(data__->, ERROR, , true);
             __SET_VAR(data__->, ERRORID, , (IEC_WORD)HYD_DIAG_CODE_COMMAND_NOT_ALLOWED);
@@ -2364,6 +2406,8 @@ void __mcl_cmd_MoveVelocity(HYD_MOVEVELOCITY *data__)
         if (!validateSupportedBufferMode(bufferMode, &errorId) ||
             !validateUnsupportedMotionOptions(__GET_VAR(data__->JERK),
                                               &errorId) ||
+            !HYD_IsValidMotionTimeMs(__GET_VAR(data__->ACCELERATION)) ||
+            !HYD_IsValidMotionTimeMs(__GET_VAR(data__->DECELERATION)) ||
             !resolvePressureLimit(__GET_VAR(data__->PRESSURELIMIT),
                                   fb,
                                   &pressureLimit,
@@ -2593,6 +2637,12 @@ void __mcl_cmd_PressureHandle(HYD_PRESSUREHANDLE *data__)
         if (!validateSupportedBufferMode(bufferMode, &errorId)) {
             __SET_VAR(data__->, ERROR, , true);
             __SET_VAR(data__->, ERRORID, , errorId);
+            __SET_VAR(data__->, EXECUTE0, , execute);
+            return;
+        }
+        if (!HYD_IsValidPressureTimeMs(__GET_VAR(data__->PRESSURERAMPRATE))) {
+            __SET_VAR(data__->, ERROR, , true);
+            __SET_VAR(data__->, ERRORID, , (IEC_WORD)HYD_DIAG_CODE_COMMAND_NOT_ALLOWED);
             __SET_VAR(data__->, EXECUTE0, , execute);
             return;
         }

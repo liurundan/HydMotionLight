@@ -72,7 +72,7 @@ static void test_moveabsolute_stop_loop(void) {
     IEC_VAL(stop.EXECUTE) = true;
     stop.EXECUTE0.value = false;
     IEC_VAL(stop.AXISID) = axisId;
-    IEC_VAL(stop.DECELERATION) = 50.0f;
+    IEC_VAL(stop.DECELERATION) = 200.0f;
     __mcl_cmd_Stop(&stop);
 
     CHECK(IEC_VAL(stop.DONE) == false, "Stop should not be done on the trigger call");
@@ -99,7 +99,7 @@ static void test_moveabsolute_stop_loop(void) {
     CHECK(fabs(fb->AXIS_REF.velocity) < 0.01f, "Velocity should be near zero when Stop.DONE becomes true");
 }
 
-static void test_stop_without_deceleration_uses_segment_max_deceleration(void) {
+static void test_stop_time_is_explicit_and_independent(void) {
     HYD_MotionControlFB fb;
     HYD_MotionSegment segment;
     HYD_REAL firstStopVelocity;
@@ -121,7 +121,7 @@ static void test_stop_without_deceleration_uses_segment_max_deceleration(void) {
     segment.direction = HYD_DIRECTION_EXTEND;
     segment.maxVelocity = 50.0;
     segment.maxAcceleration = 100.0;
-    segment.maxDeceleration = 5.0;
+    segment.maxDeceleration = 100.0;
     segment.maxFlow = 100.0;
     segment.velocityToFlowGain = 1.0;
 
@@ -131,15 +131,15 @@ static void test_stop_without_deceleration_uses_segment_max_deceleration(void) {
     fb.AXIS_REF.timestamp = 0.1;
     HYD_MotionControlFB_Cycle(&fb);
 
-    assert(HYD_MotionControlFB_Stop(&fb, 0.1, 0.0));
+    assert(HYD_MotionControlFB_Stop(&fb, 0.1, 200.0));
 
     fb.AXIS_REF.timestamp = 0.2;
     fb.AXIS_REF.velocity = 20.0;
     HYD_MotionControlFB_Cycle(&fb);
     firstStopVelocity = fabs(fb.STATE.plannedVelocity);
 
-    CHECK(fabs(firstStopVelocity - 19.5) < 0.01,
-          "Stop without DECELERATION should use segment maxDeceleration");
+    CHECK(fabs(firstStopVelocity - 10.0) < 0.01,
+          "Stop should use its explicit millisecond deceleration time");
 }
 
 static void test_position_segment_ramps_velocity_flow_and_pump_speed(void) {
@@ -178,11 +178,11 @@ static void test_position_segment_ramps_velocity_flow_and_pump_speed(void) {
 
     fb.AXIS_REF.timestamp = 0.1;
     HYD_MotionControlFB_Scan(&fb);
-    CHECK(fabs(fb.STATE.plannedVelocity - 1.0) < 0.001,
-          "Position segment should ramp planned velocity");
-    CHECK(fabs(fb.STATE.plannedFlow - 2.0) < 0.001,
+    CHECK(fabs(fb.STATE.plannedVelocity - 100.0) < 0.001,
+          "100 ms position transition should reach the 100 mm/s target after 100 ms");
+    CHECK(fabs(fb.STATE.plannedFlow - 200.0) < 0.001,
           "Position segment should ramp planned flow");
-    CHECK(fabs(fb.PUMP_SPEED - 20.0) < 0.001,
+    CHECK(fabs(fb.PUMP_SPEED - 2000.0) < 0.001,
           "Position segment should ramp pump speed");
 
     fb.AXIS_REF.position += fb.STATE.plannedVelocity * 0.1;
@@ -190,11 +190,11 @@ static void test_position_segment_ramps_velocity_flow_and_pump_speed(void) {
     fb.AXIS_REF.flow = fb.STATE.plannedFlow;
     fb.AXIS_REF.timestamp = 0.2;
     HYD_MotionControlFB_Scan(&fb);
-    CHECK(fabs(fb.STATE.plannedVelocity - 2.0) < 0.001,
+    CHECK(fabs(fb.STATE.plannedVelocity - 100.0) < 0.001,
           "Position segment should keep increasing planned velocity");
-    CHECK(fabs(fb.STATE.plannedFlow - 4.0) < 0.001,
+    CHECK(fabs(fb.STATE.plannedFlow - 200.0) < 0.001,
           "Position segment should keep increasing planned flow");
-    CHECK(fabs(fb.PUMP_SPEED - 40.0) < 0.001,
+    CHECK(fabs(fb.PUMP_SPEED - 2000.0) < 0.001,
           "Position segment should keep increasing pump speed");
 }
 
@@ -270,7 +270,7 @@ static void test_position_segment_does_not_complete_until_velocity_settles(void)
 int main(void) {
     printf("=== MoveAbsolute + Stop Integration ===\n");
     test_moveabsolute_stop_loop();
-    test_stop_without_deceleration_uses_segment_max_deceleration();
+    test_stop_time_is_explicit_and_independent();
     test_position_segment_ramps_velocity_flow_and_pump_speed();
     test_position_segment_does_not_complete_until_velocity_settles();
     printf("=== Results: %d/%d passed ===\n", tests_passed, tests_run);

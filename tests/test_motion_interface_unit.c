@@ -188,8 +188,8 @@ static void test_simulation_velocity_ramp_uses_fixed_step_after_large_timestamp(
 
     __HydMotion_framework_Publish();
     __mcl_cmd_MoveVelocity(&mv);
-    ASSERT_TRUE(fabsf(fb->AXIS_REF.velocity - 0.2f) < 0.05f,
-                "Simulation velocity ramp should advance by acceleration * 1 ms even after large absolute timestamps");
+    ASSERT_TRUE(fabsf(fb->AXIS_REF.velocity - 0.5f) < 0.05f,
+                "Simulation velocity ramp should use the 200 ms transition time after large timestamps");
 }
 
 static void test_real_axis_velocity_ramp_uses_fixed_step_after_large_timestamp(void) {
@@ -241,8 +241,8 @@ static void test_real_axis_velocity_ramp_uses_fixed_step_after_large_timestamp(v
 
     __HydMotion_framework_Publish();
     __mcl_cmd_MoveVelocity(&mv);
-    ASSERT_TRUE(fabsf(fb->STATE.references.velocityReference - 0.2f) < 0.05f,
-                "Real-axis control reference should advance by acceleration * 1 ms even after large absolute timestamps");
+    ASSERT_TRUE(fabsf(fb->STATE.references.velocityReference - 0.5f) < 0.05f,
+                "Real-axis control reference should use the 200 ms transition time after large timestamps");
 }
 
 /* ==================================================================
@@ -518,9 +518,9 @@ static void test_moveabsolute_maps_deceleration_independently(void) {
     ASSERT_TRUE(fb != NULL, "MoveAbsolute deceleration test should resolve an FB");
     ASSERT_TRUE(fb->DIRECT_SEGMENT_VALID == true,
                "MoveAbsolute should load a direct segment");
-    ASSERT_TRUE(fb->DIRECT_SEGMENT.maxAcceleration == 50.0f,
+    ASSERT_TRUE(fb->DIRECT_SEGMENT.maxAcceleration == 100.0f,
                "MoveAbsolute should preserve ACCELERATION");
-    ASSERT_TRUE(fb->DIRECT_SEGMENT.maxDeceleration == 7.0f,
+    ASSERT_TRUE(fb->DIRECT_SEGMENT.maxDeceleration == 100.0f,
                "MoveAbsolute should map DECELERATION independently");
 }
 
@@ -659,9 +659,9 @@ static void test_loadprofile_preserves_independent_accel_and_decel(void) {
     fb = __MK_GetPublic_MotionControlFB((int)IEC_VAL(cm.AXISID));
     ASSERT_TRUE(fb != NULL, "LoadProfile accel/decel test should resolve an FB");
     ASSERT_TRUE(fb->RECIPE_SIZE == 1U, "LoadProfile should preload one recipe segment");
-    ASSERT_TRUE(fb->RECIPE[0].maxAcceleration == 30.0f,
+    ASSERT_TRUE(fb->RECIPE[0].maxAcceleration == 100.0f,
                "LoadProfile should preserve ACCELERATION");
-    ASSERT_TRUE(fb->RECIPE[0].maxDeceleration == 4.0f,
+    ASSERT_TRUE(fb->RECIPE[0].maxDeceleration == 100.0f,
                "LoadProfile should preserve DECELERATION independently");
 }
 
@@ -869,8 +869,8 @@ static void test_movevelocity_continuousupdate_lower_target_preserves_ramp(void)
     mv.EXECUTE0.value = false;
     IEC_VAL(mv.AXISID) = axisId;
     IEC_VAL(mv.VELOCITY) = 60.0f;
-    IEC_VAL(mv.ACCELERATION) = 1000.0f;
-    IEC_VAL(mv.DECELERATION) = 10.0f;
+    IEC_VAL(mv.ACCELERATION) = 100.0f;
+    IEC_VAL(mv.DECELERATION) = 100.0f;
     IEC_VAL(mv.DIRECTION) = 1;
     IEC_VAL(mv.CONTINUOUSUPDATE) = true;
 
@@ -879,7 +879,7 @@ static void test_movevelocity_continuousupdate_lower_target_preserves_ramp(void)
     mv.EXECUTE0.value = true;
     __mcl_cmd_MoveVelocity(&mv);
 
-    for (step = 0; step < 200; ++step) {
+    for (step = 0; step < 500; ++step) {
         __HydMotion_framework_Publish();
         __mcl_cmd_MoveVelocity(&mv);
         if (fb->STATE.plannedVelocity >= 55.0f) {
@@ -887,7 +887,7 @@ static void test_movevelocity_continuousupdate_lower_target_preserves_ramp(void)
         }
     }
 
-    ASSERT_TRUE(step < 200,
+    ASSERT_TRUE(step < 500,
                "MoveVelocity should accelerate near the original target before live update");
 
     previousVelocity = fb->STATE.plannedVelocity;
@@ -1006,8 +1006,8 @@ static void test_moveabsolute_continuousupdate_lower_velocity_preserves_ramp(voi
     IEC_VAL(ma.AXISID) = axisId;
     IEC_VAL(ma.POSITION) = 10000.0f;
     IEC_VAL(ma.VELOCITY) = 60.0f;
-    IEC_VAL(ma.ACCELERATION) = 1000.0f;
-    IEC_VAL(ma.DECELERATION) = 10.0f;
+    IEC_VAL(ma.ACCELERATION) = 100.0f;
+    IEC_VAL(ma.DECELERATION) = 100.0f;
     IEC_VAL(ma.DIRECTION) = 1;
     IEC_VAL(ma.CONTINUOUSUPDATE) = true;
 
@@ -1016,7 +1016,7 @@ static void test_moveabsolute_continuousupdate_lower_velocity_preserves_ramp(voi
     ma.EXECUTE0.value = true;
     __mcl_cmd_MoveAbsolute(&ma);
 
-    for (step = 0; step < 200; ++step) {
+    for (step = 0; step < 500; ++step) {
         __HydMotion_framework_Publish();
         __mcl_cmd_MoveAbsolute(&ma);
         if (fb->STATE.plannedVelocity >= 55.0f) {
@@ -1024,7 +1024,7 @@ static void test_moveabsolute_continuousupdate_lower_velocity_preserves_ramp(voi
         }
     }
 
-    ASSERT_TRUE(step < 200,
+    ASSERT_TRUE(step < 500,
                "MoveAbsolute should accelerate near the original target before live update");
 
     previousVelocity = fb->STATE.plannedVelocity;
@@ -1166,7 +1166,7 @@ static void test_movevelocity_maps_deceleration_independently(void) {
                "MoveVelocity should load a direct segment");
     ASSERT_TRUE(fb->DIRECT_SEGMENT.maxAcceleration == 100.0f,
                "MoveVelocity should preserve ACCELERATION");
-    ASSERT_TRUE(fb->DIRECT_SEGMENT.maxDeceleration == 6.0f,
+    ASSERT_TRUE(fb->DIRECT_SEGMENT.maxDeceleration == 100.0f,
                "MoveVelocity should map DECELERATION independently");
 }
 

@@ -333,8 +333,8 @@ typedef struct {
     HYD_REAL targetPosition;
     HYD_REAL targetFlow;      /* L/min, mode-dependent setpoint/cap/feedforward */
     HYD_REAL targetPressure;  /* bar */
-    HYD_REAL maxAcceleration;
-    HYD_REAL maxDeceleration;
+    HYD_REAL maxAcceleration; /* ms: transition time to target velocity */
+    HYD_REAL maxDeceleration; /* ms: transition time to terminal velocity */
     HYD_REAL maxVelocity;     /* mm/s, velocity magnitude limit */
     HYD_REAL maxFlow;         /* L/min, flow magnitude limit before pump conversion */
     HYD_TIME duration;        /* s, used by HYD_END_TIME */
@@ -358,7 +358,7 @@ typedef struct {
     HYD_REAL velocityKp;        /* L/min per mm/s, 0 disables velocity feedback correction */
     HYD_REAL velocityDeadband;  /* mm/s, 0 means no deadband */
     HYD_REAL velocityCorrectionLimit; /* L/min absolute correction limit, 0 uses maxFlow */
-    HYD_REAL pressureRampRate;   /* bar/s, target pressure ramp rate */
+    HYD_REAL pressureRampRate;   /* ms, target pressure transition time */
 
     /* Pressure-controller tuning. Zero values keep legacy-compatible defaults.
      * Adaptive RBF-PID reuses the generic filter/deadband envelope and exposes
@@ -606,10 +606,10 @@ typedef struct {
     HYD_REAL timeoutLimit;
     HYD_REAL velocityToFlowGain;
     HYD_REAL maxVelocity;
-    HYD_REAL maxAcceleration;
-    HYD_REAL maxDeceleration;
+    HYD_REAL maxAcceleration; /* ms: transition time to target velocity */
+    HYD_REAL maxDeceleration; /* ms: transition time to terminal velocity */
     HYD_REAL maxFlow;
-    HYD_REAL pressureRampRate;
+    HYD_REAL pressureRampRate; /* ms, target pressure transition time */
     HYD_REAL pressureKp;
     HYD_REAL pressureKpHigh;
     HYD_REAL pressureGainBand;

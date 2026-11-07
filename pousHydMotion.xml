@@ -530,6 +530,11 @@
 								<BOOL />
 							</type>
 						</variable>
+						<variable name="POSITIONREACHED">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
 						<variable name="BUSY">
 							<type>
 								<BOOL />
@@ -563,6 +568,11 @@
 							</type>
 						</variable>
 						<variable name="DONE0">
+							<type>
+								<BOOL />
+							</type>
+						</variable>
+						<variable name="POSITIONREACHED0">
 							<type>
 								<BOOL />
 							</type>

@@ -1,4 +1,5 @@
 #include "ramp_controller.h"
+#include "motion_time.h"
 
 void HYD_RampController_Init(HYD_RampController* controller, HYD_REAL initialPressure, HYD_TIME initialTime) {
     if (controller == NULL) {
@@ -6,6 +7,9 @@ void HYD_RampController_Init(HYD_RampController* controller, HYD_REAL initialPre
     }
     controller->rampedPressure = initialPressure;
     controller->lastTimestamp = initialTime;
+    controller->transitionTargetPressure = initialPressure;
+    controller->transitionRate = 0.0;
+    controller->transitionDuration = 0.0;
 }
 
 void HYD_RampController_ExecuteWithDt(HYD_RampController* controller,
@@ -21,19 +25,24 @@ void HYD_RampController_ExecuteWithDt(HYD_RampController* controller,
     }
     controller->lastTimestamp = input->currentTime;
 
-    if (input->rampRate > 0.0) {
-        HYD_REAL maxChange = input->rampRate * deltaTime;
-        if (controller->rampedPressure < input->targetPressure) {
-            controller->rampedPressure = HYD_ClampReal(controller->rampedPressure + maxChange,
-                                                       controller->rampedPressure,
-                                                       input->targetPressure);
-        } else if (controller->rampedPressure > input->targetPressure) {
-            controller->rampedPressure = HYD_ClampReal(controller->rampedPressure - maxChange,
-                                                       input->targetPressure,
-                                                       controller->rampedPressure);
+    {
+        HYD_TIME transitionTime = HYD_PressureTimeMsToSeconds(input->rampRate);
+        if (input->targetPressure != controller->transitionTargetPressure ||
+            transitionTime != controller->transitionDuration) {
+            controller->transitionTargetPressure = input->targetPressure;
+            controller->transitionDuration = transitionTime;
+            controller->transitionRate = (transitionTime > 0.0)
+                ? (input->targetPressure - controller->rampedPressure) / transitionTime
+                : 0.0;
         }
-    } else {
-        controller->rampedPressure = input->targetPressure;
+
+        if (fabs(input->targetPressure - controller->rampedPressure) <=
+                fabs(controller->transitionRate * deltaTime) + 1e-6f ||
+            transitionTime <= 0.0) {
+            controller->rampedPressure = input->targetPressure;
+        } else {
+            controller->rampedPressure += controller->transitionRate * deltaTime;
+        }
     }
 
     output->rampedPressure = controller->rampedPressure;

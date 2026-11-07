@@ -162,21 +162,24 @@ Add a fixed `1 ms` test that starts at `0 bar`, targets `100 bar`, and uses `20 
 
 Run the focused test and confirm failure because the current controller interprets the value as `bar/s`.
 
-- [ ] **Step 2: Change ramp controller to time semantics without enlarging state**
+- [ ] **Step 2: Change ramp controller to time semantics with bounded fixed state**
 
-Keep `HYD_RampController` storage unchanged. Treat `HYD_RampControllerInput.rampRate` as a millisecond transition time at the call boundary, convert it with `HYD_PressureTimeMsToSeconds`, and compute the per-cycle change from the current ramped value to the current target:
+Add only three fixed scalar fields to `HYD_RampController`: the latched target pressure, transition rate, and transition duration. Treat `HYD_RampControllerInput.rampRate` as a millisecond transition time at the call boundary, convert it with `HYD_PressureTimeMsToSeconds`, and compute the transition rate once whenever the target or time changes:
 
 ```c
 HYD_TIME transitionTime = HYD_PressureTimeMsToSeconds(input->rampRate);
-HYD_REAL delta = input->targetPressure - controller->rampedPressure;
-HYD_REAL step = (transitionTime > 0.0) ? fabs(delta) * deltaTime / transitionTime : fabs(delta);
+if (target_or_time_changed) {
+    controller->transitionRate =
+        (input->targetPressure - controller->rampedPressure) / transitionTime;
+}
+controller->rampedPressure += controller->transitionRate * deltaTime;
 ```
 
-Clamp the step to the target. When the target changes, the existing `rampedPressure` is the new start automatically; do not add a previous-PLC-target field.
+Clamp the result to the target. When the target changes, the existing `rampedPressure` is the new start automatically; do not add a previous-PLC-target history buffer.
 
 - [ ] **Step 3: Update motion-control pressure input and defaults**
 
-Pass the normalized pressure time to the ramp controller. Update initialization defaults from `10 bar/s` to `20 ms` and update comments/parameter names without changing the fixed-size parameter block. Keep pressure controller feedback and output limiting unchanged.
+Pass the normalized pressure time to the ramp controller. Update initialization defaults from `10 bar/s` to `20 ms` and update comments/parameter names. Keep pressure controller feedback and output limiting unchanged. Verify the resulting controller object remains within the resource budget.
 
 - [ ] **Step 4: Run pressure tests and commit**
 

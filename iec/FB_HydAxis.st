@@ -23,12 +23,12 @@ FUNCTION_BLOCK FB_CalcAxisMaxSpeed
   bValid := FALSE;
 
   // 2. 参数有效性检查 (面积必须大于0，防止除零)
-  IF (rAreaExtendSide <= 0.0) OR (rAreaRetractSide <= 0.0) OR 
+  IF (rAreaExtendSide <= 0.0) OR (rAreaRetractSide <= 0.0) OR
      (rPumpMaxRPM < 0.0) OR (rPumpDisplacement <= 0.0) THEN
-      
+
       rMaxSpeedExtend  := 0.0;
       rMaxSpeedRetract := 0.0;
-      
+
   ELSE
       bValid := TRUE;
 
@@ -92,6 +92,7 @@ FUNCTION_BLOCK FB_HydAxis
   VAR_OUTPUT
     bBusy : BOOL;
     bDone : BOOL;
+    bPositionReached : BOOL;
     bInVelocity : BOOL;
     bInPressure : BOOL;
     bAlarm : BOOL;
@@ -126,13 +127,7 @@ FUNCTION_BLOCK FB_HydAxis
     rVel : REAL;
     rEndVel : REAL;
     rPres : REAL;
-    rAcc : REAL;
-    rDec : REAL;
-    rStopDec : REAL := 5000.0;
-    rJerk : REAL;
     rFlowPercent : REAL;
-    rPressureRampRate : REAL;
-    rPresLastCycle : REAL := 0;
     bFBError : BOOL;
     wFBErrorID : WORD;
     iDoneCnt : INT := 0;
@@ -143,6 +138,8 @@ FUNCTION_BLOCK FB_HydAxis
     rFlow : REAL;
     rPerssure : REAL;
     rCycle : REAL;
+    rCycleTimeMs : REAL := 1.0;
+    rEmergencyStopTimeMs : REAL := 100.0;
     fbHYD_ReadStatus : HYD_ReadStatus;
     bConfig : BOOL;
   END_VAR
@@ -199,37 +196,6 @@ FUNCTION_BLOCK FB_HydAxis
 
 
     SetCylinderConfig := fbHYD_WriteParameter.Done;
-  END_METHOD
-
-  METHOD PUBLIC CalcPresRampRate : REAL
-    VAR_INPUT
-      rTargetPres : REAL;
-      rPrevPres : REAL;
-      uiTimeMs : UINT;
-    END_VAR
-    VAR
-      rDeltaPres : REAL;
-      rTimeSec : REAL;
-    END_VAR
-    // 默认返回值，防止异常
-    CalcPresRampRate := 800.0; 
-
-    // 1. 时间除零保护
-    IF uiTimeMs = 0 THEN
-        RETURN; // 返回默认 800.0 bar/s
-    END_IF;
-
-    // 2. 计算压差绝对值
-    rDeltaPres := ABS(rTargetPres - rPrevPres);
-
-    // 3. 压差为零退化保护 (如果目标压力没变，给最大斜率，让底层FB直接到位)
-    IF rDeltaPres < 0.1 THEN
-        RETURN; // 返回默认 800.0 bar/s
-    END_IF;
-
-    // 4. 核心换算逻辑: ms转s, 压差除以时间
-    rTimeSec := UINT_TO_REAL(uiTimeMs) * 0.001;
-    CalcPresRampRate := rDeltaPres / rTimeSec; // 单位: bar/s
   END_METHOD
 
   METHOD PUBLIC SetToggleMechanism : BOOL
@@ -335,7 +301,7 @@ FUNCTION_BLOCK FB_HydAxis
   rTrigStop(CLK := bStop);
   rTrigEStop(CLK := bEStop);
   rTrigReset(CLK := bReset);
-  rTrigDone(CLK := fbMoveContAbs.InEndVelocity); 
+  rTrigDone(CLK := fbMoveContAbs.InEndVelocity);
 
   rMaxSpeed := stHydAxisRef.rMaxSpeed;
 
@@ -345,16 +311,8 @@ FUNCTION_BLOCK FB_HydAxis
   rPos  := UDINT_TO_REAL(udiPos)*0.01;  //位置设定
   rFlowPercent := UINT_TO_REAL(uiSpd)*0.1;
   rFlowPercent := LIMIT(5, rFlowPercent, 100);
-      
-  IF uiAcc = 0 THEN rAcc := 200; ELSE rAcc  := rMaxSpeed/UINT_TO_REAL(uiAcc)*1000; END_IF;  
-  IF uiDec = 0 THEN rDec := 200; ELSE rDec  := rMaxSpeed/UINT_TO_REAL(uiDec)*1000; END_IF;  
-  IF uiJerk = 0 THEN rJerk := 0; ELSE rJerk := rMaxSpeed/UINT_TO_REAL(uiJerk); END_IF;
 
-  IF rDec > 200 THEN
-    rStopDec := rDec;
-  END_IF;
-
-  iDir := uiDir;  
+  iDir := uiDir;
 
   //--- 2. 状态机主逻辑 ---
   CASE iStep OF
@@ -372,35 +330,35 @@ FUNCTION_BLOCK FB_HydAxis
               SetVelocityToFlowGain(stHydAxisRef.rVelToFlowGain);
               SetPidType( SINT_TO_REAL(stHydAxisRef.iTypePressurePID) );
               SetCylinderConfig(stHydAxisRef.rCylinderExtendArea, stHydAxisRef.rCylinderRetractArea );
-              fbCalcMaxSpeed(stHydAxisRef.rCylinderExtendArea, stHydAxisRef.rCylinderRetractArea, 1700, 50, stHydAxisRef.iMechanismType );            
-              
+              fbCalcMaxSpeed(stHydAxisRef.rCylinderExtendArea, stHydAxisRef.rCylinderRetractArea, 1700, 50, stHydAxisRef.iMechanismType );
+
               stHydAxisRef.rMaxSpeedExtend  := fbCalcMaxSpeed.rMaxSpeedExtend;
               stHydAxisRef.rMaxSpeedRetract := fbCalcMaxSpeed.rMaxSpeedRetract;
 
               IF stHydAxisRef.iMechanismType >= 100 THEN // horizontal machine
                 SetPumpConfig(50, 1700);
               END_IF;
-              
+
               IF iMechBaseClass = 1 THEN
                 iStep := 1;
               ELSE
                 iStep := 10;
               END_IF;
-              
+
           ELSIF fbCreate.ERROR THEN
               bAlarm := TRUE; dwAlarmID := 16#00000001; iStep := 900;
           END_IF;
-      
+
       1:
           bConfig := SetToggleMechanism(siAxisId, stHydAxisRef.iMechanismType );
           IF bConfig THEN
             iStep := 10;
           END_IF;
-          
+
 
       10: // 空闲
-          bCmdExecute := FALSE; 
-          bDone := FALSE; 
+          bCmdExecute := FALSE;
+          bDone := FALSE;
           IF rTrigEStop.Q THEN
               iStep := 300;
           ELSIF rTrigStop.Q THEN
@@ -408,47 +366,47 @@ FUNCTION_BLOCK FB_HydAxis
           ELSIF rTrigReset.Q AND bAlarm THEN
               iStep := 400;
           ELSIF rTrigStart.Q AND uiMode >= 1 AND uiMode <= 3 THEN
-              uiActiveMode := uiMode; 
-              bCmdExecute := TRUE; 
-              iStep := 100;           
+              uiActiveMode := uiMode;
+              bCmdExecute := TRUE;
+              iStep := 100;
           END_IF;
 
       100: // 运行中
-          bCmdExecute := TRUE; 
-          
+          bCmdExecute := TRUE;
+
           // 1. 错误监测
           CASE uiActiveMode OF
               1: bFBError := fbMoveContAbs.ERROR; wFBErrorID := fbMoveContAbs.ERRORID;
               2: bFBError := fbMoveVel.ERROR; wFBErrorID := fbMoveVel.ERRORID;
               3: bFBError := fbPresHdl.ERROR; wFBErrorID := fbPresHdl.ERRORID;
           END_CASE;
-          
+
           IF bFBError THEN
               bAlarm := TRUE; dwAlarmID := wFBErrorID; iStep := 900;
-              
+
           // 2. 段切换触发
           ELSIF rTrigStart.Q THEN
               IF uiMode = uiActiveMode THEN
-                  iStep := 105; 
+                  iStep := 105;
               ELSIF uiMode >= 1 AND uiMode <= 3 THEN
-                  uiActiveMode := uiMode; 
+                  uiActiveMode := uiMode;
               END_IF;
           END_IF;
-          
+
           // 3. 中断监测
           IF rTrigEStop.Q THEN iStep := 300;
           ELSIF rTrigStop.Q THEN iStep := 200;
           END_IF;
 
       105: // 运行过渡步
-          bCmdExecute := FALSE; 
-          bDone := FALSE;      
-          iStep := 100;        
+          bCmdExecute := FALSE;
+          bDone := FALSE;
+          iStep := 100;
 
       200: // 正常停止
           IF fbStop.DONE THEN
-              iStep := 10; 
-              bCmdExecute := FALSE; 
+              iStep := 10;
+              bCmdExecute := FALSE;
           ELSIF fbStop.ERROR THEN
               bAlarm := TRUE; dwAlarmID := fbStop.ERRORID; iStep := 900;
           END_IF;
@@ -466,7 +424,7 @@ FUNCTION_BLOCK FB_HydAxis
           ELSIF fbReset.ERROR THEN
               bAlarm := TRUE; dwAlarmID := fbReset.ERRORID; iStep := 900;
           END_IF;
-          
+
       900: // 报警等待
           IF rTrigReset.Q THEN
               iStep := 400;
@@ -474,24 +432,8 @@ FUNCTION_BLOCK FB_HydAxis
 
   END_CASE;
 
-  //--- 压力斜率动态计算逻辑  ---
-  // 区分两种情形：
-  // 1. 段切换/模式切入时：伴随 rTrigStart.Q，计算一次斜率
-  // 2. 连续更新模式下：无 Start 信号，只要目标压力变化，立即计算新斜率
-  IF (iStep = 100 OR iStep = 105) AND uiActiveMode = 3 THEN
-      // 情形1：Start触发 (新模式/新段进入)
-      IF rTrigStart.Q THEN
-          rPressureRampRate := CalcPresRampRate(rTargetPres := rPres, rPrevPres := rPresLastCycle, uiTimeMs := uiPressureAccTime);
-          rPresLastCycle := rPres; // 锁存基准
-      // 情形2：连续更新检测 (目标压力被外部修改)
-      ELSIF ABS(rPres - rPresLastCycle) > 0.1 THEN
-          rPressureRampRate := CalcPresRampRate(rTargetPres := rPres, rPrevPres := rPresLastCycle, uiTimeMs := uiPressureAccTime);
-          rPresLastCycle := rPres;
-      END_IF;
-  END_IF;
-
   //--- 3. 底层 FB 统一调用区 ---
-  rCycle := rCycle + 0.001;
+  rCycle := rCycle + rCycleTimeMs * 0.001;
   fbHYD_SetAxisFeedback(
        AXISID := siAxisId,
        ENABLE := 1,
@@ -503,45 +445,45 @@ FUNCTION_BLOCK FB_HydAxis
   );
 
   fbMoveContAbs(
-      AXISID := siAxisId, 
-      EXECUTE := (uiActiveMode = 1) AND bCmdExecute, 
-      POSITION := rPos, 
+      AXISID := siAxisId,
+      EXECUTE := (uiActiveMode = 1) AND bCmdExecute,
+      POSITION := rPos,
       VELOCITY := rVel,
-      ENDVELOCITY := rEndVel,    
-      ENDVELOCITYDIRECTION := iDir, 
-      ACCELERATION := rAcc, 
-      DECELERATION := rDec, 
-      JERK := rJerk, 
+      ENDVELOCITY := rEndVel,
+      ENDVELOCITYDIRECTION := iDir,
+      ACCELERATION := UINT_TO_REAL(uiAcc),
+      DECELERATION := UINT_TO_REAL(uiDec),
+      JERK := 0.0,
       DIRECTION := iDir,
       ADAPTENDVELTOAVOIDOVERSHOOT := TRUE,
       PRESSURELIMIT := rPres
   );
 
   fbMoveVel(
-      AXISID := siAxisId, EXECUTE := (uiActiveMode = 2) AND bCmdExecute, 
+      AXISID := siAxisId, EXECUTE := (uiActiveMode = 2) AND bCmdExecute,
       CONTINUOUSUPDATE := TRUE, VELOCITY := rVel,
-      ACCELERATION := rAcc, DECELERATION := rDec, JERK := rJerk, DIRECTION := iDir, BUFFERMODE := 0,PRESSURELIMIT := rPres);
+      ACCELERATION := UINT_TO_REAL(uiAcc), DECELERATION := UINT_TO_REAL(uiDec), JERK := 0.0, DIRECTION := iDir, BUFFERMODE := 0,PRESSURELIMIT := rPres);
 
   fbPresHdl(
-      AXISID := siAxisId, 
-      EXECUTE := (uiActiveMode = 3) AND bCmdExecute, 
-      CONTINUOUSUPDATE := TRUE, 
-      PRESSURE := rPres, 
-      PRESSURERAMPRATE := rPressureRampRate, 
-      DURATION := 0.0, 
-      FLOWLIMITPERCENT:=rFlowPercent, 
+      AXISID := siAxisId,
+      EXECUTE := (uiActiveMode = 3) AND bCmdExecute,
+      CONTINUOUSUPDATE := TRUE,
+      PRESSURE := rPres,
+      PRESSURERAMPRATE := UINT_TO_REAL(uiPressureAccTime),
+      DURATION := 0.0,
+      FLOWLIMITPERCENT:=rFlowPercent,
       BUFFERMODE := 0);
 
   IF iStep = 200 THEN
-      fbStop(AXISID := siAxisId, EXECUTE := TRUE, DECELERATION := rStopDec);
+      fbStop(AXISID := siAxisId, EXECUTE := TRUE, DECELERATION := UINT_TO_REAL(uiDec));
   ELSE
-      fbStop(AXISID := siAxisId, EXECUTE := FALSE, DECELERATION := rStopDec);
+      fbStop(AXISID := siAxisId, EXECUTE := FALSE, DECELERATION := UINT_TO_REAL(uiDec));
   END_IF;
 
   IF iStep = 300 THEN
-      fbEStop(AXISID := siAxisId, EXECUTE := TRUE, DECELERATION := 99999.0);
+      fbEStop(AXISID := siAxisId, EXECUTE := TRUE, DECELERATION := rEmergencyStopTimeMs);
   ELSE
-      fbEStop(AXISID := siAxisId, EXECUTE := FALSE, DECELERATION := 99999.0);
+      fbEStop(AXISID := siAxisId, EXECUTE := FALSE, DECELERATION := rEmergencyStopTimeMs);
   END_IF;
 
   IF iStep = 400 THEN
@@ -567,29 +509,33 @@ FUNCTION_BLOCK FB_HydAxis
 
   //--- 4. 状态输出汇总 ---
   IF iStep = 10 THEN
-      bBusy := FALSE; 
-      bDone := FALSE; 
+      bBusy := FALSE;
+      bDone := FALSE;
   ELSIF iStep = 100 OR iStep = 105 THEN
-      bBusy := TRUE;  
+      bBusy := TRUE;
       IF uiActiveMode = 1 THEN
-          bDone := fbMoveContAbs.InEndVelocity; 
+          bDone := fbMoveContAbs.InEndVelocity;
+          bPositionReached := fbMoveContAbs.PositionReached;
       ELSIF uiActiveMode = 2 THEN
-          bDone := fbMoveVel.InVelocity; 
+          bDone := fbMoveVel.InVelocity;
+          bPositionReached := FALSE;
       ELSIF uiActiveMode = 3 THEN
           bDone := fbPresHdl.INPRESSURE;
+          bPositionReached := FALSE;
       ELSE
           bDone := FALSE;
+          bPositionReached := FALSE;
       END_IF;
       bInVelocity := fbMoveVel.InVelocity;
       bInPressure := fbPresHdl.INPRESSURE;
   ELSIF iStep = 200 THEN
-      bBusy := TRUE; bDone := FALSE;
+      bBusy := TRUE; bDone := FALSE; bPositionReached := FALSE;
   ELSIF iStep = 300 THEN
-      bBusy := TRUE; bDone := FALSE;
-  ELSIF iStep = 400 THEN  
-      bBusy := TRUE; bDone := FALSE;
-  ELSE 
-      bBusy := FALSE; bDone := FALSE;
+      bBusy := TRUE; bDone := FALSE; bPositionReached := FALSE;
+  ELSIF iStep = 400 THEN
+      bBusy := TRUE; bDone := FALSE; bPositionReached := FALSE;
+  ELSE
+      bBusy := FALSE; bDone := FALSE; bPositionReached := FALSE;
   END_IF;
 
   bStandStillOrAllowUpdate := NOT bBusy OR ( iStep = 100 OR iStep = 105 );
