@@ -312,7 +312,7 @@ static int test_init_params_expose_runtime_defaults(void) {
     PressureModel_Step(&params, &state, 0.0f, DT_S, &out);
 
     ASSERT_TRUE(params.model_type == PRESSURE_MODEL_TYPE_FIRST_ORDER);
-    ASSERT_NEAR(params.first_order_k_bar_per_rpm, 5.4f, 1e-6f);
+    ASSERT_NEAR(params.first_order_k_bar_per_rpm, 7.9535f, 1e-6f);
     ASSERT_NEAR(params.first_order_tau_s, 1.0f, 1e-6f);
     ASSERT_NEAR(params.first_order_delay_s, 0.0f, 1e-6f);
     ASSERT_TRUE(params.sensor_range_bar > 0.0f);

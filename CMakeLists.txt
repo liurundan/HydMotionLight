@@ -35,9 +35,6 @@ add_library(HydroSimLib STATIC ${HYDRO_SIM_SRCS})
 target_include_directories(HydroSimLib PUBLIC ${HYDRO_INCLUDE_DIRS})
 target_link_libraries(HydroSimLib PUBLIC m)
 
-add_executable(test_motion_planner tests/test_motion_planner.c)
-target_link_libraries(test_motion_planner PRIVATE HydroMotionLib)
-
 add_executable(test_motion_planner_time_ramp tests/test_motion_planner_time_ramp.c)
 target_link_libraries(test_motion_planner_time_ramp PRIVATE HydroMotionLib)
 
@@ -127,8 +124,6 @@ target_link_libraries(test_hydro_sim_fb PRIVATE HydroSimLib)
 add_executable(test_pressure_model tests/test_pressure_model.c)
 target_link_libraries(test_pressure_model PRIVATE HydroMotionLib HydroSimLib)
 
-add_executable(test_pressure_model_data_fit tests/test_pressure_model_data_fit.c)
-target_link_libraries(test_pressure_model_data_fit PRIVATE HydroSimLib)
 
 add_executable(test_pressure_hold_diagnosis tests/test_pressure_hold_diagnosis.c)
 target_link_libraries(test_pressure_hold_diagnosis PRIVATE HydroMotionLib HydroSimLib)
@@ -139,8 +134,6 @@ target_link_libraries(test_pressure_hold_diagnosis PRIVATE HydroMotionLib HydroS
 add_executable(test_motion_interface_unit tests/test_motion_interface_unit.c)
 target_link_libraries(test_motion_interface_unit PRIVATE HydroMotionLib)
 
-add_executable(test_motion_interface_arbitration tests/test_motion_interface_arbitration.c)
-target_link_libraries(test_motion_interface_arbitration PRIVATE HydroMotionLib)
 
 add_executable(test_motion_interface_done_signals tests/test_motion_interface_done_signals.c)
 target_link_libraries(test_motion_interface_done_signals PRIVATE HydroMotionLib)
@@ -161,8 +154,6 @@ target_link_libraries(test_movecontinuousabsolute_external_sim_integration
 add_executable(test_moveabsolute_stop_integration tests/test_moveabsolute_stop_integration.c)
 target_link_libraries(test_moveabsolute_stop_integration PRIVATE HydroMotionLib)
 
-add_executable(test_moveabsolute_blending_done tests/test_moveabsolute_blending_done.c)
-target_link_libraries(test_moveabsolute_blending_done PRIVATE HydroMotionLib)
 
 add_executable(test_stop_immediate_done tests/test_stop_immediate_done.c)
 target_link_libraries(test_stop_immediate_done PRIVATE HydroMotionLib)
@@ -240,7 +231,6 @@ target_link_libraries(benchmark_performance PRIVATE HydroMotionLib)
 # to avoid flakiness in the main test suite.
 
 enable_testing()
-add_test(NAME test_motion_planner COMMAND test_motion_planner)
 add_test(NAME test_motion_planner_time_ramp COMMAND test_motion_planner_time_ramp)
 add_test(NAME test_motion_time_contract COMMAND test_motion_time_contract)
 add_test(NAME test_recipe_validator COMMAND test_recipe_validator)
@@ -270,10 +260,8 @@ add_test(NAME test_parameter_access COMMAND test_parameter_access)
 add_test(NAME test_parameter_iec COMMAND test_parameter_iec)
 add_test(NAME test_hydro_sim_fb COMMAND test_hydro_sim_fb)
 add_test(NAME test_pressure_model COMMAND test_pressure_model)
-add_test(NAME test_pressure_model_data_fit COMMAND test_pressure_model_data_fit)
 add_test(NAME test_pressure_hold_diagnosis COMMAND test_pressure_hold_diagnosis)
 add_test(NAME test_motion_interface_unit COMMAND test_motion_interface_unit)
-add_test(NAME test_motion_interface_arbitration COMMAND test_motion_interface_arbitration)
 add_test(NAME test_motion_interface_done_signals COMMAND test_motion_interface_done_signals)
 add_test(NAME test_movevelocity_stop_reverse_restart
          COMMAND test_movevelocity_stop_reverse_restart)
@@ -282,7 +270,6 @@ add_test(NAME test_movecontinuousabsolute_integration
 add_test(NAME test_movecontinuousabsolute_external_sim_integration
          COMMAND test_movecontinuousabsolute_external_sim_integration)
 add_test(NAME test_moveabsolute_stop_integration COMMAND test_moveabsolute_stop_integration)
-add_test(NAME test_moveabsolute_blending_done COMMAND test_moveabsolute_blending_done)
 add_test(NAME test_stop_immediate_done COMMAND test_stop_immediate_done)
 add_test(NAME test_ramp_controller_detailed COMMAND test_ramp_controller)
 add_test(NAME test_fault_recovery

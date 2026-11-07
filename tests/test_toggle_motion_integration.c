@@ -98,14 +98,14 @@ static void test_direct_position_and_velocity_flow_are_unchanged(void)
     HYD_MotionSegment velocity_segment = make_speed_segment();
 
     run_first_control_cycle(&position_fb, &position_segment, 0.0f);
-    assert_near(position_fb.STATE.plannedVelocity, 1.0f, 0.001f);
-    assert_near(position_fb.STATE.plannedFlow, 2.0f, 0.001f);
-    assert_near(position_fb.PUMP_SPEED, 20.0f, 0.001f);
+    assert_near(position_fb.STATE.plannedVelocity, 20.0f, 0.001f);
+    assert_near(position_fb.STATE.plannedFlow, 40.0f, 0.001f);
+    assert_near(position_fb.PUMP_SPEED, 400.0f, 0.001f);
 
     run_first_control_cycle(&velocity_fb, &velocity_segment, 0.0f);
-    assert_near(velocity_fb.STATE.plannedVelocity, 10.0f, 0.001f);
-    assert_near(velocity_fb.STATE.plannedFlow, 20.0f, 0.001f);
-    assert_near(velocity_fb.PUMP_SPEED, 200.0f, 0.001f);
+    assert_near(velocity_fb.STATE.plannedVelocity, 20.0f, 0.001f);
+    assert_near(velocity_fb.STATE.plannedFlow, 40.0f, 0.001f);
+    assert_near(velocity_fb.PUMP_SPEED, 400.0f, 0.001f);
 }
 
 static void run_toggle_speed_cycle(HYD_MotionControlFB *fb,

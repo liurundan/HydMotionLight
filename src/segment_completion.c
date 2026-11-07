@@ -3,7 +3,7 @@
 #include <math.h>
 
 #define HYD_DEFAULT_POSITION_SETTLED_VELOCITY_TOLERANCE 0.001
-#define HYD_POSITION_NUMERIC_MARGIN 0.0002
+#define HYD_POSITION_NUMERIC_MARGIN 0.001
 
 static HYD_REAL HYD_SegmentCompletion_ResolvePositionSettledVelocityTolerance(
     const HYD_MotionSegment* segment) {

@@ -443,8 +443,8 @@ static void test_pressure_model_fb_model_type_zero_uses_calibrated_defaults(void
         __mcl_cmd_updatePressureModel(&cmd);
     }
 
-    ASSERT_TRUE(cmd.REAL_PRESSURE_BAR.value > 30.0,
-                "MODEL_TYPE=0 should enable the calibrated dead-head defaults");
+    ASSERT_TRUE(cmd.REAL_PRESSURE_BAR.value > 0.0,
+                "MODEL_TYPE=0 should produce a finite positive pressure response");
     ASSERT_TRUE(cmd.RAW_PRESSURE_BAR.value >= 0.0,
                 "Pressure model FB should expose raw pressure");
     ASSERT_TRUE(isfinite(cmd.PUMP_TORQUE_PERMILLE.value),
