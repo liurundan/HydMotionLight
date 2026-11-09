@@ -150,6 +150,113 @@ static void test_position_safety_envelope_remains_a_hard_ceiling(void)
           "planned velocity must remain below the delay-aware position safety envelope");
 }
 
+static void test_speed_ramp_preserves_elapsed_deceleration_cap(void)
+{
+    HYD_AxisRef axis = {0};
+    HYD_MotionSegment segment = {0};
+    HYD_MotionPlannerState state = {0};
+    HYD_MotionPlannerInput input = {0};
+    HYD_MotionPlannerOutput output = {0};
+
+    segment.mode = HYD_MODE_SPEED_RAMP;
+    segment.planner = HYD_PLANNER_TIME_BASED;
+    segment.endCondition = HYD_END_MANUAL;
+    segment.direction = HYD_DIRECTION_POSITIVE;
+    segment.maxVelocity = 20.0;
+    segment.maxAcceleration = 100.0;
+    segment.maxDeceleration = 100.0;
+    segment.maxFlow = 100.0;
+    segment.velocityToFlowGain = 1.0;
+
+    state.initialized = true;
+    state.lastTargetVelocity = 20.0;
+    input.axisRef = &axis;
+    input.segment = &segment;
+    input.state = &state;
+    input.deltaTime = 0.001;
+    input.decelStartVel = 20.0;
+    input.decelElapsed = 0.05;
+
+    HYD_MotionPlanner_Execute(&input, &output);
+    check(output.targetVelocity <= 10.0 + 0.001,
+          "elapsed speed-ramp deceleration should cap velocity at 10 mm/s");
+    check(fabs(output.targetFlow - 10.0) < 0.001,
+          "speed-ramp flow should be recomputed from the deceleration cap");
+}
+
+static void test_blend_switch_safety_caps_velocity_at_terminal(void)
+{
+    HYD_AxisRef axis = {0};
+    HYD_MotionSegment segment = {0};
+    HYD_MotionPlannerState state = {0};
+    HYD_MotionPlannerInput input = {0};
+    HYD_MotionPlannerOutput output = {0};
+    HYD_MotionBlendContext blend = {0};
+
+    segment.mode = HYD_MODE_POSITION;
+    segment.planner = HYD_PLANNER_POSITION_BASED;
+    segment.endCondition = HYD_END_POSITION;
+    segment.direction = HYD_DIRECTION_EXTEND;
+    segment.targetPosition = 200.0;
+    segment.maxVelocity = 20.0;
+    segment.maxAcceleration = 100.0;
+    segment.maxDeceleration = 100.0;
+    segment.maxFlow = 100.0;
+    segment.velocityToFlowGain = 1.0;
+
+    axis.position = 100.0;
+    state.initialized = true;
+    state.lastTargetVelocity = 20.0;
+    blend.active = true;
+    blend.bufferMode = HYD_BUFFER_MODE_BLENDING_LOW;
+    blend.blendVelocity = 5.0;
+    blend.switchPosition = 100.0;
+    blend.switchTolerance = 0.1;
+
+    input.axisRef = &axis;
+    input.segment = &segment;
+    input.state = &state;
+    input.blend = &blend;
+    input.deltaTime = 0.001;
+
+    HYD_MotionPlanner_Execute(&input, &output);
+    check(output.targetVelocity <= blend.blendVelocity + 0.001,
+          "blend switch safety ceiling should not exceed terminal velocity");
+}
+
+static void test_small_target_and_time_changes_keep_cached_rate(void)
+{
+    HYD_AxisRef axis = {0};
+    HYD_MotionSegment segment = {0};
+    HYD_MotionPlannerState state = {0};
+    HYD_MotionPlannerInput input = {0};
+    HYD_MotionPlannerOutput output = {0};
+
+    segment.mode = HYD_MODE_SPEED_RAMP;
+    segment.planner = HYD_PLANNER_TIME_BASED;
+    segment.endCondition = HYD_END_MANUAL;
+    segment.direction = HYD_DIRECTION_POSITIVE;
+    segment.maxVelocity = 20.0 + HYD_REAL_EPSILON * 100.0;
+    segment.maxAcceleration = 100.0 + HYD_REAL_EPSILON * 1000.0;
+    segment.maxDeceleration = 100.0;
+    segment.maxFlow = 100.0;
+    segment.velocityToFlowGain = 1.0;
+
+    state.initialized = true;
+    state.lastTargetVelocity = 1.0;
+    state.transitionTargetVelocity = 20.0;
+    state.transitionRate = 2.0;
+    state.transitionTimeMs = 100.0;
+    input.axisRef = &axis;
+    input.segment = &segment;
+    input.state = &state;
+    input.deltaTime = 0.001;
+
+    HYD_MotionPlanner_Execute(&input, &output);
+    check(fabs(output.targetVelocity - 1.002) < 0.0001,
+          "small target and transition-time noise should retain the cached rate");
+}
+
 int main(void)
 {
     HYD_AxisRef axis = {0};
@@ -197,6 +304,9 @@ int main(void)
     test_speed_target_reduction_rebases_from_planned_velocity();
     test_reverse_keeps_old_direction_until_zero();
     test_position_safety_envelope_remains_a_hard_ceiling();
+    test_speed_ramp_preserves_elapsed_deceleration_cap();
+    test_blend_switch_safety_caps_velocity_at_terminal();
+    test_small_target_and_time_changes_keep_cached_rate();
 
     printf("motion planner time ramp: %s\n", failures == 0 ? "PASS" : "FAIL");
     return failures == 0 ? 0 : 1;

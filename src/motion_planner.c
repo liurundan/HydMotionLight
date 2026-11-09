@@ -70,8 +70,12 @@ static HYD_REAL HYD_AdvanceStatefulVelocity(HYD_MotionPlannerState* state,
     HYD_REAL nextVelocity;
 
     if (state->transitionTimeMs <= 0.0 ||
-        state->transitionTargetVelocity != targetVelocity ||
-        state->transitionTimeMs != normalizedTimeMs) {
+        fabs(state->transitionTargetVelocity - targetVelocity) >
+            HYD_CompareTolerance(HYD_MaxReal(
+                fabs(state->transitionTargetVelocity), fabs(targetVelocity))) ||
+        fabs(state->transitionTimeMs - normalizedTimeMs) >
+            HYD_CompareTolerance(HYD_MaxReal(
+                fabs(state->transitionTimeMs), fabs(normalizedTimeMs)))) {
         state->transitionTargetVelocity = targetVelocity;
         state->transitionTimeMs = normalizedTimeMs;
         state->transitionRate =
@@ -235,18 +239,24 @@ static HYD_REAL HYD_ComputeDelayAwareBrakingVelocityMagnitude(
     HYD_REAL discriminant;
     HYD_REAL velocityMagnitude;
 
-    if (remainingDistance <= 0.0 ||
-        brakingAcceleration <= 0.0 ||
-        maxVelocity <= 0.0) {
+    if (!isfinite(terminalVelocity) || terminalVelocity < 0.0) {
+        terminalVelocity = 0.0;
+    }
+
+    if (maxVelocity <= 0.0) {
+        return 0.0;
+    }
+
+    if (remainingDistance <= 0.0) {
+        return HYD_ClampReal(terminalVelocity, 0.0, maxVelocity);
+    }
+
+    if (brakingAcceleration <= 0.0) {
         return 0.0;
     }
 
     if (!isfinite(responseDelay) || responseDelay < 0.0) {
         responseDelay = 0.0;
-    }
-
-    if (!isfinite(terminalVelocity) || terminalVelocity < 0.0) {
-        terminalVelocity = 0.0;
     }
 
     discriminant = (brakingAcceleration * responseDelay) *
@@ -421,10 +431,6 @@ static HYD_REAL HYD_ComputeOnlineTrapezoidVelocityMagnitude(const HYD_MotionPlan
         segment->maxVelocity,
         blendActive ? 0.0 : input->deltaTime,
         terminalVelocity);
-    if (terminalVelocity > 0.0 && safetyVelocityMagnitude < terminalVelocity) {
-        safetyVelocityMagnitude = terminalVelocity;
-    }
-
     measuredMagnitude = 0.0;
     if (isfinite(input->axisRef->velocity)) {
         measuredMagnitude = fabs(input->axisRef->velocity);
@@ -732,6 +738,16 @@ void HYD_MotionPlanner_Execute(const HYD_MotionPlannerInput* input, HYD_MotionPl
                                         input->state->lastTargetVelocity,
                                         targetVelocity),
             input->deltaTime));
+        if (input->decelElapsed > 0.0 && input->decelStartVel > 0.0) {
+            HYD_REAL brakingAcceleration =
+                HYD_ResolveBrakingAcceleration(input->segment);
+            HYD_REAL decelVelocity = input->decelStartVel -
+                brakingAcceleration * input->decelElapsed;
+            if (decelVelocity < 0.0) {
+                decelVelocity = 0.0;
+            }
+            velocityMagnitude = HYD_MinReal(velocityMagnitude, decelVelocity);
+        }
     } else {
         velocityMagnitude = HYD_ComputeSpeedRampVelocityMagnitude(input, direction);
     }
