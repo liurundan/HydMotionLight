@@ -8,6 +8,9 @@ typedef struct {
     HYD_REAL lastTargetVelocity;
     HYD_REAL lastTargetFlow;
     HYD_TIME lastTimestamp;
+    HYD_REAL transitionTargetVelocity;
+    HYD_REAL transitionRate;
+    HYD_REAL transitionTimeMs;
 } HYD_MotionPlannerState;
 
 typedef struct {
