@@ -348,7 +348,8 @@ static HYD_REAL HYD_ComputeOnlineTrapezoidVelocityMagnitude(const HYD_MotionPlan
     brakingAcceleration = HYD_ResolveBrakingAcceleration(segment);
 
     if (remainingDistance <= positionTolerance) {
-        if (previousMagnitude <= HYD_THRESH_STOP_VEL_DONE_MAG) {
+        if (previousMagnitude <= HYD_THRESH_STOP_VEL_DONE_MAG &&
+            terminalVelocity <= HYD_THRESH_STOP_VEL_DONE_MAG) {
             velocityMagnitude = 0.0;
         } else if (input->state != NULL) {
             HYD_REAL targetVelocity = terminalVelocity *
@@ -383,7 +384,7 @@ static HYD_REAL HYD_ComputeOnlineTrapezoidVelocityMagnitude(const HYD_MotionPlan
                 brakeDistance = ((previousMagnitude * previousMagnitude) -
                                  (terminalVelocity * terminalVelocity)) /
                     (2.0 * brakingAcceleration);
-                if (!blendActive && input->deltaTime > 0.0 && isfinite(input->deltaTime)) {
+                if (input->deltaTime > 0.0 && isfinite(input->deltaTime)) {
                     brakeDistance += (previousMagnitude - terminalVelocity) *
                                      input->deltaTime;
                 }

@@ -224,6 +224,44 @@ static void test_blend_switch_safety_caps_velocity_at_terminal(void)
           "blend switch safety ceiling should not exceed terminal velocity");
 }
 
+static void test_blend_terminal_ramp_continues_from_zero_planned_velocity(void)
+{
+    HYD_AxisRef axis = {0};
+    HYD_MotionSegment segment = {0};
+    HYD_MotionPlannerState state = {0};
+    HYD_MotionPlannerInput input = {0};
+    HYD_MotionPlannerOutput output = {0};
+    HYD_MotionBlendContext blend = {0};
+
+    segment.mode = HYD_MODE_POSITION;
+    segment.planner = HYD_PLANNER_POSITION_BASED;
+    segment.endCondition = HYD_END_POSITION;
+    segment.direction = HYD_DIRECTION_EXTEND;
+    segment.targetPosition = 100.0;
+    segment.maxVelocity = 20.0;
+    segment.maxAcceleration = 100.0;
+    segment.maxDeceleration = 100.0;
+    segment.maxFlow = 100.0;
+    segment.velocityToFlowGain = 1.0;
+
+    axis.position = 100.0;
+    state.initialized = true;
+    blend.active = true;
+    blend.bufferMode = HYD_BUFFER_MODE_BLENDING_LOW;
+    blend.blendVelocity = 5.0;
+    blend.switchPosition = 100.0;
+    blend.switchTolerance = 0.1;
+    input.axisRef = &axis;
+    input.segment = &segment;
+    input.state = &state;
+    input.blend = &blend;
+    input.deltaTime = 0.001;
+
+    HYD_MotionPlanner_Execute(&input, &output);
+    check(fabs(output.targetVelocity - 0.05) < 0.001,
+          "blend terminal speed should ramp from zero planned velocity");
+}
+
 static void test_small_target_and_time_changes_keep_cached_rate(void)
 {
     HYD_AxisRef axis = {0};
@@ -306,6 +344,7 @@ int main(void)
     test_position_safety_envelope_remains_a_hard_ceiling();
     test_speed_ramp_preserves_elapsed_deceleration_cap();
     test_blend_switch_safety_caps_velocity_at_terminal();
+    test_blend_terminal_ramp_continues_from_zero_planned_velocity();
     test_small_target_and_time_changes_keep_cached_rate();
 
     printf("motion planner time ramp: %s\n", failures == 0 ? "PASS" : "FAIL");
