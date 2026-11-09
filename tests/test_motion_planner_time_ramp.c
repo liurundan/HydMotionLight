@@ -150,6 +150,45 @@ static void test_position_safety_envelope_remains_a_hard_ceiling(void)
           "planned velocity must remain below the delay-aware position safety envelope");
 }
 
+static void test_position_terminated_speed_ramp_keeps_distance_safety_cap(void)
+{
+    HYD_AxisRef axis = {0};
+    HYD_MotionSegment segment = {0};
+    HYD_MotionPlannerState state = {0};
+    HYD_MotionPlannerInput input = {0};
+    HYD_MotionPlannerOutput output = {0};
+    HYD_REAL expectedSafety;
+
+    segment.mode = HYD_MODE_SPEED_RAMP;
+    segment.planner = HYD_PLANNER_TIME_BASED;
+    segment.endCondition = HYD_END_POSITION;
+    segment.direction = HYD_DIRECTION_EXTEND;
+    segment.targetPosition = 100.0;
+    segment.maxVelocity = 20.0;
+    segment.maxAcceleration = 100.0;
+    segment.maxDeceleration = 100.0;
+    segment.maxFlow = 100.0;
+    segment.velocityToFlowGain = 1.0;
+
+    axis.position = 99.95;
+    state.initialized = true;
+    state.lastTargetVelocity = 20.0;
+    input.axisRef = &axis;
+    input.segment = &segment;
+    input.state = &state;
+    input.deltaTime = 0.001;
+
+    HYD_MotionPlanner_Execute(&input, &output);
+
+    expectedSafety = sqrt(2.0 * (20.0 / 0.1) * 0.05);
+    check(fabs(output.targetVelocity) <= expectedSafety + 0.001,
+          "position-terminated speed ramp should keep the distance-based safety cap");
+    check(fabs(output.targetVelocity - expectedSafety) < 0.001,
+          "position safety cap should retain its calculated nonzero velocity");
+    check(fabs(output.targetFlow - expectedSafety) < 0.001,
+          "position-capped speed ramp should recompute flow from planned velocity");
+}
+
 static void test_speed_ramp_preserves_elapsed_deceleration_cap(void)
 {
     HYD_AxisRef axis = {0};
@@ -342,6 +381,7 @@ int main(void)
     test_speed_target_reduction_rebases_from_planned_velocity();
     test_reverse_keeps_old_direction_until_zero();
     test_position_safety_envelope_remains_a_hard_ceiling();
+    test_position_terminated_speed_ramp_keeps_distance_safety_cap();
     test_speed_ramp_preserves_elapsed_deceleration_cap();
     test_blend_switch_safety_caps_velocity_at_terminal();
     test_blend_terminal_ramp_continues_from_zero_planned_velocity();

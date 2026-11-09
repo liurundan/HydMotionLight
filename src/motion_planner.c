@@ -749,6 +749,18 @@ void HYD_MotionPlanner_Execute(const HYD_MotionPlannerInput* input, HYD_MotionPl
             }
             velocityMagnitude = HYD_MinReal(velocityMagnitude, decelVelocity);
         }
+        if (input->segment->endCondition == HYD_END_POSITION) {
+            HYD_REAL remainingDistance = HYD_ComputeRemainingDistance(
+                input->segment, input->axisRef, direction);
+            HYD_REAL brakingAcceleration =
+                HYD_ResolveBrakingAcceleration(input->segment);
+            HYD_REAL safetyVelocityMagnitude =
+                HYD_ComputePositionBasedVelocityMagnitude(
+                    remainingDistance, brakingAcceleration,
+                    input->segment->maxVelocity, 0.0);
+            velocityMagnitude = HYD_MinReal(velocityMagnitude,
+                                            safetyVelocityMagnitude);
+        }
     } else {
         velocityMagnitude = HYD_ComputeSpeedRampVelocityMagnitude(input, direction);
     }
