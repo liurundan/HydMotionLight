@@ -20,13 +20,30 @@ static HYD_REAL HYD_CompareTolerance(HYD_REAL magnitude) {
     return tolerance;
 }
 
-static HYD_REAL HYD_ResolveBrakingAcceleration(const HYD_MotionSegment* segment) {
+static HYD_REAL HYD_ResolveConfiguredBrakingAcceleration(const HYD_MotionSegment* segment) {
     if (segment == NULL) {
         return 0.0;
     }
     return (segment->maxDeceleration > 0.0)
         ? segment->maxVelocity / HYD_MotionTimeMsToSeconds(segment->maxDeceleration)
         : segment->maxVelocity / HYD_MotionTimeMsToSeconds(segment->maxAcceleration);
+}
+
+static HYD_REAL HYD_ResolveBrakingAcceleration(const HYD_MotionSegment* segment,
+                                               HYD_REAL currentMagnitude,
+                                               HYD_REAL targetMagnitude) {
+    HYD_REAL deltaVelocity;
+
+    if (segment == NULL) {
+        return 0.0;
+    }
+    deltaVelocity = fabs(targetMagnitude - currentMagnitude);
+    if (deltaVelocity <= HYD_REAL_EPSILON) {
+        return HYD_ResolveConfiguredBrakingAcceleration(segment);
+    }
+    return (segment->maxDeceleration > 0.0)
+        ? deltaVelocity / HYD_MotionTimeMsToSeconds(segment->maxDeceleration)
+        : deltaVelocity / HYD_MotionTimeMsToSeconds(segment->maxAcceleration);
 }
 
 static HYD_REAL HYD_ResolveTransitionRate(const HYD_MotionSegment* segment,
@@ -345,7 +362,7 @@ static HYD_REAL HYD_ComputeOnlineTrapezoidVelocityMagnitude(const HYD_MotionPlan
         previousMagnitude = fabs(input->state->lastTargetVelocity);
     }
 
-    brakingAcceleration = HYD_ResolveBrakingAcceleration(segment);
+    brakingAcceleration = HYD_ResolveConfiguredBrakingAcceleration(segment);
 
     if (remainingDistance <= positionTolerance) {
         if (previousMagnitude <= HYD_THRESH_STOP_VEL_DONE_MAG &&
@@ -564,7 +581,7 @@ static HYD_REAL HYD_ComputePositionModeVelocityMagnitude(const HYD_MotionPlanner
     }
 
     remainingDistance = HYD_ComputeRemainingDistance(input->segment, input->axisRef, direction);
-    brakingAcceleration = HYD_ResolveBrakingAcceleration(input->segment);
+    brakingAcceleration = HYD_ResolveConfiguredBrakingAcceleration(input->segment);
     brakeVelocityMagnitude = HYD_ComputePositionBasedVelocityMagnitude(remainingDistance,
                                                                        brakingAcceleration,
                                                                        input->segment->maxVelocity,
@@ -620,7 +637,7 @@ static HYD_REAL HYD_ComputeSpeedRampVelocityMagnitude(const HYD_MotionPlannerInp
                                                                                         true),
                                                               input->segment->maxVelocity);
 
-    brakingAcceleration = HYD_ResolveBrakingAcceleration(input->segment);
+    brakingAcceleration = HYD_ResolveConfiguredBrakingAcceleration(input->segment);
     if (input->decelElapsed > 0.0 && input->decelStartVel > 0.0) {
         decelVelocity = input->decelStartVel -
             brakingAcceleration * input->decelElapsed;
@@ -637,7 +654,7 @@ static HYD_REAL HYD_ComputeSpeedRampVelocityMagnitude(const HYD_MotionPlannerInp
     remainingDistance = HYD_ComputeRemainingDistance(input->segment,
                                                      input->axisRef,
                                                      direction);
-    brakingAcceleration = HYD_ResolveBrakingAcceleration(input->segment);
+    brakingAcceleration = HYD_ResolveConfiguredBrakingAcceleration(input->segment);
     brakeVelocityMagnitude = HYD_ComputePositionBasedVelocityMagnitude(remainingDistance,
                                                                        brakingAcceleration,
                                                                        input->segment->maxVelocity,
@@ -741,7 +758,7 @@ void HYD_MotionPlanner_Execute(const HYD_MotionPlannerInput* input, HYD_MotionPl
             input->deltaTime));
         if (input->decelElapsed > 0.0 && input->decelStartVel > 0.0) {
             HYD_REAL brakingAcceleration =
-                HYD_ResolveBrakingAcceleration(input->segment);
+                HYD_ResolveConfiguredBrakingAcceleration(input->segment);
             HYD_REAL decelVelocity = input->decelStartVel -
                 brakingAcceleration * input->decelElapsed;
             if (decelVelocity < 0.0) {
@@ -753,7 +770,7 @@ void HYD_MotionPlanner_Execute(const HYD_MotionPlannerInput* input, HYD_MotionPl
             HYD_REAL remainingDistance = HYD_ComputeRemainingDistance(
                 input->segment, input->axisRef, direction);
             HYD_REAL brakingAcceleration =
-                HYD_ResolveBrakingAcceleration(input->segment);
+                HYD_ResolveConfiguredBrakingAcceleration(input->segment);
             HYD_REAL safetyVelocityMagnitude =
                 HYD_ComputePositionBasedVelocityMagnitude(
                     remainingDistance, brakingAcceleration,
@@ -777,7 +794,8 @@ void HYD_MotionPlanner_Execute(const HYD_MotionPlannerInput* input, HYD_MotionPl
         HYD_REAL remainingDistance = HYD_ComputeRemainingDistance(input->segment,
                                                                    input->axisRef,
                                                                    direction);
-        HYD_REAL brakingAcceleration = HYD_ResolveBrakingAcceleration(input->segment);
+        HYD_REAL brakingAcceleration = HYD_ResolveBrakingAcceleration(
+            input->segment, fabs(previousVelocity), 0.0);
         HYD_REAL safetyVelocityMagnitude =
             HYD_ComputePositionBasedVelocityMagnitude(remainingDistance,
                                                        brakingAcceleration,
