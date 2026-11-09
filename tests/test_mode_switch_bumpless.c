@@ -209,6 +209,73 @@ static void test_speed_to_position_motion_handover(void) {
                            HYD_DIRECT_CMD_MOVE_ABSOLUTE);
 }
 
+static void test_motion_handover_does_not_add_second_pump_slew(void) {
+    HYD_MotionControlFB fb;
+    HYD_MotionSegment source = make_speed_segment();
+    HYD_MotionSegment successor = make_position_segment();
+
+    source.maxVelocity = 100.0;
+    successor.maxVelocity = 10.0;
+    successor.targetPosition = 200.0;
+
+    seed_active_segment(&fb, source, HYD_DIRECT_CMD_MOVE_VELOCITY);
+    fb.FLOW_TO_PUMP_SPEED_GAIN = 10.0;
+    fb.PUMP_SPEED_LIMIT = 3000.0;
+    fb.PUMP_SPEED = 1000.0;
+    fb.STATE.commandedPumpSpeed = 1000.0;
+    fb.STATE.plannedFlow = 100.0;
+    fb._lastCommandedFlow = 100.0;
+    fb._plannerState.lastTargetVelocity = 100.0;
+    fb._plannerState.lastTargetFlow = 100.0;
+
+    assert(HYD_MotionControlFB_StartDirectCommand(
+        &fb, HYD_DIRECT_CMD_MOVE_ABSOLUTE, &successor, NULL,
+        HYD_BUFFER_MODE_ABORT, 1.001) == HYD_DIRECT_START_STARTED);
+
+    for (int cycle = 1; cycle <= 10; ++cycle) {
+        fb.AXIS_REF.timestamp = 1.001 + cycle * 0.001;
+        HYD_MotionControlFB_Cycle(&fb);
+    }
+
+    /* The planner output should continue from the carried command; the final
+     * pump output must follow it directly instead of being held near the old
+     * pump speed by a second slew. */
+    assert(fabs(fb.STATE.plannedVelocity - 99.0) < 0.02);
+    assert(fabs(fb.PUMP_SPEED - fb.STATE.plannedFlow * 10.0) < 0.01);
+    assert(fb.PUMP_SPEED < 950.0);
+}
+
+static void test_pressure_handover_does_not_add_second_pump_slew(void) {
+    HYD_MotionControlFB fb;
+    HYD_MotionSegment source = make_position_segment();
+    HYD_MotionSegment successor = make_pressure_segment();
+
+    source.maxVelocity = 50.0;
+    seed_active_segment(&fb, source, HYD_DIRECT_CMD_MOVE_ABSOLUTE);
+    fb.FLOW_TO_PUMP_SPEED_GAIN = 10.0;
+    fb.PUMP_SPEED_LIMIT = 3000.0;
+    fb.PUMP_SPEED = 1000.0;
+    fb.STATE.commandedPumpSpeed = 1000.0;
+    fb.STATE.plannedFlow = 50.0;
+    fb._lastCommandedFlow = 50.0;
+    fb._plannerState.lastTargetVelocity = 50.0;
+    fb._plannerState.lastTargetFlow = 50.0;
+    successor.targetPressure = 20.0;
+    successor.targetFlow = 2.0;
+
+    assert(HYD_MotionControlFB_StartDirectCommand(
+        &fb, HYD_DIRECT_CMD_PRESSURE_HANDLE, &successor, NULL,
+        HYD_BUFFER_MODE_ABORT, 1.001) == HYD_DIRECT_START_STARTED);
+
+    fb.AXIS_REF.timestamp = 1.002;
+    HYD_MotionControlFB_Cycle(&fb);
+
+    /* Pressure control owns its requested output; a motion handover slew must
+     * not add a second, unrelated rpm ramp on top of it. */
+    assert(fabs(fb.PUMP_SPEED - fb.STATE.commandedPumpSpeed) < 0.01);
+    assert(fabs(fb.PUMP_SPEED - 500.0) < 0.01);
+}
+
 static void test_reverse_position_handover_keeps_old_direction(void) {
     HYD_MotionSegment successor = make_position_segment();
     HYD_MotionControlFB fb;
@@ -232,12 +299,14 @@ static void test_reverse_position_handover_keeps_old_direction(void) {
         HYD_MotionControlFB_Cycle(&fb);
         assert(fb.STATE.plannedVelocity > 0.0);
         assert(fb.STATE.plannedDirection == HYD_DIRECTION_EXTEND);
+        assert(fb.PUMP_SPEED >= 0.0);
     }
 
     fb.AXIS_REF.timestamp += 0.001;
     HYD_MotionControlFB_Cycle(&fb);
     assert(fabs(fb.STATE.plannedVelocity) < 0.001);
     assert(fb.STATE.plannedDirection == HYD_DIRECTION_EXTEND);
+    assert(fb.PUMP_SPEED >= 0.0);
 
     fb.AXIS_REF.timestamp += 0.001;
     HYD_MotionControlFB_Cycle(&fb);
@@ -386,6 +455,8 @@ int main(void) {
     test_speed_to_speed_motion_handover();
     test_position_to_speed_motion_handover();
     test_speed_to_position_motion_handover();
+    test_motion_handover_does_not_add_second_pump_slew();
+    test_pressure_handover_does_not_add_second_pump_slew();
     test_reverse_position_handover_keeps_old_direction();
     test_pressure_handover_keeps_initialized_zero_feedback_fallback();
     test_initialized_zero_planner_state_ignores_feedback_velocity();

@@ -455,8 +455,9 @@ typedef HYD_REAL HYD_TIME;
  * ============================================================================ */
 #define HYD_PUMP_NEGATIVE_SPEED_RATIO      1.0f
 
-/* Default normal-operation pump speed slew rates (rpm/s). Protected STOP and
- * FAULT paths bypass these limits and retain immediate zero output. */
+/* Default pump speed slew rates for sign-reversal protection (rpm/s). Normal
+ * motion and pressure handovers use the planner/limiter result directly.
+ * Protected STOP and FAULT paths retain immediate zero output. */
 #ifndef HYD_PUMP_DEFAULT_ACCELERATION_RPM_PER_SECOND
 #define HYD_PUMP_DEFAULT_ACCELERATION_RPM_PER_SECOND 20000.0f
 #endif

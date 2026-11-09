@@ -207,37 +207,6 @@ static HYD_REAL HYD_ResolvePressureOutputMax(const HYD_MotionControlFB* fb,
     return outputMax;
 }
 
-static HYD_REAL HYD_ResolvePumpSpeedSlewRate(const HYD_MotionControlFB* fb,
-                                             const HYD_MotionSegment* segment,
-                                             HYD_BOOL acceleration) {
-    HYD_REAL flowGain;
-    HYD_REAL velocityFlowGain;
-    HYD_REAL rate;
-
-    if (segment == NULL || segment->mode == HYD_MODE_PRESSURE_CLOSED_LOOP) {
-        return acceleration
-            ? HYD_PUMP_DEFAULT_ACCELERATION_RPM_PER_SECOND
-            : HYD_PUMP_DEFAULT_DECELERATION_RPM_PER_SECOND;
-    }
-
-    flowGain = (fb != NULL && HYD_PumpConfig_IsValid(&fb->pumpConfig))
-        ? HYD_PumpConfig_GetFlowToSpeedGain(&fb->pumpConfig)
-        : ((fb != NULL) ? fb->FLOW_TO_PUMP_SPEED_GAIN : 0.0f);
-    velocityFlowGain = (segment->velocityToFlowGain > 0.0f)
-        ? segment->velocityToFlowGain : 1.0f;
-    rate = (acceleration || segment->maxDeceleration <= 0.0f)
-        ? segment->maxVelocity / HYD_MotionTimeMsToSeconds(segment->maxAcceleration)
-        : segment->maxVelocity / HYD_MotionTimeMsToSeconds(segment->maxDeceleration);
-    rate *= velocityFlowGain * flowGain;
-
-    if (!isfinite(rate) || rate <= 0.0f) {
-        rate = acceleration
-            ? HYD_PUMP_DEFAULT_ACCELERATION_RPM_PER_SECOND
-            : HYD_PUMP_DEFAULT_DECELERATION_RPM_PER_SECOND;
-    }
-    return rate;
-}
-
 static void HYD_ReportKinematicsRuntimeFault(
     HYD_MotionControlFB *fb,
     HYD_DiagnosticCode code,
@@ -2933,7 +2902,7 @@ static void HYD_MotionControlFB_RunRunningState(HYD_MotionControlFB* fb) {
     HYD_MotionPlannerOutput plannerOutput;
     HYD_PressureControllerOutput pressureOutput;
     HYD_PumpConverterOutput pumpOutput;
-    HYD_PumpConverterInput slewInput;
+    HYD_PumpConverterInput reversalInput;
     HYD_OutputLimiterInput limiterInput;
     HYD_OutputLimiterOutput limiterOutput;
     HYD_ExecutionReference executionReference;
@@ -3094,31 +3063,23 @@ static void HYD_MotionControlFB_RunRunningState(HYD_MotionControlFB* fb) {
     pumpOutput.commandFlow = limiterOutput.commandFlow;
     pumpOutput.pumpSpeed = limiterOutput.pumpSpeed;
 
-    /* The handover flag is consumed once. It bridges the reset/start boundary
-     * without imposing a second slew loop on steady-state controller output. */
-    if (fb->_segmentChangedFlag &&
-        fb->_activeSegmentSource == HYD_SEGMENT_SOURCE_DIRECT &&
-        fb->_previousSegmentMode != segment->mode &&
-        fb->_lastCommandedFlow > 0.0 &&
-        HYD_IsPumpContinuityMode(fb->_previousSegmentMode) &&
-        HYD_IsPumpContinuityMode(segment->mode) &&
-        fb->DIAGNOSTIC.protectionAction != HYD_PROTECTION_ACTION_STOP &&
-        !fb->STATE.faultActive &&
-        !limiterOutput.derated &&
-        !limiterOutput.pressureLimitActive &&
-        !limiterOutput.softLimitActive) {
-        memset(&slewInput, 0, sizeof(slewInput));
-        slewInput.requestedFlow = limiterOutput.commandFlow;
-        slewInput.minimumFlow = limiterInput.minimumFlow;
-        slewInput.flowToPumpSpeedGain = limiterInput.flowToPumpSpeedGain;
-        slewInput.pumpSpeedLimit = limiterInput.pumpSpeedLimit;
-        slewInput.direction = segment->direction;
+    /* Normal segment handovers use the planner/limiter result directly. Keep
+     * the converter slew only as a sign-reversal guard so a pressure or safety
+     * path cannot cross pump zero in one control cycle. */
+    if ((fb->PUMP_SPEED > 0.0 && pumpOutput.pumpSpeed < 0.0) ||
+        (fb->PUMP_SPEED < 0.0 && pumpOutput.pumpSpeed > 0.0)) {
+        memset(&reversalInput, 0, sizeof(reversalInput));
+        reversalInput.requestedFlow = pumpOutput.commandFlow;
+        reversalInput.minimumFlow = limiterInput.minimumFlow;
+        reversalInput.flowToPumpSpeedGain = limiterInput.flowToPumpSpeedGain;
+        reversalInput.pumpSpeedLimit = limiterInput.pumpSpeedLimit;
+        reversalInput.direction = segment->direction;
         HYD_PumpConverter_ApplySlewLimit(
-            &slewInput,
+            &reversalInput,
             fb->PUMP_SPEED,
             (deltaTime > 0.0) ? deltaTime : HYD_DEFAULT_SIM_CYCLE_TIME,
-            HYD_ResolvePumpSpeedSlewRate(fb, segment, true),
-            HYD_ResolvePumpSpeedSlewRate(fb, segment, false),
+            HYD_PUMP_DEFAULT_ACCELERATION_RPM_PER_SECOND,
+            HYD_PUMP_DEFAULT_DECELERATION_RPM_PER_SECOND,
             &pumpOutput);
     }
 
