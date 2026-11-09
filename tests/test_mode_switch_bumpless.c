@@ -147,6 +147,146 @@ static void test_pressure_speed_handover(void) {
                     make_speed_segment());
 }
 
+static void assert_motion_handover(HYD_MotionSegment source,
+                                   HYD_DirectCommandKind sourceKind,
+                                   HYD_MotionSegment successor,
+                                   HYD_DirectCommandKind successorKind) {
+    HYD_MotionControlFB fb;
+
+    seed_active_segment(&fb, source, sourceKind);
+    fb.AXIS_REF.velocity = 1.0;
+    fb._plannerState.transitionTargetVelocity = 10.0;
+    fb._plannerState.transitionRate = 50.0;
+    fb._plannerState.transitionTimeMs = 100.0;
+
+    assert(HYD_MotionControlFB_StartDirectCommand(
+        &fb, successorKind, &successor, NULL, HYD_BUFFER_MODE_ABORT, 1.001) ==
+        HYD_DIRECT_START_STARTED);
+    assert(fabs(fb._plannerState.lastTargetVelocity - 5.0) < 0.001);
+    assert(fabs(fb._plannerState.transitionTargetVelocity - 10.0) < 0.001);
+    assert(fabs(fb._plannerState.transitionRate - 50.0) < 0.001);
+
+    fb.AXIS_REF.timestamp = 1.002;
+    HYD_MotionControlFB_Cycle(&fb);
+    assert(fabs(fb.STATE.plannedVelocity - 5.05) < 0.02);
+}
+
+static void test_position_to_position_motion_handover(void) {
+    HYD_MotionSegment successor = make_position_segment();
+    successor.targetPosition = 200.0;
+    successor.maxVelocity = 10.0;
+    assert_motion_handover(make_position_segment(),
+                           HYD_DIRECT_CMD_MOVE_ABSOLUTE,
+                           successor,
+                           HYD_DIRECT_CMD_MOVE_ABSOLUTE);
+}
+
+static void test_speed_to_speed_motion_handover(void) {
+    HYD_MotionSegment successor = make_speed_segment();
+    successor.maxVelocity = 10.0;
+    assert_motion_handover(make_speed_segment(),
+                           HYD_DIRECT_CMD_MOVE_VELOCITY,
+                           successor,
+                           HYD_DIRECT_CMD_MOVE_VELOCITY);
+}
+
+static void test_position_to_speed_motion_handover(void) {
+    HYD_MotionSegment successor = make_speed_segment();
+    successor.maxVelocity = 10.0;
+    assert_motion_handover(make_position_segment(),
+                           HYD_DIRECT_CMD_MOVE_ABSOLUTE,
+                           successor,
+                           HYD_DIRECT_CMD_MOVE_VELOCITY);
+}
+
+static void test_speed_to_position_motion_handover(void) {
+    HYD_MotionSegment successor = make_position_segment();
+    successor.targetPosition = 200.0;
+    successor.maxVelocity = 10.0;
+    assert_motion_handover(make_speed_segment(),
+                           HYD_DIRECT_CMD_MOVE_VELOCITY,
+                           successor,
+                           HYD_DIRECT_CMD_MOVE_ABSOLUTE);
+}
+
+static void test_reverse_position_handover_keeps_old_direction(void) {
+    HYD_MotionSegment successor = make_position_segment();
+    HYD_MotionControlFB fb;
+    int cycle;
+
+    successor.direction = HYD_DIRECTION_RETRACT;
+    successor.targetPosition = 0.0;
+    successor.maxVelocity = 10.0;
+    seed_active_segment(&fb, make_position_segment(),
+                        HYD_DIRECT_CMD_MOVE_ABSOLUTE);
+    fb.AXIS_REF.velocity = 1.0;
+    fb._plannerState.transitionTargetVelocity = 10.0;
+    fb._plannerState.transitionRate = 50.0;
+    fb._plannerState.transitionTimeMs = 100.0;
+
+    assert(HYD_MotionControlFB_StartDirectCommand(
+        &fb, HYD_DIRECT_CMD_MOVE_ABSOLUTE, &successor, NULL,
+        HYD_BUFFER_MODE_ABORT, 1.001) == HYD_DIRECT_START_STARTED);
+    for (cycle = 1; cycle <= 100; ++cycle) {
+        fb.AXIS_REF.timestamp = 1.001 + cycle * 0.001;
+        HYD_MotionControlFB_Cycle(&fb);
+        assert(fb.STATE.plannedVelocity > 0.0);
+        assert(fb.STATE.plannedDirection == HYD_DIRECTION_EXTEND);
+    }
+
+    fb.AXIS_REF.timestamp += 0.001;
+    HYD_MotionControlFB_Cycle(&fb);
+    assert(fabs(fb.STATE.plannedVelocity) < 0.001);
+    assert(fb.STATE.plannedDirection == HYD_DIRECTION_EXTEND);
+
+    fb.AXIS_REF.timestamp += 0.001;
+    HYD_MotionControlFB_Cycle(&fb);
+    assert(fb.STATE.plannedVelocity < 0.0);
+    assert(fb.STATE.plannedDirection == HYD_DIRECTION_RETRACT);
+}
+
+static void test_pressure_handover_keeps_initialized_zero_feedback_fallback(void) {
+    HYD_MotionControlFB fb;
+    HYD_MotionSegment pressure = make_pressure_segment();
+
+    seed_active_segment(&fb, make_position_segment(),
+                        HYD_DIRECT_CMD_MOVE_ABSOLUTE);
+    fb._plannerState.lastTargetVelocity = 0.0;
+    fb.STATE.plannedVelocity = 0.0;
+    fb._simFeedback.targetVelocity = 0.0;
+    fb.AXIS_REF.velocity = 5.0;
+
+    assert(HYD_MotionControlFB_StartDirectCommand(
+        &fb, HYD_DIRECT_CMD_PRESSURE_HANDLE, &pressure, NULL,
+        HYD_BUFFER_MODE_ABORT, 1.001) == HYD_DIRECT_START_STARTED);
+    assert(fabs(fb._plannerState.lastTargetVelocity - 5.0) < 0.001);
+    assert(fabs(fb.STATE.plannedVelocity - 5.0) < 0.001);
+}
+
+static void test_initialized_zero_planner_state_ignores_feedback_velocity(void) {
+    HYD_MotionControlFB fb;
+    HYD_MotionSegment successor = make_speed_segment();
+
+    seed_active_segment(&fb, make_speed_segment(),
+                        HYD_DIRECT_CMD_MOVE_VELOCITY);
+    fb._plannerState.lastTargetVelocity = 0.0;
+    fb._plannerState.transitionTargetVelocity = 0.0;
+    fb._plannerState.transitionRate = 0.0;
+    fb._plannerState.transitionTimeMs = 100.0;
+    fb.STATE.plannedVelocity = 0.0;
+    fb.AXIS_REF.velocity = 5.0;
+    successor.maxVelocity = 10.0;
+
+    assert(HYD_MotionControlFB_StartDirectCommand(
+        &fb, HYD_DIRECT_CMD_MOVE_VELOCITY, &successor, NULL,
+        HYD_BUFFER_MODE_ABORT, 1.001) == HYD_DIRECT_START_STARTED);
+    assert(fabs(fb._plannerState.lastTargetVelocity) < 0.001);
+
+    fb.AXIS_REF.timestamp = 1.002;
+    HYD_MotionControlFB_Cycle(&fb);
+    assert(fabs(fb.STATE.plannedVelocity - 0.1) < 0.02);
+}
+
 static void test_explicit_abort_still_zeros_outputs(void) {
     HYD_MotionControlFB fb;
 
@@ -242,6 +382,13 @@ int main(void) {
     test_speed_pressure_handover();
     test_pressure_position_handover();
     test_pressure_speed_handover();
+    test_position_to_position_motion_handover();
+    test_speed_to_speed_motion_handover();
+    test_position_to_speed_motion_handover();
+    test_speed_to_position_motion_handover();
+    test_reverse_position_handover_keeps_old_direction();
+    test_pressure_handover_keeps_initialized_zero_feedback_fallback();
+    test_initialized_zero_planner_state_ignores_feedback_velocity();
     test_explicit_abort_still_zeros_outputs();
     test_pressure_handover_does_not_timeout();
     test_position_segment_timeout_remains_enabled();

@@ -657,12 +657,17 @@ typedef struct {
     HYD_REAL simTargetPressure;
 } HYD_DirectContinuityState;
 
-static HYD_REAL HYD_ResolveContinuitySignedVelocity(const HYD_MotionControlFB* fb) {
+static HYD_REAL HYD_ResolveContinuitySignedVelocity(
+    const HYD_MotionControlFB* fb,
+    HYD_BOOL allowFeedbackFallback) {
     if (fb == NULL) {
         return 0.0f;
     }
 
     if (fabs(fb->_plannerState.lastTargetVelocity) > 0.0f) {
+        return fb->_plannerState.lastTargetVelocity;
+    }
+    if (!allowFeedbackFallback && fb->_plannerState.initialized) {
         return fb->_plannerState.lastTargetVelocity;
     }
     if (fabs(fb->STATE.plannedVelocity) > 0.0f) {
@@ -672,7 +677,7 @@ static HYD_REAL HYD_ResolveContinuitySignedVelocity(const HYD_MotionControlFB* f
         return fb->_simFeedback.targetVelocity;
     }
 
-    return fb->AXIS_REF.velocity;
+    return allowFeedbackFallback ? fb->AXIS_REF.velocity : 0.0f;
 }
 
 static HYD_REAL HYD_ResolveContinuityFlowMagnitude(const HYD_MotionControlFB* fb) {
@@ -727,6 +732,10 @@ static HYD_BOOL HYD_IsPumpContinuityMode(HYD_ControlMode mode) {
            mode == HYD_MODE_PRESSURE_CLOSED_LOOP;
 }
 
+static HYD_BOOL HYD_IsPlannerMotionMode(HYD_ControlMode mode) {
+    return mode == HYD_MODE_POSITION || mode == HYD_MODE_SPEED_RAMP;
+}
+
 static HYD_BOOL HYD_DirectHandoverDirectionsCompatible(
     const HYD_MotionControlFB* fb,
     const HYD_MotionSegment* successor) {
@@ -750,7 +759,8 @@ static HYD_BOOL HYD_DirectHandoverDirectionsCompatible(
 }
 
 static void HYD_CaptureDirectContinuityState(const HYD_MotionControlFB* fb,
-                                             HYD_DirectContinuityState* state) {
+                                             HYD_DirectContinuityState* state,
+                                             HYD_BOOL allowFeedbackFallback) {
     HYD_REAL signedVelocity;
     HYD_REAL flowMagnitude;
 
@@ -763,7 +773,8 @@ static void HYD_CaptureDirectContinuityState(const HYD_MotionControlFB* fb,
         return;
     }
 
-    signedVelocity = HYD_ResolveContinuitySignedVelocity(fb);
+    signedVelocity = HYD_ResolveContinuitySignedVelocity(
+        fb, allowFeedbackFallback);
     flowMagnitude = HYD_ResolveContinuityFlowMagnitude(fb);
 
     state->plannerState = fb->_plannerState;
@@ -1531,10 +1542,20 @@ static HYD_BOOL HYD_PrimeSegmentControllers(HYD_MotionControlFB* fb,
     HYD_REAL initialPressureControlOutput;
     HYD_TIME controllerTime;
     HYD_REAL trackingFlowReference;
+    HYD_MotionPlannerState carriedPlannerState;
+    HYD_BOOL preserveMotionPlannerState;
 
     if (fb == NULL || segment == NULL) {
         return false;
     }
+
+    carriedPlannerState = fb->_plannerState;
+    preserveMotionPlannerState = allowFlowCarryover &&
+        HYD_IsPlannerMotionMode(fb->_previousSegmentMode) &&
+        HYD_IsPlannerMotionMode(segment->mode) &&
+        (fabs(carriedPlannerState.lastTargetVelocity) > 0.0 ||
+         carriedPlannerState.transitionTimeMs > 0.0 ||
+         fabs(fb->STATE.plannedFlow) > 0.0);
 
     fb->_isDecelerating = false;
     fb->_decelStartTime = 0.0;
@@ -1647,7 +1668,9 @@ static HYD_BOOL HYD_PrimeSegmentControllers(HYD_MotionControlFB* fb,
 
         memset(&fb->_plannerState, 0, sizeof(fb->_plannerState));
 
-        if (doCarryover && (segment->mode == HYD_MODE_SPEED_RAMP || segment->mode == HYD_MODE_POSITION)) {
+        if (preserveMotionPlannerState) {
+            fb->_plannerState = carriedPlannerState;
+        } else if (doCarryover && (segment->mode == HYD_MODE_SPEED_RAMP || segment->mode == HYD_MODE_POSITION)) {
             fb->_plannerState.lastTargetVelocity = carriedVelocity;
             fb->_plannerState.lastTargetFlow = carriedFlow;
             fb->_plannerState.initialized = true;
@@ -1848,7 +1871,7 @@ static HYD_BOOL HYD_StartPendingDirectSlot(HYD_MotionControlFB* fb,
                                       &fb->_directPendingContinuousAbsolute);
     memset(&continuityState, 0, sizeof(continuityState));
     if (preservePlannerState) {
-        HYD_CaptureDirectContinuityState(fb, &continuityState);
+        HYD_CaptureDirectContinuityState(fb, &continuityState, false);
     }
     HYD_ClearDirectPendingSlot(fb);
 
@@ -3158,7 +3181,7 @@ static void HYD_MotionControlFB_RunRunningState(HYD_MotionControlFB* fb) {
                     fb, &fb->_directContinuousAbsolute, segment);
             HYD_DirectContinuityState continuityState;
 
-            HYD_CaptureDirectContinuityState(fb, &continuityState);
+            HYD_CaptureDirectContinuityState(fb, &continuityState, false);
             fb->_directContinuousAbsolute.phase = HYD_CONTABS_PHASE_SUSTAIN;
             if (!limiterOutput.pressureLimitActive &&
                 HYD_IsContinuousAbsoluteVelocityReached(segment,
@@ -3928,6 +3951,7 @@ HYD_DirectStartResult HYD_MotionControlFB_StartDirectCommand(HYD_MotionControlFB
     HYD_BOOL preserveContinuity;
     HYD_BOOL preserveContinuousAbsolute;
     HYD_BOOL preserveModeHandover;
+    HYD_BOOL preserveMotionHandover;
     HYD_BOOL shouldAbort;
     HYD_REAL positionTolerance;
     HYD_REAL referencePosition;
@@ -3969,7 +3993,11 @@ HYD_DirectStartResult HYD_MotionControlFB_StartDirectCommand(HYD_MotionControlFB
                            HYD_IsPumpContinuityMode(segment->mode) &&
                            fb->_activeSegment.mode != segment->mode &&
                            HYD_DirectHandoverDirectionsCompatible(fb, segment);
-    preserveContinuity = preserveContinuousAbsolute || preserveModeHandover;
+    preserveMotionHandover = activeDirect &&
+        HYD_IsPlannerMotionMode(fb->_activeSegment.mode) &&
+        HYD_IsPlannerMotionMode(segment->mode);
+    preserveContinuity = preserveContinuousAbsolute || preserveModeHandover ||
+                         preserveMotionHandover;
     shouldAbort = (bufferMode == HYD_BUFFER_MODE_ABORT &&
                    (fb->STATE.active || HYD_MotionControlFB_IsBusy(fb))) ||
                   (activeDirect &&
@@ -3996,7 +4024,10 @@ HYD_DirectStartResult HYD_MotionControlFB_StartDirectCommand(HYD_MotionControlFB
     if (shouldAbort) {
         memset(&continuityState, 0, sizeof(continuityState));
         if (preserveContinuity) {
-            HYD_CaptureDirectContinuityState(fb, &continuityState);
+            HYD_CaptureDirectContinuityState(
+                fb, &continuityState,
+                fb->_activeSegment.mode == HYD_MODE_PRESSURE_CLOSED_LOOP ||
+                    segment->mode == HYD_MODE_PRESSURE_CLOSED_LOOP);
         }
         if (HYD_DirectCommandNeedsPositionDirectionCheck(segment) &&
             !HYD_IsForcedDirectionTargetCompatible(segment->direction,
