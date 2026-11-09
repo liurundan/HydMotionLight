@@ -233,6 +233,10 @@ static void test_position_segment_timeout_remains_enabled(void) {
 int main(void) {
     printf("planner_state=%zu bytes; motion_control_fb=%zu bytes\n",
            sizeof(HYD_MotionPlannerState), sizeof(HYD_MotionControlFB));
+#if HYD_REAL_PRECISION_FLOAT
+    assert(sizeof(HYD_MotionPlannerState) <= 28U);
+    assert(sizeof(HYD_MotionControlFB) <= 3300U);
+#endif
     printf("Running bumpless direct mode handover tests...\n");
     test_position_pressure_handover();
     test_speed_pressure_handover();
