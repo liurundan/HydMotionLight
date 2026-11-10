@@ -1001,10 +1001,16 @@ static HYD_REAL HYD_ResolveContinuousAbsoluteCrossingVelocity(
     }
 
     if (projectedVelocity < requested) {
-        HYD_REAL acceleration = segment->maxVelocity /
+        /* 语义A：规划器从当前速度以 (巡航目标-当前)/t_acc 锚定加速 */
+        HYD_REAL acceleration = (segment->maxVelocity - projectedVelocity) /
             HYD_MotionTimeMsToSeconds(segment->maxAcceleration);
-        HYD_REAL reachable = sqrt(projectedVelocity * projectedVelocity +
-                                  2.0f * acceleration * remainingDistance);
+        HYD_REAL reachable;
+
+        if (acceleration < 0.0f) {
+            acceleration = 0.0f;
+        }
+        reachable = sqrt(projectedVelocity * projectedVelocity +
+                         2.0f * acceleration * remainingDistance);
         return HYD_ClampReal(reachable, 0.0f, requested);
     }
 
