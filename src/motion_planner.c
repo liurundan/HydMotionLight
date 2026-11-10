@@ -425,6 +425,26 @@ static HYD_REAL HYD_ComputeOnlineTrapezoidVelocityMagnitude(const HYD_MotionPlan
                                                 input->state->lastTargetVelocity,
                                                 targetVelocity),
                     input->deltaTime));
+                if (braking && !blendActive) {
+                    /* Landing floor, non-blend only (blend approaches are covered by the zero-delay
+                     * blend envelope): close the loop on remaining distance at the anchored
+                     * delta-v/t_dec rate so the early trigger never makes the fixed-time ramp stop
+                     * short. Never accelerates (capped at prev); one-cycle response-delay model. */
+                    HYD_REAL anchoredRate = fabs(input->state->transitionRate);
+
+                    if (anchoredRate > 0.0) {
+                        HYD_REAL landingMagnitude =
+                            HYD_ComputeDelayAwareBrakingVelocityMagnitude(
+                                remainingDistance,
+                                anchoredRate,
+                                HYD_MaxReal(segment->maxVelocity, previousMagnitude),
+                                input->deltaTime,
+                                terminalVelocity);
+                        velocityMagnitude = HYD_MaxReal(
+                            velocityMagnitude,
+                            HYD_MinReal(landingMagnitude, previousMagnitude));
+                    }
+                }
             } else if (input->deltaTime <= 0.0) {
                 velocityMagnitude = previousMagnitude;
             } else if (braking) {

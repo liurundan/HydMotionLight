@@ -604,6 +604,125 @@ static void test_braking_lands_at_terminal_in_decel_time(void)
           "deceleration from 90 to 50 must take ~t_dec (100 cycles)");
 }
 
+static void test_braking_stop_lands_on_target_monotone(void)
+{
+    HYD_AxisRef axis = {0};
+    HYD_MotionSegment segment = {0};
+    HYD_MotionPlannerState state = {0};
+    HYD_MotionPlannerInput input = {0};
+    HYD_MotionPlannerOutput output = {0};
+    HYD_REAL previous = 90.0;
+    int braking = 0;
+    int monotone = 1;
+    int decelCycles = 0;
+    int cycle;
+
+    segment.mode = HYD_MODE_POSITION;
+    segment.planner = HYD_PLANNER_POSITION_BASED;
+    segment.endCondition = HYD_END_POSITION;
+    segment.direction = HYD_DIRECTION_EXTEND;
+    segment.targetPosition = 100.0;
+    segment.maxVelocity = 90.0;
+    segment.maxAcceleration = 100.0;
+    segment.maxDeceleration = 100.0;
+    segment.maxFlow = 1000.0;
+    segment.velocityToFlowGain = 1.0;
+    segment.positionTolerance = 0.0001;   /* IEC default: creep zone 0.001mm */
+
+    axis.position = 80.0;
+    axis.velocity = 90.0;
+    state.initialized = true;
+    state.lastTargetVelocity = 90.0;      /* cruising, END velocity 0 */
+
+    input.axisRef = &axis;
+    input.segment = &segment;
+    input.state = &state;   /* blend == NULL */
+    input.deltaTime = 0.001;
+
+    for (cycle = 0; cycle < 600; ++cycle) {
+        input.elapsedTime = (cycle + 1) * 0.001;
+        HYD_MotionPlanner_Execute(&input, &output);
+        axis.position += output.targetVelocity * 0.001;
+        axis.velocity = output.targetVelocity;
+        if (braking && output.targetVelocity > previous + 1e-4) {
+            monotone = 0;
+        }
+        if (output.targetVelocity < 90.0 - 0.05) {
+            braking = 1;
+        }
+        if (output.targetVelocity > 0.05 && output.targetVelocity < 90.0 - 0.05) {
+            decelCycles++;
+        }
+        previous = output.targetVelocity;
+    }
+    check(segment.targetPosition - axis.position <= 0.002,
+          "stop must land on the target instead of stopping short");
+    check(monotone,
+          "stop braking command must never increase (no re-anchor blips)");
+    /* delay-aware landing decelerates at a*v/(v+a*dt): ~dt*ln(v0/v_end) (~4 cycles) extra; 105 seen at some phases */
+    check(decelCycles >= 97 && decelCycles <= 106,
+          "stop from 90 must take ~t_dec (100 cycles)");
+}
+
+static void run_entry_overspeed_short_stop_case(HYD_REAL maxVelocity,
+                                                HYD_REAL entryVelocity,
+                                                HYD_REAL remainingDistance)
+{
+    HYD_AxisRef axis = {0};
+    HYD_MotionSegment segment = {0};
+    HYD_MotionPlannerState state = {0};
+    HYD_MotionPlannerInput input = {0};
+    HYD_MotionPlannerOutput output = {0};
+    HYD_REAL previous = entryVelocity;
+    int monotone = 1;
+    int cycle;
+
+    segment.mode = HYD_MODE_POSITION;
+    segment.planner = HYD_PLANNER_POSITION_BASED;
+    segment.endCondition = HYD_END_POSITION;
+    segment.direction = HYD_DIRECTION_EXTEND;
+    segment.targetPosition = 100.0;
+    segment.maxVelocity = maxVelocity;
+    segment.maxAcceleration = 100.0;
+    segment.maxDeceleration = 100.0;
+    segment.maxFlow = 1000.0;
+    segment.velocityToFlowGain = 1.0;
+    segment.positionTolerance = 0.1;
+
+    axis.position = 100.0 - remainingDistance;
+    axis.velocity = entryVelocity;
+    state.initialized = true;
+    state.lastTargetVelocity = entryVelocity;  /* entry overspeed, END velocity 0 */
+
+    input.axisRef = &axis;
+    input.segment = &segment;
+    input.state = &state;   /* blend == NULL */
+    input.deltaTime = 0.001;
+
+    for (cycle = 0; cycle < 600; ++cycle) {
+        input.elapsedTime = (cycle + 1) * 0.001;
+        HYD_MotionPlanner_Execute(&input, &output);
+        axis.position += output.targetVelocity * 0.001;
+        axis.velocity = output.targetVelocity;
+        if (output.targetVelocity > previous + 1e-4) {
+            monotone = 0;
+        }
+        previous = output.targetVelocity;
+    }
+    check(monotone,
+          "short overspeed stop command must never increase (no re-anchor blips)");
+    check(segment.targetPosition - axis.position <= 0.1 + 1e-4,
+          "short overspeed stop must land within the position tolerance");
+}
+
+static void test_braking_entry_overspeed_short_stop_monotone(void)
+{
+    /* (a) 30 -> 0, maxV 10, 0.3mm remaining */
+    run_entry_overspeed_short_stop_case(10.0, 30.0, 0.3);
+    /* (b) 100 -> 0, maxV 90, 5mm remaining */
+    run_entry_overspeed_short_stop_case(90.0, 100.0, 5.0);
+}
+
 int main(void)
 {
     HYD_AxisRef axis = {0};
@@ -661,6 +780,8 @@ int main(void)
     test_lagged_entry_overspeed_never_slower_than_decel_time();
     test_braking_trigger_uses_fixed_time_distance();
     test_braking_lands_at_terminal_in_decel_time();
+    test_braking_stop_lands_on_target_monotone();
+    test_braking_entry_overspeed_short_stop_monotone();
 
     printf("motion planner time ramp: %s\n", failures == 0 ? "PASS" : "FAIL");
     return failures == 0 ? 0 : 1;
