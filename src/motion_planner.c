@@ -657,8 +657,9 @@ static HYD_REAL HYD_ComputeSpeedRampVelocityMagnitude(const HYD_MotionPlannerInp
                                                                                         true),
                                                               input->segment->maxVelocity);
 
-    brakingAcceleration = HYD_ResolveConfiguredBrakingAcceleration(input->segment);
     if (input->decelElapsed > 0.0 && input->decelStartVel > 0.0) {
+        brakingAcceleration =
+            HYD_ResolveBrakingAcceleration(input->segment, input->decelStartVel, 0.0);
         decelVelocity = input->decelStartVel -
             brakingAcceleration * input->decelElapsed;
         if (decelVelocity < 0.0) {
@@ -778,7 +779,7 @@ void HYD_MotionPlanner_Execute(const HYD_MotionPlannerInput* input, HYD_MotionPl
             input->deltaTime));
         if (input->decelElapsed > 0.0 && input->decelStartVel > 0.0) {
             HYD_REAL brakingAcceleration =
-                HYD_ResolveConfiguredBrakingAcceleration(input->segment);
+                HYD_ResolveBrakingAcceleration(input->segment, input->decelStartVel, 0.0);
             HYD_REAL decelVelocity = input->decelStartVel -
                 brakingAcceleration * input->decelElapsed;
             if (decelVelocity < 0.0) {

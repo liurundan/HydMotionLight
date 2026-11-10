@@ -790,6 +790,75 @@ static void test_blend_terminal_stop_keeps_envelope_landing(void)
           "blend terminal stop command must reach zero");
 }
 
+static void test_speed_ramp_decel_uses_delta_v_rate(void)
+{
+    HYD_AxisRef axis = {0};
+    HYD_MotionSegment segment = {0};
+    HYD_MotionPlannerInput input = {0};
+    HYD_MotionPlannerOutput output = {0};
+
+    segment.mode = HYD_MODE_SPEED_RAMP;
+    segment.endCondition = HYD_END_TIME;      /* 避开位置包络路径 */
+    segment.direction = HYD_DIRECTION_EXTEND;
+    segment.maxVelocity = 200.0;              /* 故意 != decelStartVel */
+    segment.maxAcceleration = 100.0;
+    segment.maxDeceleration = 100.0;
+    segment.maxFlow = 1000.0;
+    segment.velocityToFlowGain = 1.0;
+
+    axis.velocity = 100.0;
+
+    input.axisRef = &axis;
+    input.segment = &segment;
+    input.state = NULL;                        /* 走 HYD_ComputeSpeedRampVelocityMagnitude */
+    input.deltaTime = 0.001;
+    input.elapsedTime = 1.0;                   /* 加速早已完成 */
+    input.decelStartVel = 100.0;
+    input.decelElapsed = 0.05;                 /* 减速进行到 50ms */
+
+    HYD_MotionPlanner_Execute(&input, &output);
+    /* 语义A：a=100/0.1=1000 → v=100-1000*0.05=50；旧：a=200/0.1=2000 → v=0 */
+    check(fabs(fabs(output.targetVelocity) - 50.0) < 0.5,
+          "speed ramp deceleration must follow decelStartVel/t_dec");
+}
+
+static void test_speed_ramp_stateful_decel_uses_delta_v_rate(void)
+{
+    HYD_AxisRef axis = {0};
+    HYD_MotionSegment segment = {0};
+    HYD_MotionPlannerState state = {0};
+    HYD_MotionPlannerInput input = {0};
+    HYD_MotionPlannerOutput output = {0};
+
+    segment.mode = HYD_MODE_SPEED_RAMP;
+    segment.planner = HYD_PLANNER_TIME_BASED;
+    segment.endCondition = HYD_END_TIME;
+    segment.direction = HYD_DIRECTION_EXTEND;
+    segment.maxVelocity = 200.0;              /* deliberately != decelStartVel */
+    segment.maxAcceleration = 100.0;
+    segment.maxDeceleration = 100.0;
+    segment.maxFlow = 1000.0;
+    segment.velocityToFlowGain = 1.0;
+
+    axis.velocity = 100.0;
+    state.initialized = true;
+    state.lastTargetVelocity = 100.0;         /* first deceleration cycle */
+
+    input.axisRef = &axis;
+    input.segment = &segment;
+    input.state = &state;                     /* production (stateful) path */
+    input.deltaTime = 0.001;
+    input.elapsedTime = 1.0;
+    input.decelStartVel = 100.0;
+    input.decelElapsed = 0.001;
+
+    HYD_MotionPlanner_Execute(&input, &output);
+    /* semantics A: cap = 100 - (100/0.1)*0.001 = 99, ramp 100->0 also 99.
+     * old a_cfg = 200/0.1: cap = 100 - 2000*0.001 = 98. */
+    check(fabs(fabs(output.targetVelocity) - 99.0) < 0.1,
+          "stateful speed ramp deceleration must follow decelStartVel/t_dec");
+}
+
 int main(void)
 {
     HYD_AxisRef axis = {0};
@@ -850,6 +919,8 @@ int main(void)
     test_braking_stop_lands_on_target_monotone();
     test_braking_entry_overspeed_short_stop_monotone();
     test_blend_terminal_stop_keeps_envelope_landing();
+    test_speed_ramp_decel_uses_delta_v_rate();
+    test_speed_ramp_stateful_decel_uses_delta_v_rate();
 
     printf("motion planner time ramp: %s\n", failures == 0 ? "PASS" : "FAIL");
     return failures == 0 ? 0 : 1;
