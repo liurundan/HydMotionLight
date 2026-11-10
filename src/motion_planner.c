@@ -456,14 +456,19 @@ static HYD_REAL HYD_ComputeOnlineTrapezoidVelocityMagnitude(const HYD_MotionPlan
     if (!blendActive && measuredMagnitude > safetyVelocityMagnitude +
                             HYD_CompareTolerance(HYD_MaxReal(measuredMagnitude,
                                                               safetyVelocityMagnitude))) {
-        velocityMagnitude = HYD_ApplyVelocityRateLimit(previousMagnitude,
-                                                       0.0,
-                                                       HYD_ResolveTransitionRate(segment,
-                                                                                  previousMagnitude,
-                                                                                  0.0,
-                                                                                  false),
-                                                       brakingAcceleration,
-                                                       input->deltaTime);
+        /* Measured overspeed: decelerate from the last planned value at the
+         * envelope rate, but only ever tighten the planned ramp (under
+         * fixed-time semantics the planned delta-v/t_dec ramp can be steeper
+         * than maxVelocity/t_dec). */
+        velocityMagnitude = HYD_MinReal(velocityMagnitude,
+                                        HYD_ApplyVelocityRateLimit(previousMagnitude,
+                                                                   0.0,
+                                                                   HYD_ResolveTransitionRate(segment,
+                                                                                              previousMagnitude,
+                                                                                              0.0,
+                                                                                              false),
+                                                                   brakingAcceleration,
+                                                                   input->deltaTime));
     }
 
     return HYD_MinReal(velocityMagnitude, safetyVelocityMagnitude);

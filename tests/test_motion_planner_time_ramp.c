@@ -433,6 +433,77 @@ static void test_entry_overspeed_transitions_in_decel_time(void)
     run_entry_overspeed_case(10.0, 30.0, 20.0);
 }
 
+static void run_lagged_entry_overspeed_case(HYD_REAL maxVelocity,
+                                            HYD_REAL entryVelocity)
+{
+    HYD_AxisRef axis = {0};
+    HYD_MotionSegment segment = {0};
+    HYD_MotionPlannerState state = {0};
+    HYD_MotionPlannerInput input = {0};
+    HYD_MotionPlannerOutput output = {0};
+    HYD_REAL history[3];
+    int firstReachCycle = -1;
+    int tightened = 1;
+    int cycle;
+
+    segment.mode = HYD_MODE_POSITION;
+    segment.planner = HYD_PLANNER_POSITION_BASED;
+    segment.endCondition = HYD_END_POSITION;
+    segment.direction = HYD_DIRECTION_EXTEND;
+    segment.targetPosition = 500.0;   /* far: sqrt envelope not binding */
+    segment.maxVelocity = maxVelocity;
+    segment.maxAcceleration = 100.0;
+    segment.maxDeceleration = 100.0;
+    segment.maxFlow = 1000.0;
+    segment.velocityToFlowGain = 1.0;
+
+    history[0] = entryVelocity;
+    history[1] = entryVelocity;
+    history[2] = entryVelocity;
+    state.initialized = true;
+    state.lastTargetVelocity = entryVelocity;
+
+    input.axisRef = &axis;
+    input.segment = &segment;
+    input.state = &state;   /* blend == NULL: MoveAbsolute-style, emergency path armed */
+    input.deltaTime = 0.001;
+
+    for (cycle = 1; cycle <= 300; ++cycle) {
+        HYD_REAL plannedRamp = entryVelocity +
+            (maxVelocity - entryVelocity) * (HYD_REAL)cycle / 100.0;
+        if (plannedRamp < maxVelocity) {
+            plannedRamp = maxVelocity;
+        }
+        axis.velocity = history[0];   /* measured = command from 3 cycles ago */
+        input.elapsedTime = cycle * 0.001;
+        HYD_MotionPlanner_Execute(&input, &output);
+        if (output.targetVelocity > plannedRamp + 0.01) {
+            tightened = 0;
+        }
+        if (firstReachCycle < 0 && output.targetVelocity <= maxVelocity + 0.05) {
+            firstReachCycle = cycle;
+        }
+        history[0] = history[1];
+        history[1] = history[2];
+        history[2] = output.targetVelocity;
+        axis.position += axis.velocity * 0.001;
+    }
+    check(tightened,
+          "measured-overspeed branch may only tighten the planned entry ramp");
+    check(firstReachCycle > 0 && firstReachCycle <= 102,
+          "lagged entry overspeed must never take longer than t_dec");
+}
+
+static void test_lagged_entry_overspeed_never_slower_than_decel_time(void)
+{
+    /* prev > 2*maxV: old emergency rate a_cfg=100/s is slower than the
+     * planned 200/s and used to stretch the transition to ~199 ms */
+    run_lagged_entry_overspeed_case(10.0, 30.0);
+    /* prev < 2*maxV: emergency rate is faster (deferred limitation);
+     * the transition must still never exceed t_dec */
+    run_lagged_entry_overspeed_case(90.0, 100.0);
+}
+
 int main(void)
 {
     HYD_AxisRef axis = {0};
@@ -487,6 +558,7 @@ int main(void)
     test_blend_terminal_ramp_continues_from_zero_planned_velocity();
     test_small_target_and_time_changes_keep_cached_rate();
     test_entry_overspeed_transitions_in_decel_time();
+    test_lagged_entry_overspeed_never_slower_than_decel_time();
 
     printf("motion planner time ramp: %s\n", failures == 0 ? "PASS" : "FAIL");
     return failures == 0 ? 0 : 1;
