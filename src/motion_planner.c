@@ -398,9 +398,13 @@ static HYD_REAL HYD_ComputeOnlineTrapezoidVelocityMagnitude(const HYD_MotionPlan
             if (previousMagnitude <= terminalVelocity) {
                 brakeDistance = 0.0;
             } else {
-                brakeDistance = ((previousMagnitude * previousMagnitude) -
-                                 (terminalVelocity * terminalVelocity)) /
-                    (2.0 * brakingAcceleration);
+                HYD_TIME decelSeconds = HYD_MotionTimeMsToSeconds(
+                    (segment->maxDeceleration > 0.0)
+                        ? segment->maxDeceleration
+                        : segment->maxAcceleration);
+                /* 语义A：固定时间斜坡 prev->terminal 覆盖的梯形均速距离 */
+                brakeDistance = 0.5 * (previousMagnitude + terminalVelocity) *
+                                decelSeconds;
                 if (input->deltaTime > 0.0 && isfinite(input->deltaTime)) {
                     brakeDistance += (previousMagnitude - terminalVelocity) *
                                      input->deltaTime;

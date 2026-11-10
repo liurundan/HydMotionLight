@@ -504,6 +504,106 @@ static void test_lagged_entry_overspeed_never_slower_than_decel_time(void)
     run_lagged_entry_overspeed_case(90.0, 100.0);
 }
 
+static void setup_blend_braking_case(HYD_AxisRef* axis,
+                                     HYD_MotionSegment* segment,
+                                     HYD_MotionBlendContext* blend,
+                                     HYD_MotionPlannerState* state,
+                                     HYD_MotionPlannerInput* input,
+                                     HYD_REAL remainingDistance)
+{
+    memset(axis, 0, sizeof(*axis));
+    memset(segment, 0, sizeof(*segment));
+    memset(blend, 0, sizeof(*blend));
+    memset(state, 0, sizeof(*state));
+    memset(input, 0, sizeof(*input));
+
+    segment->mode = HYD_MODE_POSITION;
+    segment->planner = HYD_PLANNER_POSITION_BASED;
+    segment->endCondition = HYD_END_POSITION;
+    segment->direction = HYD_DIRECTION_EXTEND;
+    segment->targetPosition = 100.0;
+    segment->maxVelocity = 90.0;
+    segment->maxAcceleration = 100.0;
+    segment->maxDeceleration = 100.0;
+    segment->maxFlow = 1000.0;
+    segment->velocityToFlowGain = 1.0;
+
+    blend->active = true;
+    blend->bufferMode = HYD_BUFFER_MODE_BLENDING_NEXT;
+    blend->blendVelocity = 50.0;            /* 终点速度 vt */
+    blend->switchPosition = 100.0;
+    blend->switchTolerance = 0.05;
+
+    axis->position = 100.0 - remainingDistance;
+    axis->velocity = 90.0;
+    state->initialized = true;
+    state->lastTargetVelocity = 90.0;       /* 巡航中 */
+
+    input->axisRef = axis;
+    input->segment = segment;
+    input->state = state;
+    input->blend = blend;
+    input->deltaTime = 0.001;
+    input->elapsedTime = 0.001;
+}
+
+static void test_braking_trigger_uses_fixed_time_distance(void)
+{
+    HYD_AxisRef axis;
+    HYD_MotionSegment segment;
+    HYD_MotionBlendContext blend;
+    HYD_MotionPlannerState state;
+    HYD_MotionPlannerInput input;
+    HYD_MotionPlannerOutput output = {0};
+
+    /* 新触发距离 = (90+50)/2*0.1 + 40*0.001 = 7.04mm；
+     * 旧触发距离 = (90²-50²)/(2*900) + 0.04 = 3.15mm。
+     * 6.5mm：新语义已制动（<90），旧语义仍巡航（=90）。 */
+    setup_blend_braking_case(&axis, &segment, &blend, &state, &input, 6.5);
+    HYD_MotionPlanner_Execute(&input, &output);
+    check(output.targetVelocity < 90.0 - 0.2,   /* 新语义首周期 = 89.6 */
+          "braking must engage at the fixed-time trigger distance");
+
+    /* 8mm 在新触发距离之外：仍巡航，防止过早制动 */
+    setup_blend_braking_case(&axis, &segment, &blend, &state, &input, 8.0);
+    HYD_MotionPlanner_Execute(&input, &output);
+    check(fabs(output.targetVelocity - 90.0) < 0.01,
+          "cruise must continue outside the fixed-time trigger distance");
+}
+
+static void test_braking_lands_at_terminal_in_decel_time(void)
+{
+    HYD_AxisRef axis;
+    HYD_MotionSegment segment;
+    HYD_MotionBlendContext blend;
+    HYD_MotionPlannerState state;
+    HYD_MotionPlannerInput input;
+    HYD_MotionPlannerOutput output = {0};
+    int decelCycles = 0;
+    int cycle;
+
+    setup_blend_braking_case(&axis, &segment, &blend, &state, &input, 20.0);
+    for (cycle = 0; cycle < 400; ++cycle) {
+        input.elapsedTime = (cycle + 1) * 0.001;
+        HYD_MotionPlanner_Execute(&input, &output);
+        axis.position += output.targetVelocity * 0.001;
+        axis.velocity = output.targetVelocity;
+        if (output.targetVelocity < 90.0 - 0.05 &&
+            output.targetVelocity > 50.0 + 0.05) {
+            decelCycles++;
+        }
+        if (axis.position >= blend.switchPosition) {
+            break;
+        }
+    }
+    check(axis.position >= blend.switchPosition,
+          "approach must reach the switch position");
+    check(fabs(output.targetVelocity - 50.0) < 1.5,
+          "velocity at the switch crossing must equal the end velocity");
+    check(decelCycles >= 95 && decelCycles <= 105,
+          "deceleration from 90 to 50 must take ~t_dec (100 cycles)");
+}
+
 int main(void)
 {
     HYD_AxisRef axis = {0};
@@ -559,6 +659,8 @@ int main(void)
     test_small_target_and_time_changes_keep_cached_rate();
     test_entry_overspeed_transitions_in_decel_time();
     test_lagged_entry_overspeed_never_slower_than_decel_time();
+    test_braking_trigger_uses_fixed_time_distance();
+    test_braking_lands_at_terminal_in_decel_time();
 
     printf("motion planner time ramp: %s\n", failures == 0 ? "PASS" : "FAIL");
     return failures == 0 ? 0 : 1;
