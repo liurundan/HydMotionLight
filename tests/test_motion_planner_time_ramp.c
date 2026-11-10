@@ -376,6 +376,63 @@ static void test_small_target_and_time_changes_keep_cached_rate(void)
           "small target and transition-time noise should retain the cached rate");
 }
 
+static void run_entry_overspeed_case(HYD_REAL maxVelocity,
+                                     HYD_REAL entryVelocity,
+                                     HYD_REAL expectedMidpoint)
+{
+    HYD_AxisRef axis = {0};
+    HYD_MotionSegment segment = {0};
+    HYD_MotionPlannerState state = {0};
+    HYD_MotionPlannerInput input = {0};
+    HYD_MotionPlannerOutput output = {0};
+    int cycle;
+
+    segment.mode = HYD_MODE_POSITION;
+    segment.planner = HYD_PLANNER_POSITION_BASED;
+    segment.endCondition = HYD_END_POSITION;
+    segment.direction = HYD_DIRECTION_EXTEND;
+    segment.targetPosition = 500.0;   /* 足够远，包络 sqrt 距离界不参与 */
+    segment.maxVelocity = maxVelocity;
+    segment.maxAcceleration = 100.0;  /* ms */
+    segment.maxDeceleration = 100.0;  /* ms */
+    segment.maxFlow = 1000.0;
+    segment.velocityToFlowGain = 1.0;
+
+    axis.position = 0.0;
+    axis.velocity = entryVelocity;
+    state.initialized = true;
+    state.lastTargetVelocity = entryVelocity;  /* 上一段遗留速度 */
+
+    input.axisRef = &axis;
+    input.segment = &segment;
+    input.state = &state;
+    input.deltaTime = 0.001;
+
+    for (cycle = 0; cycle < 102; ++cycle) {
+        input.elapsedTime = (cycle + 1) * 0.001;
+        HYD_MotionPlanner_Execute(&input, &output);
+        axis.position += output.targetVelocity * 0.001; /* 运动学反馈 */
+        axis.velocity = output.targetVelocity;
+        if (cycle == 49) {
+            check(fabs(output.targetVelocity - expectedMidpoint) < 0.5,
+                  "entry overspeed must ramp linearly: midpoint at 50 ms");
+        }
+        check(output.targetVelocity >= maxVelocity - 0.01,
+              "entry overspeed ramp must not undershoot the segment velocity");
+    }
+    /* HYD_REAL 为 float：允许斜坡在第 100~101 个周期落点（±1 周期） */
+    check(fabs(output.targetVelocity - maxVelocity) < 0.01,
+          "entry overspeed transition must complete in t_dec (+1 cycle)");
+}
+
+static void test_entry_overspeed_transitions_in_decel_time(void)
+{
+    /* 高速段入口（原 11ms 陡降）：100 -> 90，50ms 时应为 95 */
+    run_entry_overspeed_case(90.0, 100.0, 95.0);
+    /* 低速段入口（原 200ms 慢降）：30 -> 10，50ms 时应为 20 */
+    run_entry_overspeed_case(10.0, 30.0, 20.0);
+}
+
 int main(void)
 {
     HYD_AxisRef axis = {0};
@@ -429,6 +486,7 @@ int main(void)
     test_blend_switch_safety_caps_velocity_at_terminal();
     test_blend_terminal_ramp_continues_from_zero_planned_velocity();
     test_small_target_and_time_changes_keep_cached_rate();
+    test_entry_overspeed_transitions_in_decel_time();
 
     printf("motion planner time ramp: %s\n", failures == 0 ? "PASS" : "FAIL");
     return failures == 0 ? 0 : 1;

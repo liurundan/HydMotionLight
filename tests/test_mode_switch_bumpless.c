@@ -240,7 +240,7 @@ static void test_motion_handover_does_not_add_second_pump_slew(void) {
     /* The planner output should continue from the carried command; the final
      * pump output must follow it directly instead of being held near the old
      * pump speed by a second slew. */
-    assert(fabs(fb.STATE.plannedVelocity - 99.0) < 0.02);
+    assert(fabs(fb.STATE.plannedVelocity - 91.0) < 0.02);
     assert(fabs(fb.PUMP_SPEED - fb.STATE.plannedFlow * 10.0) < 0.01);
     assert(fb.PUMP_SPEED < 950.0);
 }
