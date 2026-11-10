@@ -723,6 +723,73 @@ static void test_braking_entry_overspeed_short_stop_monotone(void)
     run_entry_overspeed_short_stop_case(90.0, 100.0, 5.0);
 }
 
+static void test_blend_terminal_stop_keeps_envelope_landing(void)
+{
+    HYD_AxisRef axis = {0};
+    HYD_MotionSegment segment = {0};
+    HYD_MotionBlendContext blend = {0};
+    HYD_MotionPlannerState state = {0};
+    HYD_MotionPlannerInput input = {0};
+    HYD_MotionPlannerOutput output = {0};
+    HYD_REAL remaining;
+    int reachedZero = 0;
+    int decelCycles = 0;
+    int cycle;
+
+    segment.mode = HYD_MODE_POSITION;
+    segment.planner = HYD_PLANNER_POSITION_BASED;
+    segment.endCondition = HYD_END_POSITION;
+    segment.direction = HYD_DIRECTION_EXTEND;
+    segment.targetPosition = 100.0;
+    segment.maxVelocity = 90.0;
+    segment.maxAcceleration = 100.0;
+    segment.maxDeceleration = 100.0;
+    segment.maxFlow = 1000.0;
+    segment.velocityToFlowGain = 1.0;
+    segment.positionTolerance = 0.0001;
+
+    /* MoveContinuousAbsolute END velocity 0 approach context */
+    blend.active = true;
+    blend.bufferMode = HYD_BUFFER_MODE_BLENDING_NEXT;
+    blend.blendVelocity = 0.0;
+    blend.switchPosition = 100.0;
+    blend.switchTolerance = 0.0001;
+
+    axis.position = 80.0;
+    axis.velocity = 90.0;
+    state.initialized = true;
+    state.lastTargetVelocity = 90.0;      /* cruising */
+
+    input.axisRef = &axis;
+    input.segment = &segment;
+    input.state = &state;
+    input.blend = &blend;
+    input.deltaTime = 0.001;
+
+    for (cycle = 0; cycle < 600; ++cycle) {
+        input.elapsedTime = (cycle + 1) * 0.001;
+        HYD_MotionPlanner_Execute(&input, &output);
+        axis.position += output.targetVelocity * 0.001;
+        axis.velocity = output.targetVelocity;
+        if (output.targetVelocity > 0.05 && output.targetVelocity < 90.0 - 0.05) {
+            decelCycles++;
+        }
+        if (output.targetVelocity <= 0.05) {
+            reachedZero = 1;
+        }
+    }
+    remaining = segment.targetPosition - axis.position;
+    if (remaining < 0.0) {
+        remaining = 0.0;
+    }
+    check(decelCycles >= 97 && decelCycles <= 101,
+          "blend terminal stop must keep the ~t_dec envelope landing");
+    check(remaining <= 0.001,
+          "blend terminal stop must land on the target");
+    check(reachedZero,
+          "blend terminal stop command must reach zero");
+}
+
 int main(void)
 {
     HYD_AxisRef axis = {0};
@@ -782,6 +849,7 @@ int main(void)
     test_braking_lands_at_terminal_in_decel_time();
     test_braking_stop_lands_on_target_monotone();
     test_braking_entry_overspeed_short_stop_monotone();
+    test_blend_terminal_stop_keeps_envelope_landing();
 
     printf("motion planner time ramp: %s\n", failures == 0 ? "PASS" : "FAIL");
     return failures == 0 ? 0 : 1;

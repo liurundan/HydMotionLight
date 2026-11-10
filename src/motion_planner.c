@@ -398,13 +398,22 @@ static HYD_REAL HYD_ComputeOnlineTrapezoidVelocityMagnitude(const HYD_MotionPlan
             if (previousMagnitude <= terminalVelocity) {
                 brakeDistance = 0.0;
             } else {
-                HYD_TIME decelSeconds = HYD_MotionTimeMsToSeconds(
-                    (segment->maxDeceleration > 0.0)
-                        ? segment->maxDeceleration
-                        : segment->maxAcceleration);
-                /* 语义A：固定时间斜坡 prev->terminal 覆盖的梯形均速距离 */
-                brakeDistance = 0.5 * (previousMagnitude + terminalVelocity) *
-                                decelSeconds;
+                if (blendActive && terminalVelocity <= 0.0) {
+                    /* Terminal stop in a blend approach (MoveContinuousAbsolute
+                     * END velocity 0): keep the envelope-rate trigger so the
+                     * zero-delay blend envelope stays the closed-loop landing.
+                     * From cruise at maxVelocity this is the fixed-time stop. */
+                    brakeDistance = (previousMagnitude * previousMagnitude) /
+                                    (2.0 * brakingAcceleration);
+                } else {
+                    HYD_TIME decelSeconds = HYD_MotionTimeMsToSeconds(
+                        (segment->maxDeceleration > 0.0)
+                            ? segment->maxDeceleration
+                            : segment->maxAcceleration);
+                    /* 语义A：固定时间斜坡 prev->terminal 覆盖的梯形均速距离 */
+                    brakeDistance = 0.5 * (previousMagnitude + terminalVelocity) *
+                                    decelSeconds;
+                }
                 if (input->deltaTime > 0.0 && isfinite(input->deltaTime)) {
                     brakeDistance += (previousMagnitude - terminalVelocity) *
                                      input->deltaTime;
@@ -426,10 +435,11 @@ static HYD_REAL HYD_ComputeOnlineTrapezoidVelocityMagnitude(const HYD_MotionPlan
                                                 targetVelocity),
                     input->deltaTime));
                 if (braking && !blendActive) {
-                    /* Landing floor, non-blend only (blend approaches are covered by the zero-delay
-                     * blend envelope): close the loop on remaining distance at the anchored
-                     * delta-v/t_dec rate so the early trigger never makes the fixed-time ramp stop
-                     * short. Never accelerates (capped at prev); one-cycle response-delay model. */
+                    /* Landing floor: closes the loop on remaining distance at the anchored delta-v/t_dec
+                     * rate, so an early trigger no longer leaves a non-blend stop up to ~1.5*v0*dt short
+                     * (a final step of at most a_env*dt may remain). Never accelerates; one-cycle delay
+                     * model. Non-blend only: blend terminal stops land on the zero-delay blend envelope
+                     * via the quadratic trigger above; vt > 0 blends only need vt by the switch point. */
                     HYD_REAL anchoredRate = fabs(input->state->transitionRate);
 
                     if (anchoredRate > 0.0) {
