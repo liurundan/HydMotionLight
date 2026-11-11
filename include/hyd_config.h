@@ -427,6 +427,12 @@ typedef HYD_REAL HYD_TIME;
  * 在限制点附近一次性恢复满流量再次把压力推过上限。 */
 #define HYD_THRESH_PRESSURE_LIMIT_SCALE_RELEASE_RATE 2.0f
 
+/* 限压解除后的快速恢复速率，单位 1/s。实际压力已低于释放阈值
+ * maxPressure*(1-回差比例) 时使用，避免压力早已卸荷仍按慢速率爬坡
+ * （实测：压力段切到低限压位置段后泵速爬坡 500ms）。仍处于回差带内时
+ * 沿用 HYD_THRESH_PRESSURE_LIMIT_SCALE_RELEASE_RATE 防振荡。 */
+#define HYD_THRESH_PRESSURE_LIMIT_SCALE_FAST_RELEASE_RATE 10.0f
+
 /* Retained for source compatibility with older integrations. Process
  * pressure limiting no longer escalates these timers to a library fault. */
 #define HYD_THRESH_PRESSURE_LIMIT_DEBOUNCE_S     0.20f

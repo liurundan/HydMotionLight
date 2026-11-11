@@ -237,7 +237,10 @@ static HYD_REAL HYD_OutputLimiter_UpdatePressureLimitState(
         } else if (deltaTime > 0.1) {
             deltaTime = 0.1;
         }
-        releaseStep = HYD_THRESH_PRESSURE_LIMIT_SCALE_RELEASE_RATE * deltaTime;
+        releaseStep = ((actualPressure <= releasePressure)
+                           ? HYD_THRESH_PRESSURE_LIMIT_SCALE_FAST_RELEASE_RATE
+                           : HYD_THRESH_PRESSURE_LIMIT_SCALE_RELEASE_RATE) *
+                      deltaTime;
         if (!HYD_OutputLimiter_IsFinite(releaseStep) || releaseStep < 0.0) {
             releaseStep = 0.0;
         }
