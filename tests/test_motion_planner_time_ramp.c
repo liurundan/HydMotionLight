@@ -859,6 +859,99 @@ static void test_speed_ramp_stateful_decel_uses_delta_v_rate(void)
           "stateful speed ramp deceleration must follow decelStartVel/t_dec");
 }
 
+static void test_short_stroke_caps_peak_and_keeps_ramp_time(void)
+{
+    HYD_AxisRef axis = {0};
+    HYD_MotionSegment segment = {0};
+    HYD_MotionPlannerState state = {0};
+    HYD_MotionPlannerInput input = {0};
+    HYD_MotionPlannerOutput output = {0};
+    HYD_REAL peak = 0.0;
+    HYD_REAL previous = 0.0;
+    HYD_REAL maxStep = 0.0;
+    int cycle;
+
+    segment.mode = HYD_MODE_POSITION;
+    segment.planner = HYD_PLANNER_POSITION_BASED;
+    segment.endCondition = HYD_END_POSITION;
+    segment.direction = HYD_DIRECTION_EXTEND;
+    segment.targetPosition = 5.0;     /* 短行程 5mm */
+    segment.maxVelocity = 90.0;       /* 高目标速度 */
+    segment.maxAcceleration = 100.0;
+    segment.maxDeceleration = 100.0;
+    segment.maxFlow = 1000.0;
+    segment.velocityToFlowGain = 1.0;
+    state.initialized = true;         /* 从静止出发 */
+
+    input.axisRef = &axis;
+    input.segment = &segment;
+    input.state = &state;
+    input.deltaTime = 0.001;
+
+    for (cycle = 0; cycle < 600; ++cycle) {
+        input.elapsedTime = (cycle + 1) * 0.001;
+        HYD_MotionPlanner_Execute(&input, &output);
+        if (output.targetVelocity - previous > maxStep) {
+            maxStep = output.targetVelocity - previous;
+        }
+        previous = output.targetVelocity;
+        axis.position += output.targetVelocity * 0.001;
+        axis.velocity = output.targetVelocity;
+        if (output.targetVelocity > peak) {
+            peak = output.targetVelocity;
+        }
+    }
+    /* vp = 2*5/(0.2+0.002) = 49.5：峰值必须被限制在 ~49.5。
+     * 旧行为冲向 90 后被 sqrt 包络压回，峰值约 60~67。 */
+    check(peak <= 50.5, "short stroke must cap the peak at the reachable vp");
+    check(peak >= 40.0, "short stroke cap must not collapse the motion");
+    /* 锚定一次：正向（加速）步长 = vp/T_acc ≈ 0.495/周期，绝不出现 90/0.1=0.9
+     * 的旧陡升。只计正向步长：落地尾段负向收紧步长 a_env·dt 是既有包络安全
+     * 行为（measured-overspeed 收紧），不在本断言管辖。 */
+    check(maxStep <= 0.75, "short stroke acceleration steps must use the anchored vp rate");
+    check(axis.position > 4.5, "short stroke move must still converge on target");
+}
+
+static void test_long_stroke_keeps_full_cruise(void)
+{
+    HYD_AxisRef axis = {0};
+    HYD_MotionSegment segment = {0};
+    HYD_MotionPlannerState state = {0};
+    HYD_MotionPlannerInput input = {0};
+    HYD_MotionPlannerOutput output = {0};
+    int cycle;
+
+    segment.mode = HYD_MODE_POSITION;
+    segment.planner = HYD_PLANNER_POSITION_BASED;
+    segment.endCondition = HYD_END_POSITION;
+    segment.direction = HYD_DIRECTION_EXTEND;
+    segment.targetPosition = 500.0;
+    segment.maxVelocity = 90.0;
+    segment.maxAcceleration = 100.0;
+    segment.maxDeceleration = 100.0;
+    segment.maxFlow = 1000.0;
+    segment.velocityToFlowGain = 1.0;
+    state.initialized = true;
+
+    input.axisRef = &axis;
+    input.segment = &segment;
+    input.state = &state;
+    input.deltaTime = 0.001;
+
+    for (cycle = 0; cycle < 102; ++cycle) {
+        input.elapsedTime = (cycle + 1) * 0.001;
+        HYD_MotionPlanner_Execute(&input, &output);
+        axis.position += output.targetVelocity * 0.001;
+        axis.velocity = output.targetVelocity;
+        if (cycle == 49) {
+            check(fabs(output.targetVelocity - 45.0) < 0.5,
+                  "long stroke acceleration must stay linear (regression guard)");
+        }
+    }
+    check(fabs(output.targetVelocity - 90.0) < 0.05,
+          "long stroke must reach full cruise in t_acc (+1 cycle, regression guard)");
+}
+
 int main(void)
 {
     HYD_AxisRef axis = {0};
@@ -921,6 +1014,8 @@ int main(void)
     test_blend_terminal_stop_keeps_envelope_landing();
     test_speed_ramp_decel_uses_delta_v_rate();
     test_speed_ramp_stateful_decel_uses_delta_v_rate();
+    test_short_stroke_caps_peak_and_keeps_ramp_time();
+    test_long_stroke_keeps_full_cruise();
 
     printf("motion planner time ramp: %s\n", failures == 0 ? "PASS" : "FAIL");
     return failures == 0 ? 0 : 1;
