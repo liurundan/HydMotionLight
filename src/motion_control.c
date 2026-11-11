@@ -2453,7 +2453,64 @@ static HYD_BOOL HYD_ExecuteActiveSegmentControl(HYD_MotionControlFB* fb,
         plannerInput.state = &fb->_plannerState;
         plannerInput.blend = selectedBlend;
         plannerInput.lastActiveDirection = fb->_lastActiveDirection;
+        HYD_REAL plannedMagnitudeBefore = fabs(fb->_plannerState.lastTargetVelocity);
         HYD_MotionPlanner_Execute(&plannerInput, plannerOutput);
+
+        /* D2：刹距可行性诊断。判定对象是规划器本周期锚定的、指向终点速度的
+         * 减速斜坡；所需距离超过剩余行程即说明恒时间减速已不可行，由包络兜底
+         * 并上报 WARNING。不改变规划输出；反应归流程层。
+         * 参考速率分级（评审裁定）：blend 终点停车（vt<=0）经二次触发+包络
+         * 落地，其有效减速速率就是包络速率 a_env，释放上冲后重锚出的小速率
+         * 不是短缺；其余场景用规划器本周期锚定的斜坡速率。 */
+        if (segment->mode == HYD_MODE_POSITION &&
+            segment->endCondition == HYD_END_POSITION &&
+            (plannerOutput->direction == HYD_DIRECTION_EXTEND ||
+             plannerOutput->direction == HYD_DIRECTION_RETRACT)) {
+            HYD_REAL terminalVelocity = 0.0f;
+            HYD_REAL switchPosition = segment->targetPosition;
+            HYD_REAL rampRate = fabs(fb->_plannerState.transitionRate);
+            HYD_REAL rampTarget = fabs(fb->_plannerState.transitionTargetVelocity);
+            HYD_REAL envelopeRate = HYD_ResolveSegmentBrakingAccelerationForBlend(segment);
+            HYD_REAL jitterDt = (isfinite(plannerInput.deltaTime) &&
+                                 plannerInput.deltaTime > 0.0f)
+                ? plannerInput.deltaTime : 0.0f;
+            HYD_REAL remaining;
+
+            if (selectedBlend != NULL && selectedBlend->active) {
+                terminalVelocity = HYD_ClampReal(selectedBlend->blendVelocity,
+                                                 0.0f, segment->maxVelocity);
+                switchPosition = selectedBlend->switchPosition;
+                if (terminalVelocity <= 0.0f) {
+                    rampRate = envelopeRate;
+                }
+            }
+            remaining = (plannerOutput->direction == HYD_DIRECTION_EXTEND)
+                ? (switchPosition - fb->AXIS_REF.position)
+                : (fb->AXIS_REF.position - switchPosition);
+            /* 抖动带跳过（评审裁定）：末端速度差在一个包络步长 a_env*dt 内
+             * 的抖动不是短缺；其余判定按简报。
+             * 响应延迟预留（裁定延伸）：blend 走零延迟包络（Task 2），不像
+             * 非 blend 包络那样在判别式里预留 (a·τ)² 项；一拍执行滞后下，
+             * 名义包络末端的所需距离会比剩余行程多出每拍速度衰减×dt
+             * （包络动力学下每拍衰减 ≤ 2·a_env·dt，即残留 ≤ 2·a_env·dt²）。
+             * 该项补齐等效预留，消除末端 µm 级滞后残留误报；A/B 类短缺为
+             * mm 级差距，不受影响。 */
+            if (remaining > 0.0f &&
+                plannedMagnitudeBefore > terminalVelocity &&
+                (plannedMagnitudeBefore - terminalVelocity) >
+                    envelopeRate * jitterDt &&
+                rampRate > 0.0f &&
+                fabs(rampTarget - terminalVelocity) <=
+                    0.01f + 0.001f * terminalVelocity &&
+                (plannedMagnitudeBefore * plannedMagnitudeBefore -
+                 terminalVelocity * terminalVelocity) / (2.0f * rampRate) >
+                    remaining +
+                    plannedMagnitudeBefore * plannerInput.deltaTime +
+                    2.0f * envelopeRate * jitterDt * jitterDt +
+                    HYD_Segment_GetPositionTolerance(segment)) {
+                fb->STATE.limitFlags |= HYD_LIMIT_FLAG_BRAKING_DISTANCE;
+            }
+        }
 
         {
             HYD_REAL velocityFlowLimit = segment->maxFlow;
@@ -2897,6 +2954,7 @@ static void HYD_UpdateExecutionDiagnostics(HYD_MotionControlFB* fb,
      *   7. flowDeviation
      *   8. positionDeviation
      *   9. velocityDeviation
+     *  10. braking distance shortfall (WARNING, lowest priority; limit-flag only)
      */
     if (timeout) {
         priorityCode = HYD_DIAG_CODE_TIMEOUT;
@@ -2929,6 +2987,12 @@ static void HYD_UpdateExecutionDiagnostics(HYD_MotionControlFB* fb,
         priorityCode = HYD_DIAG_CODE_VELOCITY_DEVIATION;
         prioritySeverity = (velocityResult.severity == HYD_DIAG_SEVERITY_FAULT)
             ? HYD_DIAG_SEVERITY_FAULT : HYD_DIAG_SEVERITY_WARNING;
+    }
+
+    if (priorityCode == HYD_DIAG_CODE_NONE &&
+        (fb->STATE.limitFlags & HYD_LIMIT_FLAG_BRAKING_DISTANCE) != 0u) {
+        priorityCode = HYD_DIAG_CODE_BRAKING_DISTANCE_INSUFFICIENT;
+        prioritySeverity = HYD_DIAG_SEVERITY_WARNING;
     }
 
     if (priorityCode != HYD_DIAG_CODE_NONE) {

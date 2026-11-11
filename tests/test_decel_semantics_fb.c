@@ -168,11 +168,81 @@ static void test_adapt_end_velocity_anchor_rate_distinguishes_formulas(void)
           "anchor rate result must be distinguishable from both formulas");
 }
 
+static void test_braking_shortfall_raises_warning_not_fault(void)
+{
+    HYD_MotionControlFB fb;
+    HYD_MotionSegment shortSegment = make_position_segment(2.0, 100.0);
+    HYD_DirectStartResult result;
+    int sawFlag = 0;
+    int sawCode = 0;
+    int sawFault = 0;
+    int cycle;
+
+    /* 以 100mm/s 接管一个仅 2mm 的停止段（终速 0）：
+     * 锚定减速斜坡所需距离 = 100²/(2*1000) = 5mm > 2 + 0.1 + 0.1 → 短缺成立 */
+    seed_running_position(&fb, 0.0, 100.0);
+    result = HYD_MotionControlFB_StartDirectCommand(
+        &fb, HYD_DIRECT_CMD_MOVE_ABSOLUTE, &shortSegment, NULL,
+        HYD_BUFFER_MODE_ABORT, 1.001);
+    check(result == HYD_DIRECT_START_STARTED,
+          "short stop segment takeover must start");
+
+    for (cycle = 0; cycle < 3; ++cycle) {
+        fb.AXIS_REF.timestamp = 1.002 + cycle * 0.001;
+        fb.AXIS_REF.velocity = 100.0;       /* 反馈仍为高速 */
+        fb.AXIS_REF.position = 0.1 * cycle;
+        HYD_MotionControlFB_Cycle(&fb);
+        if (fb.STATE.limitFlags & HYD_LIMIT_FLAG_BRAKING_DISTANCE) {
+            sawFlag = 1;
+        }
+        if (fb.DIAGNOSTIC.code == HYD_DIAG_CODE_BRAKING_DISTANCE_INSUFFICIENT &&
+            fb.DIAGNOSTIC.severity == HYD_DIAG_SEVERITY_WARNING) {
+            sawCode = 1;
+        }
+        if (HYD_MotionControlFB_IsError(&fb)) {
+            sawFault = 1;
+        }
+    }
+    check(sawFlag, "braking shortfall must raise HYD_LIMIT_FLAG_BRAKING_DISTANCE");
+    check(sawCode, "braking shortfall must surface a WARNING diagnostic");
+    check(!sawFault, "braking shortfall must never escalate to an IEC error");
+}
+
+static void test_normal_braking_does_not_warn(void)
+{
+    HYD_MotionControlFB fb;
+    HYD_MotionSegment longSegment = make_position_segment(50.0, 100.0);
+    HYD_DirectStartResult result;
+    int sawFlag = 0;
+    int cycle;
+
+    /* 50mm 足够：包络刹距 5mm 远小于剩余行程 → 全程不得报警 */
+    seed_running_position(&fb, 0.0, 100.0);
+    result = HYD_MotionControlFB_StartDirectCommand(
+        &fb, HYD_DIRECT_CMD_MOVE_ABSOLUTE, &longSegment, NULL,
+        HYD_BUFFER_MODE_ABORT, 1.001);
+    check(result == HYD_DIRECT_START_STARTED,
+          "long stop segment takeover must start");
+
+    for (cycle = 0; cycle < 3; ++cycle) {
+        fb.AXIS_REF.timestamp = 1.002 + cycle * 0.001;
+        fb.AXIS_REF.velocity = 100.0;
+        fb.AXIS_REF.position = 0.1 * cycle;
+        HYD_MotionControlFB_Cycle(&fb);
+        if (fb.STATE.limitFlags & HYD_LIMIT_FLAG_BRAKING_DISTANCE) {
+            sawFlag = 1;
+        }
+    }
+    check(!sawFlag, "sufficient stroke must not raise the braking shortfall flag");
+}
+
 int main(void)
 {
     test_adapt_end_velocity_uses_ramp_rate_from_projected_velocity();
     test_adapt_end_velocity_uses_carried_anchor_rate();
     test_adapt_end_velocity_anchor_rate_distinguishes_formulas();
+    test_braking_shortfall_raises_warning_not_fault();
+    test_normal_braking_does_not_warn();
     printf("decel semantics fb: %s\n", failures == 0 ? "PASS" : "FAIL");
     return failures == 0 ? 0 : 1;
 }

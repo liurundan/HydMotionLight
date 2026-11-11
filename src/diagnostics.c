@@ -243,6 +243,12 @@ static const HYD_DiagnosticSpec HYD_DIAGNOSTIC_SPECS[] = {
      HYD_DIAG_RECOVERY_RESET_CONTROLLER,
      HYD_PROTECTION_ACTION_STOP,
      "Toggle kinematics failed during cyclic execution"},
+    {HYD_DIAG_CODE_BRAKING_DISTANCE_INSUFFICIENT,
+     HYD_DIAG_SEVERITY_WARNING,
+     HYD_DIAG_SOURCE_EXECUTION,
+     HYD_DIAG_RECOVERY_CHECK_COMMAND,
+     HYD_PROTECTION_ACTION_WARNING,
+     "Remaining stroke too short to reach end velocity within braking envelope"},
 };
 
 static HYD_DiagnosticFlags HYD_Diagnostics_BuildFlagMask(const HYD_DiagnosticInfo* diagnostic) {
@@ -545,6 +551,8 @@ const char* HYD_Diagnostics_CodeToString(HYD_DiagnosticCode code) {
             return "KINEMATICS_POSITION_OUT_OF_RANGE";
         case HYD_DIAG_CODE_KINEMATICS_RUNTIME_INVALID:
             return "KINEMATICS_RUNTIME_INVALID";
+        case HYD_DIAG_CODE_BRAKING_DISTANCE_INSUFFICIENT:
+            return "BRAKING_DISTANCE_INSUFFICIENT";
         default:
             return "UNKNOWN";
     }
