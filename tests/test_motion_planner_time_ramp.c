@@ -1087,6 +1087,230 @@ static void test_mold_open_sequence_transitions_take_decel_time(void)
     }
 }
 
+/* ---------------------------------------------------------------------------
+ * 合模序列（实验曲线 docs/data_deg/vofa_waveform_20261110_082428_443.csv，
+ * t = 6474..7280 ms，位置 130mm -> 5mm，RETRACT）。
+ *
+ * 段  目标mm  uiSpd/END   v(mm/s)  END(mm/s)  行程(mm)
+ * 1   120     100/100     180      180        130->120 (10)
+ * 2   110      90/ 90     162      162        120->110 (10)
+ * 3    70     100/100     180      180        110-> 70 (40)
+ * 4     5      90/ 50     162       90         70->  5 (65)
+ * 单位：uiSpd x 1.8 mm/s；t_acc=t_dec=100ms（88ms 经 100ms 下限限幅）。
+ * 段5（5->0，END=0）是低压护模/保压段：实测速度瞬间降到 ~1mm/s 后由压力
+ * 闭环接管，不属于位置规划序列，不纳入本测试。
+ *
+ * 旧语义实测（修复前 CSV）：段2/段4 入口 180->162 用 12ms @ -1500~-1620
+ * mm/s²；段4 END 162->90 用 44ms @ -1607 mm/s²（a_cfg = maxV/t_dec = 1620，
+ * 即 1.62 mm/s per 1ms 周期）。语义A 期望恒时间 100ms、斜率 = Δv/t：
+ *   段1 +1.800、段2 -0.180、段3 +0.180、
+ *   段4 入口 -0.180、段4 END -0.720（mm/s per 1ms 周期）。
+ * 段2 的 10mm 行程 < 恒时间减速所需 (180+162)/2*0.1=17.1mm，过渡会被段
+ * 边界截断、尾部由 sqrt 包络兜底（Task 6 刹距不足 WARNING 的工艺场景），
+ * 因此段2 只校验入口斜坡斜率与"未按旧语义提前到位"。
+ * ------------------------------------------------------------------------- */
+typedef struct {
+    int start;
+    int cycles;
+    HYD_REAL from;
+    HYD_REAL to;
+    HYD_REAL meanStep;
+    HYD_REAL maxStep;
+    int rising;
+} HYD_TraceRamp;
+
+static int collect_trace_ramps(const HYD_REAL* trace, int count,
+                               HYD_TraceRamp* ramps, int capacity)
+{
+    const HYD_REAL eps = 0.005;
+    int k = 0;
+    int found = 0;
+
+    while (k < count - 1 && found < capacity) {
+        HYD_REAL dv = trace[k + 1] - trace[k];
+        int sign;
+        int start;
+        int steps = 0;
+        HYD_REAL sum = 0.0;
+        HYD_REAL maximum = 0.0;
+
+        if (fabs(dv) <= eps) {
+            ++k;
+            continue;
+        }
+        sign = (dv > 0.0) ? 1 : -1;
+        start = k;
+        while (k < count - 1 &&
+               (trace[k + 1] - trace[k]) * sign > eps) {
+            HYD_REAL step = (HYD_REAL)fabs(trace[k + 1] - trace[k]);
+            sum += step;
+            if (step > maximum) {
+                maximum = step;
+            }
+            ++steps;
+            ++k;
+        }
+        if (steps >= 5) {
+            ramps[found].start = start;
+            ramps[found].cycles = steps;
+            ramps[found].from = trace[start];
+            ramps[found].to = trace[k];
+            ramps[found].meanStep = sum / steps;
+            ramps[found].maxStep = maximum;
+            ramps[found].rising = (sign > 0);
+            ++found;
+        }
+    }
+    return found;
+}
+
+static void test_mold_close_sequence_transition_slopes(void)
+{
+    static const HYD_REAL TARGET[4] = { 120.0, 110.0, 70.0, 5.0 };
+    static const HYD_REAL VELOCITY[4] = { 180.0, 162.0, 180.0, 162.0 };
+    static const HYD_REAL END_VELOCITY[4] = { 180.0, 162.0, 180.0, 90.0 };
+    static HYD_REAL trace[2000];
+    HYD_AxisRef axis = {0};
+    HYD_MotionPlannerState state = {0};
+    HYD_MotionPlannerOutput output = {0};
+    HYD_REAL slope[4] = {0.0, 0.0, 0.0, 0.0};
+    HYD_REAL endSlope = 0.0;
+    HYD_REAL seg2EntryMean = 0.0;
+    HYD_REAL seg2EntryMax = 0.0;
+    int cyclesCount[4] = {0, 0, 0, 0};
+    int endCycles = 0;
+    int sawNegative = 0;
+    int seg;
+
+    state.initialized = true;
+    axis.position = 130.0;
+
+    for (seg = 0; seg < 4; ++seg) {
+        HYD_MotionSegment segment = {0};
+        HYD_MotionBlendContext blend = {0};
+        HYD_MotionPlannerInput input = {0};
+        HYD_TraceRamp ramps[4];
+        int rampCount;
+        int n = 0;
+        int cycle;
+
+        segment.mode = HYD_MODE_POSITION;
+        segment.planner = HYD_PLANNER_POSITION_BASED;
+        segment.endCondition = HYD_END_POSITION;
+        segment.direction = HYD_DIRECTION_RETRACT;
+        segment.targetPosition = TARGET[seg];
+        segment.maxVelocity = VELOCITY[seg];
+        segment.maxAcceleration = 100.0;
+        segment.maxDeceleration = 100.0;
+        segment.maxFlow = 1000.0;
+        segment.velocityToFlowGain = 1.0;
+
+        blend.active = true;
+        blend.bufferMode = HYD_BUFFER_MODE_BLENDING_NEXT;
+        blend.blendVelocity = END_VELOCITY[seg];
+        blend.switchPosition = TARGET[seg];
+        blend.switchTolerance = 0.05;
+
+        input.axisRef = &axis;
+        input.segment = &segment;
+        input.state = &state;
+        input.blend = &blend;
+        input.deltaTime = 0.001;
+
+        for (cycle = 0; cycle < 2000; ++cycle) {
+            input.elapsedTime = (cycle + 1) * 0.001;
+            HYD_MotionPlanner_Execute(&input, &output);
+            if (output.targetVelocity < -0.001) {
+                sawNegative = 1;
+            }
+            trace[n++] = (HYD_REAL)fabs(output.targetVelocity);
+            axis.position += output.targetVelocity * 0.001;
+            axis.velocity = output.targetVelocity;
+            if (axis.position <= TARGET[seg] + blend.switchTolerance) {
+                break;
+            }
+        }
+        check(n < 2000, "mold close segment must finish within the trace buffer");
+        check(fabs(axis.position - TARGET[seg]) < 0.15,
+              "mold close segment must reach its switch position");
+
+        rampCount = collect_trace_ramps(trace, n, ramps, 4);
+        check(rampCount >= 1, "mold close segment must show a transition ramp");
+
+        if (seg == 1) {
+            /* 10mm 行程不足 17.1mm 恒时间刹距：入口斜坡按 Δv/t_dec 起步，
+             * 段边界截断后尾部由包络兜底。旧语义会在 ~12ms 内以
+             * 1.62 mm/s/ms 冲到 162 并巡航到段末。 */
+            int k;
+            for (k = 0; k < 29; ++k) {
+                HYD_REAL step = (HYD_REAL)fabs(trace[k + 1] - trace[k]);
+                seg2EntryMean += step;
+                if (step > seg2EntryMax) {
+                    seg2EntryMax = step;
+                }
+            }
+            seg2EntryMean /= 29.0;
+            check(ramps[0].cycles >= 40,
+                  "short close segment transition must not collapse to a_cfg timing");
+            check(fabs(seg2EntryMean - 0.18) < 0.03,
+                  "short close segment entry slope must be delta-v/t_dec");
+            check(seg2EntryMax < 0.25,
+                  "short close segment entry must not use the old a_cfg step");
+            check(fabs(trace[n - 1] - 162.0) > 0.2,
+                  "short close segment must stay on the truncated ramp at switch");
+            check(ramps[0].maxStep <= 1.7,
+                  "short close segment tail must stay within the envelope step");
+            slope[seg] = seg2EntryMean;
+            cyclesCount[seg] = ramps[0].cycles;
+            continue;
+        }
+
+        if (rampCount >= 1) {
+            const HYD_TraceRamp* first = &ramps[0];
+            HYD_REAL expected = (seg == 0) ? 1.8 : 0.18;
+            slope[seg] = first->meanStep;
+            cyclesCount[seg] = first->cycles;
+            check(first->cycles >= 95 && first->cycles <= 105,
+                  "mold close transition must take t_dec/t_acc (95..105 cycles)");
+            check(fabs(first->meanStep - expected) <= 0.03,
+                  "mold close transition slope must equal delta-v/t");
+            check(first->maxStep <= expected * 1.2,
+                  "mold close transition must not contain an old a_cfg step");
+            check(first->rising == (seg == 0 || seg == 2),
+                  "mold close transition direction must match the setpoint change");
+        }
+
+        if (seg == 3) {
+            /* 段4 的 END_SPEED=90 是下一段速度（段内前瞻写法）：段内还有
+             * 一条 162->90 的 END 制动斜坡，旧语义只用 44ms @ a_cfg。 */
+            if (rampCount >= 2) {
+                const HYD_TraceRamp* last = &ramps[rampCount - 1];
+                endSlope = last->meanStep;
+                endCycles = last->cycles;
+                check(last->rising == 0, "mold close END braking must decelerate");
+                check(fabs(last->from - 162.0) < 0.5 &&
+                      fabs(last->to - 90.0) < 0.5,
+                      "mold close END braking must span 162 to 90 mm/s");
+                check(last->cycles >= 95 && last->cycles <= 105,
+                      "mold close END braking must take t_dec");
+                check(fabs(last->meanStep - 0.72) <= 0.05,
+                      "mold close END braking slope must equal delta-v/t_dec");
+                check(last->maxStep <= 0.9,
+                      "mold close END braking must not use the old a_cfg step");
+            } else {
+                check(0, "mold close segment 4 must have an END braking ramp");
+            }
+        }
+    }
+
+    check(sawNegative, "mold close sequence must command the RETRACT direction");
+    printf("mold close slopes (mm/s per ms): s1 +%.3f/%dms  s2 -%.3f/%dms(truncated)  "
+           "s3 +%.3f/%dms  s4 -%.3f/%dms  end -%.3f/%dms\n",
+           slope[0], cyclesCount[0], slope[1], cyclesCount[1],
+           slope[2], cyclesCount[2], slope[3], cyclesCount[3],
+           endSlope, endCycles);
+}
+
 int main(void)
 {
     HYD_AxisRef axis = {0};
@@ -1153,6 +1377,7 @@ int main(void)
     test_long_stroke_keeps_full_cruise();
     test_chained_segment_keeps_vp_cap_on_carried_state();
     test_mold_open_sequence_transitions_take_decel_time();
+    test_mold_close_sequence_transition_slopes();
 
     printf("motion planner time ramp: %s\n", failures == 0 ? "PASS" : "FAIL");
     return failures == 0 ? 0 : 1;
