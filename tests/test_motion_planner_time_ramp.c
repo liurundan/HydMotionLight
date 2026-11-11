@@ -1018,6 +1018,75 @@ static void test_chained_segment_keeps_vp_cap_on_carried_state(void)
     check(axis.position > 9.5, "chained short stroke must converge on target");
 }
 
+static void test_mold_open_sequence_transitions_take_decel_time(void)
+{
+    static const HYD_REAL TARGET[4] = { 50.0, 60.0, 70.0, 90.0 };
+    static const HYD_REAL VELOCITY[4] = { 18.0, 90.0, 54.0, 18.0 };
+    HYD_AxisRef axis = {0};
+    HYD_MotionPlannerState state = {0};
+    HYD_MotionPlannerOutput output = {0};
+    int seg;
+
+    state.initialized = true;
+    axis.position = 2.0;                      /* 实验中开模起点约 2mm */
+
+    for (seg = 0; seg < 4; ++seg) {
+        HYD_MotionSegment segment = {0};
+        HYD_MotionBlendContext blend = {0};
+        HYD_MotionPlannerInput input = {0};
+        HYD_REAL entryVelocity = fabs(state.lastTargetVelocity);
+        int transitionCycles = 0;
+        int cycle;
+
+        segment.mode = HYD_MODE_POSITION;
+        segment.planner = HYD_PLANNER_POSITION_BASED;
+        segment.endCondition = HYD_END_POSITION;
+        segment.direction = HYD_DIRECTION_EXTEND;
+        segment.targetPosition = TARGET[seg];
+        segment.maxVelocity = VELOCITY[seg];
+        segment.maxAcceleration = 100.0;
+        segment.maxDeceleration = 100.0;
+        segment.maxFlow = 1000.0;
+        segment.velocityToFlowGain = 1.0;
+
+        blend.active = true;
+        blend.bufferMode = HYD_BUFFER_MODE_BLENDING_NEXT;
+        blend.blendVelocity = VELOCITY[seg];  /* 终速 = 本段速度 */
+        blend.switchPosition = TARGET[seg];
+        blend.switchTolerance = 0.05;
+
+        input.axisRef = &axis;
+        input.segment = &segment;
+        input.state = &state;
+        input.blend = &blend;
+        input.deltaTime = 0.001;
+
+        for (cycle = 0; cycle < 20000; ++cycle) {
+            HYD_REAL magnitude;
+
+            input.elapsedTime = (cycle + 1) * 0.001;
+            HYD_MotionPlanner_Execute(&input, &output);
+            axis.position += output.targetVelocity * 0.001;
+            axis.velocity = output.targetVelocity;
+            magnitude = fabs(output.targetVelocity);
+            if (fabs(magnitude - segment.maxVelocity) > 0.05 &&
+                fabs(magnitude - entryVelocity) > 0.05) {
+                transitionCycles++;   /* 处于段入口过渡斜坡上 */
+            }
+            if (axis.position >= segment.targetPosition - blend.switchTolerance) {
+                break;
+            }
+        }
+        check(axis.position >= segment.targetPosition - 0.1,
+              "sequence segment must reach its switch position");
+        if (seg > 0 && fabs(entryVelocity - segment.maxVelocity) > 1.0) {
+            /* 实验值：90→54 用 67ms，54→18 用 200ms；修复后都应 ~100ms */
+            check(transitionCycles >= 95 && transitionCycles <= 105,
+                  "inter-segment velocity transition must take ~t_dec");
+        }
+    }
+}
+
 int main(void)
 {
     HYD_AxisRef axis = {0};
@@ -1083,6 +1152,7 @@ int main(void)
     test_short_stroke_caps_peak_and_keeps_ramp_time();
     test_long_stroke_keeps_full_cruise();
     test_chained_segment_keeps_vp_cap_on_carried_state();
+    test_mold_open_sequence_transitions_take_decel_time();
 
     printf("motion planner time ramp: %s\n", failures == 0 ? "PASS" : "FAIL");
     return failures == 0 ? 0 : 1;

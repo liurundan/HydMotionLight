@@ -2,7 +2,7 @@
 
 - 日期：2026-11-10
 - 分支：feature/rbf-pid-industrialization
-- 状态：已确认（语义A + 方案1+2+3，经数据/代码交叉验证后由项目方批准）
+- 状态：已实施（实现计划 docs/superpowers/plans/2026-11-10-decel-semantics-and-reachability.md）
 
 ## 1. 背景与根因
 
