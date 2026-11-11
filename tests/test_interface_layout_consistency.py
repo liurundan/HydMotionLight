@@ -188,6 +188,40 @@ def main() -> int:
             print(f"expected generated HYD_READSTATUS initializer to clear {field}")
             return 1
 
+    status_pou = next(
+        (pou for pou in ET.parse(XML).getroot().iter()
+         if local_name(pou.tag) == "pou" and
+         pou.attrib.get("name") == "HYD_ReadStatus"),
+        None,
+    )
+    if status_pou is None:
+        print("expected XML POU HYD_ReadStatus")
+        return 1
+    status_outputs = [
+        variable.attrib.get("name")
+        for section in status_pou.iter()
+        if local_name(section.tag) == "outputVars"
+        for variable in section
+        if local_name(variable.tag) == "variable"
+    ]
+    expected_references = ["PRESSUREREFERENCE", "FLOWREFERENCE", "VELOCITYREFERENCE"]
+    if status_outputs[-3:] != expected_references:
+        print(f"HYD_ReadStatus runtime reference outputs {status_outputs[-3:]} != {expected_references}")
+        return 1
+    for field in expected_references:
+        variable = next(
+            (variable for variable in status_pou.iter()
+             if local_name(variable.tag) == "variable" and
+             variable.attrib.get("name") == field),
+            None,
+        )
+        if variable is None or not any(local_name(child.tag) == "REAL" for child in variable.iter()):
+            print(f"expected HYD_ReadStatus {field} to be REAL in XML")
+            return 1
+        if f"data__->{field},0,retain" not in plc_source[init_start:init_end]:
+            print(f"expected generated HYD_READSTATUS initializer to clear {field}")
+            return 1
+
     pressure_pou = next(
         (pou for pou in ET.parse(XML).getroot().iter()
          if local_name(pou.tag) == "pou" and

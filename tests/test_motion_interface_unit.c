@@ -194,6 +194,7 @@ static void test_simulation_velocity_ramp_uses_fixed_step_after_large_timestamp(
 
 static void test_real_axis_velocity_ramp_uses_fixed_step_after_large_timestamp(void) {
     HYD_MOVEVELOCITY mv;
+    HYD_READSTATUS rs;
     HYD_MotionControlFB* fb;
     int axisId;
 
@@ -243,6 +244,66 @@ static void test_real_axis_velocity_ramp_uses_fixed_step_after_large_timestamp(v
     __mcl_cmd_MoveVelocity(&mv);
     ASSERT_TRUE(fabsf(fb->STATE.references.velocityReference - 0.5f) < 0.05f,
                 "Real-axis control reference should use the 200 ms transition time after large timestamps");
+
+    memset(&rs, 0, sizeof(rs));
+    IEC_VAL(rs.AXISID) = axisId;
+    IEC_VAL(rs.ENABLE) = true;
+    __mcl_cmd_ReadStatus(&rs);
+    ASSERT_TRUE(IEC_VAL(rs.VALID),
+                "ReadStatus should be valid for an allocated running axis");
+    ASSERT_TRUE(fabsf(IEC_VAL(rs.VELOCITYREFERENCE) -
+                      fb->STATE.references.velocityReference) < 0.001f,
+                "ReadStatus should expose the planner's ramped runtime velocity reference");
+    ASSERT_TRUE(fabsf(IEC_VAL(rs.FLOWREFERENCE) -
+                      fb->STATE.plannedFlow) < 0.001f,
+                "ReadStatus flow reference should reflect the limited pump-side command");
+}
+
+static void test_read_status_reports_pressure_ramp_reference(void) {
+    HYD_PRESSUREHANDLE ph;
+    HYD_READSTATUS rs;
+    HYD_MotionControlFB* fb;
+    int axisId;
+
+    __HydMotion_framework_Init();
+    axisId = create_sim_axis();
+    fb = __MK_GetPublic_MotionControlFB(axisId);
+    ASSERT_TRUE(fb != NULL, "Pressure reference test should resolve the simulation FB");
+    if (fb == NULL) {
+        return;
+    }
+
+    memset(&ph, 0, sizeof(ph));
+    IEC_VAL(ph.EN) = true;
+    IEC_VAL(ph.EXECUTE) = true;
+    IEC_VAL(ph.AXISID) = (IEC_SINT)axisId;
+    IEC_VAL(ph.PRESSURE) = 100.0f;
+    IEC_VAL(ph.PRESSURERAMPRATE) = 1000.0f;
+    IEC_VAL(ph.DURATION) = 5.0f;
+    IEC_VAL(ph.FLOWLIMITPERCENT) = 100.0f;
+    __mcl_cmd_PressureHandle(&ph);
+
+    for (int step = 0; step < 10; ++step) {
+        __HydMotion_framework_Publish();
+        __mcl_cmd_PressureHandle(&ph);
+    }
+
+    memset(&rs, 0, sizeof(rs));
+    IEC_VAL(rs.AXISID) = (IEC_SINT)axisId;
+    IEC_VAL(rs.ENABLE) = true;
+    __mcl_cmd_ReadStatus(&rs);
+
+    ASSERT_TRUE(IEC_VAL(rs.VALID),
+                "ReadStatus should be valid for an allocated pressure-control axis");
+    ASSERT_TRUE(IEC_VAL(rs.PRESSUREREFERENCE) > 0.0f &&
+                IEC_VAL(rs.PRESSUREREFERENCE) < IEC_VAL(ph.PRESSURE),
+                "ReadStatus pressure reference should show intermediate ramp output");
+    ASSERT_TRUE(fabsf(IEC_VAL(rs.PRESSUREREFERENCE) -
+                      fb->STATE.references.pressureReference) < 0.001f,
+                "ReadStatus should expose the pressure-ramp value consumed by control");
+    ASSERT_TRUE(fabsf(IEC_VAL(rs.FLOWREFERENCE) -
+                      fb->STATE.plannedFlow) < 0.001f,
+                "ReadStatus should expose the pressure controller's resulting flow command");
 }
 
 /* ==================================================================
@@ -3455,6 +3516,7 @@ int main(void) {
     test_publish_advances_simulation_feedback_time();
     test_simulation_velocity_ramp_uses_fixed_step_after_large_timestamp();
     test_real_axis_velocity_ramp_uses_fixed_step_after_large_timestamp();
+    test_read_status_reports_pressure_ramp_reference();
     test_moveprofile_init_allocates_fb_with_recipe_mode();
     test_moveprofile_no_execute_does_not_start();
     test_moveprofile_execute_rising_triggers_motion();

@@ -1324,6 +1324,9 @@
 						<variable name="PRESSURELIMITACTIVE"><type><BOOL /></type></variable>
 						<variable name="SOFTLIMITACTIVE"><type><BOOL /></type></variable>
 						<variable name="DERATED"><type><BOOL /></type></variable>
+						<variable name="PRESSUREREFERENCE"><type><REAL /></type></variable>
+						<variable name="FLOWREFERENCE"><type><REAL /></type></variable>
+						<variable name="VELOCITYREFERENCE"><type><REAL /></type></variable>
 					</outputVars>
 				</interface>
 				<body>

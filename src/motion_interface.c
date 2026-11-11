@@ -2929,6 +2929,7 @@ void __mcl_cmd_ReadStatus(HYD_READSTATUS* data__)
 
     if (!axisIndexIsAllocated(axisIndex))
     {
+        __SET_VAR(data__->, VALID,, false);
         __SET_VAR(data__->, STATE,, 0);
         __SET_VAR(data__->, BUSY,, false);
         __SET_VAR(data__->, PRESSURECONTROLLERAPPLIED,,
@@ -2950,6 +2951,9 @@ void __mcl_cmd_ReadStatus(HYD_READSTATUS* data__)
         __SET_VAR(data__->, PRESSURELIMITACTIVE,, false);
         __SET_VAR(data__->, SOFTLIMITACTIVE,, false);
         __SET_VAR(data__->, DERATED,, false);
+        __SET_VAR(data__->, PRESSUREREFERENCE,, (IEC_REAL)0.0f);
+        __SET_VAR(data__->, FLOWREFERENCE,, (IEC_REAL)0.0f);
+        __SET_VAR(data__->, VELOCITYREFERENCE,, (IEC_REAL)0.0f);
         return;
     }
 
@@ -2957,6 +2961,7 @@ void __mcl_cmd_ReadStatus(HYD_READSTATUS* data__)
 
     if (enable)
     {
+        __SET_VAR(data__->, VALID,, true);
         __SET_VAR(data__->, STATE,, (IEC_UINT)fb->STATE.status);
         __SET_VAR(data__->, BUSY,, HYD_MotionControlFB_IsBusy(fb) ? true : false);
         __SET_VAR(data__->, PRESSURECONTROLLERAPPLIED,,
@@ -3000,9 +3005,22 @@ void __mcl_cmd_ReadStatus(HYD_READSTATUS* data__)
                   (fb->STATE.limitFlags & HYD_LIMIT_FLAG_SOFT) != 0u);
         __SET_VAR(data__->, DERATED,,
                   (fb->STATE.limitFlags & HYD_LIMIT_FLAG_DERATE) != 0u);
+#if HYD_ENABLE_EXECUTION_REFERENCE
+        __SET_VAR(data__->, PRESSUREREFERENCE,,
+                  (IEC_REAL)fb->STATE.references.pressureReference);
+        __SET_VAR(data__->, FLOWREFERENCE,,
+                  (IEC_REAL)fb->STATE.references.flowReference);
+        __SET_VAR(data__->, VELOCITYREFERENCE,,
+                  (IEC_REAL)fb->STATE.references.velocityReference);
+#else
+        __SET_VAR(data__->, PRESSUREREFERENCE,, (IEC_REAL)0.0f);
+        __SET_VAR(data__->, FLOWREFERENCE,, (IEC_REAL)0.0f);
+        __SET_VAR(data__->, VELOCITYREFERENCE,, (IEC_REAL)0.0f);
+#endif
     }
     else
     {
+        __SET_VAR(data__->, VALID,, false);
         __SET_VAR(data__->, STATE,, 0);
         __SET_VAR(data__->, BUSY,, false);
         __SET_VAR(data__->, PRESSURECONTROLLERAPPLIED,,
@@ -3024,6 +3042,9 @@ void __mcl_cmd_ReadStatus(HYD_READSTATUS* data__)
         __SET_VAR(data__->, PRESSURELIMITACTIVE,, false);
         __SET_VAR(data__->, SOFTLIMITACTIVE,, false);
         __SET_VAR(data__->, DERATED,, false);
+        __SET_VAR(data__->, PRESSUREREFERENCE,, (IEC_REAL)0.0f);
+        __SET_VAR(data__->, FLOWREFERENCE,, (IEC_REAL)0.0f);
+        __SET_VAR(data__->, VELOCITYREFERENCE,, (IEC_REAL)0.0f);
     }
 
 

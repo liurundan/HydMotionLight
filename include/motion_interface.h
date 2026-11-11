@@ -567,6 +567,10 @@ typedef struct {
   __DECLARE_VAR(BOOL,PRESSURELIMITACTIVE)
   __DECLARE_VAR(BOOL,SOFTLIMITACTIVE)
   __DECLARE_VAR(BOOL,DERATED)
+  /* Current runtime references: bar, L/min, and signed mm/s. */
+  __DECLARE_VAR(REAL,PRESSUREREFERENCE)
+  __DECLARE_VAR(REAL,FLOWREFERENCE)
+  __DECLARE_VAR(REAL,VELOCITYREFERENCE)
 
   // FB private variables - TEMP, private and located variables
 

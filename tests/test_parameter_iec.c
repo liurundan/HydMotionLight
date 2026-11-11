@@ -581,6 +581,11 @@ static void test_read_status_reports_mechanism_state(void) {
     fb->STATE.limitFlags = HYD_LIMIT_FLAG_FLOW | HYD_LIMIT_FLAG_PUMP_SPEED |
                           HYD_LIMIT_FLAG_PRESSURE | HYD_LIMIT_FLAG_SOFT |
                           HYD_LIMIT_FLAG_DERATE;
+#if HYD_ENABLE_EXECUTION_REFERENCE
+    fb->STATE.references.pressureReference = 42.5f;
+    fb->STATE.references.flowReference = 7.25f;
+    fb->STATE.references.velocityReference = -13.5f;
+#endif
 #if HYD_ENABLE_FLOW_DIAGNOSTIC_TELEMETRY
     fb->STATE.requestedFlow = 8.5f;
     fb->STATE.maxFlow = 12.0f;
@@ -600,6 +605,23 @@ static void test_read_status_reports_mechanism_state(void) {
 
     ASSERT_TRUE(IEC_VAL(rs.MECHANISMTYPE) == HYD_MECHANISM_FIVE_POINT_TOGGLE,
                 "ReadStatus should expose mechanism type");
+    ASSERT_TRUE(IEC_VAL(rs.VALID),
+                "ReadStatus should mark an enabled allocated axis as valid");
+#if HYD_ENABLE_EXECUTION_REFERENCE
+    ASSERT_FLOAT_EQ(IEC_VAL(rs.PRESSUREREFERENCE), 42.5f, 0.001f,
+                    "ReadStatus should expose the current runtime pressure reference");
+    ASSERT_FLOAT_EQ(IEC_VAL(rs.FLOWREFERENCE), 7.25f, 0.001f,
+                    "ReadStatus should expose the current runtime flow reference");
+    ASSERT_FLOAT_EQ(IEC_VAL(rs.VELOCITYREFERENCE), -13.5f, 0.001f,
+                    "ReadStatus should expose signed runtime velocity reference");
+#else
+    ASSERT_FLOAT_EQ(IEC_VAL(rs.PRESSUREREFERENCE), 0.0f, 0.0f,
+                    "ReadStatus should zero pressure reference when telemetry is disabled");
+    ASSERT_FLOAT_EQ(IEC_VAL(rs.FLOWREFERENCE), 0.0f, 0.0f,
+                    "ReadStatus should zero flow reference when telemetry is disabled");
+    ASSERT_FLOAT_EQ(IEC_VAL(rs.VELOCITYREFERENCE), 0.0f, 0.0f,
+                    "ReadStatus should zero velocity reference when telemetry is disabled");
+#endif
     ASSERT_TRUE(IEC_VAL(rs.ACTUATORDIRECTION) == HYD_DIRECTION_NEGATIVE,
                 "ReadStatus should expose actuator direction");
     ASSERT_TRUE(IEC_VAL(rs.MECHANISMCONFIGVERSION) == 7u,
@@ -632,6 +654,8 @@ static void test_read_status_reports_mechanism_state(void) {
 
     IEC_VAL(rs.ENABLE) = false;
     __mcl_cmd_ReadStatus(&rs);
+    ASSERT_TRUE(!IEC_VAL(rs.VALID),
+                "Disabled ReadStatus should clear VALID");
     ASSERT_TRUE(IEC_VAL(rs.MECHANISMTYPE) == HYD_MECHANISM_DIRECT,
                 "Disabled ReadStatus should clear mechanism type");
     ASSERT_TRUE(IEC_VAL(rs.ACTUATORDIRECTION) == HYD_DIRECTION_HOLD,
@@ -646,10 +670,28 @@ static void test_read_status_reports_mechanism_state(void) {
                     "Disabled ReadStatus should clear velocity ratio");
     ASSERT_FLOAT_EQ(IEC_VAL(rs.REQUESTEDFLOW), 0.0f, 0.0f,
                     "Disabled ReadStatus should clear requested flow");
+    ASSERT_FLOAT_EQ(IEC_VAL(rs.PRESSUREREFERENCE), 0.0f, 0.0f,
+                    "Disabled ReadStatus should clear pressure reference");
+    ASSERT_FLOAT_EQ(IEC_VAL(rs.FLOWREFERENCE), 0.0f, 0.0f,
+                    "Disabled ReadStatus should clear flow reference");
+    ASSERT_FLOAT_EQ(IEC_VAL(rs.VELOCITYREFERENCE), 0.0f, 0.0f,
+                    "Disabled ReadStatus should clear velocity reference");
     ASSERT_TRUE(!IEC_VAL(rs.FLOWLIMITACTIVE) && !IEC_VAL(rs.PUMPSPEEDLIMITACTIVE) &&
                 !IEC_VAL(rs.PRESSURELIMITACTIVE) && !IEC_VAL(rs.SOFTLIMITACTIVE) &&
                 !IEC_VAL(rs.DERATED),
                 "Disabled ReadStatus should clear limit causes");
+
+    IEC_VAL(rs.ENABLE) = true;
+    IEC_VAL(rs.AXISID) = 127;
+    __mcl_cmd_ReadStatus(&rs);
+    ASSERT_TRUE(!IEC_VAL(rs.VALID),
+                "ReadStatus should clear VALID for an unallocated axis");
+    ASSERT_FLOAT_EQ(IEC_VAL(rs.PRESSUREREFERENCE), 0.0f, 0.0f,
+                    "Invalid axis should clear pressure reference");
+    ASSERT_FLOAT_EQ(IEC_VAL(rs.FLOWREFERENCE), 0.0f, 0.0f,
+                    "Invalid axis should clear flow reference");
+    ASSERT_FLOAT_EQ(IEC_VAL(rs.VELOCITYREFERENCE), 0.0f, 0.0f,
+                    "Invalid axis should clear velocity reference");
 }
 
 static void test_pressure_handle_maps_percent_to_its_absolute_flow_limit(void) {

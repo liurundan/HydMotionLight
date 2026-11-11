@@ -815,6 +815,9 @@ void HYD_READSTATUS_init__(HYD_READSTATUS *data__, BOOL retain) {
   __INIT_VAR(data__->PRESSURELIMITACTIVE,__BOOL_LITERAL(FALSE),retain)
   __INIT_VAR(data__->SOFTLIMITACTIVE,__BOOL_LITERAL(FALSE),retain)
   __INIT_VAR(data__->DERATED,__BOOL_LITERAL(FALSE),retain)
+  __INIT_VAR(data__->PRESSUREREFERENCE,0,retain)
+  __INIT_VAR(data__->FLOWREFERENCE,0,retain)
+  __INIT_VAR(data__->VELOCITYREFERENCE,0,retain)
 }
 
 // Code part
