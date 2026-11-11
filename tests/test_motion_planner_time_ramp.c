@@ -952,6 +952,72 @@ static void test_long_stroke_keeps_full_cruise(void)
           "long stroke must reach full cruise in t_acc (+1 cycle, regression guard)");
 }
 
+static void test_chained_segment_keeps_vp_cap_on_carried_state(void)
+{
+    HYD_AxisRef axis = {0};
+    HYD_MotionSegment segment = {0};
+    HYD_MotionPlannerState state = {0};
+    HYD_MotionPlannerInput input = {0};
+    HYD_MotionPlannerOutput output = {0};
+    HYD_REAL peak = 0.0;
+    HYD_REAL previous = 0.0;
+    HYD_REAL maxStep = 0.0;
+    int cycle;
+
+    /* 段1：5mm 短行程跑到命令归零——锚定停在指向 vt=0 的制动斜坡上
+     * （FB 段链 preserveMotionPlannerState 会整体携带该锚定）。 */
+    segment.mode = HYD_MODE_POSITION;
+    segment.planner = HYD_PLANNER_POSITION_BASED;
+    segment.endCondition = HYD_END_POSITION;
+    segment.direction = HYD_DIRECTION_EXTEND;
+    segment.targetPosition = 5.0;
+    segment.maxVelocity = 90.0;
+    segment.maxAcceleration = 100.0;
+    segment.maxDeceleration = 100.0;
+    segment.maxFlow = 1000.0;
+    segment.velocityToFlowGain = 1.0;
+    state.initialized = true;
+
+    input.axisRef = &axis;
+    input.segment = &segment;
+    input.state = &state;
+    input.deltaTime = 0.001;
+
+    for (cycle = 0; cycle < 600; ++cycle) {
+        input.elapsedTime = (cycle + 1) * 0.001;
+        HYD_MotionPlanner_Execute(&input, &output);
+        axis.position += output.targetVelocity * 0.001;
+        axis.velocity = output.targetVelocity;
+        if (output.targetVelocity <= 0.0) {
+            break;   /* 段完成：命令归零，携带锚定进入段链 */
+        }
+    }
+    check(output.targetVelocity <= 0.0,
+          "chained segment 1 must complete (command reaches zero)");
+
+    /* 段2：同一 state（含携带锚定）再跑 5mm 短行程（目标 10mm）。
+     * 旧行为：锚定制动斜坡判据误触发跳过，第二段冲向 maxV，
+     * peak=59.4、加速 +0.9/周期。 */
+    segment.targetPosition = 10.0;
+
+    for (cycle = 0; cycle < 600; ++cycle) {
+        input.elapsedTime = (cycle + 1) * 0.001;
+        HYD_MotionPlanner_Execute(&input, &output);
+        if (output.targetVelocity - previous > maxStep) {
+            maxStep = output.targetVelocity - previous;
+        }
+        previous = output.targetVelocity;
+        axis.position += output.targetVelocity * 0.001;
+        axis.velocity = output.targetVelocity;
+        if (output.targetVelocity > peak) {
+            peak = output.targetVelocity;
+        }
+    }
+    check(peak <= 50.5, "chained short stroke must keep the reachable vp cap");
+    check(maxStep <= 0.75, "chained short stroke acceleration must use the vp rate");
+    check(axis.position > 9.5, "chained short stroke must converge on target");
+}
+
 int main(void)
 {
     HYD_AxisRef axis = {0};
@@ -1016,6 +1082,7 @@ int main(void)
     test_speed_ramp_stateful_decel_uses_delta_v_rate();
     test_short_stroke_caps_peak_and_keeps_ramp_time();
     test_long_stroke_keeps_full_cruise();
+    test_chained_segment_keeps_vp_cap_on_carried_state();
 
     printf("motion planner time ramp: %s\n", failures == 0 ? "PASS" : "FAIL");
     return failures == 0 ? 0 : 1;

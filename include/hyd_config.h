@@ -374,6 +374,18 @@ typedef HYD_REAL HYD_TIME;
  * 该值是安全兜底的默认值，设备可在标定后通过 segment.timeoutLimit 覆盖。 */
 #define HYD_THRESH_STOP_TIMEOUT_NATURAL_MIN_S 30.0f
 
+/* --- 短行程可达峰值下限（src/motion_planner.c D2 vp cap） --- */
+
+/* 语义A 短行程可达峰值（freshVp）的结果型爬行闸门下限。
+ * 单位：mm/s（与 velocity / plannerOutput.targetVelocity 同维度）。
+ * 用途：可达峰值低于该值（或非有限）时不施加 vp cap，保持 maxV 目标的
+ * 快速包络/落点下限削顶再逼近——低于该值的行程属亚死区噪声，恒时间
+ * 迷你梯形会以亚 mm/s 爬行完成，造成泵死区滞止。
+ * 出处：本计划 Task 2/5 裁定链（2026-11-10 decel-semantics-and-reachability）。 */
+#ifndef HYD_THRESH_SHORT_STROKE_MIN_PEAK
+    #define HYD_THRESH_SHORT_STROKE_MIN_PEAK 1.0f
+#endif
+
 /* --- 压力 ceiling 诊断 debounce / startup-suppress（motion_control.c Init） --- */
 
 /* PRESSURE_CEILING_EXCEEDED 触发前的 debounce 时长。短于一般 pressure

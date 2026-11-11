@@ -426,138 +426,149 @@ static HYD_REAL HYD_ComputeOnlineTrapezoidVelocityMagnitude(const HYD_MotionPlan
 
             /* D2：语义A 下的短行程可达峰值，只在加速阶段施加。
              * 已锚定峰值用精确运动学校验，仍可达则保持（不重锚，速率恒定）；
-             * 不可达时以更低的新峰值重锚（只降不升，安全收敛）。 */
+             * 不可达时跳过 vp cap 保持 maxV 目标（今日行为，被包络/落点
+             * 下限削顶）。结果型爬行闸门：可达峰值低于
+             * HYD_THRESH_SHORT_STROKE_MIN_PEAK 的亚死区行程同样跳过。 */
             {
                 HYD_REAL cruiseTargetMagnitude = segment->maxVelocity;
+                HYD_BOOL skipVpCap = false;
 
                 if (!braking && input->state != NULL &&
                     previousMagnitude < segment->maxVelocity) {
-                    /* ledger 裁定：当前锚定是指向终点速度的制动斜坡时跳过 vp
-                     * cap——段自身制动完成后的残余再逼近保持 maxV 目标（快、
-                     * 被包络/落点下限削顶），避免恒时间迷你梯形的低速爬行与泵
-                     * 死区滞止。段开始时 planner state 归零
-                     * （transitionTimeMs=0），真正的短行程仍会得到 vp；携带的
-                     * blend 状态 vt 相同时退化为今日行为（安全）。 */
-                    HYD_REAL anchoredTerminalTarget =
-                        terminalVelocity * HYD_GetDirectionSign(direction);
-                    HYD_BOOL anchoredOnTerminalRamp =
-                        input->state->transitionTimeMs > 0.0 &&
-                        fabs(input->state->transitionTargetVelocity -
-                             anchoredTerminalTarget) <=
-                            HYD_CompareTolerance(HYD_MaxReal(
-                                fabs(input->state->transitionTargetVelocity),
-                                fabs(anchoredTerminalTarget)));
+                    HYD_TIME accelSeconds =
+                        HYD_MotionTimeMsToSeconds(segment->maxAcceleration);
+                    HYD_TIME decelSeconds = HYD_MotionTimeMsToSeconds(
+                        (segment->maxDeceleration > 0.0)
+                            ? segment->maxDeceleration
+                            : segment->maxAcceleration);
+                    HYD_REAL cycle = (input->deltaTime > 0.0 &&
+                                      isfinite(input->deltaTime))
+                        ? input->deltaTime : 0.0;
+                    HYD_REAL reachablePeak =
+                        (2.0 * remainingDistance -
+                         accelSeconds * previousMagnitude -
+                         decelSeconds * terminalVelocity +
+                         2.0 * terminalVelocity * cycle) /
+                        (accelSeconds + decelSeconds + 2.0 * cycle);
+                    HYD_REAL anchoredTarget =
+                        fabs(input->state->transitionTargetVelocity);
+                    HYD_REAL anchoredRate =
+                        fabs(input->state->transitionRate);
 
-                    if (!anchoredOnTerminalRamp) {
-                        HYD_TIME accelSeconds =
-                            HYD_MotionTimeMsToSeconds(segment->maxAcceleration);
-                        HYD_TIME decelSeconds = HYD_MotionTimeMsToSeconds(
-                            (segment->maxDeceleration > 0.0)
-                                ? segment->maxDeceleration
-                                : segment->maxAcceleration);
-                        HYD_REAL cycle = (input->deltaTime > 0.0 &&
-                                          isfinite(input->deltaTime))
-                            ? input->deltaTime : 0.0;
-                        HYD_REAL reachablePeak =
-                            (2.0 * remainingDistance -
-                             accelSeconds * previousMagnitude -
-                             decelSeconds * terminalVelocity +
-                             2.0 * terminalVelocity * cycle) /
-                            (accelSeconds + decelSeconds + 2.0 * cycle);
-                        HYD_REAL anchoredTarget =
-                            fabs(input->state->transitionTargetVelocity);
-                        HYD_REAL anchoredRate =
-                            fabs(input->state->transitionRate);
-                        HYD_BOOL anchoredRampUnreachable = false;
-
-                        if (anchoredTarget > previousMagnitude &&
-                            anchoredTarget <= segment->maxVelocity &&
-                            reachablePeak < anchoredTarget &&
-                            anchoredRate > 0.0) {
-                            HYD_REAL neededDistance =
-                                (anchoredTarget * anchoredTarget -
-                                 previousMagnitude * previousMagnitude) /
-                                    (2.0 * anchoredRate) +
-                                0.5 * (anchoredTarget + terminalVelocity) *
-                                    decelSeconds +
-                                (anchoredTarget - terminalVelocity) * cycle;
-                            /* anchoredTarget*cycle：离散积分松弛量 */
-                            if (remainingDistance + anchoredTarget * cycle >=
-                                neededDistance) {
-                                reachablePeak = anchoredTarget;
-                            } else {
-                                /* 裁定1补全：锚定的加速斜坡经精确运动学判定
-                                 * 不可达时跳过 vp cap，保持 maxV 目标再逼近
-                                 * （今日行为，被包络/落点下限削顶）。否则目标
-                                 * 被钳到 freshVp<prev 再被下限钉在 prev，重锚
-                                 * 速率归零，命令冻结成 <1mm/s 的多周期爬行
-                                 * （泵死区滞止）。 */
-                                anchoredRampUnreachable = true;
-                            }
+                    if (anchoredTarget > previousMagnitude &&
+                        anchoredTarget <= segment->maxVelocity &&
+                        reachablePeak < anchoredTarget &&
+                        anchoredRate > 0.0) {
+                        HYD_REAL neededDistance =
+                            (anchoredTarget * anchoredTarget -
+                             previousMagnitude * previousMagnitude) /
+                                (2.0 * anchoredRate) +
+                            0.5 * (anchoredTarget + terminalVelocity) *
+                                decelSeconds +
+                            (anchoredTarget - terminalVelocity) * cycle;
+                        /* anchoredTarget*cycle：离散积分松弛量 */
+                        if (remainingDistance + anchoredTarget * cycle >=
+                            neededDistance) {
+                            reachablePeak = anchoredTarget;
+                        } else {
+                            /* 不可达锚定加速斜坡补全（裁定链）：锚定斜坡
+                             * 经精确运动学判定不可达时跳过 vp cap，保持
+                             * maxV 目标再逼近（今日行为，被包络/落点下限
+                             * 削顶）。否则目标被钳到 freshVp<prev 再被下限
+                             * 钉在 prev，重锚速率归零，命令冻结成
+                             * <1mm/s 的多周期爬行（泵死区滞止）。 */
+                            skipVpCap = true;
                         }
-                        if (!anchoredRampUnreachable) {
-                            cruiseTargetMagnitude =
-                                HYD_MinReal(cruiseTargetMagnitude, reachablePeak);
-                            cruiseTargetMagnitude =
-                                HYD_MaxReal(cruiseTargetMagnitude,
-                                            HYD_MaxReal(previousMagnitude,
-                                                        terminalVelocity));
-                            cruiseTargetMagnitude =
-                                HYD_MinReal(cruiseTargetMagnitude, segment->maxVelocity);
+                    }
+                    if (!skipVpCap) {
+                        HYD_REAL effectivePeak;
+
+                        if (!isfinite(reachablePeak)) {
+                            /* 非有限可达峰值：结果型闸门的数值防护 */
+                            skipVpCap = true;
+                        } else {
+                            effectivePeak = HYD_MaxReal(
+                                HYD_MaxReal(reachablePeak, previousMagnitude),
+                                terminalVelocity);
+                            /* 结果型爬行闸门（裁定链 Task 2/5）：钳位后的
+                             * 有效巡航峰值低于 HYD_THRESH_SHORT_STROKE_MIN_PEAK
+                             * 时，行程属亚死区噪声，跳过整个 vp cap——恒时间
+                             * 迷你梯形会以亚 mm/s 爬行完成，造成泵死区滞止；
+                             * 保持 maxV 目标的快速包络/落点下限削顶再逼近才是
+                             * 正确行为。注意在钳位结果（含下限 max(prev, vt)）
+                             * 上判定而非裸 freshVp：加速中 freshVp 单调下降且
+                             * vp<prev 时下限本就钉回 prev（等待制动触发），
+                             * 裸判会中途掐断仍在可达范围内的已锚定梯形。 */
+                            if (effectivePeak <
+                                HYD_THRESH_SHORT_STROKE_MIN_PEAK) {
+                                skipVpCap = true;
+                            } else {
+                                cruiseTargetMagnitude =
+                                    HYD_MinReal(cruiseTargetMagnitude,
+                                                effectivePeak);
+                                cruiseTargetMagnitude =
+                                    HYD_MinReal(cruiseTargetMagnitude,
+                                                segment->maxVelocity);
+                            }
                         }
                     }
                 }
 
                 if (input->state != NULL) {
-                    HYD_REAL targetMagnitude = braking ? terminalVelocity : cruiseTargetMagnitude;
-                HYD_REAL targetVelocity = targetMagnitude * HYD_GetDirectionSign(direction);
-                velocityMagnitude = fabs(HYD_AdvanceStatefulVelocity(
-                    input->state,
-                    targetVelocity,
-                    HYD_ResolveTransitionTimeMs(segment,
-                                                input->state->lastTargetVelocity,
-                                                targetVelocity),
-                    input->deltaTime));
-                if (braking && !blendActive) {
-                    /* Landing floor: closes the loop on remaining distance at the anchored delta-v/t_dec
-                     * rate, so an early trigger no longer leaves a non-blend stop up to ~1.5*v0*dt short
-                     * (a final step of at most a_env*dt may remain). Never accelerates; one-cycle delay
-                     * model. Non-blend only: blend terminal stops land on the zero-delay blend envelope
-                     * via the quadratic trigger above; vt > 0 blends only need vt by the switch point. */
-                    HYD_REAL anchoredRate = fabs(input->state->transitionRate);
+                    HYD_REAL targetMagnitude =
+                        braking ? terminalVelocity : cruiseTargetMagnitude;
+                    HYD_REAL targetVelocity =
+                        targetMagnitude * HYD_GetDirectionSign(direction);
+                    velocityMagnitude = fabs(HYD_AdvanceStatefulVelocity(
+                        input->state,
+                        targetVelocity,
+                        HYD_ResolveTransitionTimeMs(segment,
+                                                    input->state->lastTargetVelocity,
+                                                    targetVelocity),
+                        input->deltaTime));
+                    if (braking && !blendActive) {
+                        /* Landing floor: closes the loop on remaining distance at the anchored delta-v/t_dec
+                         * rate, so an early trigger no longer leaves a non-blend stop up to ~1.5*v0*dt short
+                         * (a final step of at most a_env*dt may remain). Never accelerates; one-cycle delay
+                         * model. Non-blend only: blend terminal stops land on the zero-delay blend envelope
+                         * via the quadratic trigger above; vt > 0 blends only need vt by the switch point. */
+                        HYD_REAL anchoredRate = fabs(input->state->transitionRate);
 
-                    if (anchoredRate > 0.0) {
-                        HYD_REAL landingMagnitude =
-                            HYD_ComputeDelayAwareBrakingVelocityMagnitude(
-                                remainingDistance,
-                                anchoredRate,
-                                HYD_MaxReal(segment->maxVelocity, previousMagnitude),
-                                input->deltaTime,
-                                terminalVelocity);
-                        velocityMagnitude = HYD_MaxReal(
-                            velocityMagnitude,
-                            HYD_MinReal(landingMagnitude, previousMagnitude));
+                        if (anchoredRate > 0.0) {
+                            HYD_REAL landingMagnitude =
+                                HYD_ComputeDelayAwareBrakingVelocityMagnitude(
+                                    remainingDistance,
+                                    anchoredRate,
+                                    HYD_MaxReal(segment->maxVelocity, previousMagnitude),
+                                    input->deltaTime,
+                                    terminalVelocity);
+                            velocityMagnitude = HYD_MaxReal(
+                                velocityMagnitude,
+                                HYD_MinReal(landingMagnitude, previousMagnitude));
+                        }
                     }
+                } else if (input->deltaTime <= 0.0) {
+                    velocityMagnitude = previousMagnitude;
+                } else if (braking) {
+                    velocityMagnitude =
+                        HYD_ApplyTerminalVelocityRateLimit(
+                            previousMagnitude,
+                            terminalVelocity,
+                            HYD_ResolveTransitionRate(segment,
+                                                      previousMagnitude,
+                                                      terminalVelocity,
+                                                      true),
+                            brakingAcceleration,
+                            input->deltaTime);
+                } else {
+                    velocityMagnitude =
+                        HYD_MinReal(segment->maxVelocity,
+                                    previousMagnitude +
+                                    HYD_ResolveTransitionRate(segment,
+                                                              previousMagnitude,
+                                                              segment->maxVelocity,
+                                                              true) * input->deltaTime);
                 }
-            } else if (input->deltaTime <= 0.0) {
-                velocityMagnitude = previousMagnitude;
-            } else if (braking) {
-                velocityMagnitude = HYD_ApplyTerminalVelocityRateLimit(previousMagnitude,
-                                                                      terminalVelocity,
-                                                                      HYD_ResolveTransitionRate(segment,
-                                                                                                 previousMagnitude,
-                                                                                                 terminalVelocity,
-                                                                                                 true),
-                                                                      brakingAcceleration,
-                                                                      input->deltaTime);
-            } else {
-                velocityMagnitude = HYD_MinReal(segment->maxVelocity,
-                                                previousMagnitude +
-                                                HYD_ResolveTransitionRate(segment,
-                                                                           previousMagnitude,
-                                                                           segment->maxVelocity,
-                                                                           true) * input->deltaTime);
-            }
             } /* 巡航目标（cruiseTargetMagnitude）计算块结束 */
         }
     }
