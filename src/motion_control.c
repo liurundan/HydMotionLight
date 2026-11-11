@@ -976,6 +976,53 @@ static HYD_REAL HYD_ResolveDirectBlendSwitchTolerance(const HYD_MotionSegment* a
     return (throughVelocityDistance > tolerance) ? throughVelocityDistance : tolerance;
 }
 
+/* 复刻 motion_planner.c HYD_CompareTolerance（static，不可跨文件引用）的
+ * 相对容差数值语义；机械容差不是调参阈值，不进 hyd_config.h。 */
+static HYD_BOOL HYD_ContinuousAnchorValueMatches(HYD_REAL left, HYD_REAL right) {
+    HYD_REAL magnitude = (fabs(left) > fabs(right)) ? fabs(left) : fabs(right);
+    HYD_REAL tolerance = magnitude * 16.0 * HYD_REAL_EPSILON;
+
+    if (tolerance < 16.0 * HYD_REAL_EPSILON) {
+        tolerance = 16.0 * HYD_REAL_EPSILON;
+    }
+    return fabs(left - right) <= tolerance;
+}
+
+/* approach 方向 → 符号，复刻 motion_planner.c HYD_GetDirectionSign 的映射 */
+static HYD_REAL HYD_ResolveApproachDirectionSign(HYD_MotionDirection direction) {
+    switch (direction) {
+        case HYD_DIRECTION_EXTEND:
+            return 1.0;
+        case HYD_DIRECTION_RETRACT:
+            return -1.0;
+        default:
+            return 0.0;
+    }
+}
+
+/* 接管携带的前置段加速锚定有效判据（全部满足）：
+ * 1) planner state 已初始化；2) 过渡时间 > 0；
+ * 3) 带符号速率沿 approach 方向为正（有意收紧：防止入口超速的减速锚定
+ *    在 t_dec==t_acc 时被误读为加速度）；
+ * 4) 锚定目标 ≈ 段巡航速度；5) 锚定过渡时间 ≈ 段加速时间。 */
+static HYD_BOOL HYD_HasCarriedAccelerationAnchor(const HYD_MotionControlFB* fb,
+                                                 const HYD_MotionSegment* segment,
+                                                 HYD_REAL approachSign) {
+    if (!fb->_plannerState.initialized ||
+        fb->_plannerState.transitionTimeMs <= 0.0f ||
+        fb->_plannerState.transitionRate * approachSign <= 0.0f) {
+        return false;
+    }
+    if (!HYD_ContinuousAnchorValueMatches(
+            fb->_plannerState.transitionTargetVelocity * approachSign,
+            segment->maxVelocity)) {
+        return false;
+    }
+    return HYD_ContinuousAnchorValueMatches(
+        fb->_plannerState.transitionTimeMs,
+        HYD_NormalizeMotionTimeMs(segment->maxAcceleration));
+}
+
 static HYD_REAL HYD_ResolveContinuousAbsoluteCrossingVelocity(
     const HYD_MotionControlFB* fb,
     const HYD_ContinuousAbsoluteContext* ctx,
@@ -1001,10 +1048,20 @@ static HYD_REAL HYD_ResolveContinuousAbsoluteCrossingVelocity(
     }
 
     if (projectedVelocity < requested) {
-        /* 语义A：规划器从当前速度以 (巡航目标-当前)/t_acc 锚定加速 */
-        HYD_REAL acceleration = (segment->maxVelocity - projectedVelocity) /
-            HYD_MotionTimeMsToSeconds(segment->maxAcceleration);
+        /* 语义A：规划器从当前速度以 (巡航目标-当前)/t_acc 锚定加速；
+         * 若接管携带的前置段加速锚定仍有效，规划器保持缓存速率继续
+         * 加速，可达加速度取锚定速率而不是新起一条斜坡。 */
+        HYD_REAL acceleration;
         HYD_REAL reachable;
+
+        if (HYD_HasCarriedAccelerationAnchor(
+                fb, segment,
+                HYD_ResolveApproachDirectionSign(ctx->approachDirection))) {
+            acceleration = fabs(fb->_plannerState.transitionRate);
+        } else {
+            acceleration = (segment->maxVelocity - projectedVelocity) /
+                HYD_MotionTimeMsToSeconds(segment->maxAcceleration);
+        }
 
         if (acceleration < 0.0f) {
             acceleration = 0.0f;
@@ -1867,19 +1924,20 @@ static HYD_BOOL HYD_StartPendingDirectSlot(HYD_MotionControlFB* fb,
     HYD_CopyContinuousAbsoluteContext(&fb->_directContinuousAbsolute,
                                       &pendingContinuousAbsolute);
     fb->_directContinuousAbsolute.ownerTicket = fb->_directOwnerTicket;
-    if (pendingKind == HYD_DIRECT_CMD_MOVE_CONTINUOUS_ABSOLUTE &&
-        fb->_directContinuousAbsolute.valid) {
-        fb->_directContinuousAbsolute.crossingVelocity =
-            HYD_ResolveContinuousAbsoluteCrossingVelocity(fb,
-                                                          &fb->_directContinuousAbsolute,
-                                                          &fb->_activeSegment);
-    }
     if (preservePlannerState) {
         /* Blended cutover stays inside one continuous motion command stream.
          * HYD_BeginSegment routes through safe-output reset; restore the last
          * published motion state so the successor starts from the carried
          * velocity instead of one scan of zeroed references. */
         HYD_RestoreDirectContinuityState(fb, &continuityState);
+    }
+    /* crossing 求值须读取恢复后的 planner state（携带的前置段加速锚定） */
+    if (pendingKind == HYD_DIRECT_CMD_MOVE_CONTINUOUS_ABSOLUTE &&
+        fb->_directContinuousAbsolute.valid) {
+        fb->_directContinuousAbsolute.crossingVelocity =
+            HYD_ResolveContinuousAbsoluteCrossingVelocity(fb,
+                                                          &fb->_directContinuousAbsolute,
+                                                          &fb->_activeSegment);
     }
     fb->USE_RECIPE = savedUseRecipe;
     return true;
@@ -4035,13 +4093,6 @@ HYD_DirectStartResult HYD_MotionControlFB_StartDirectCommand(HYD_MotionControlFB
         HYD_CopyContinuousAbsoluteContext(&fb->_directContinuousAbsolute,
                                           continuousAbsolute);
         fb->_directContinuousAbsolute.ownerTicket = fb->_directOwnerTicket;
-        if (kind == HYD_DIRECT_CMD_MOVE_CONTINUOUS_ABSOLUTE &&
-            fb->_directContinuousAbsolute.valid) {
-            fb->_directContinuousAbsolute.crossingVelocity =
-                HYD_ResolveContinuousAbsoluteCrossingVelocity(fb,
-                                                              &fb->_directContinuousAbsolute,
-                                                              &fb->_activeSegment);
-        }
         if (preserveContinuity) {
             HYD_RestoreDirectContinuityState(fb, &continuityState);
         }
@@ -4052,6 +4103,16 @@ HYD_DirectStartResult HYD_MotionControlFB_StartDirectCommand(HYD_MotionControlFB
                 return HYD_DIRECT_START_REJECTED;
             }
             HYD_RestoreDirectContinuityState(fb, &continuityState);
+        }
+        /* crossing 求值须读取恢复后的 planner state（携带的前置段加速锚定）；
+         * 若 PrimeSegmentControllers 失败提前 REJECTED，命令未启动，
+         * crossingVelocity 无人消费。 */
+        if (kind == HYD_DIRECT_CMD_MOVE_CONTINUOUS_ABSOLUTE &&
+            fb->_directContinuousAbsolute.valid) {
+            fb->_directContinuousAbsolute.crossingVelocity =
+                HYD_ResolveContinuousAbsoluteCrossingVelocity(fb,
+                                                              &fb->_directContinuousAbsolute,
+                                                              &fb->_activeSegment);
         }
         fb->USE_RECIPE = savedUseRecipe;
         return HYD_DIRECT_START_STARTED;
