@@ -245,6 +245,41 @@ static void test_stop_deceleration_uses_dynamic_gain_at_each_position(void)
     assert_toggle_stop_flow_at_position(180.0f);
 }
 
+static void test_toggle_stop_remaps_at_current_position_each_cycle(void)
+{
+    HYD_TogglePreparedConfig prepared = prepare_default_toggle();
+    HYD_MotionControlFB fb;
+    HYD_ToggleSolution solution;
+    HYD_ToggleError error = HYD_TOGGLE_ERROR_NONE;
+    HYD_REAL previousMagnitude;
+    unsigned int step;
+
+    start_bound_toggle_speed(&fb, &prepared, 101.0f);
+    fb.AXIS_REF.velocity = fb.STATE.plannedVelocity;
+    previousMagnitude = fabsf(fb.STATE.plannedVelocity);
+    assert(previousMagnitude > 0.1f);
+    assert(HYD_MotionControlFB_Stop(&fb, fb.AXIS_REF.timestamp, 200.0f));
+
+    for (step = 0U; step < 10U; ++step) {
+        HYD_REAL positionStep = fb.STATE.plannedVelocity * 0.01f;
+
+        fb.AXIS_REF.position += positionStep;
+        fb.AXIS_REF.velocity = fb.STATE.plannedVelocity;
+        fb.AXIS_REF.timestamp += 0.01f;
+        HYD_MotionControlFB_Cycle(&fb);
+
+        assert(fabsf(fb.STATE.plannedVelocity) <= previousMagnitude + 0.001f);
+        assert(fb.STATE.plannedVelocity >= 0.0f);
+        assert(HYD_ToggleKinematics_SolveOnline(
+            &prepared, fb.AXIS_REF.position, fb.STATE.plannedVelocity,
+            &solution, &error));
+        assert_near(fb.STATE.plannedFlow, fabsf(solution.vs) * 2.0f, 0.003f);
+        assert_near(fb.PUMP_SPEED, fb.STATE.plannedFlow * 10.0f, 0.003f);
+
+        previousMagnitude = fabsf(fb.STATE.plannedVelocity);
+    }
+}
+
 static void test_runtime_mapping_failures_zero_outputs_in_same_cycle(void)
 {
     HYD_TogglePreparedConfig prepared = prepare_default_toggle();
@@ -508,6 +543,7 @@ int main(void)
     test_toggle_mapping_varies_with_position_in_actuator_space();
     test_pressure_flow_bypasses_toggle_velocity_mapping();
     test_stop_deceleration_uses_dynamic_gain_at_each_position();
+    test_toggle_stop_remaps_at_current_position_each_cycle();
     test_runtime_mapping_failures_zero_outputs_in_same_cycle();
     test_soft_reset_preserves_toggle_binding();
     test_hold_resume_preserves_template_position();

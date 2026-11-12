@@ -276,11 +276,11 @@ static void test_stop_deceleration_input_is_honored(void) {
 }
 
 /* ==================================================================
- * Scenario D: Stop should decelerate from planned velocity when feedback
- * velocity is not being closed by the test harness / hardware adapter yet.
+ * Scenario D: Stop should decelerate from the planner command when feedback
+ * velocity is zero.
  *
  * AXIS_REF.velocity remains zero here, but MoveAbsolute has already produced
- * a nonzero planned velocity. Stop must not treat that as already stopped.
+ * a nonzero planned velocity command.
  * ================================================================== */
 static void test_stop_uses_planned_velocity_when_feedback_velocity_is_zero(void) {
     HYD_MOVEABSOLUTE ma;
@@ -290,7 +290,7 @@ static void test_stop_uses_planned_velocity_when_feedback_velocity_is_zero(void)
     int stopDoneStep = 0;
     HYD_REAL plannedBeforeStop;
 
-    printf("\n--- Scenario D: Stop uses planned velocity when feedback velocity is zero ---\n");
+    printf("\n--- Scenario D: Stop uses planner command when feedback velocity is zero ---\n");
     __HydMotion_framework_Init();
     axisId = create_axis(false);
     CHECK(axisId >= 0, "Create non-sim axis");
@@ -356,6 +356,172 @@ static void test_stop_uses_planned_velocity_when_feedback_velocity_is_zero(void)
           "Stop should not set ERROR while decelerating from planned velocity");
 }
 
+static HYD_MotionSegment make_stop_test_segment(HYD_ControlMode mode) {
+    HYD_MotionSegment segment;
+
+    memset(&segment, 0, sizeof(segment));
+    segment.segmentType = HYD_SEGMENT_TYPE_OTHER;
+    segment.mode = mode;
+    segment.direction = HYD_DIRECTION_EXTEND;
+    segment.maxVelocity = 20.0f;
+    segment.maxAcceleration = 100.0f;
+    segment.maxDeceleration = 100.0f;
+    segment.maxFlow = 100.0f;
+    segment.velocityToFlowGain = 2.0f;
+    if (mode == HYD_MODE_POSITION) {
+        segment.planner = HYD_PLANNER_POSITION_BASED;
+        segment.endCondition = HYD_END_POSITION;
+        segment.targetPosition = 200.0f;
+        segment.positionTolerance = 0.01f;
+    } else {
+        segment.planner = HYD_PLANNER_TIME_BASED;
+        segment.endCondition = HYD_END_MANUAL;
+    }
+    return segment;
+}
+
+static void assert_stop_latches_planned_command(HYD_ControlMode mode,
+                                                const char* modeName) {
+    HYD_MotionControlFB fb;
+    HYD_MotionSegment segment = make_stop_test_segment(mode);
+    HYD_REAL plannedBeforeStop;
+    HYD_REAL feedbackVelocity;
+    HYD_REAL previousMagnitude;
+    int step;
+
+    HYD_MotionControlFB_Init(&fb);
+    fb.USE_RECIPE = false;
+    fb.FLOW_TO_PUMP_SPEED_GAIN = 10.0f;
+    fb.PUMP_SPEED_LIMIT = 3000.0f;
+    fb.AXIS_REF.position = 0.0f;
+    fb.AXIS_REF.timestamp = 0.0f;
+    CHECK(HYD_MotionControlFB_LoadDirectSegment(&fb, &segment),
+          "Load direct stop test segment");
+    CHECK(HYD_MotionControlFB_StartSegment(&fb, 0u, 0.0f),
+          "Start direct stop test segment");
+    HYD_MotionControlFB_Cycle(&fb);
+    fb.AXIS_REF.timestamp = 0.05f;
+    HYD_MotionControlFB_Cycle(&fb);
+
+    plannedBeforeStop = fb.STATE.plannedVelocity;
+    CHECK(fabs(plannedBeforeStop) > 0.1f,
+          "Motion planner has issued a nonzero velocity command");
+    feedbackVelocity = plannedBeforeStop * 0.25f;
+    fb.AXIS_REF.velocity = feedbackVelocity;
+
+    CHECK(HYD_MotionControlFB_Stop(&fb, fb.AXIS_REF.timestamp, 200.0f),
+          "Queue Stop while motion is running");
+    fb.AXIS_REF.timestamp += 0.001f;
+    HYD_MotionControlFB_Cycle(&fb);
+
+    printf("  %s Stop start: planned=%.4f feedback=%.4f latched=%.4f\n",
+           modeName, (double)plannedBeforeStop, (double)feedbackVelocity,
+           (double)fb._stopStartVel);
+    CHECK(fabs(fb._stopStartVel - plannedBeforeStop) < 0.001f,
+          "Stop starts from the last planner command, not measured velocity");
+
+    previousMagnitude = fabs(fb.STATE.plannedVelocity);
+    for (step = 0; step < 4; ++step) {
+        fb.AXIS_REF.timestamp += 0.01f;
+        HYD_MotionControlFB_Cycle(&fb);
+        CHECK(fabs(fb.STATE.plannedVelocity) <= previousMagnitude + 0.001f,
+              "Stop planner command magnitude decreases monotonically");
+        CHECK(fb.STATE.plannedVelocity == 0.0f ||
+                  fb.STATE.plannedVelocity * plannedBeforeStop > 0.0f,
+              "Stop planner command does not reverse direction");
+        previousMagnitude = fabs(fb.STATE.plannedVelocity);
+    }
+}
+
+static void test_stop_latches_planned_command_for_position_and_speed(void) {
+    printf("\n--- Scenario E: Stop latches planner command in position and speed modes ---\n");
+    assert_stop_latches_planned_command(HYD_MODE_POSITION, "Position");
+    assert_stop_latches_planned_command(HYD_MODE_SPEED_RAMP, "Speed");
+}
+
+static void assert_stop_does_not_fallback_from_zero_planner(HYD_ControlMode mode) {
+    HYD_MotionControlFB fb;
+    HYD_MotionSegment segment = make_stop_test_segment(mode);
+    HYD_REAL feedbackVelocity;
+
+    HYD_MotionControlFB_Init(&fb);
+    fb.USE_RECIPE = false;
+    fb.FLOW_TO_PUMP_SPEED_GAIN = 10.0f;
+    fb.PUMP_SPEED_LIMIT = 3000.0f;
+    fb.AXIS_REF.timestamp = 0.0f;
+    CHECK(HYD_MotionControlFB_LoadDirectSegment(&fb, &segment),
+          "Load segment for zero planner command");
+    CHECK(HYD_MotionControlFB_StartSegment(&fb, 0u, 0.0f),
+          "Start segment for zero planner command");
+    HYD_MotionControlFB_Cycle(&fb);
+    fb.AXIS_REF.timestamp = 0.05f;
+    HYD_MotionControlFB_Cycle(&fb);
+
+    feedbackVelocity = fb.STATE.plannedVelocity;
+    CHECK(fabs(feedbackVelocity) > 0.1f,
+          "Axis feedback scenario starts with nonzero motion");
+    fb.AXIS_REF.velocity = feedbackVelocity;
+    fb.STATE.plannedVelocity = 0.0f;
+    fb.STATE.plannedFlow = 0.0f;
+    fb.STATE.commandedPumpSpeed = 0.0f;
+    fb.PUMP_SPEED = 0.0f;
+    fb._plannerState.lastTargetVelocity = 0.0f;
+    fb._plannerState.lastTargetFlow = 0.0f;
+    fb._lastCommandedFlow = 0.0f;
+
+    CHECK(HYD_MotionControlFB_Stop(&fb, fb.AXIS_REF.timestamp, 200.0f),
+          "Queue Stop with zero planner command and nonzero feedback");
+    fb.AXIS_REF.timestamp += 0.001f;
+    HYD_MotionControlFB_Cycle(&fb);
+
+    CHECK(fb._stopStartVel == 0.0f,
+          "A zero planner command must not fall back to measured velocity");
+    CHECK(fb.PUMP_SPEED == 0.0f,
+          "Stop must not raise pump command when the last planner command was zero");
+}
+
+static void test_stop_keeps_zero_planner_command_in_position_and_speed(void) {
+    printf("\n--- Scenario F: Stop does not fall back from zero planner command ---\n");
+    assert_stop_does_not_fallback_from_zero_planner(HYD_MODE_POSITION);
+    assert_stop_does_not_fallback_from_zero_planner(HYD_MODE_SPEED_RAMP);
+}
+
+static void test_stop_output_respects_soft_limit(void) {
+    HYD_MotionControlFB fb;
+    HYD_MotionSegment segment = make_stop_test_segment(HYD_MODE_SPEED_RAMP);
+
+    printf("\n--- Scenario G: HYD_STOP output respects the soft limit ---\n");
+    HYD_MotionControlFB_Init(&fb);
+    fb.USE_RECIPE = false;
+    fb.FLOW_TO_PUMP_SPEED_GAIN = 10.0f;
+    fb.PUMP_SPEED_LIMIT = 3000.0f;
+    fb.cylinderConfig.areaExtendMm2 = 10000.0f;
+    fb.cylinderConfig.areaRetractMm2 = 6000.0f;
+    fb.cylinderConfig.strokeMm = 100.0f;
+    fb.cylinderConfig.softLimitBandMm = 20.0f;
+    fb.AXIS_REF.timestamp = 0.0f;
+    CHECK(HYD_MotionControlFB_LoadDirectSegment(&fb, &segment),
+          "Load direct speed segment for soft-limit test");
+    CHECK(HYD_MotionControlFB_StartSegment(&fb, 0u, 0.0f),
+          "Start direct speed segment for soft-limit test");
+    HYD_MotionControlFB_Cycle(&fb);
+    fb.AXIS_REF.timestamp = 0.05f;
+    HYD_MotionControlFB_Cycle(&fb);
+    CHECK(fb.PUMP_SPEED > 0.0f,
+          "Speed motion has nonzero pump command before protection");
+
+    fb.AXIS_REF.position = 101.0f;
+    CHECK(HYD_MotionControlFB_Stop(&fb, fb.AXIS_REF.timestamp, 200.0f),
+          "Queue HYD_STOP as the axis reaches the soft limit");
+    fb.AXIS_REF.timestamp += 0.001f;
+    HYD_MotionControlFB_Cycle(&fb);
+
+    CHECK(fb.PUMP_SPEED == 0.0f,
+          "Soft limit must constrain the decelerating HYD_STOP output");
+    CHECK((fb.STATE.limitFlags & HYD_LIMIT_FLAG_SOFT) != 0u,
+          "Stop cycle must report that the soft-limit clamp was applied");
+}
+
 int main(void) {
     printf("=== Stop Immediate DONE Reproduction ===\n");
 
@@ -370,6 +536,10 @@ int main(void) {
 
     __HydMotion_framework_Init();
     test_stop_uses_planned_velocity_when_feedback_velocity_is_zero();
+
+    test_stop_latches_planned_command_for_position_and_speed();
+    test_stop_keeps_zero_planner_command_in_position_and_speed();
+    test_stop_output_respects_soft_limit();
 
     printf("\n=== Results: %d/%d passed ===\n", tests_passed, tests_run);
     return (tests_passed == tests_run) ? 0 : 1;

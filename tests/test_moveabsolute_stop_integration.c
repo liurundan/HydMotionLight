@@ -138,8 +138,8 @@ static void test_stop_time_is_explicit_and_independent(void) {
     HYD_MotionControlFB_Cycle(&fb);
     firstStopVelocity = fabs(fb.STATE.plannedVelocity);
 
-    CHECK(fabs(firstStopVelocity - 10.0) < 0.01,
-          "Stop should use its explicit millisecond deceleration time");
+    CHECK(fabs(firstStopVelocity - fabs(fb._stopStartVel) * 0.5) < 0.01,
+          "Stop should halve its latched planner command after half the deceleration time");
 }
 
 static void test_position_segment_ramps_velocity_flow_and_pump_speed(void) {
