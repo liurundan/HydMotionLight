@@ -790,6 +790,141 @@ static void test_blend_terminal_stop_keeps_envelope_landing(void)
           "blend terminal stop command must reach zero");
 }
 
+static void test_blend_zero_end_uses_planned_velocity_for_decel_time(void)
+{
+    HYD_AxisRef axis = {0};
+    HYD_MotionSegment segment = {0};
+    HYD_MotionBlendContext blend = {0};
+    HYD_MotionPlannerState state = {0};
+    HYD_MotionPlannerInput input = {0};
+    HYD_MotionPlannerOutput output = {0};
+    HYD_REAL initialVelocity = 45.0;
+    HYD_REAL decelSeconds = 0.1;
+    HYD_REAL remaining;
+    int decelCycles = 0;
+    int cycle;
+
+    segment.mode = HYD_MODE_POSITION;
+    segment.planner = HYD_PLANNER_POSITION_BASED;
+    segment.endCondition = HYD_END_POSITION;
+    segment.direction = HYD_DIRECTION_EXTEND;
+    segment.targetPosition = 100.0;
+    segment.maxVelocity = 90.0;
+    segment.maxAcceleration = 100.0;
+    segment.maxDeceleration = 100.0;
+    segment.maxFlow = 1000.0;
+    segment.velocityToFlowGain = 1.0;
+    segment.positionTolerance = 0.1;
+
+    blend.active = true;
+    blend.bufferMode = HYD_BUFFER_MODE_BLENDING_NEXT;
+    blend.blendVelocity = 0.0;
+    blend.switchPosition = segment.targetPosition;
+    blend.switchTolerance = segment.positionTolerance;
+
+    input.deltaTime = 0.001;
+    /* Start at the fixed-time braking boundary from a planned speed below maxV. */
+    remaining = 0.5 * initialVelocity *
+        (decelSeconds - input.deltaTime);
+    axis.position = segment.targetPosition - remaining;
+    axis.velocity = 300.0; /* deliberately noisy feedback, unrelated to the plan */
+    state.initialized = true;
+    state.lastTargetVelocity = initialVelocity;
+
+    input.axisRef = &axis;
+    input.segment = &segment;
+    input.state = &state;
+    input.blend = &blend;
+
+    for (cycle = 0; cycle < 300; ++cycle) {
+        input.elapsedTime = (cycle + 1) * input.deltaTime;
+        HYD_MotionPlanner_Execute(&input, &output);
+        axis.position += output.targetVelocity * input.deltaTime;
+        axis.velocity = (cycle % 2 == 0) ? -250.0 : 300.0;
+        if (output.targetVelocity < initialVelocity - 0.05 &&
+            output.targetVelocity > 0.05) {
+            decelCycles++;
+        }
+        if (output.targetVelocity <= 0.05) {
+            break;
+        }
+    }
+
+    check(decelCycles >= 97 && decelCycles <= 101,
+          "zero-end blend deceleration from below maxV must take t_dec despite noisy feedback");
+    check(fabs(segment.targetPosition - axis.position) <=
+              segment.positionTolerance + 0.001,
+          "zero-end blend deceleration must still settle within position tolerance");
+}
+
+static void test_blend_zero_end_short_stroke_keeps_safety_envelope(void)
+{
+    HYD_AxisRef axis = {0};
+    HYD_MotionSegment segment = {0};
+    HYD_MotionBlendContext blend = {0};
+    HYD_MotionPlannerState state = {0};
+    HYD_MotionPlannerInput input = {0};
+    HYD_MotionPlannerOutput output = {0};
+    HYD_REAL previousVelocity = 45.0;
+    HYD_REAL timeBasedBrakeDistance;
+    int reachedZero = 0;
+    int monotone = 1;
+    int cycle;
+
+    segment.mode = HYD_MODE_POSITION;
+    segment.planner = HYD_PLANNER_POSITION_BASED;
+    segment.endCondition = HYD_END_POSITION;
+    segment.direction = HYD_DIRECTION_EXTEND;
+    segment.targetPosition = 100.0;
+    segment.maxVelocity = 90.0;
+    segment.maxAcceleration = 100.0;
+    segment.maxDeceleration = 100.0;
+    segment.maxFlow = 1000.0;
+    segment.velocityToFlowGain = 1.0;
+    segment.positionTolerance = 0.1;
+
+    blend.active = true;
+    blend.bufferMode = HYD_BUFFER_MODE_BLENDING_NEXT;
+    blend.blendVelocity = 0.0;
+    blend.switchPosition = segment.targetPosition;
+    blend.switchTolerance = segment.positionTolerance;
+
+    input.deltaTime = 0.001;
+    timeBasedBrakeDistance = 0.5 * previousVelocity * (0.1 - input.deltaTime);
+    axis.position = segment.targetPosition - timeBasedBrakeDistance * 0.6;
+    axis.velocity = -400.0;
+    state.initialized = true;
+    state.lastTargetVelocity = previousVelocity;
+
+    input.axisRef = &axis;
+    input.segment = &segment;
+    input.state = &state;
+    input.blend = &blend;
+
+    for (cycle = 0; cycle < 300; ++cycle) {
+        input.elapsedTime = (cycle + 1) * input.deltaTime;
+        HYD_MotionPlanner_Execute(&input, &output);
+        if (output.targetVelocity > previousVelocity + 1e-4) {
+            monotone = 0;
+        }
+        previousVelocity = output.targetVelocity;
+        axis.position += output.targetVelocity * input.deltaTime;
+        axis.velocity = (cycle % 2 == 0) ? -400.0 : 500.0;
+        if (output.targetVelocity <= 0.05) {
+            reachedZero = 1;
+            break;
+        }
+    }
+
+    check(monotone,
+          "short zero-end stroke should not re-accelerate during envelope braking");
+    check(reachedZero,
+          "short zero-end stroke should finish braking within the target window");
+    check(fabs(segment.targetPosition - axis.position) <=
+              segment.positionTolerance + 0.001,
+          "short zero-end stroke should remain within position safety tolerance");
+}
+
 static void test_speed_ramp_decel_uses_delta_v_rate(void)
 {
     HYD_AxisRef axis = {0};
@@ -1371,6 +1506,8 @@ int main(void)
     test_braking_stop_lands_on_target_monotone();
     test_braking_entry_overspeed_short_stop_monotone();
     test_blend_terminal_stop_keeps_envelope_landing();
+    test_blend_zero_end_uses_planned_velocity_for_decel_time();
+    test_blend_zero_end_short_stroke_keeps_safety_envelope();
     test_speed_ramp_decel_uses_delta_v_rate();
     test_speed_ramp_stateful_decel_uses_delta_v_rate();
     test_short_stroke_caps_peak_and_keeps_ramp_time();

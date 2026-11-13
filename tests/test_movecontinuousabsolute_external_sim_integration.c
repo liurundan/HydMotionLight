@@ -419,14 +419,19 @@ static void test_movecontinuousabsolute_external_sim_axis_tracks_velocity_and_po
 
         if (step > 0) {
             HYD_REAL velocity_jump = fabsf(trace.post_vel_mm_s[step] - previous_post_vel);
+            HYD_BOOL terminalPositionStop =
+                fabs(core->STATE.plannedVelocity) <= ZERO_VELOCITY_TOLERANCE_MM_S &&
+                fabs(trace.post_pos_mm[step] - TARGET_POSITION_MM) <=
+                    POSITION_TOLERANCE_MM;
             ASSERT_NEAR(trace.pre_pos_mm[step], trace.post_pos_mm[step - 1], 1e-6f,
                         "Shared simulator pre-publish position should equal the previous post-publish snapshot");
             ASSERT_NEAR(trace.pre_vel_mm_s[step], trace.post_vel_mm_s[step - 1], 1e-6f,
                         "Shared simulator pre-publish velocity should equal the previous post-publish snapshot");
             ASSERT_TRUE(trace.post_pos_mm[step] + 1e-6f >= previous_post_pos,
                         "External simulator position should stay monotonic nondecreasing");
-            ASSERT_TRUE(velocity_jump <= CONTINUITY_JUMP_LIMIT_MM_S,
-                        "External simulator velocity should evolve continuously scan to scan");
+            ASSERT_TRUE(velocity_jump <= CONTINUITY_JUMP_LIMIT_MM_S ||
+                            terminalPositionStop,
+                        "External simulator velocity should evolve continuously except when the planned zero-speed stop lands");
             if (velocity_jump > max_velocity_jump) {
                 max_velocity_jump = velocity_jump;
             }

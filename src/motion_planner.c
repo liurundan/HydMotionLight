@@ -328,6 +328,7 @@ static HYD_REAL HYD_ComputeOnlineTrapezoidVelocityMagnitude(const HYD_MotionPlan
     HYD_REAL measuredMagnitude;
     HYD_BOOL blendActive;
     HYD_BOOL braking;
+    HYD_BOOL zeroEndBlendRampActive;
 
     if (input == NULL || input->segment == NULL || input->axisRef == NULL) {
         return 0.0;
@@ -363,6 +364,14 @@ static HYD_REAL HYD_ComputeOnlineTrapezoidVelocityMagnitude(const HYD_MotionPlan
     }
 
     brakingAcceleration = HYD_ResolveConfiguredBrakingAcceleration(segment);
+    zeroEndBlendRampActive = blendActive &&
+        terminalVelocity <= HYD_THRESH_STOP_VEL_DONE_MAG &&
+        input->state != NULL && input->state->initialized &&
+        fabs(input->state->transitionTargetVelocity) <=
+            HYD_THRESH_STOP_VEL_DONE_MAG &&
+        input->state->transitionTimeMs > 0.0 &&
+        input->state->transitionRate * HYD_GetDirectionSign(direction) < 0.0 &&
+        previousMagnitude > HYD_THRESH_STOP_VEL_DONE_MAG;
 
     if (remainingDistance <= positionTolerance) {
         if (previousMagnitude <= HYD_THRESH_STOP_VEL_DONE_MAG &&
@@ -398,25 +407,34 @@ static HYD_REAL HYD_ComputeOnlineTrapezoidVelocityMagnitude(const HYD_MotionPlan
             if (previousMagnitude <= terminalVelocity) {
                 brakeDistance = 0.0;
             } else {
-                if (blendActive && terminalVelocity <= 0.0) {
-                    /* Terminal stop in a blend approach (MoveContinuousAbsolute
-                     * END velocity 0): keep the envelope-rate trigger so the
-                     * zero-delay blend envelope stays the closed-loop landing.
-                     * From cruise at maxVelocity this is the fixed-time stop. */
-                    brakeDistance = (previousMagnitude * previousMagnitude) /
-                                    (2.0 * brakingAcceleration);
-                } else {
+                HYD_BOOL fixedTimeBlendStop = blendActive &&
+                    terminalVelocity <= HYD_THRESH_STOP_VEL_DONE_MAG;
+                {
                     HYD_TIME decelSeconds = HYD_MotionTimeMsToSeconds(
                         (segment->maxDeceleration > 0.0)
                             ? segment->maxDeceleration
                             : segment->maxAcceleration);
-                    /* 语义A：固定时间斜坡 prev->terminal 覆盖的梯形均速距离 */
+                    /* Trigger from the previous planned velocity and the
+                     * configured transition time. */
                     brakeDistance = 0.5 * (previousMagnitude + terminalVelocity) *
                                     decelSeconds;
                 }
                 if (input->deltaTime > 0.0 && isfinite(input->deltaTime)) {
-                    brakeDistance += (previousMagnitude - terminalVelocity) *
-                                     input->deltaTime;
+                    if (fixedTimeBlendStop) {
+                        /* The first ramped command is emitted this cycle, so
+                         * the discrete sum omits half a cycle of delta-v. This
+                         * makes an exactly reachable stop land at the switch
+                         * point instead of stopping early and re-accelerating. */
+                        brakeDistance -= 0.5 *
+                            (previousMagnitude - terminalVelocity) *
+                            input->deltaTime;
+                        if (brakeDistance < 0.0) {
+                            brakeDistance = 0.0;
+                        }
+                    } else {
+                        brakeDistance += (previousMagnitude - terminalVelocity) *
+                                         input->deltaTime;
+                    }
                 }
             }
             brakeDecisionTolerance = HYD_CompareTolerance(HYD_MaxReal(remainingDistance,
@@ -573,12 +591,19 @@ static HYD_REAL HYD_ComputeOnlineTrapezoidVelocityMagnitude(const HYD_MotionPlan
         }
     }
 
-    safetyVelocityMagnitude = HYD_ComputeDelayAwareBrakingVelocityMagnitude(
-        remainingDistance,
-        brakingAcceleration,
-        HYD_MaxReal(segment->maxVelocity, previousMagnitude),
-        blendActive ? 0.0 : input->deltaTime,
-        terminalVelocity);
+    if (zeroEndBlendRampActive && remainingDistance <= 0.0) {
+        /* The zero-end transition is already latched. Once measured position
+         * has crossed the target, keep emitting the planned v->0 ramp instead
+         * of collapsing the distance envelope to zero in one scan. */
+        safetyVelocityMagnitude = velocityMagnitude;
+    } else {
+        safetyVelocityMagnitude = HYD_ComputeDelayAwareBrakingVelocityMagnitude(
+            remainingDistance,
+            brakingAcceleration,
+            HYD_MaxReal(segment->maxVelocity, previousMagnitude),
+            blendActive ? 0.0 : input->deltaTime,
+            terminalVelocity);
+    }
     measuredMagnitude = 0.0;
     if (isfinite(input->axisRef->velocity)) {
         measuredMagnitude = fabs(input->axisRef->velocity);

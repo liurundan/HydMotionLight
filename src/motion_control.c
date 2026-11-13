@@ -1038,12 +1038,21 @@ static HYD_REAL HYD_ResolveContinuousAbsoluteCrossingVelocity(
     }
 
     requested = fabs(ctx->sustainVelocity);
-    remainingDistance = fabs(segment->targetPosition - fb->AXIS_REF.position);
-    projectedVelocity = fabs(fb->AXIS_REF.velocity);
 
     if (ctx->sustainDirection != ctx->approachDirection) {
         return 0.0f;
     }
+
+    /* A zero terminal velocity is a planned stop.  Its crossing target is
+     * exactly zero; do not let a noisy measured velocity participate in the
+     * normal end-velocity planning decision.  Actual velocity remains used
+     * later for stop completion and INENDVELOCITY qualification. */
+    if (requested <= HYD_THRESH_DECEL_TARGET_VEL_DONE) {
+        return 0.0f;
+    }
+
+    remainingDistance = fabs(segment->targetPosition - fb->AXIS_REF.position);
+    projectedVelocity = fabs(fb->AXIS_REF.velocity);
 
     if (!ctx->adaptEndVelEnabled) {
         return requested;
@@ -2437,7 +2446,10 @@ static HYD_BOOL HYD_ExecuteActiveSegmentControl(HYD_MotionControlFB* fb,
         memset(&localContinuousBlend, 0, sizeof(localContinuousBlend));
         if (fb->_directOwnerKind == HYD_DIRECT_CMD_MOVE_CONTINUOUS_ABSOLUTE &&
             fb->_directContinuousAbsolute.valid &&
-            fb->_directContinuousAbsolute.phase == HYD_CONTABS_PHASE_APPROACH) {
+            (fb->_directContinuousAbsolute.phase == HYD_CONTABS_PHASE_APPROACH ||
+             (fb->_directContinuousAbsolute.phase == HYD_CONTABS_PHASE_STOPPING &&
+              fabs(fb->_directContinuousAbsolute.sustainVelocity) <=
+                  HYD_THRESH_DECEL_TARGET_VEL_DONE))) {
             localContinuousBlend.active = true;
             localContinuousBlend.bufferMode = HYD_BUFFER_MODE_BLENDING_NEXT;
             localContinuousBlend.blendVelocity = fb->_directContinuousAbsolute.crossingVelocity;
@@ -3814,7 +3826,7 @@ void HYD_MotionControlFB_Init(HYD_MotionControlFB* fb) {
     fb->_switchSuppressEndTime = 0.0;
 
     /* Set parameter defaults (matching previous hardcoded values in motion_interface.c) */
-    fb->_params.positionTolerance = 0.0001f; 
+    fb->_params.positionTolerance = 0.0001f;
     fb->_params.velocityTolerance = 0.0f; // default diabled, igore velocity deviation alarm
     fb->_params.flowTolerance = 0.0f;// default diabled
     fb->_params.pressureTolerance = 0.0f;
