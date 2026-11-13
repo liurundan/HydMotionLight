@@ -3493,15 +3493,18 @@ static HYD_BOOL HYD_RunRunningStateStopping(HYD_MotionControlFB* fb,
         HYD_ClearDirectPendingSlot(fb);
         HYD_SafetyStateManager_ApplyIdleState(fb, true, false);
         HYD_StateReporter_SetFbState(fb, HYD_FB_STATE_DONE);
-    } else if (stopRate > 0.0f) {
+    } else {
         /* C-4: stop-timeout safety net.
          * If the commanded deceleration ramp completes (decelMag ~= 0)
          * but feedback velocity never drops below the completion threshold
          * (stuck encoder / actuator), this branch would hang forever.
-         * An explicit segment timeout remains authoritative; otherwise keep
-         * a hydraulic natural-settling floor so a short process deceleration
+         * Use the requested stop time directly. For a nonzero planner
+         * velocity, stopMag / stopRate is algebraically equal to this T;
+         * using T also keeps the watchdog armed when stopMag is zero. An
+         * explicit segment timeout remains authoritative; otherwise keep a
+         * hydraulic natural-settling floor so a short process deceleration
          * time does not become an unrealistically short stop watchdog. */
-        HYD_REAL idealStopTime = stopMag / stopRate;
+        HYD_TIME idealStopTime = HYD_MotionTimeMsToSeconds(stopTimeMs);
         HYD_REAL stopTimeoutLimit = HYD_THRESH_STOP_TIMEOUT_IDEAL_MULT * idealStopTime +
                                     HYD_THRESH_STOP_TIMEOUT_SLACK_S;
         HYD_TIME configuredStopTimeout = HYD_Segment_GetTimeoutLimit(segment);

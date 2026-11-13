@@ -1480,6 +1480,80 @@ static void test_stop_rejects_invalid_axis_index(void) {
     ASSERT_TRUE(IEC_VAL(stop.ERRORID) != 0, "Stop should set non-zero ERRORID for invalid input");
 }
 
+static void test_stop_timeout_maps_to_error_outputs(void) {
+    HYD_MotionControlFB* fb;
+    HYD_MotionSegment segment;
+    HYD_STOP stop;
+    int step;
+
+    __HydMotion_framework_Init();
+    ensure_axes_allocated(2);
+    fb = __MK_GetPublic_MotionControlFB(0);
+    ASSERT_TRUE(fb != NULL, "Stop timeout test should resolve the axis FB");
+    if (fb == NULL) {
+        return;
+    }
+
+    memset(&segment, 0, sizeof(segment));
+    segment.segmentType = HYD_SEGMENT_TYPE_OTHER;
+    segment.mode = HYD_MODE_SPEED_RAMP;
+    segment.endCondition = HYD_END_MANUAL;
+    segment.direction = HYD_DIRECTION_EXTEND;
+    segment.planner = HYD_PLANNER_TIME_BASED;
+    segment.maxVelocity = 80.0f;
+    segment.maxFlow = 50.0f;
+    segment.maxAcceleration = 500.0f;
+    segment.maxDeceleration = 500.0f;
+    segment.velocityToFlowGain = 0.25f;
+    ASSERT_TRUE(HYD_MotionControlFB_LoadDirectSegment(fb, &segment),
+                "Load speed segment for Stop timeout test");
+
+    fb->AXIS_REF.timestamp = 0.0f;
+    ASSERT_TRUE(HYD_MotionControlFB_StartSegment(fb, 0u, 0.0f),
+                "Start speed segment for Stop timeout test");
+    for (step = 0; step < 20; ++step) {
+        fb->AXIS_REF.timestamp = (HYD_TIME)(step * 0.01f);
+        fb->AXIS_REF.velocity = 50.0f;
+        HYD_MotionControlFB_Cycle(fb);
+    }
+    ASSERT_TRUE(fb->STATE.active, "Speed segment should be active before Stop");
+
+    /* Use a short explicit timeout here to exercise the PLC FB error mapping;
+     * the core regression test covers the default natural-settling timeout. */
+    fb->_activeSegment.timeoutLimit = 0.05f;
+    fb->_activeSegment.maxVelocity = 0.0f;
+    fb->STATE.plannedVelocity = 0.0f;
+    fb->_plannerState.lastTargetVelocity = 0.0f;
+    fb->_plannerState.lastTargetFlow = 0.0f;
+    fb->_lastCommandedFlow = 0.0f;
+    fb->AXIS_REF.velocity = 30.0f;
+    fb->AXIS_REF.timestamp = 0.20f;
+
+    memset(&stop, 0, sizeof(stop));
+    IEC_VAL(stop.EN) = true;
+    IEC_VAL(stop.EXECUTE) = true;
+    stop.EXECUTE0.value = false;
+    IEC_VAL(stop.AXISID) = 0;
+    IEC_VAL(stop.DECELERATION) = 200.0f;
+    __mcl_cmd_Stop(&stop);
+    ASSERT_TRUE(IEC_VAL(stop.BUSY), "Stop should be BUSY while timeout is pending");
+    ASSERT_TRUE(fb->_stopStartVel == 0.0f,
+                "Stop should latch zero planner velocity in the interface path");
+
+    for (step = 0; step < 100 && !IEC_VAL(stop.ERROR); ++step) {
+        __HydMotion_framework_Publish();
+        IEC_VAL(stop.EXECUTE) = true;
+        stop.EXECUTE0.value = true;
+        __mcl_cmd_Stop(&stop);
+    }
+
+    ASSERT_TRUE(IEC_VAL(stop.ERROR), "Stop should report ERROR after timeout fault");
+    ASSERT_TRUE(IEC_VAL(stop.ERRORID) == HYD_DIAG_CODE_TIMEOUT,
+                "Stop should expose TIMEOUT as ERRORID");
+    ASSERT_TRUE(!IEC_VAL(stop.BUSY), "Stop BUSY should clear after timeout fault");
+    ASSERT_TRUE(!IEC_VAL(stop.DONE), "Stop should not report DONE after timeout fault");
+}
+
 /* ==================================================================
  * Test 15: Reset 在已初始化轴上立即完成
  * ================================================================== */
@@ -3547,6 +3621,7 @@ int main(void) {
     test_movevelocity_rejects_nonfinite_pressure_limit();
     test_stop_on_idle_axis_immediate_done();
     test_stop_rejects_invalid_axis_index();
+    test_stop_timeout_maps_to_error_outputs();
     test_reset_immediate_done_on_initialized_axis();
     test_reset_immediate_done_on_uninitialized_axis();
     test_reset_preserves_direct_segment_configuration();
