@@ -52,7 +52,9 @@ static HYD_BOOL HYD_RunRunningStateStopping(HYD_MotionControlFB* fb,
                                             HYD_MotionPlannerOutput* plannerOutput,
                                             HYD_PumpConverterOutput* pumpOutput,
                                             HYD_ExecutionReference* executionReference,
-                                            HYD_PressureControllerOutput* pressureOutput);
+                                            HYD_PressureControllerOutput* pressureOutput,
+                                            HYD_OutputLimiterInput* limiterInput,
+                                            HYD_OutputLimiterOutput* limiterOutput);
 static HYD_BOOL HYD_RunRunningStateBlendCutover(HYD_MotionControlFB* fb,
                                                 const HYD_MotionSegment* segment,
                                                 const HYD_ExecutionReference* executionReference);
@@ -2195,9 +2197,14 @@ static HYD_BOOL HYD_MotionControlFB_ConsumePendingCommand(HYD_MotionControlFB* f
             fb->_isStopping = true;
             fb->_stopStartTime = timestamp;
             fb->_simStopStartTick = fb->_simTick;
-            fb->_stopStartVel = fb->AXIS_REF.velocity;
-            if (fabs(fb->_stopStartVel) < 0.001f) {
+            if (fb->_activeSegment.mode == HYD_MODE_POSITION ||
+                fb->_activeSegment.mode == HYD_MODE_SPEED_RAMP) {
                 fb->_stopStartVel = fb->STATE.plannedVelocity;
+            } else {
+                fb->_stopStartVel = fb->AXIS_REF.velocity;
+                if (fabs(fb->_stopStartVel) < 0.001f) {
+                    fb->_stopStartVel = fb->STATE.plannedVelocity;
+                }
             }
             return true;
         case HYD_CMD_HOLD:
@@ -3185,6 +3192,16 @@ static void HYD_MotionControlFB_RunRunningState(HYD_MotionControlFB* fb) {
     /* 压力闭环段允许小幅负流量/负转速，用于快速卸压 */
     limiterInput.allowNegativeFlow = limiterInput.minimumFlow < 0.0;
 
+    if (fb->_isStopping &&
+        (segment->mode == HYD_MODE_POSITION ||
+         segment->mode == HYD_MODE_SPEED_RAMP)) {
+        (void)HYD_RunRunningStateStopping(
+            fb, segment, &plannerOutput, &pumpOutput,
+            &executionReference, &pressureOutput,
+            &limiterInput, &limiterOutput);
+        return;
+    }
+
     /* 使用带保护状态的扩展版本（支持压力限制 + 软限位 + debounce + 故障升级） */
     HYD_OutputLimiter_ExecuteWithProtection(&limiterInput, &fb->_limiterState, &limiterOutput);
 
@@ -3240,7 +3257,8 @@ static void HYD_MotionControlFB_RunRunningState(HYD_MotionControlFB* fb) {
     if (fb->_isStopping) {
         (void)HYD_RunRunningStateStopping(
             fb, segment, &plannerOutput, &pumpOutput,
-            &executionReference, &pressureOutput);
+            &executionReference, &pressureOutput,
+            NULL, NULL);
         return;
     }
 
@@ -3344,7 +3362,9 @@ static HYD_BOOL HYD_RunRunningStateStopping(HYD_MotionControlFB* fb,
                                             HYD_MotionPlannerOutput* plannerOutput,
                                             HYD_PumpConverterOutput* pumpOutput,
                                             HYD_ExecutionReference* executionReference,
-                                            HYD_PressureControllerOutput* pressureOutput) {
+                                            HYD_PressureControllerOutput* pressureOutput,
+                                            HYD_OutputLimiterInput* limiterInput,
+                                            HYD_OutputLimiterOutput* limiterOutput) {
     /* Simulation-only pressure creep has no position/velocity ramp to
      * decelerate. Stop means removing the simulated pressure-loop flow
      * command and completing the direct Stop session immediately. Real
@@ -3416,6 +3436,37 @@ static HYD_BOOL HYD_RunRunningStateStopping(HYD_MotionControlFB* fb,
                                               0.0f,
                                               effectiveLimit);
     }
+    if (limiterInput != NULL && limiterOutput != NULL) {
+        limiterInput->requestedFlow = pumpOutput->commandFlow;
+        limiterInput->requestedPumpSpeed = pumpOutput->pumpSpeed;
+        HYD_OutputLimiter_ExecuteWithProtection(limiterInput,
+                                                &fb->_limiterState,
+                                                limiterOutput);
+        pumpOutput->commandFlow = limiterOutput->commandFlow;
+        pumpOutput->pumpSpeed = limiterOutput->pumpSpeed;
+        plannerOutput->targetFlow = pumpOutput->commandFlow;
+        fb->_lastCommandedFlow = pumpOutput->commandFlow;
+        fb->_plannerState.lastTargetFlow = pumpOutput->commandFlow;
+        if (limiterOutput->pressureLimitActive) {
+            fb->STATE.limitFlags |= HYD_LIMIT_FLAG_PRESSURE;
+        }
+        if (limiterOutput->softLimitActive) {
+            fb->STATE.limitFlags |= HYD_LIMIT_FLAG_SOFT;
+        }
+        if (limiterOutput->derated) {
+            fb->STATE.limitFlags |= HYD_LIMIT_FLAG_DERATE;
+        }
+        if (limiterOutput->diagnosticCode == HYD_DIAG_CODE_SOFT_LIMIT_VIOLATED) {
+            fb->DIAGNOSTIC.protectionAction = HYD_PROTECTION_ACTION_STOP;
+            fb->DIAGNOSTIC.code = limiterOutput->diagnosticCode;
+            fb->DIAGNOSTIC.severity = HYD_DIAG_SEVERITY_FAULT;
+        } else if (limiterOutput->diagnosticCode != HYD_DIAG_CODE_NONE &&
+                   fb->DIAGNOSTIC.protectionAction < HYD_PROTECTION_ACTION_DERATE) {
+            fb->DIAGNOSTIC.code = limiterOutput->diagnosticCode;
+            fb->DIAGNOSTIC.severity = HYD_DIAG_SEVERITY_WARNING;
+        }
+    }
+
     executionReference->flowReference = pumpOutput->commandFlow;
     executionReference->velocityReference = plannerOutput->targetVelocity;
 
