@@ -229,7 +229,7 @@ FUNCTION_BLOCK FB_HydAxis
          AXISID := iAxis,
          EXECUTE := TRUE,
          LR := 260,
-         LF := 320,
+         LF := 323,
          LPF := 190,
          LPK := 100,
          LD := 125,
