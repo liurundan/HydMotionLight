@@ -6,6 +6,8 @@
 
 这次只新建一个文档，不改任何源码。
 
+**更新记录（2026-11-17）**：105 连杆参数上机修正为 LF=323（提交 1a00e3f），机构校验通过；泵转速单位已澄清（库内为 rpm，CSV 曲线显示值 = rpm × 0.1）；§6、§8、§10、§11 按新几何重写，库与 FB_HydAxis 的修复已落地，见 §12。
+
 ## 1. 问题描述
 
 开模最后一段 MoveContinuousAbsolute 的参数为：目标位置 300mm，ENDVELOCITY=0，减速时间 uiDec=500ms。上机实测：
@@ -28,7 +30,7 @@
 | uiSpdCmd | 百分比，乘以 rMaxSpeed 得到 mm/s |
 | uiAxisSpdAcc / uiAxisSpdDec | ms |
 | 位置 | mm |
-| PUMPSPEED | 用户说明为 0.1rpm，见 §11 待确认项 |
+| PUMPSPEED | 库内单位 rpm；CSV 曲线显示值 = rpm × 0.1（仅为缩放观察） |
 
 开模最后一段：uiSpd=20%，目标 300mm，t_acc=t_dec=500ms，END=0，规划速度 20mm/s。
 
@@ -89,88 +91,103 @@ direct 模式下：
 
 ## 6. 结合 105 几何反算有效面积
 
-105 几何（`FB_HydAxis.st:227–245`）：LR=260，LF=320，LPF=190，LPK=100，LD=125，HF=200，HM=170，DC=580，SM=450，分支参数均为 −1。
+105 几何（`FB_HydAxis.st` SetToggleMechanism iType=105）：LR=260，**LF=323**（上机实测修正，原 320），LPF=190，LPK=100，LD=125，HF=200，HM=170，DC=580，SM=450，XHANDOFF=0，分支参数均为 −1。
 
-按 `src/toggle_kinematics.c` 的 solve_at 公式手算 R(x)（尚未用脚本复核，见 §11）：
+R(x) 由库函数 `HYD_ToggleKinematics_SolveOnline` 计算（已用库源码编译验证）：
 
 | x (mm) | R(x) | A_开模 = 10000/(k·R) | A_合模 |
 |---|---|---|---|
-| 20 | 1.909 | 3140 | 4520 |
-| 60 | 0.924 | 3290 | 4730 |
-| 100 | 0.712 | 3350 | 4760 |
-| 200 | 0.585 | 3400 | 4870 |
-| 300 | 0.609 | 3330 | — |
+| 20 | 1.728 | 3466 | 4990 |
+| 60 | 0.901 | 3375 | 4849 |
+| 100 | 0.705 | 3386 | 4809 |
+| 160 | 0.606 | 3370 | 4842 |
+| 240 | 0.587 | 3382 | 4829 |
+| 300 | 0.614 | — | — |
 
-- k 变化 3 倍，除以 R(x) 后 x ≥ 60mm 的面积一致性在 ±2% 以内，说明 105 几何与这台机器吻合；
-- x=20mm 偏低约 5%：该处 R 梯度大，统计窗口为 ±6mm，低速下泄漏占比也更高。标定时不要用 x < 40mm 的数据；
-- **有效面积约为：开模侧 3350mm²，合模侧 4800mm²**，比值 1.43；
-- 这两个值已包含实际容积效率与 0.95 的偏差，正是控制需要的有效面积；
-- 建议用铭牌缸径/杆径交叉核对。例如 Ø80/Ø45 对应 5027/3436mm²，差约 4%，相当于实际容积效率约 0.91。可以直接填实测有效面积，也可以填铭牌面积并把参数 29（容积效率）改为约 0.91，二选一；
-- 前提：泵的实际转速与库计算值一致，即每 L/min 对应 21.05rpm（见 §11）。
+- 其他特征点：R(0)=10.02，R(3)=5.03，R(10)=2.646，R(450)=0.245；区间内极值 x≈218.5 处极小 0.584，x≈386.5 处极大 0.673；
+- 细分位置区间拟合（泵转速恒定 ≥100ms 的稳态点）：x≥12mm 时 LF=323 的面积比 x≥60 均值最多高 3.3%，LF=320 则系统偏低 4.5%~12%，CSV 独立印证了 LF≈323；
+- x<12mm 的点不能用于判断：合模 2~12mm 是压力段（泵 84rpm），开模 x<8mm 是起步瞬态；
+- **有效面积：开模侧（参数 31）3350mm²，合模侧（参数 32）4800mm²**。拟合值 3385/4842，取略小约 1%，符合 §9 "面积宁小勿大"；
+- 这两个值是相对"容积效率 0.95"标定的，实际容积效率、驱动器转速误差等恒定比例误差已包含在内。约束：**面积 ÷ 参数 29 必须保持不变**，以后改容积效率时，参数 31/32 要乘以（新值 ÷ 0.95）；
+- 锁模端速比对连杆尺寸非常敏感：LF=322/323/324 时 R(0)=16.8/10.0/7.4，开模 0→10mm 段需上机确认（§8 第 6 步）；
+- 校验裕度：LF 321 或 DC 582 即校验失败，裕度约 1.5mm。
 
 ## 7. 只改 direct 模式的面积/最大线速度，为什么不够
 
 - 面积决定 k，rMaxSpeed 只是百分比的标尺：k = 库内面积 / (A×R)，与 rMaxSpeed 无关；
 - 以 2000/2900 + rMaxSpeed 500 为例：开模端 k≈1，泵转速与现状相同，工艺百分比不用重调；
-- 但 A×R 随位置变化：x≈20mm 处开模为 6000、合模为 8600。常数面积会在靠近模具的区段把速度高估约 3 倍，导致过早减速、爬行进位，或终速 0 时停短；
+- 但 A×R 随位置变化：x≈20mm 处开模约 5800、合模约 8300。常数面积会在靠近模具的区段把速度高估约 3 倍，导致过早减速、爬行进位，或终速 0 时停短；
 - 两个方向共用一个 rMaxSpeed（`FB_HydAxis.st:309`）时，合模百分比对应的泵转速会变；
 - 结论：direct 模式只能修好开模端的这一个停位，要在全行程都准确，需要启用 105 机构。
 
 ## 8. 启用 105、按动模板速度规划的步骤
 
-### 第 0 步：先确认 105 能通过机构校验（关键风险）
+### 第 0 步：机构校验（已解决）
 
-- 校验扫描的最后一个点是 xm=0（`toggle_kinematics.c:508–509`）；
-- xm=0 时 D = √(580² + 30²) = 580.78mm，大于 LR+LF = 580mm，连杆够不着；
-- solve_at 失败时整个校验直接失败（`toggle_kinematics.c:517–522`），ConfigureToggleMechanism 报 MECHANISM_CONFIG_INVALID；
-- 对照：默认几何 D=379.2 < 380，type 3 几何 D=436.8 < 450，都能通过；
-- FB_HydAxis 的 step 1 没有错误分支（`FB_HydAxis.st:352–356`），会卡在 iStep=1，不报警。
+- LF=320 时 x=0 处主连杆不可达（错误码 6），校验失败；上机实测修正为 LF=323 后校验通过；
+- 通过 IEC 流程（CreateMotion → ConfigureToggleMechanism → ReadToggleMechanism）验证：DONE，ERRORID=0，X_GEOMETRY_MIN=0，X_HANDOFF_EFFECTIVE=0，K=[0.245, 10.02]；CreateMotion 与 Configure 各 65 个扫描周期（约 65ms）；
+- 0~450mm 按 0.01mm 逐点在线求解全部成功，无需修改校验逻辑；
+- FB_HydAxis 第 1 步已加报警分支（§12），以后重测参数超出约 1.5mm 裕度时直接报警，不再卡在第 1 步。
 
-上机检查 `fbHYD_ConfigureToggleMechanism.ERROR / ERRORID`。如果确认失败，两条路二选一：
-1. 核对几何参数：偏差只有 0.78mm，多半是 DC，或者位置尺零点与死点的关系差了约 0.8mm；
-2. 改库：找到安全段之后，把低端不可解的点当作不安全区处理，而不是判失败，自动推导出 xGeometryMin（符合设计文档 `2026-07-29-five-point-toggle-motion-control-architecture-design.md` 第 27 行的意图）。
+### 第 1 步：xHandoff（已解决）
 
-### 第 1 步：处理 xHandoff 以下区间
-
-- 在线解算只接受 xm ∈ [xHandoffEffective, 450]（`toggle_kinematics.c:320`），低于该区间时位置/速度段报 KINEMATICS_POSITION_OUT_OF_RANGE 并停机；
-- 开模从 0mm 起步、合模 10→0 段都会碰到这个问题。压力闭环段不经过机构映射，不受影响；
-- 两种做法：按设计文档，把 xHandoff 以下交给压力/锁模段；或者改库，在 xHandoff 以下把 R 钳在交接点的值（实际速度会低于规划，偏安全）。
+有效在线区间已覆盖 [0, 450]，**XHANDOFF 必须保持 0**。设成 3 会让开模从 x=0 起步时报 KINEMATICS_POSITION_OUT_OF_RANGE。前提：工艺层对位置做零点偏移时，结果必须 ≥0。
 
 ### 第 2 步：面积参数
 
-- 库按 σC 修正后的执行器速度方向选面积（`actuation_mapper.c:62–97`）：开模（位置增大）用参数 31，合模用参数 32；
-- 即 **31 = 3350，32 = 4800**。不要按物理侧（开模为有杆腔）填反；
+- 库按 σC 修正后的执行器速度方向选面积（`actuation_mapper.c` resolve_cylinder_gain）：开模（位置增大）用参数 31，合模用参数 32；
+- 即 **31 = 3350，32 = 4800**；
 - 上机用 HYD_ReadStatus 的 ACTUATORDIRECTION 确认，开模时应为 1。
 
-### 第 3 步：重新定义速度标尺
+### 第 3 步：段速度标尺（已实现，§12 B1/C1）
 
-启用 105 后 VELOCITY 就是动模板速度。泵满转（1700rpm，80.75 L/min）时能达到的动模板速度：
+启用 105 后 VELOCITY 就是动模板速度，且动模板的最大线速度随位置变化。HYD_ReadStatus 的 VELOCITYRATIO 只是上一拍、当前位置的速比，合模段的最坏点在目标端，运动开始前读不到，所以**不能用作标尺**，仅用于验收和 HMI 显示。
 
-| | x=20 | x=100 | x=300 |
-|---|---|---|---|
-| 开模上限 | 210 mm/s | 565 mm/s | 660 mm/s |
-| 合模上限 | 147 mm/s | 394 mm/s | 460 mm/s |
+做法：段启动沿调用 `HYD_ReadMaxTemplateVelocity`，取本段区间 [起点, 目标] 内的最大速比 Rmax，标尺 = Q_lim ÷ (A × 6e-5 × Rmax)，Q_lim = min(maxFlow, 1700/21.05 = 80.75 L/min)。百分比 100% 正好让泵在本段最坏点达到 1700rpm。
 
-- 建议按方向选用 rMaxSpeedExtend/Retract，不再两个方向共用一个 rMaxSpeed；
-- 重新整定各段百分比，尤其是靠近模具的区段（同样的动模板速度需要约 3 倍流量）；
-- 出现流量或泵转速限幅（limitFlags 的 FLOW / PUMP_SPEED 位）时实际速度低于规划，k≈1 的前提不成立，减速会提前。
+泵满转时动模板速度上限：
 
-### 第 4 步：库内液压纯滞后补偿（两种方案都需要）
+| x (mm) | 3 | 20 | 100 | 300 |
+|---|---|---|---|---|
+| 开模 (mm/s) | 79.8 | 232.5 | 569.9 | 654.4 |
+| 合模 (mm/s) | 55.7 | 162.3 | 397.8 | 456.7 |
 
-泵指令到动模板减速之间约有 40–45ms 纯滞后。终速 0 的 blend 路径传给包络的 responseDelay 为 0（`motion_planner.c:604`）。
+各段标尺（沿用 CSV 百分比；泵转速单位 rpm）：
 
-最小改动建议：在终速 0 的减速路径中，把 v·τ 加到刹车触发距离上，并把 τ 传给已有的 `HYD_ComputeDelayAwareBrakingVelocityMagnitude`。τ 做成可写参数，默认值放进 `hyd_config.h` §14B（建议 40ms）。
+| 段 | Rmax（位置） | 标尺 mm/s | 动模板速度 mm/s | 泵 起点→终点 rpm |
+|---|---|---|---|---|
+| 合 300→150，30% | 0.615（150） | 456.1 | 136.8 | 509→510 |
+| 合 150→10，30% | 2.646（10） | 106.0 | 31.8 | 118→510 |
+| 　拆成 150→60 | 0.901 | 311.3 | 93.4 | 348→510 |
+| 　拆成 60→10 | 2.646 | 106.0 | 31.8 | 174→510 |
+| 开 0→10，20% | 10.02（0） | 40.1 | 8.0 | 340→90 |
+| 开 10→200，20% | 2.646（10） | 151.8 | 30.4 | 340→75 |
+| 　拆成 10→60 | 2.646 | 151.8 | 30.4 | 340→116 |
+| 　拆成 60→200 | 0.901 | 446.1 | 89.2 | 221→340 |
+| 开 200→300，20% | 0.614（300） | 654.4 | 130.9 | 325→340 |
+
+- 段标尺由最坏点决定，跨越速比变化大的段会变慢、低速端泵转速偏低，建议每段 Rmax/Rmin ≤ 约 3，在 x≈60mm 处拆段；
+- 合模 10→0 与锁模是压力段，不经过机构映射，不需要标尺；
+- 出现 FLOW / PUMP_SPEED 限幅标志时实际速度低于规划，k≈1 的前提不成立。验收时百分比 ≤95%。
+
+### 第 4 步：液压纯滞后补偿（已实现，§12 B2）
+
+参数 35 HYDRAULIC_RESPONSE_DELAY（ms，库默认 0，上限 200）。只作用于 MoveContinuousAbsolute 终速 0 的 blend 停车：刹车触发距离加 v·τ，包络预留同样的 τ，两者重合，不再出现 52ms 塌缩。合模轴写 40ms（补偿宁小勿大：补偿过度会停短后爬行）。
 
 ### 第 5 步：工艺层停车逻辑
 
-- 终速为 0 时等待 InEndVelocity 完成，不要在 PositionReached 时发 bStop；
-- 把参数 1 velocityTolerance 设为 2–3mm/s，或对速度反馈滤波，否则 InEndVelocity 会被速度噪声挡住。
+- 终速为 0 时等待 InEndVelocity（bDone）完成，不要在 PositionReached 时发 bStop；
+- 停稳阈值用新参数 36 ZERO_END_SETTLE_VELOCITY（mm/s，合模轴写 3），**不要改参数 1 velocityTolerance**：参数 1 同时打开速度偏差诊断（100ms 去抖，2s 升级 FAULT，MoveContinuousAbsolute 报 ERROR）；
+- 合模工艺层的速度反馈已加一阶滤波（停稳时原始噪声标准差 3.3mm/s，滤波后约 0.5mm/s）。
 
 ### 第 6 步：上机验收
 
-1. ReadStatus 的 VELOCITYRATIO 与 §6 的 R(x) 一致（如 x=100 时约 0.71）；
-2. 开模、合模全行程实测速度 ÷ 规划速度 ≈ 1（±5%），无流量限幅标志；
-3. 300mm 终速 0：规划减速时长 ≈ uiDec，终点误差 < 0.5mm，InEndVelocity 正常置位。
+1. ReadToggleMechanism 读回 LF=323、X_GEOMETRY_MIN=0、K_MAX≈10.02，第 1 步约 65ms 内完成；
+2. 开模时 ACTUATORDIRECTION=1；VELOCITYRATIO 在 x=100 时约 0.705，x=20 时约 1.728；
+3. GetPumpRequest.PUMPSPEED 在各段最坏点 ≈ 百分比 × 1700 rpm（±1%），段内分布与第 3 步表一致（VOFA 曲线显示 ×0.1）；
+4. x≥12mm 范围内实测速度 ÷ 规划速度 ≈ 1（±5%），无 FLOW/PUMP_SPEED 标志；
+5. 300mm 终速 0：减速时长 ≈ uiDec（±10%），终点误差 <0.5mm，InEndVelocity 正常置位，无 500ms 拖尾，全循环无 VELOCITY_DEVIATION；
+6. 开模 0→10mm：对比实测与规划速度，确认锁模端速比。
 
 ## 9. 简化模型仿真对比（不是上机结果）
 
@@ -187,24 +204,77 @@ direct 模式下：
 
 结论：面积/机构标定解决 k，τ 补偿解决纯滞后，两者都要做。面积宁可略偏小（k 略大于 1），不要偏大。
 
-## 10. 建议落地顺序
+库内实现后的回归测试（`test_movecontinuousabsolute_integration`，45ms 纯滞后、k=1、目标 300mm、20mm/s、减速 500ms、终速 0）：
 
-1. 上机确认 105 校验结果（第 0 步），决定直接用还是先修几何/改库；
-2. 配置与工艺层修改：面积 3350/4800（第 2 步）、按方向的速度标尺（第 3 步）、停车逻辑与 velocityTolerance（第 5 步），上机验证 k≈1；
-3. 改库：τ 补偿（第 4 步）、xHandoff 以下策略（第 1 步），以及第 0 步需要时的校验容忍，并补上用本波形参数复现问题的测试；
-4. 按第 6 步验收。
+| τ | 规划减速时长 | 终点误差 |
+|---|---|---|
+| 0（对照） | 381ms | +0.13mm |
+| 40ms | 486ms | +0.05mm |
+| 45ms | 594ms（略过补偿，斜坡被拉长） | +0.004mm |
+| 40ms，k=1.1 | 429ms | +0.06mm |
+
+3mm 短行程（峰值 6mm/s，未到巡航）在 τ=40ms 下规划减速 488ms，终点误差 +0.016mm。
+
+## 10. 落地顺序
+
+1. 配置：保持 SetPumpConfig(50, 1700)、容积效率 0.95；面积 31=3350、32=4800；LF=323、XHANDOFF=0；
+2. 库：B1 段标尺查询、B2 纯滞后补偿、B3 独立停稳阈值（§12，已完成）；
+3. FB_HydAxis：C1 段标尺、C2 第 1 步报警与复位重试、C3 参数 35/36（§12，已完成）；stHydAxisRef 增加两个字段（§12）；
+4. 工艺层：等 bDone 再进下一步；在 x≈60mm 拆段并重整百分比；开模 0→10 先 ≤50%；
+5. 按 §8 第 6 步上机验收。
 
 ## 11. 待确认事项
 
-1. **105 校验**：xm=0 处连杆不可达的推算是按代码手算的，需上机或脚本确认；
-2. **R(x) 数值**：§6 的 R(x) 是手算结果，需用脚本按 `toggle_kinematics.c` 复核；
-3. **泵转速单位**：CSV 中 PUMPSPEED=25.26。若泵配置（50cc，0.95）生效，库输出应为 252.6rpm，与"0.1rpm"的说明相差 100 倍。另外 type=0 时 FB_HydAxis 不调用 SetPumpConfig（只有 iMechanismType ≥ 100 才调用，`FB_HydAxis.st:338–340`），实际使用的是 CreateMotion 的 FLOW_TO_PUMPSPEED。该比例不影响 §4/§5 的 k 分析（k 由位置斜率和已验证的规划速度得出），但会按比例影响 §6 面积的绝对值。需要用驱动器转速反馈确认泵的实际转速；
-4. **铭牌参数**：油缸缸径、杆径用于交叉核对 §6 的有效面积和实际容积效率。
+1. ~~105 校验~~：LF=323 后通过（§8 第 0 步）；
+2. ~~R(x) 数值~~：已用库源码编译验证（§6）；
+3. ~~泵转速单位~~：库内为 rpm，CSV 显示值 = rpm × 0.1。CSV 稳态值 25.26/37.89/8.42/18.53 全部符合增益 21.05 rpm/(L/min)；
+4. **铭牌参数**：油缸缸径、杆径用于交叉核对 §6 的有效面积和实际容积效率；
+5. **锁模端速比**：R(0) 对 LF ±1mm 敏感（7.4~16.8），按 §8 第 6 步第 6 项上机确认；
+6. **FB_HydAxis 未经 IEC 编译**：仓库内没有 ST 编译/仿真环境，§12 C 部分的修改需在 PLC 工程中编译并上机验证。
+
+## 12. 已落地的修改
+
+### 液压库
+
+| 项 | 内容 | 文件 |
+|---|---|---|
+| B1 段标尺查询 | `HYD_ActuationMapper_MaxTemplateVelocityOverRange`：区间裁剪到 [xHandoffEffective, SM]，两端点 + 16 个内点求最大速比（`HYD_TOGGLE_RANGE_RATIO_SAMPLES`），按执行器方向选面积；direct 机构速比 1；方向不定取两向较小值 | `actuation_mapper.c/.h`、`toggle_kinematics.h` |
+| | `HYD_MotionControlFB_ResolveMaxTemplateVelocity`：Q_lim = min(maxFlow, 泵转速上限 ÷ 增益) | `motion_control.c/.h` |
+| | IEC FB `HYD_ReadMaxTemplateVelocity`：输入 AXISID/ENABLE/XFROM/XTO/DIRECTION（0 = 按 XTO−XFROM 符号），输出 VALID/ERROR/ERRORID/MAXVELOCITY/VELOCITYRATIOMAX/FLOWLIMIT | `motion_interface.c/.h`、`pousHydMotion.xml`、`tests/plcdemo/POUS.c/.h` |
+| B2 纯滞后补偿 | 参数 35 `HYDRAULIC_RESPONSE_DELAY`（ms，默认 0，上限 200）；终速 0 blend 停车的触发距离加 v·τ，包络预留 τ | `common_types.h`、`hyd_config.h`、`motion_planner.c/.h`、`motion_control.c` |
+| B3 独立停稳阈值 | 参数 36 `ZERO_END_SETTLE_VELOCITY`（mm/s，默认 0 = 原行为）；终速 0 的停稳判据优先用它，不打开速度偏差诊断 | `common_types.h`、`motion_interface.c`、`motion_control.c` |
+
+FB 结构体增加 8 字节（3304 → 3312），`test_mode_switch_bumpless` 的尺寸预算同步更新。
+
+### FB_HydAxis
+
+- **C1**：段启动沿（rTrigStart）对曲肘轴的位置/速度段调用 fbMaxVel，锁存 rMaxSpeedSeg 作为本段 100% 标尺；位置段区间 = [实际位置, 目标]，速度段取当前点；直压轴仍用 stHydAxisRef.rMaxSpeed。标尺查询失败时报警进 900，不启动运动；
+- **C2**：第 1 步 ConfigureToggleMechanism 报错时报警进 900；复位后如果机构未配置成功，撤销 EXECUTE 回第 1 步重试；
+- **C3**：新增 SetParameter 方法；第 0 步在 stHydAxisRef.rResponseDelayMs、rZeroEndSettleVelocity 大于 0 时写入参数 35/36。
+
+**需要在 PLC 工程的 ST_HydAxisRef 中新增两个字段**（仓库内没有该结构体定义）：
+
+```iecst
+rResponseDelayMs       : REAL;   // 合模轴 40，其他轴 0
+rZeroEndSettleVelocity : REAL;   // 合模轴 3，其他轴 0
+```
+
+### 测试
+
+| 测试 | 守护的行为 |
+|---|---|
+| `test_parameter_access` | 参数 35/36 默认值、读写、范围校验；写参数 36 不打开速度偏差诊断 |
+| `test_movecontinuousabsolute_integration` | 1.5mm/s 停稳噪声在参数 36=3 时 InEndVelocity 置位；45ms 纯滞后下 τ=40 规划减速 450~550ms、终点 <0.3mm、斜坡不塌缩；3mm 短行程同样满足 |
+| `test_actuation_mapper` | 105 几何 150→10 Rmax=2.646 / 标尺 106.0，200→300 开模 654.4 / 合模 456.7，300→450 捕获内部极值 0.673，越界裁剪与报错，direct 速比 1 |
+| `test_toggle_motion_interface` | IEC FB 读取、泵配置前后 Q_lim 90 → 80.75，maxFlow 更小时取 maxFlow，越界/无效轴/ENABLE=FALSE 输出 |
+| `test_toggle_motion_integration` | 105 合模 150→10：0.99 倍标尺泵峰值 ≈1683rpm 无限幅；1.05 倍出现限幅、泵钳在 1700rpm |
+| `test_interface_layout_consistency` | 头文件、XML、plcdemo 三处字段一致 |
 
 ## 附录：分析方法
 
 - 稳态筛选：泵转速连续 100ms 不变的行，排除液压滞后段；
 - 实测速度：由位置差分求得（10–100ms 窗口），未使用噪声较大的 rActualValueDeriv；
 - 规划速度：泵转速 ÷ 1.263，并用刹车触发点和 √(2as) 包络两处与代码公式交叉验证；
+- R(x) 与机构校验：用库源码编译的临时探针调用 `HYD_ToggleKinematics_ValidateBlocking` / `SolveOnline` 计算；
 - 分析脚本为临时脚本，未纳入仓库。
 ```

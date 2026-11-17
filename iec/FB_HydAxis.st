@@ -142,6 +142,9 @@ FUNCTION_BLOCK FB_HydAxis
     rEmergencyStopTimeMs : REAL := 100.0;
     fbHYD_ReadStatus : HYD_ReadStatus;
     bConfig : BOOL;
+    fbMaxVel : HYD_ReadMaxTemplateVelocity;   // toggle: segment speed scale
+    rMaxSpeedSeg : REAL;                      // mm/s, latched on segment start
+    bScaleOk : BOOL := TRUE;
   END_VAR
 
   METHOD PUBLIC SetVelocityToFlowGain : BOOL
@@ -169,6 +172,17 @@ FUNCTION_BLOCK FB_HydAxis
     fbHYD_WriteParameter( AXISID := siAxisId, EXECUTE := TRUE,
                           PARAMETERNUMBER := iParamterIndex, VALUE := REAL_TO_LREAL(rTypePID) );
     SetPidType := fbHYD_WriteParameter.Done;
+  END_METHOD
+
+  METHOD PUBLIC SetParameter : BOOL
+    VAR_INPUT
+      iIndex : INT;
+      rValue : REAL;
+    END_VAR
+    fbHYD_WriteParameter( AXISID := siAxisId, EXECUTE := FALSE);
+    fbHYD_WriteParameter( AXISID := siAxisId, EXECUTE := TRUE,
+                          PARAMETERNUMBER := iIndex, VALUE := REAL_TO_LREAL(rValue) );
+    SetParameter := fbHYD_WriteParameter.Done;
   END_METHOD
 
   METHOD PUBLIC SetCylinderConfig : BOOL
@@ -303,16 +317,35 @@ FUNCTION_BLOCK FB_HydAxis
   rTrigReset(CLK := bReset);
   rTrigDone(CLK := fbMoveContAbs.InEndVelocity);
 
-  rMaxSpeed := stHydAxisRef.rMaxSpeed;
+  rPos  := UDINT_TO_REAL(udiPos)*0.01;  //位置设定
+  iDir := uiDir;
+
+  // 曲肘轴：段启动沿锁存速度标尺 = 本段区间最坏速比处泵满流量对应的动模板速度
+  IF rTrigStart.Q THEN
+      bScaleOk := TRUE;
+      IF iMechBaseClass = 1 AND (uiMode = 1 OR uiMode = 2) THEN
+          fbMaxVel(AXISID := siAxisId, ENABLE := TRUE,
+                   XFROM := stHydAxisRef.rActPosition,
+                   XTO := SEL(uiMode = 1, stHydAxisRef.rActPosition, rPos),
+                   DIRECTION := iDir);
+          bScaleOk := fbMaxVel.VALID AND NOT fbMaxVel.ERROR;
+          IF bScaleOk THEN
+              rMaxSpeedSeg := fbMaxVel.MAXVELOCITY;
+          END_IF;
+      END_IF;
+  END_IF;
+
+  IF iMechBaseClass = 1 THEN
+      rMaxSpeed := rMaxSpeedSeg;
+  ELSE
+      rMaxSpeed := stHydAxisRef.rMaxSpeed;   // 直压轴保持原标尺
+  END_IF;
 
   rPres := MAX(UINT_TO_REAL(uiPres), 0.0)*0.1;   //压力设定 bar
   rVel  := UINT_TO_REAL(uiSpd)*0.1*0.01*rMaxSpeed;  //速度设定
   rEndVel := UINT_TO_REAL(uiEndSpd)*0.1*0.01*rMaxSpeed;  //终点速度
-  rPos  := UDINT_TO_REAL(udiPos)*0.01;  //位置设定
   rFlowPercent := UINT_TO_REAL(uiSpd)*0.1;
   rFlowPercent := LIMIT(5, rFlowPercent, 100);
-
-  iDir := uiDir;
 
   //--- 2. 状态机主逻辑 ---
   CASE iStep OF
@@ -339,6 +372,14 @@ FUNCTION_BLOCK FB_HydAxis
                 SetPumpConfig(50, 1700);
               END_IF;
 
+              // 参数 35：液压纯滞后补偿 ms；参数 36：终速 0 停稳速度阈值 mm/s（0 = 不写，保持库默认）
+              IF stHydAxisRef.rResponseDelayMs > 0.0 THEN
+                SetParameter(35, stHydAxisRef.rResponseDelayMs);
+              END_IF;
+              IF stHydAxisRef.rZeroEndSettleVelocity > 0.0 THEN
+                SetParameter(36, stHydAxisRef.rZeroEndSettleVelocity);
+              END_IF;
+
               IF iMechBaseClass = 1 THEN
                 iStep := 1;
               ELSE
@@ -353,6 +394,8 @@ FUNCTION_BLOCK FB_HydAxis
           bConfig := SetToggleMechanism(siAxisId, stHydAxisRef.iMechanismType );
           IF bConfig THEN
             iStep := 10;
+          ELSIF fbHYD_ConfigureToggleMechanism.ERROR THEN
+            bAlarm := TRUE; dwAlarmID := fbHYD_ConfigureToggleMechanism.ERRORID; iStep := 900;
           END_IF;
 
 
@@ -366,9 +409,13 @@ FUNCTION_BLOCK FB_HydAxis
           ELSIF rTrigReset.Q AND bAlarm THEN
               iStep := 400;
           ELSIF rTrigStart.Q AND uiMode >= 1 AND uiMode <= 3 THEN
-              uiActiveMode := uiMode;
-              bCmdExecute := TRUE;
-              iStep := 100;
+              IF NOT bScaleOk THEN
+                  bAlarm := TRUE; dwAlarmID := fbMaxVel.ERRORID; iStep := 900;
+              ELSE
+                  uiActiveMode := uiMode;
+                  bCmdExecute := TRUE;
+                  iStep := 100;
+              END_IF;
           END_IF;
 
       100: // 运行中
@@ -386,7 +433,9 @@ FUNCTION_BLOCK FB_HydAxis
 
           // 2. 段切换触发
           ELSIF rTrigStart.Q THEN
-              IF uiMode = uiActiveMode THEN
+              IF NOT bScaleOk THEN
+                  bAlarm := TRUE; dwAlarmID := fbMaxVel.ERRORID; iStep := 900;
+              ELSIF uiMode = uiActiveMode THEN
                   iStep := 105;
               ELSIF uiMode >= 1 AND uiMode <= 3 THEN
                   uiActiveMode := uiMode;
@@ -419,8 +468,15 @@ FUNCTION_BLOCK FB_HydAxis
 
       400: // 报警复位
           IF fbReset.DONE THEN
-              bAlarm := FALSE; dwAlarmID := 0; iStep := 10;
-              bCmdExecute := FALSE;
+              bAlarm := FALSE; dwAlarmID := 0; bCmdExecute := FALSE;
+              bScaleOk := TRUE;
+              IF iMechBaseClass = 1 AND NOT bConfig THEN
+                  // 机构未配置成功：撤销 EXECUTE 后回第 1 步重试，禁止带默认几何运行
+                  fbHYD_ConfigureToggleMechanism(AXISID := siAxisId, EXECUTE := FALSE);
+                  iStep := 1;
+              ELSE
+                  iStep := 10;
+              END_IF;
           ELSIF fbReset.ERROR THEN
               bAlarm := TRUE; dwAlarmID := fbReset.ERRORID; iStep := 900;
           END_IF;
