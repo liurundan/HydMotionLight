@@ -597,6 +597,8 @@ typedef enum {
     HYD_PARAM_CYLINDER_AREA_RETRACT,    /* mm² */
     HYD_PARAM_CYLINDER_STROKE,          /* mm */
     HYD_PARAM_KSYS_BAR_PER_RPM,         /* bar/rpm; 0 disables Ksys feedforward */
+    HYD_PARAM_HYDRAULIC_RESPONSE_DELAY, /* ms; 0 disables zero-end delay compensation */
+    HYD_PARAM_ZERO_END_SETTLE_VELOCITY, /* mm/s; 0 keeps the legacy zero-end settle gate */
     HYD_PARAM_COUNT
 } HYD_ParameterNumber;
 
@@ -630,6 +632,8 @@ typedef struct {
     HYD_REAL defaultTargetFlow;
     HYD_BOOL useSimulation;
     HYD_REAL ksysBarPerRpm;              /* bar/rpm; 0 disables Ksys feedforward */
+    HYD_REAL responseDelayMs;            /* ms; hydraulic dead time for zero-end braking */
+    HYD_REAL zeroEndSettleVelocity;      /* mm/s; zero-end settle gate, 0 = legacy */
 } HYD_MotionFBParams;
 
 /* ============================================================================

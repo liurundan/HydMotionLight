@@ -342,6 +342,65 @@ HYD_BOOL HYD_MotionControlFB_MapTemplateVelocity(
     return true;
 }
 
+HYD_BOOL HYD_MotionControlFB_ResolveMaxTemplateVelocity(
+    const HYD_MotionControlFB *fb,
+    HYD_REAL xFrom,
+    HYD_REAL xTo,
+    HYD_MotionDirection direction,
+    HYD_REAL *maxTemplateVelocity,
+    HYD_REAL *velocityRatioMax,
+    HYD_REAL *flowLimit,
+    HYD_DiagnosticCode *code) {
+    HYD_ActuationMapperInput input;
+    HYD_ToggleError error = HYD_TOGGLE_ERROR_NONE;
+    HYD_REAL pumpFlowLimit;
+    HYD_REAL limit;
+
+    if (code != NULL) {
+        *code = HYD_DIAG_CODE_NONE;
+    }
+    if (fb == NULL || maxTemplateVelocity == NULL ||
+        velocityRatioMax == NULL || flowLimit == NULL) {
+        if (code != NULL) {
+            *code = HYD_DIAG_CODE_KINEMATICS_RUNTIME_INVALID;
+        }
+        return false;
+    }
+
+    limit = fb->_params.maxFlow;
+    pumpFlowLimit = HYD_GetPumpFlowLimit(fb);
+    if (pumpFlowLimit > 0.0f && (limit <= 0.0f || pumpFlowLimit < limit)) {
+        limit = pumpFlowLimit;
+    }
+
+    memset(&input, 0, sizeof(input));
+    input.mechanismType = (HYD_MechanismType)fb->mechanismType;
+    input.cylinderConfig = &fb->cylinderConfig;
+    input.fallbackCylinderVelocityToFlowGain = fb->_params.velocityToFlowGain;
+    input.maxFlow = limit;
+    if (input.mechanismType == HYD_MECHANISM_FIVE_POINT_TOGGLE) {
+        if (fb->mechanismSlot == HYD_TOGGLE_SLOT_NONE) {
+            if (code != NULL) {
+                *code = HYD_DIAG_CODE_KINEMATICS_RUNTIME_INVALID;
+            }
+            return false;
+        }
+        input.toggleConfig =
+            HYD_ToggleMechanismPool_GetPrepared(fb->mechanismSlot);
+    }
+
+    if (!HYD_ActuationMapper_MaxTemplateVelocityOverRange(
+            &input, xFrom, xTo, direction,
+            maxTemplateVelocity, velocityRatioMax, &error)) {
+        if (code != NULL) {
+            *code = HYD_ToggleErrorToRuntimeDiagnostic(error);
+        }
+        return false;
+    }
+    *flowLimit = limit;
+    return true;
+}
+
 static void HYD_RecalculateVelocityFlowLimit(HYD_MotionSegment* segment) {
     (void)segment;
     /* maxFlow is a configured pump/process capability, never a template
@@ -2472,6 +2531,8 @@ static HYD_BOOL HYD_ExecuteActiveSegmentControl(HYD_MotionControlFB* fb,
         plannerInput.state = &fb->_plannerState;
         plannerInput.blend = selectedBlend;
         plannerInput.lastActiveDirection = fb->_lastActiveDirection;
+        /* Dead time is not a transition time: no 100 ms minimum applies. */
+        plannerInput.responseDelay = fb->_params.responseDelayMs * 0.001f;
         HYD_REAL plannedMagnitudeBefore = fabs(fb->_plannerState.lastTargetVelocity);
         HYD_MotionPlanner_Execute(&plannerInput, plannerOutput);
 
@@ -3855,6 +3916,8 @@ void HYD_MotionControlFB_Init(HYD_MotionControlFB* fb) {
     fb->_params.defaultTargetFlow = 0.0f; // 5.0;
     fb->_params.useSimulation = false;
     fb->_params.ksysBarPerRpm = 0.0f;
+    fb->_params.responseDelayMs = HYD_DEFAULT_HYDRAULIC_RESPONSE_DELAY_MS;
+    fb->_params.zeroEndSettleVelocity = 0.0f;
 
     /* Legacy defaults — used when pumpConfig/cylinderConfig are not configured.
      * pumpConfig and cylinderConfig are zero after memset — inactive by default. */
@@ -4475,6 +4538,8 @@ HYD_BOOL HYD_MotionControlFB_ReadParameter(const HYD_MotionControlFB* fb, int pa
         case HYD_PARAM_CYLINDER_AREA_RETRACT:          *value = fb->cylinderConfig.areaRetractMm2; break;
         case HYD_PARAM_CYLINDER_STROKE:                *value = fb->cylinderConfig.strokeMm; break;
         case HYD_PARAM_KSYS_BAR_PER_RPM:               *value = fb->_params.ksysBarPerRpm; break;
+        case HYD_PARAM_HYDRAULIC_RESPONSE_DELAY:       *value = fb->_params.responseDelayMs; break;
+        case HYD_PARAM_ZERO_END_SETTLE_VELOCITY:       *value = fb->_params.zeroEndSettleVelocity; break;
         default: return false;
     }
     return true;
@@ -4550,6 +4615,15 @@ HYD_BOOL HYD_MotionControlFB_WriteParameter(HYD_MotionControlFB* fb, int paramNu
         case HYD_PARAM_KSYS_BAR_PER_RPM:
             if (!isfinite(value) || value < 0.0) return false;
             fb->_params.ksysBarPerRpm = value;
+            break;
+        case HYD_PARAM_HYDRAULIC_RESPONSE_DELAY:
+            if (!isfinite(value) || value < 0.0 ||
+                value > HYD_MAX_HYDRAULIC_RESPONSE_DELAY_MS) return false;
+            fb->_params.responseDelayMs = value;
+            break;
+        case HYD_PARAM_ZERO_END_SETTLE_VELOCITY:
+            if (!isfinite(value) || value < 0.0) return false;
+            fb->_params.zeroEndSettleVelocity = value;
             break;
         default: return false;
     }

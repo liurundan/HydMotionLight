@@ -1103,6 +1103,27 @@
 				<body><ST><xhtml:p><![CDATA[{{ extern void __mcl_cmd_ReadToggleMechanism(HYD_READTOGGLEMECHANISM*); __mcl_cmd_ReadToggleMechanism(data__); }} ]]></xhtml:p></ST></body>
 				<documentation><![CDATA[Reads the committed five-point toggle geometry and safe envelope.]]></documentation>
 			</pou>
+			<pou name="HYD_ReadMaxTemplateVelocity" pouType="functionBlock">
+				<interface>
+					<inputVars>
+						<variable name="AXISID"><type><SINT /></type></variable>
+						<variable name="ENABLE"><type><BOOL /></type></variable>
+						<variable name="XFROM"><type><REAL /></type></variable>
+						<variable name="XTO"><type><REAL /></type></variable>
+						<variable name="DIRECTION"><type><SINT /></type></variable>
+					</inputVars>
+					<outputVars>
+						<variable name="VALID"><type><BOOL /></type></variable>
+						<variable name="ERROR"><type><BOOL /></type></variable>
+						<variable name="ERRORID"><type><WORD /></type></variable>
+						<variable name="MAXVELOCITY"><type><REAL /></type></variable>
+						<variable name="VELOCITYRATIOMAX"><type><REAL /></type></variable>
+						<variable name="FLOWLIMIT"><type><REAL /></type></variable>
+					</outputVars>
+				</interface>
+				<body><ST><xhtml:p><![CDATA[{{ extern void __mcl_cmd_ReadMaxTemplateVelocity(HYD_READMAXTEMPLATEVELOCITY*); __mcl_cmd_ReadMaxTemplateVelocity(data__); }} ]]></xhtml:p></ST></body>
+				<documentation><![CDATA[Template velocity [mm/s] that keeps the worst point of XFROM..XTO at the flow cap MIN(maxFlow, pump limit). DIRECTION: 1 positive, 2 negative, 0 sign of XTO-XFROM. Evaluate on the segment start edge and use it as the 100 % speed scale.]]></documentation>
+			</pou>
 			<pou name="HYD_SetAxisFeedback" pouType="functionBlock">
 				<interface>
 					<inputVars>

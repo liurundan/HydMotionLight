@@ -386,6 +386,20 @@ typedef HYD_REAL HYD_TIME;
     #define HYD_THRESH_SHORT_STROKE_MIN_PEAK 1.0f
 #endif
 
+/* --- 零终速液压纯滞后补偿（src/motion_planner.c 零终速 blend 刹车） --- */
+
+/* 泵指令到执行器速度响应之间的纯滞后默认值（参数 HYDRAULIC_RESPONSE_DELAY）。
+ * 0 表示不补偿（保持原有零终速刹车触发距离与零延迟包络）。
+ * 单位：ms。 */
+#ifndef HYD_DEFAULT_HYDRAULIC_RESPONSE_DELAY_MS
+    #define HYD_DEFAULT_HYDRAULIC_RESPONSE_DELAY_MS 0.0f
+#endif
+
+/* 参数 HYDRAULIC_RESPONSE_DELAY 允许写入的上限。单位：ms。 */
+#ifndef HYD_MAX_HYDRAULIC_RESPONSE_DELAY_MS
+    #define HYD_MAX_HYDRAULIC_RESPONSE_DELAY_MS 200.0f
+#endif
+
 /* --- 压力 ceiling 诊断 debounce / startup-suppress（motion_control.c Init） --- */
 
 /* PRESSURE_CEILING_EXCEEDED 触发前的 debounce 时长。短于一般 pressure

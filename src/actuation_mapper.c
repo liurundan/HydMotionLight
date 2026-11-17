@@ -259,3 +259,135 @@ HYD_BOOL HYD_ActuationMapper_FlowToTemplateVelocity(
     set_error(error, HYD_TOGGLE_ERROR_NONE);
     return 1;
 }
+
+static HYD_BOOL range_max_abs_ratio(const HYD_ActuationMapperInput *input,
+                                    HYD_REAL low,
+                                    HYD_REAL high,
+                                    HYD_REAL *ratio_max,
+                                    HYD_REAL *ratio_sign,
+                                    HYD_ToggleError *error)
+{
+    HYD_UINT16 point;
+    HYD_UINT16 last = (HYD_UINT16)(HYD_TOGGLE_RANGE_RATIO_SAMPLES + 1u);
+
+    *ratio_max = 0.0f;
+    *ratio_sign = 1.0f;
+    if (input->mechanismType == HYD_MECHANISM_DIRECT) {
+        *ratio_max = 1.0f;
+        return 1;
+    }
+    for (point = 0u; point <= last; ++point) {
+        HYD_REAL x = (point == last)
+            ? high
+            : low + (high - low) * (HYD_REAL)point / (HYD_REAL)last;
+        HYD_ActuationMapperInput at = *input;
+        HYD_REAL position;
+        HYD_REAL ratio;
+        HYD_REAL ignored;
+
+        at.templatePosition = x;
+        if (!resolve_position_and_ratio(&at, 0.0f, &position, &ratio,
+                                        &ignored, error) ||
+            !ratio_is_safe(ratio, error)) {
+            return 0;
+        }
+        if (fabsf(ratio) > *ratio_max) {
+            *ratio_max = fabsf(ratio);
+            *ratio_sign = (ratio < 0.0f) ? -1.0f : 1.0f;
+        }
+    }
+    return 1;
+}
+
+static HYD_BOOL velocity_for_direction(const HYD_ActuationMapperInput *input,
+                                       HYD_REAL template_sign,
+                                       HYD_REAL ratio_max,
+                                       HYD_REAL ratio_sign,
+                                       HYD_REAL *velocity,
+                                       HYD_ToggleError *error)
+{
+    HYD_REAL gain;
+    HYD_MotionDirection actuator_direction =
+        direction_from_velocity(template_sign * ratio_sign);
+
+    if (!resolve_cylinder_gain(input, actuator_direction, &gain, error)) {
+        return 0;
+    }
+    *velocity = input->maxFlow / (gain * ratio_max);
+    if (!isfinite(*velocity)) {
+        set_error(error, HYD_TOGGLE_ERROR_NONFINITE_RESULT);
+        return 0;
+    }
+    return 1;
+}
+
+HYD_BOOL HYD_ActuationMapper_MaxTemplateVelocityOverRange(
+    const HYD_ActuationMapperInput *input,
+    HYD_REAL xFrom,
+    HYD_REAL xTo,
+    HYD_MotionDirection direction,
+    HYD_REAL *maxTemplateVelocity,
+    HYD_REAL *velocityRatioMax,
+    HYD_ToggleError *error)
+{
+    HYD_REAL low;
+    HYD_REAL high;
+    HYD_REAL ratio_max;
+    HYD_REAL ratio_sign;
+    HYD_REAL velocity;
+
+    if ((input == NULL) || (maxTemplateVelocity == NULL) ||
+        (velocityRatioMax == NULL)) {
+        set_error(error, HYD_TOGGLE_ERROR_NULL_ARGUMENT);
+        return 0;
+    }
+    if (!isfinite(xFrom) || !isfinite(xTo) || !isfinite(input->maxFlow) ||
+        (input->maxFlow <= 0.0f)) {
+        set_error(error, HYD_TOGGLE_ERROR_NONFINITE_PARAMETER);
+        return 0;
+    }
+
+    low = fminf(xFrom, xTo);
+    high = fmaxf(xFrom, xTo);
+    if (input->mechanismType == HYD_MECHANISM_FIVE_POINT_TOGGLE) {
+        if (input->toggleConfig == NULL) {
+            set_error(error, HYD_TOGGLE_ERROR_NULL_ARGUMENT);
+            return 0;
+        }
+        low = fmaxf(low, input->toggleConfig->xHandoffEffective);
+        high = fminf(high, input->toggleConfig->raw.sm);
+        if (low > high) {
+            set_error(error, HYD_TOGGLE_ERROR_POSITION_OUT_OF_RANGE);
+            return 0;
+        }
+    }
+
+    if (!range_max_abs_ratio(input, low, high, &ratio_max, &ratio_sign,
+                             error)) {
+        return 0;
+    }
+
+    if (direction == HYD_DIRECTION_EXTEND || direction == HYD_DIRECTION_RETRACT) {
+        if (!velocity_for_direction(input,
+                                    (direction == HYD_DIRECTION_EXTEND) ? 1.0f : -1.0f,
+                                    ratio_max, ratio_sign, &velocity, error)) {
+            return 0;
+        }
+    } else {
+        HYD_REAL extend_velocity;
+        HYD_REAL retract_velocity;
+
+        if (!velocity_for_direction(input, 1.0f, ratio_max, ratio_sign,
+                                    &extend_velocity, error) ||
+            !velocity_for_direction(input, -1.0f, ratio_max, ratio_sign,
+                                    &retract_velocity, error)) {
+            return 0;
+        }
+        velocity = fminf(extend_velocity, retract_velocity);
+    }
+
+    *maxTemplateVelocity = velocity;
+    *velocityRatioMax = ratio_max;
+    set_error(error, HYD_TOGGLE_ERROR_NONE);
+    return 1;
+}

@@ -64,6 +64,7 @@ def main() -> int:
     required_pous = {
         "HYD_ConfigureToggleMechanism": "HYD_CONFIGURETOGGLEMECHANISM",
         "HYD_ReadToggleMechanism": "HYD_READTOGGLEMECHANISM",
+        "HYD_ReadMaxTemplateVelocity": "HYD_READMAXTEMPLATEVELOCITY",
         "HYD_ReadDebug": "HYD_READDEBUG",
     }
     for pou_name, c_name in required_pous.items():

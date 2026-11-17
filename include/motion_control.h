@@ -544,6 +544,18 @@ HYD_BOOL HYD_MotionControlFB_MapTemplateVelocity(
     HYD_ActuationMapperOutput *mapped,
     HYD_DiagnosticCode *code);
 
+/* Template velocity that keeps the worst point of [xFrom, xTo] at the
+ * effective flow cap min(params.maxFlow, pump speed limit / gain). */
+HYD_BOOL HYD_MotionControlFB_ResolveMaxTemplateVelocity(
+    const HYD_MotionControlFB *fb,
+    HYD_REAL xFrom,
+    HYD_REAL xTo,
+    HYD_MotionDirection direction,
+    HYD_REAL *maxTemplateVelocity,
+    HYD_REAL *velocityRatioMax,
+    HYD_REAL *flowLimit,
+    HYD_DiagnosticCode *code);
+
 /* Parameter accessors for IEC Read/Write Parameter FBs.
  * Return false on out-of-range paramNumber or type mismatch. */
 HYD_BOOL HYD_MotionControlFB_ReadParameter(const HYD_MotionControlFB* fb, int paramNumber, HYD_REAL* value);

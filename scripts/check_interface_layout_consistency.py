@@ -19,6 +19,7 @@ POU_TO_C_TYPE = {
     "HYD_CreateMotion": "HYD_CREATEMOTION",
     "HYD_ConfigureToggleMechanism": "HYD_CONFIGURETOGGLEMECHANISM",
     "HYD_ReadToggleMechanism": "HYD_READTOGGLEMECHANISM",
+    "HYD_ReadMaxTemplateVelocity": "HYD_READMAXTEMPLATEVELOCITY",
     "HYD_SetAxisFeedback": "HYD_SETAXISFEEDBACK",
     "HYD_GetPumpRequest": "HYD_GETPUMPREQUEST",
     "HYD_ReadStatus": "HYD_READSTATUS",

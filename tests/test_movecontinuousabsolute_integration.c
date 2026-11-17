@@ -1120,6 +1120,223 @@ static void test_zero_end_velocity_completes_after_position_stop(void) {
     }
 }
 
+static bool write_parameter(int axisId, int parameterNumber, HYD_REAL value) {
+    HYD_WRITEPARAMETER write;
+
+    memset(&write, 0, sizeof(write));
+    IEC_VAL(write.EN) = true;
+    IEC_VAL(write.AXISID) = axisId;
+    IEC_VAL(write.EXECUTE) = true;
+    IEC_VAL(write.PARAMETERNUMBER) = parameterNumber;
+    IEC_VAL(write.VALUE) = value;
+    __mcl_cmd_WriteParameter(&write);
+    return IEC_VAL(write.DONE) && !IEC_VAL(write.ERROR);
+}
+
+/* Measured settle noise after a zero-end stop (filtered clamp feedback) must
+ * not block INENDVELOCITY once the dedicated settle threshold is configured,
+ * and configuring it must not arm velocity-deviation diagnostics. */
+static void test_zero_end_settle_velocity_parameter_gates_inendvelocity(void) {
+    HYD_MOVECONTINUOUSABSOLUTE cmd;
+    HYD_MotionControlFB* core;
+    int axisId;
+    bool positionReached = false;
+
+    __HydMotion_framework_Init();
+    axisId = create_manual_axis();
+    ASSERT_TRUE(axisId >= 0,
+                "CreateMotion should allocate a manual axis for the settle-threshold test");
+    if (axisId < 0) {
+        return;
+    }
+    core = __MK_GetPublic_MotionControlFB(axisId);
+    ASSERT_TRUE(core != NULL, "Settle-threshold test should expose the public FB");
+    if (core == NULL) {
+        return;
+    }
+    ASSERT_TRUE(write_parameter(axisId, HYD_PARAM_POSITION_TOLERANCE, 0.1f),
+                "Position tolerance should be writable");
+    ASSERT_TRUE(write_parameter(axisId, HYD_PARAM_ZERO_END_SETTLE_VELOCITY, 3.0f),
+                "Zero-end settle velocity should be writable through the IEC adapter");
+    ASSERT_TRUE(set_axis_feedback(axisId, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f),
+                "Manual feedback should initialize the axis");
+
+    init_movecontinuousabsolute(&cmd, axisId, 1.0f, 10.0f, 0.0f,
+                                HYD_DIRECTION_POSITIVE,
+                                HYD_DIRECTION_POSITIVE);
+    rising_edge_scan(&cmd);
+    ASSERT_TRUE(!IEC_VAL(cmd.ERROR), "Zero-end command should be accepted");
+
+    /* Target reached; filtered feedback still shows 1.5 mm/s of noise. */
+    ASSERT_TRUE(set_axis_feedback(axisId, 1.0f, 1.5f, 0.0f, 0.0f, 0.0f),
+                "Manual feedback should report the target with residual noise");
+    for (int step = 0; step < 400 && !IEC_VAL(cmd.INENDVELOCITY); step++) {
+        __HydMotion_framework_Publish();
+        hold_true_scan(&cmd);
+        positionReached = positionReached || IEC_VAL(cmd.POSITIONREACHED);
+        if (IEC_VAL(cmd.ERROR)) {
+            break;
+        }
+    }
+
+    ASSERT_TRUE(positionReached, "Zero-end command should latch POSITIONREACHED");
+    ASSERT_TRUE(IEC_VAL(cmd.INENDVELOCITY),
+                "1.5 mm/s settle noise must satisfy a 3 mm/s zero-end settle threshold");
+    ASSERT_TRUE(!IEC_VAL(cmd.ERROR),
+                "The settle threshold must not raise an error");
+    ASSERT_TRUE(!core->DIAGNOSTIC.velocityDeviation,
+                "The settle threshold must not arm velocity-deviation diagnostics");
+}
+
+typedef struct {
+    bool completed;
+    bool error;
+    int brakeStartStep;
+    int brakeEndStep;
+    HYD_REAL peakPlanned;
+    HYD_REAL maxBrakeStepDrop;
+    HYD_REAL finalPosition;
+} DelayedStopResult;
+
+#define DELAYED_PLANT_MAX_DELAY_CYCLES 100
+
+/* Manual-feedback plant: actual platen velocity = plantGain * planned velocity
+ * delayed by delayCycles (1 ms each), i.e. a hydraulic dead time. */
+static DelayedStopResult run_delayed_zero_end_stop(HYD_REAL startPosition,
+                                                   HYD_REAL targetPosition,
+                                                   HYD_REAL responseDelayMs,
+                                                   HYD_REAL plantGain,
+                                                   int delayCycles) {
+    DelayedStopResult result;
+    HYD_MOVECONTINUOUSABSOLUTE cmd;
+    HYD_MotionControlFB* core;
+    HYD_REAL history[DELAYED_PLANT_MAX_DELAY_CYCLES];
+    HYD_REAL position = startPosition;
+    HYD_REAL velocity = 0.0f;
+    HYD_REAL previousPlanned = 0.0f;
+    int axisId;
+    int head = 0;
+    int step;
+
+    memset(&result, 0, sizeof(result));
+    result.brakeStartStep = -1;
+    result.brakeEndStep = -1;
+    memset(history, 0, sizeof(history));
+
+    __HydMotion_framework_Init();
+    axisId = create_manual_axis();
+    core = __MK_GetPublic_MotionControlFB(axisId);
+    if (axisId < 0 || core == NULL ||
+        !write_parameter(axisId, HYD_PARAM_HYDRAULIC_RESPONSE_DELAY, responseDelayMs) ||
+        !set_axis_feedback(axisId, position, 0.0f, 0.0f, 0.0f, 0.0f)) {
+        result.error = true;
+        return result;
+    }
+
+    init_movecontinuousabsolute(&cmd, axisId, targetPosition, 20.0f, 0.0f,
+                                HYD_DIRECTION_POSITIVE,
+                                HYD_DIRECTION_POSITIVE);
+    IEC_VAL(cmd.ACCELERATION) = 500.0f;
+    IEC_VAL(cmd.DECELERATION) = 500.0f;
+    IEC_VAL(cmd.ADAPTENDVELTOAVOIDOVERSHOOT) = true;
+    rising_edge_scan(&cmd);
+
+    for (step = 0; step < 15000; step++) {
+        HYD_REAL planned;
+
+        set_axis_feedback(axisId, position, velocity, 0.0f, 0.0f, 0.0f);
+        __HydMotion_framework_Publish();
+        hold_true_scan(&cmd);
+        if (IEC_VAL(cmd.ERROR) || IEC_VAL(cmd.COMMANDABORTED)) {
+            result.error = true;
+            break;
+        }
+
+        planned = core->STATE.plannedVelocity;
+        if (planned > result.peakPlanned) {
+            result.peakPlanned = planned;
+        }
+        if (result.brakeStartStep < 0 && result.peakPlanned > 1.0f &&
+            planned < previousPlanned) {
+            result.brakeStartStep = step;
+        }
+        if (result.brakeStartStep >= 0 && result.brakeEndStep < 0) {
+            if (previousPlanned - planned > result.maxBrakeStepDrop) {
+                result.maxBrakeStepDrop = previousPlanned - planned;
+            }
+            if (fabsf(planned) <= VELOCITY_EPSILON) {
+                result.brakeEndStep = step;
+            }
+        }
+        previousPlanned = planned;
+
+        history[head] = planned;
+        head = (head + 1) % delayCycles;
+        velocity = plantGain * history[head];
+        position += velocity * 0.001f;
+
+        if (IEC_VAL(cmd.INENDVELOCITY) && !IEC_VAL(cmd.BUSY)) {
+            result.completed = true;
+            break;
+        }
+    }
+
+    /* Let the dead-time buffer drain with a zero command. */
+    for (int drain = 0; drain < delayCycles + 1; drain++) {
+        history[head] = 0.0f;
+        head = (head + 1) % delayCycles;
+        position += plantGain * history[head] * 0.001f;
+    }
+    result.finalPosition = position;
+    return result;
+}
+
+/* Field case: 45 ms hydraulic dead time, planned == actual velocity (k = 1).
+ * The zero-end stop must use the configured 500 ms deceleration and land on
+ * the target once the response delay is compensated. */
+static void test_zero_end_stop_compensates_hydraulic_response_delay(void) {
+    DelayedStopResult r = run_delayed_zero_end_stop(200.0f, 300.0f, 40.0f, 1.0f, 45);
+    int decelMs = r.brakeEndStep - r.brakeStartStep;
+
+    ASSERT_TRUE(!r.error, "Delayed-plant zero-end stop should run without error");
+    ASSERT_TRUE(r.completed, "Delayed-plant zero-end stop should complete with INENDVELOCITY");
+    ASSERT_TRUE(r.brakeStartStep > 0 && r.brakeEndStep > r.brakeStartStep,
+                "Delayed-plant zero-end stop should show a braking ramp");
+    ASSERT_TRUE(decelMs >= 450 && decelMs <= 550,
+                "Planned deceleration should last the configured 500 ms");
+    ASSERT_TRUE(fabsf(r.finalPosition - 300.0f) < 0.3f,
+                "Compensated stop should land within 0.3 mm of the target");
+    /* Nominal ramp: 20 mm/s over 500 ms = 0.04 mm/s per 1 ms cycle. A
+     * collapsing distance envelope shows up as a much steeper single step. */
+    ASSERT_TRUE(r.maxBrakeStepDrop <= 0.08f,
+                "The braking ramp must not collapse faster than twice the configured rate");
+    if (decelMs < 450 || decelMs > 550 || fabsf(r.finalPosition - 300.0f) >= 0.3f ||
+        r.maxBrakeStepDrop > 0.08f) {
+        printf("  observed decel=%d ms final=%.4f mm maxDrop=%.4f\n",
+               decelMs, r.finalPosition, r.maxBrakeStepDrop);
+    }
+}
+
+/* Short stroke (3 mm) never reaches cruise; the reachable-peak ramp must
+ * still brake over the configured 500 ms with the dead time compensated. */
+static void test_short_zero_end_stop_compensates_hydraulic_response_delay(void) {
+    DelayedStopResult r = run_delayed_zero_end_stop(297.0f, 300.0f, 40.0f, 1.0f, 45);
+    int decelMs = r.brakeEndStep - r.brakeStartStep;
+
+    ASSERT_TRUE(!r.error && r.completed,
+                "Short delayed-plant zero-end stop should complete without error");
+    ASSERT_TRUE(r.peakPlanned > 1.0f && r.peakPlanned < 20.0f,
+                "Short stroke should stay below the 20 mm/s cruise velocity");
+    ASSERT_TRUE(decelMs >= 450 && decelMs <= 550,
+                "Short-stroke planned deceleration should last the configured 500 ms");
+    ASSERT_TRUE(fabsf(r.finalPosition - 300.0f) < 0.3f,
+                "Short compensated stop should land within 0.3 mm of the target");
+    if (decelMs < 450 || decelMs > 550 || fabsf(r.finalPosition - 300.0f) >= 0.3f) {
+        printf("  observed short decel=%d ms peak=%.3f final=%.4f mm\n",
+               decelMs, r.peakPlanned, r.finalPosition);
+    }
+}
+
 static void test_reverse_sustain_delays_inendvelocity(void) {
     HYD_MOVECONTINUOUSABSOLUTE cmd;
     int axisId;
@@ -1536,6 +1753,9 @@ int main(void) {
     test_adapt_lowers_crossing_velocity_when_distance_is_too_short_to_accelerate();
     test_adapt_does_not_raise_crossing_velocity_when_distance_is_too_short_to_decelerate();
     test_zero_end_velocity_completes_after_position_stop();
+    test_zero_end_settle_velocity_parameter_gates_inendvelocity();
+    test_zero_end_stop_compensates_hydraulic_response_delay();
+    test_short_zero_end_stop_compensates_hydraulic_response_delay();
     test_reverse_sustain_delays_inendvelocity();
     test_plc_pressure_feedback_and_movecontinuousabsolute_limit_use_bar();
     test_pressure_limit_can_hold_positionreached_true_while_inendvelocity_stays_false();

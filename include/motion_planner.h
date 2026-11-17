@@ -32,6 +32,7 @@ typedef struct {
     HYD_MotionPlannerState* state;
     const HYD_MotionBlendContext* blend;
     HYD_MotionDirection lastActiveDirection;  /* for CURRENT direction resolution */
+    HYD_REAL responseDelay;  /* s; hydraulic dead time reserved by zero-end blend stops */
 } HYD_MotionPlannerInput;
 
 typedef struct {

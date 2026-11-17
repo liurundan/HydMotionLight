@@ -537,6 +537,89 @@ static void test_buffered_blend_recomputes_toggle_flow_after_cutover(void)
     assert_near(fb.STATE.plannedFlow, expected.requestedFlow, 0.003f);
 }
 
+/* Clamp close 150 -> 10 on machine 105 (LF = 323), retract area 4800 mm^2,
+ * 50 cc / 1700 rpm / 0.95 pump. At the segment scale the actuator flow reaches
+ * the pump limit exactly where the worst ratio occurs (x = 10). The test holds
+ * the platen at the scale velocity in a SPEED_RAMP segment and walks it to the
+ * die-side end so the worst point is reached at full speed. */
+static void run_105_close_at_scale_fraction(HYD_REAL fraction,
+                                            HYD_REAL *peakPumpSpeed,
+                                            HYD_BOOL *sawLimit)
+{
+    HYD_ToggleGeometryConfig raw = {
+        260.0f, 323.0f, 190.0f, 100.0f, 125.0f,
+        200.0f, 170.0f, 580.0f, 450.0f,
+        0.0f, (int8_t)-1, (int8_t)-1, (int8_t)-1, (int8_t)-1
+    };
+    HYD_TogglePreparedConfig prepared;
+    HYD_ToggleError error = HYD_TOGGLE_ERROR_NONE;
+    HYD_MotionControlFB fb;
+    HYD_MotionSegment segment;
+    HYD_DiagnosticCode code = HYD_DIAG_CODE_NONE;
+    HYD_REAL scale = 0.0f;
+    HYD_REAL ratio = 0.0f;
+    HYD_REAL flowLimit = 0.0f;
+    unsigned int cycle;
+
+    assert(HYD_ToggleKinematics_ValidateBlocking(&raw, &prepared, &error));
+    HYD_MotionControlFB_Init(&fb);
+    fb.pumpConfig.displacementMlRev = 50.0f;
+    fb.pumpConfig.volumetricEfficiency = 0.95f;
+    fb.pumpConfig.maxSpeedRpm = 1700.0f;
+    fb.cylinderConfig.areaExtendMm2 = 3350.0f;
+    fb.cylinderConfig.areaRetractMm2 = 4800.0f;
+    fb.AXIS_REF.position = 150.0f;
+    fb.AXIS_REF.pressure = 20.0f;
+    bind_toggle(&fb, &prepared);
+
+    assert(HYD_MotionControlFB_ResolveMaxTemplateVelocity(
+        &fb, 150.0f, 10.0f, HYD_DIRECTION_RETRACT,
+        &scale, &ratio, &flowLimit, &code));
+    assert_near(flowLimit, 80.75f, 0.01f);
+
+    segment = make_speed_segment();
+    segment.direction = HYD_DIRECTION_RETRACT;
+    segment.maxVelocity = fraction * scale;
+    segment.maxAcceleration = 100.0f;
+    segment.maxDeceleration = 100.0f;
+    segment.maxFlow = 90.0f;
+    assert(HYD_MotionControlFB_StartDirectCommand(
+               &fb, HYD_DIRECT_CMD_MOVE_VELOCITY, &segment, NULL,
+               HYD_BUFFER_MODE_ABORT, 0.0f) == HYD_DIRECT_START_STARTED);
+
+    *peakPumpSpeed = 0.0f;
+    *sawLimit = false;
+    for (cycle = 0U; cycle < 20000U && fb.AXIS_REF.position > 10.0f; ++cycle) {
+        advance_template_plant(&fb, 0.001f);
+        assert(fb.FB_STATE != HYD_FB_STATE_FAULT);
+        if (fb.AXIS_REF.position < 10.0f) {
+            break;  /* beyond the queried range */
+        }
+        if (fb.PUMP_SPEED > *peakPumpSpeed) {
+            *peakPumpSpeed = fb.PUMP_SPEED;
+        }
+        if ((fb.STATE.limitFlags &
+             (HYD_LIMIT_FLAG_FLOW | HYD_LIMIT_FLAG_PUMP_SPEED)) != 0u) {
+            *sawLimit = true;
+        }
+    }
+    assert(fb.AXIS_REF.position <= 10.0f);
+}
+
+static void test_segment_scale_puts_worst_point_at_pump_limit(void)
+{
+    HYD_REAL peak = 0.0f;
+    HYD_BOOL limited = true;
+
+    run_105_close_at_scale_fraction(0.99f, &peak, &limited);
+    assert(!limited);
+    assert_near(peak, 0.99f * 1700.0f, 6.0f);
+
+    run_105_close_at_scale_fraction(1.05f, &peak, &limited);
+    assert(limited);
+    assert(peak <= 1700.0f + 0.01f);
+}
+
 int main(void)
 {
     test_direct_position_and_velocity_flow_are_unchanged();
@@ -550,6 +633,7 @@ int main(void)
     test_pressure_to_velocity_uses_dynamic_inverse_and_faults_safely();
     test_continuous_absolute_transition_stays_in_template_space();
     test_buffered_blend_recomputes_toggle_flow_after_cutover();
+    test_segment_scale_puts_worst_point_at_pump_limit();
     printf("toggle motion integration tests passed\n");
     return 0;
 }

@@ -477,6 +477,28 @@ typedef struct {
 
 } HYD_READTOGGLEMECHANISM;
 
+// FUNCTION_BLOCK HYD_READMAXTEMPLATEVELOCITY
+// Data part
+typedef struct {
+  // FB Interface - IN, OUT, IN_OUT variables
+  __DECLARE_VAR(BOOL,EN)
+  __DECLARE_VAR(BOOL,ENO)
+  __DECLARE_VAR(SINT,AXISID)
+  __DECLARE_VAR(BOOL,ENABLE)
+  /* Template range [mm]; DIRECTION uses PLCopen codes, 0 = sign of XTO-XFROM. */
+  __DECLARE_VAR(REAL,XFROM)
+  __DECLARE_VAR(REAL,XTO)
+  __DECLARE_VAR(SINT,DIRECTION)
+  __DECLARE_VAR(BOOL,VALID)
+  __DECLARE_VAR(BOOL,ERROR)
+  __DECLARE_VAR(WORD,ERRORID)
+  /* mm/s template velocity at the flow cap; max |dXs/dXm|; L/min flow cap. */
+  __DECLARE_VAR(REAL,MAXVELOCITY)
+  __DECLARE_VAR(REAL,VELOCITYRATIOMAX)
+  __DECLARE_VAR(REAL,FLOWLIMIT)
+
+} HYD_READMAXTEMPLATEVELOCITY;
+
 // FUNCTION_BLOCK HYD_SETAXISFEEDBACK
 // Data part
 typedef struct {
@@ -730,6 +752,7 @@ extern void __mcl_cmd_CreateMotion(HYD_CREATEMOTION *data__);
 extern void __mcl_cmd_ConfigureToggleMechanism(
     HYD_CONFIGURETOGGLEMECHANISM *data__);
 extern void __mcl_cmd_ReadToggleMechanism(HYD_READTOGGLEMECHANISM *data__);
+extern void __mcl_cmd_ReadMaxTemplateVelocity(HYD_READMAXTEMPLATEVELOCITY *data__);
 extern void __mcl_cmd_LoadProfile(HYD_LOADPROFILE *data__);
 extern void __mcl_cmd_MoveProfile(HYD_MOVEPROFILE *data__);
 extern void __mcl_cmd_Stop(HYD_STOP *data__);

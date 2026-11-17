@@ -428,6 +428,13 @@ static HYD_REAL HYD_ComputeOnlineTrapezoidVelocityMagnitude(const HYD_MotionPlan
                         brakeDistance -= 0.5 *
                             (previousMagnitude - terminalVelocity) *
                             input->deltaTime;
+                        /* Travel during the hydraulic dead time happens
+                         * before the ramp takes effect at the actuator. */
+                        if (input->responseDelay > 0.0 &&
+                            isfinite(input->responseDelay)) {
+                            brakeDistance += previousMagnitude *
+                                             input->responseDelay;
+                        }
                         if (brakeDistance < 0.0) {
                             brakeDistance = 0.0;
                         }
@@ -597,11 +604,20 @@ static HYD_REAL HYD_ComputeOnlineTrapezoidVelocityMagnitude(const HYD_MotionPlan
          * of collapsing the distance envelope to zero in one scan. */
         safetyVelocityMagnitude = velocityMagnitude;
     } else {
+        /* Zero-end blend stops reserve the hydraulic dead time in the
+         * envelope so it coincides with the delayed trigger above instead of
+         * collapsing the ramp; other blends keep the zero-delay envelope. */
+        HYD_REAL envelopeDelay = input->deltaTime;
+        if (blendActive) {
+            envelopeDelay = (terminalVelocity <= HYD_THRESH_STOP_VEL_DONE_MAG)
+                ? input->responseDelay
+                : 0.0;
+        }
         safetyVelocityMagnitude = HYD_ComputeDelayAwareBrakingVelocityMagnitude(
             remainingDistance,
             brakingAcceleration,
             HYD_MaxReal(segment->maxVelocity, previousMagnitude),
-            blendActive ? 0.0 : input->deltaTime,
+            envelopeDelay,
             terminalVelocity);
     }
     measuredMagnitude = 0.0;

@@ -671,6 +671,34 @@ void HYD_READTOGGLEMECHANISM_body__(HYD_READTOGGLEMECHANISM *data__) {
   }
 }
 
+void HYD_READMAXTEMPLATEVELOCITY_init__(HYD_READMAXTEMPLATEVELOCITY *data__, BOOL retain) {
+  __INIT_VAR(data__->EN,__BOOL_LITERAL(TRUE),retain)
+  __INIT_VAR(data__->ENO,__BOOL_LITERAL(TRUE),retain)
+  __INIT_VAR(data__->AXISID,0,retain)
+  __INIT_VAR(data__->ENABLE,__BOOL_LITERAL(FALSE),retain)
+  __INIT_VAR(data__->XFROM,0,retain)
+  __INIT_VAR(data__->XTO,0,retain)
+  __INIT_VAR(data__->DIRECTION,0,retain)
+  __INIT_VAR(data__->VALID,__BOOL_LITERAL(FALSE),retain)
+  __INIT_VAR(data__->ERROR,__BOOL_LITERAL(FALSE),retain)
+  __INIT_VAR(data__->ERRORID,0,retain)
+  __INIT_VAR(data__->MAXVELOCITY,0,retain)
+  __INIT_VAR(data__->VELOCITYRATIOMAX,0,retain)
+  __INIT_VAR(data__->FLOWLIMIT,0,retain)
+}
+
+void HYD_READMAXTEMPLATEVELOCITY_body__(HYD_READMAXTEMPLATEVELOCITY *data__) {
+  if (!__GET_VAR(data__->EN)) {
+    __SET_VAR(data__->,ENO,,__BOOL_LITERAL(FALSE));
+    return;
+  }
+  __SET_VAR(data__->,ENO,,__BOOL_LITERAL(TRUE));
+  {
+    extern void __mcl_cmd_ReadMaxTemplateVelocity(HYD_READMAXTEMPLATEVELOCITY*);
+    __mcl_cmd_ReadMaxTemplateVelocity(data__);
+  }
+}
+
 void HYD_SETAXISFEEDBACK_init__(HYD_SETAXISFEEDBACK *data__, BOOL retain) {
   __INIT_VAR(data__->EN,__BOOL_LITERAL(TRUE),retain)
   __INIT_VAR(data__->ENO,__BOOL_LITERAL(TRUE),retain)

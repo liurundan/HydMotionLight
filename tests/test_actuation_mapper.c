@@ -193,6 +193,123 @@ static void test_reverse_ignores_unused_fields_and_zero_needs_no_area(void)
     }
 }
 
+/* Machine 105 geometry after the on-site LF correction (LF = 323 mm). */
+static HYD_TogglePreparedConfig validated_105(void)
+{
+    HYD_ToggleGeometryConfig raw = {
+        260.0f, 323.0f, 190.0f, 100.0f, 125.0f,
+        200.0f, 170.0f, 580.0f, 450.0f,
+        0.0f, (int8_t)-1, (int8_t)-1, (int8_t)-1, (int8_t)-1
+    };
+    HYD_TogglePreparedConfig prepared;
+    HYD_ToggleError error = HYD_TOGGLE_ERROR_NONE;
+
+    assert(HYD_ToggleKinematics_ValidateBlocking(&raw, &prepared, &error));
+    return prepared;
+}
+
+/* Effective clamp areas: open (extend) 3350 mm^2, close (retract) 4800 mm^2;
+ * pump flow cap 80.75 L/min = 1700 rpm * 50 cc * 0.95. */
+static void test_range_max_template_velocity_uses_worst_ratio(void)
+{
+    HYD_TogglePreparedConfig prepared = validated_105();
+    HYD_CylinderConfig cylinder = {3350.0f, 4800.0f, 0.0f, 0.0f, 0.0f};
+    HYD_ActuationMapperInput input = {
+        HYD_MECHANISM_FIVE_POINT_TOGGLE, &prepared,
+        0.0f, 0.0f, &cylinder, 0.2f, 80.75f
+    };
+    HYD_ToggleError error = HYD_TOGGLE_ERROR_NONE;
+    HYD_REAL velocity = 0.0f;
+    HYD_REAL ratio = 0.0f;
+
+    /* Close 150 -> 10: worst ratio at the die-side end, R(10) = 2.6461. */
+    assert(HYD_ActuationMapper_MaxTemplateVelocityOverRange(
+        &input, 150.0f, 10.0f, HYD_DIRECTION_RETRACT,
+        &velocity, &ratio, &error));
+    assert(error == HYD_TOGGLE_ERROR_NONE);
+    assert_near(ratio, 2.6461f, 0.002f);
+    assert_near(velocity, 105.96f, 0.2f);
+
+    /* Open 200 -> 300 uses the extend area: R(300) = 0.6139. */
+    assert(HYD_ActuationMapper_MaxTemplateVelocityOverRange(
+        &input, 200.0f, 300.0f, HYD_DIRECTION_EXTEND,
+        &velocity, &ratio, &error));
+    assert_near(ratio, 0.6139f, 0.002f);
+    assert_near(velocity, 654.4f, 1.3f);
+
+    /* Same range, retract direction must switch to the 4800 mm^2 area. */
+    assert(HYD_ActuationMapper_MaxTemplateVelocityOverRange(
+        &input, 200.0f, 300.0f, HYD_DIRECTION_RETRACT,
+        &velocity, &ratio, &error));
+    assert_near(velocity, 456.7f, 0.9f);
+
+    /* 300 -> 450 peaks inside the range (|R| = 0.6731 near x = 386.5);
+     * the endpoints alone (0.6139 / 0.2451) would overstate the speed. */
+    assert(HYD_ActuationMapper_MaxTemplateVelocityOverRange(
+        &input, 300.0f, 450.0f, HYD_DIRECTION_EXTEND,
+        &velocity, &ratio, &error));
+    assert_near(ratio, 0.6731f, 0.0013f);
+    assert_near(velocity, 596.9f, 1.2f);
+
+    /* Unknown direction takes the slower (larger-area) side. */
+    assert(HYD_ActuationMapper_MaxTemplateVelocityOverRange(
+        &input, 200.0f, 300.0f, HYD_DIRECTION_HOLD,
+        &velocity, &ratio, &error));
+    assert_near(velocity, 456.7f, 0.9f);
+}
+
+static void test_range_max_template_velocity_clips_and_rejects(void)
+{
+    HYD_TogglePreparedConfig prepared = validated_105();
+    HYD_CylinderConfig cylinder = {3350.0f, 4800.0f, 0.0f, 0.0f, 0.0f};
+    HYD_ActuationMapperInput input = {
+        HYD_MECHANISM_FIVE_POINT_TOGGLE, &prepared,
+        0.0f, 0.0f, &cylinder, 0.2f, 80.75f
+    };
+    HYD_ToggleError error = HYD_TOGGLE_ERROR_NONE;
+    HYD_REAL velocity = 0.0f;
+    HYD_REAL ratio = 0.0f;
+
+    /* Below the online envelope is clipped to x = 0, R(0) = 10.0203. */
+    assert(HYD_ActuationMapper_MaxTemplateVelocityOverRange(
+        &input, -5.0f, 10.0f, HYD_DIRECTION_EXTEND,
+        &velocity, &ratio, &error));
+    assert_near(ratio, 10.0203f, 0.01f);
+    assert_near(velocity, 40.09f, 0.1f);
+
+    velocity = 7.0f;
+    ratio = 8.0f;
+    assert(!HYD_ActuationMapper_MaxTemplateVelocityOverRange(
+        &input, 460.0f, 500.0f, HYD_DIRECTION_EXTEND,
+        &velocity, &ratio, &error));
+    assert(error == HYD_TOGGLE_ERROR_POSITION_OUT_OF_RANGE);
+    assert_near(velocity, 7.0f, 0.0f);
+    assert_near(ratio, 8.0f, 0.0f);
+
+    assert(!HYD_ActuationMapper_MaxTemplateVelocityOverRange(
+        &input, NAN, 10.0f, HYD_DIRECTION_EXTEND,
+        &velocity, &ratio, &error));
+    assert(error == HYD_TOGGLE_ERROR_NONFINITE_PARAMETER);
+
+    input.maxFlow = 0.0f;
+    assert(!HYD_ActuationMapper_MaxTemplateVelocityOverRange(
+        &input, 10.0f, 150.0f, HYD_DIRECTION_EXTEND,
+        &velocity, &ratio, &error));
+    assert(error == HYD_TOGGLE_ERROR_NONFINITE_PARAMETER);
+    assert_near(velocity, 7.0f, 0.0f);
+
+    /* Direct axes use ratio 1 over any range: 80.75 / (10000 * 6e-5). */
+    input.mechanismType = HYD_MECHANISM_DIRECT;
+    input.toggleConfig = NULL;
+    input.maxFlow = 80.75f;
+    cylinder.areaExtendMm2 = 10000.0f;
+    assert(HYD_ActuationMapper_MaxTemplateVelocityOverRange(
+        &input, -50.0f, 900.0f, HYD_DIRECTION_EXTEND,
+        &velocity, &ratio, &error));
+    assert_near(ratio, 1.0f, 0.0f);
+    assert_near(velocity, 134.58f, 0.01f);
+}
+
 int main(void)
 {
     test_mechanism_ordinals_and_direct_identity();
@@ -201,6 +318,8 @@ int main(void)
     test_flow_to_template_velocity_uses_dynamic_gain();
     test_mapping_failures_preserve_outputs();
     test_reverse_ignores_unused_fields_and_zero_needs_no_area();
+    test_range_max_template_velocity_uses_worst_ratio();
+    test_range_max_template_velocity_clips_and_rejects();
     printf("actuation mapper tests passed\n");
     return 0;
 }

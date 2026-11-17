@@ -444,7 +444,8 @@ int main(void) {
            sizeof(HYD_MotionPlannerState), sizeof(HYD_MotionControlFB));
 #if HYD_REAL_PRECISION_FLOAT
     assert(sizeof(HYD_MotionPlannerState) <= 28U);
-    assert(sizeof(HYD_MotionControlFB) <= 3304U);
+    /* +8: _params.responseDelayMs / zeroEndSettleVelocity (zero-end stop). */
+    assert(sizeof(HYD_MotionControlFB) <= 3312U);
 #endif
     printf("Running bumpless direct mode handover tests...\n");
     test_position_pressure_handover();

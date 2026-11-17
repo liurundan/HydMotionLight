@@ -1468,6 +1468,67 @@ void __mcl_cmd_ReadToggleMechanism(HYD_READTOGGLEMECHANISM *data__)
     __SET_VAR(data__->, ERRORID, , (IEC_WORD)HYD_DIAG_CODE_NONE);
 }
 
+static void clearMaxTemplateVelocityOutputs(HYD_READMAXTEMPLATEVELOCITY *data__,
+                                            IEC_BOOL error,
+                                            IEC_WORD errorId)
+{
+    __SET_VAR(data__->, VALID, , false);
+    __SET_VAR(data__->, ERROR, , error);
+    __SET_VAR(data__->, ERRORID, , errorId);
+    __SET_VAR(data__->, MAXVELOCITY, , (IEC_REAL)0.0f);
+    __SET_VAR(data__->, VELOCITYRATIOMAX, , (IEC_REAL)0.0f);
+    __SET_VAR(data__->, FLOWLIMIT, , (IEC_REAL)0.0f);
+}
+
+/* Segment speed scale for template-space commands: evaluated on demand
+ * (typically once on the segment start edge), not cached by the runtime. */
+void __mcl_cmd_ReadMaxTemplateVelocity(HYD_READMAXTEMPLATEVELOCITY *data__)
+{
+    IEC_SINT axisIndex = __GET_VAR(data__->AXISID);
+    HYD_REAL xFrom = __GET_VAR(data__->XFROM);
+    HYD_REAL xTo = __GET_VAR(data__->XTO);
+    HYD_MotionDirection direction =
+        mapPlcOpenDirection(__GET_VAR(data__->DIRECTION));
+    HYD_MotionControlFB *fb;
+    HYD_REAL velocity = 0.0f;
+    HYD_REAL ratio = 0.0f;
+    HYD_REAL flowLimit = 0.0f;
+    HYD_DiagnosticCode code = HYD_DIAG_CODE_NONE;
+
+    if (!__GET_VAR(data__->ENABLE)) {
+        clearMaxTemplateVelocityOutputs(data__, false,
+                                        (IEC_WORD)HYD_DIAG_CODE_NONE);
+        return;
+    }
+
+    fb = __MK_GetPublic_MotionControlFB((int)axisIndex);
+    if (fb == NULL) {
+        clearMaxTemplateVelocityOutputs(
+            data__, true, (IEC_WORD)HYD_DIAG_CODE_START_CONTEXT_INVALID);
+        return;
+    }
+
+    if (direction != HYD_DIRECTION_POSITIVE &&
+        direction != HYD_DIRECTION_NEGATIVE) {
+        direction = (xTo > xFrom) ? HYD_DIRECTION_POSITIVE
+                  : ((xTo < xFrom) ? HYD_DIRECTION_NEGATIVE
+                                   : HYD_DIRECTION_HOLD);
+    }
+
+    if (!HYD_MotionControlFB_ResolveMaxTemplateVelocity(
+            fb, xFrom, xTo, direction, &velocity, &ratio, &flowLimit, &code)) {
+        clearMaxTemplateVelocityOutputs(data__, true, (IEC_WORD)code);
+        return;
+    }
+
+    __SET_VAR(data__->, VALID, , true);
+    __SET_VAR(data__->, ERROR, , false);
+    __SET_VAR(data__->, ERRORID, , (IEC_WORD)HYD_DIAG_CODE_NONE);
+    __SET_VAR(data__->, MAXVELOCITY, , (IEC_REAL)velocity);
+    __SET_VAR(data__->, VELOCITYRATIOMAX, , (IEC_REAL)ratio);
+    __SET_VAR(data__->, FLOWLIMIT, , (IEC_REAL)flowLimit);
+}
+
 /* ======================================================================
  * MoveProfile (Recipe模式) 命令实现
  * ====================================================================== */
@@ -2251,10 +2312,14 @@ void __mcl_cmd_MoveContinuousAbsolute(HYD_MOVECONTINUOUSABSOLUTE *data__)
             pressureLimit,
             fb);
         if (requestedEndVelocity <= HYD_THRESH_DECEL_TARGET_VEL_DONE) {
+            /* The dedicated zero-end settle threshold gates completion only;
+             * velocityTolerance additionally arms deviation diagnostics. */
             approachSegment.stableVelocityLimit =
-                (fb->_params.velocityTolerance > 0.0f)
-                ? fb->_params.velocityTolerance
-                : HYD_THRESH_STOP_VEL_DONE_MAG;
+                (fb->_params.zeroEndSettleVelocity > 0.0f)
+                ? fb->_params.zeroEndSettleVelocity
+                : ((fb->_params.velocityTolerance > 0.0f)
+                    ? fb->_params.velocityTolerance
+                    : HYD_THRESH_STOP_VEL_DONE_MAG);
         }
         approachDirection = HYD_Segment_ResolveDirection(&approachSegment,
                                                          &fb->AXIS_REF,
