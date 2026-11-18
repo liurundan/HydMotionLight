@@ -149,6 +149,7 @@ FUNCTION_BLOCK FB_HydAxis
     bFlowPctSeg : BOOL;                       // 段启动沿锁存的本段模式
     rPumpFlowPct : REAL;                      // 传给 PUMPFLOWPERCENT 的泵流量百分比
     rToggleVelCap : REAL := 700.0;            // mm/s：百分比模式下动模板速度安全上限（> 泵满流量最小速比处开模 687mm/s）
+    rVelContAbs : REAL;                       // fbMoveContAbs 专用速度：百分比模式取安全上限，否则同 rVel
   END_VAR
 
   METHOD PUBLIC SetVelocityToFlowGain : BOOL
@@ -349,12 +350,13 @@ FUNCTION_BLOCK FB_HydAxis
   END_IF;
 
   rPres := MAX(UINT_TO_REAL(uiPres), 0.0)*0.1;   //压力设定 bar
+  rVel  := UINT_TO_REAL(uiSpd)*0.1*0.01*rMaxSpeed;  //速度设定（MoveVelocity 与旧模式）
   IF bFlowPctSeg THEN
       rPumpFlowPct := LIMIT(0.0, UINT_TO_REAL(uiSpd)*0.1, 100.0);
-      rVel := SEL(rPumpFlowPct > 0.0, 0.0, rToggleVelCap);   // uiSpd = 0 保持库端拒绝零速
+      rVelContAbs := SEL(rPumpFlowPct > 0.0, 0.0, rToggleVelCap);   // uiSpd = 0 保持库端拒绝零速
   ELSE
       rPumpFlowPct := 0.0;
-      rVel  := UINT_TO_REAL(uiSpd)*0.1*0.01*rMaxSpeed;  //速度设定
+      rVelContAbs := rVel;
   END_IF;
   rEndVel := UINT_TO_REAL(uiEndSpd)*0.1*0.01*rMaxSpeed;  //终点速度
   rFlowPercent := UINT_TO_REAL(uiSpd)*0.1;
@@ -517,7 +519,7 @@ FUNCTION_BLOCK FB_HydAxis
       AXISID := siAxisId,
       EXECUTE := (uiActiveMode = 1) AND bCmdExecute,
       POSITION := rPos,
-      VELOCITY := rVel,
+      VELOCITY := rVelContAbs,
       ENDVELOCITY := rEndVel,
       ENDVELOCITYDIRECTION := iDir,
       ACCELERATION := UINT_TO_REAL(uiAcc),

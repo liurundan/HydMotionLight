@@ -39,6 +39,12 @@ class HydAxisTimeContractTest(unittest.TestCase):
         # PressureHandle 仍用带 5% 下限的 rFlowPercent
         self.assertIn("FLOWLIMITPERCENT:=rFlowPercent", SOURCE)
         self.assertIn("rFlowPercent := LIMIT(5, rFlowPercent, 100)", SOURCE)
+        # MoveVelocity 不受百分比模式影响：fbMoveVel 仍用旧标尺 rVel
+        self.assertIn("rVelContAbs := SEL(rPumpFlowPct > 0.0, 0.0, rToggleVelCap)", SOURCE)
+        self.assertIn("rVelContAbs := rVel;", SOURCE)
+        self.assertIn("VELOCITY := rVelContAbs", SOURCE)
+        self.assertIn("CONTINUOUSUPDATE := TRUE, VELOCITY := rVel,", SOURCE)
+        self.assertNotIn("rVel := SEL(", SOURCE)
 
 
 if __name__ == "__main__":
