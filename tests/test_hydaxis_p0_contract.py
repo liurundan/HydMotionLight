@@ -27,6 +27,19 @@ class HydAxisTimeContractTest(unittest.TestCase):
         self.assertNotIn("DECELERATION := 99999.0", SOURCE)
         self.assertIn("rEmergencyStopTimeMs : REAL := 100.0", SOURCE)
 
+    def test_toggle_flow_percent_mode_contract(self):
+        # spec 2026-11-18 §4.4
+        self.assertIn("bFlowPctMode : BOOL := TRUE", SOURCE)
+        self.assertIn("bFlowPctSeg : BOOL", SOURCE)
+        self.assertIn("rToggleVelCap : REAL := 700.0", SOURCE)
+        self.assertIn("rPumpFlowPct := LIMIT(0.0, UINT_TO_REAL(uiSpd)*0.1, 100.0)", SOURCE)
+        self.assertIn("PUMPFLOWPERCENT := rPumpFlowPct", SOURCE)
+        # 目标点标尺：XFROM = XTO = rPos
+        self.assertIn("XFROM := SEL(bFlowPctSeg, stHydAxisRef.rActPosition, rPos)", SOURCE)
+        # PressureHandle 仍用带 5% 下限的 rFlowPercent
+        self.assertIn("FLOWLIMITPERCENT:=rFlowPercent", SOURCE)
+        self.assertIn("rFlowPercent := LIMIT(5, rFlowPercent, 100)", SOURCE)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -88,6 +88,7 @@ FUNCTION_BLOCK FB_HydAxis
     uiDec : UINT;
     uiJerk : UINT;
     uiPressureAccTime : UINT;
+    bFlowPctMode : BOOL := TRUE;   // 曲肘轴：TRUE = 速度百分比按泵流量；FALSE = 旧段标尺（A/B 对比与回退）
   END_VAR
   VAR_OUTPUT
     bBusy : BOOL;
@@ -145,6 +146,9 @@ FUNCTION_BLOCK FB_HydAxis
     fbMaxVel : HYD_ReadMaxTemplateVelocity;   // toggle: segment speed scale
     rMaxSpeedSeg : REAL;                      // mm/s, latched on segment start
     bScaleOk : BOOL := TRUE;
+    bFlowPctSeg : BOOL;                       // 段启动沿锁存的本段模式
+    rPumpFlowPct : REAL;                      // 传给 PUMPFLOWPERCENT 的泵流量百分比
+    rToggleVelCap : REAL := 700.0;            // mm/s：百分比模式下动模板速度安全上限（> 泵满流量最小速比处开模 687mm/s）
   END_VAR
 
   METHOD PUBLIC SetVelocityToFlowGain : BOOL
@@ -320,12 +324,15 @@ FUNCTION_BLOCK FB_HydAxis
   rPos  := UDINT_TO_REAL(udiPos)*0.01;  //位置设定
   iDir := uiDir;
 
-  // 曲肘轴：段启动沿锁存速度标尺 = 本段区间最坏速比处泵满流量对应的动模板速度
+  // 曲肘轴：段启动沿锁存本段模式与速度标尺。
+  //  百分比模式（MoveContinuousAbsolute）：标尺取目标点泵满流量速度，rEndVel = 目标点处 uiEndSpd% 流量的速度；
+  //  旧模式：标尺取本段区间最坏速比处泵满流量速度（MoveVelocity 始终用旧模式）。
   IF rTrigStart.Q THEN
       bScaleOk := TRUE;
+      bFlowPctSeg := bFlowPctMode AND iMechBaseClass = 1 AND uiMode = 1;
       IF iMechBaseClass = 1 AND (uiMode = 1 OR uiMode = 2) THEN
           fbMaxVel(AXISID := siAxisId, ENABLE := TRUE,
-                   XFROM := stHydAxisRef.rActPosition,
+                   XFROM := SEL(bFlowPctSeg, stHydAxisRef.rActPosition, rPos),
                    XTO := SEL(uiMode = 1, stHydAxisRef.rActPosition, rPos),
                    DIRECTION := iDir);
           bScaleOk := fbMaxVel.VALID AND NOT fbMaxVel.ERROR;
@@ -342,7 +349,13 @@ FUNCTION_BLOCK FB_HydAxis
   END_IF;
 
   rPres := MAX(UINT_TO_REAL(uiPres), 0.0)*0.1;   //压力设定 bar
-  rVel  := UINT_TO_REAL(uiSpd)*0.1*0.01*rMaxSpeed;  //速度设定
+  IF bFlowPctSeg THEN
+      rPumpFlowPct := LIMIT(0.0, UINT_TO_REAL(uiSpd)*0.1, 100.0);
+      rVel := SEL(rPumpFlowPct > 0.0, 0.0, rToggleVelCap);   // uiSpd = 0 保持库端拒绝零速
+  ELSE
+      rPumpFlowPct := 0.0;
+      rVel  := UINT_TO_REAL(uiSpd)*0.1*0.01*rMaxSpeed;  //速度设定
+  END_IF;
   rEndVel := UINT_TO_REAL(uiEndSpd)*0.1*0.01*rMaxSpeed;  //终点速度
   rFlowPercent := UINT_TO_REAL(uiSpd)*0.1;
   rFlowPercent := LIMIT(5, rFlowPercent, 100);
@@ -512,7 +525,8 @@ FUNCTION_BLOCK FB_HydAxis
       JERK := 0.0,
       DIRECTION := iDir,
       ADAPTENDVELTOAVOIDOVERSHOOT := TRUE,
-      PRESSURELIMIT := rPres
+      PRESSURELIMIT := rPres,
+      PUMPFLOWPERCENT := rPumpFlowPct
   );
 
   fbMoveVel(
