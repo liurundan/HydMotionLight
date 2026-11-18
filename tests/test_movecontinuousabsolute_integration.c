@@ -1670,6 +1670,51 @@ static void test_low_acceleration_start_does_not_false_trip_position_deviation(v
     }
 }
 
+/* spec 2026-11-18 T6：PUMPFLOWPERCENT 校验，合法值写入上下文 */
+static void test_pump_flow_percent_input_is_validated(void) {
+    const HYD_REAL invalid[3] = { -1.0f, 101.0f, NAN };
+    HYD_MOVECONTINUOUSABSOLUTE cmd;
+    HYD_MotionControlFB* core;
+    int axisId;
+
+    for (int i = 0; i < 3; i++) {
+        __HydMotion_framework_Init();
+        axisId = create_manual_axis();
+        ASSERT_TRUE(axisId >= 0, "CreateMotion should allocate a manual axis");
+        if (axisId < 0) {
+            return;
+        }
+        ASSERT_TRUE(set_axis_feedback(axisId, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f),
+                    "Manual feedback should initialize the axis");
+        init_movecontinuousabsolute(&cmd, axisId, 10.0f, 10.0f, 0.0f,
+                                    HYD_DIRECTION_POSITIVE, HYD_DIRECTION_POSITIVE);
+        IEC_VAL(cmd.PUMPFLOWPERCENT) = invalid[i];
+        rising_edge_scan(&cmd);
+        ASSERT_TRUE(IEC_VAL(cmd.ERROR), "Out-of-range PUMPFLOWPERCENT must be rejected");
+        ASSERT_TRUE(IEC_VAL(cmd.ERRORID) == (IEC_WORD)HYD_DIAG_CODE_COMMAND_NOT_ALLOWED,
+                    "Rejected PUMPFLOWPERCENT should report COMMAND_NOT_ALLOWED");
+    }
+
+    __HydMotion_framework_Init();
+    axisId = create_manual_axis();
+    core = __MK_GetPublic_MotionControlFB(axisId);
+    ASSERT_TRUE(core != NULL, "Public FB should be available");
+    if (core == NULL) {
+        return;
+    }
+    ASSERT_TRUE(set_axis_feedback(axisId, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f),
+                "Manual feedback should initialize the axis");
+    init_movecontinuousabsolute(&cmd, axisId, 10.0f, 10.0f, 0.0f,
+                                HYD_DIRECTION_POSITIVE, HYD_DIRECTION_POSITIVE);
+    IEC_VAL(cmd.PUMPFLOWPERCENT) = 95.0f;
+    rising_edge_scan(&cmd);
+    ASSERT_TRUE(!IEC_VAL(cmd.ERROR), "PUMPFLOWPERCENT = 95 should be accepted");
+    ASSERT_TRUE(fabsf(core->_directContinuousAbsolute.flowPercent - 95.0f) < 1e-6f,
+                "Accepted PUMPFLOWPERCENT should be latched in the context");
+    ASSERT_TRUE(core->_directContinuousAbsolute.flowRampRate > 0.0f,
+                "Accepted PUMPFLOWPERCENT should anchor a flow ramp");
+}
+
 static void test_stop_takes_over_and_sets_commandaborted(void) {
     HYD_MOVECONTINUOUSABSOLUTE cmd;
     HYD_STOP stop;
@@ -1763,6 +1808,7 @@ int main(void) {
     test_chained_same_direction_segments_keep_end_velocity_on_takeover_scan();
     test_low_acceleration_start_does_not_false_trip_position_deviation();
     test_stop_takes_over_and_sets_commandaborted();
+    test_pump_flow_percent_input_is_validated();
 
     printf("\n=== Results: %d/%d passed ===\n", tests_passed, tests_run);
     return (tests_failed == 0) ? 0 : 1;

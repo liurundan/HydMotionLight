@@ -616,6 +616,7 @@
 						<variable name="DIRECTION"><type><SINT /></type></variable>
 						<variable name="ADAPTENDVELTOAVOIDOVERSHOOT"><type><BOOL /></type></variable>
 						<variable name="PRESSURELIMIT"><type><REAL /></type></variable>
+						<variable name="PUMPFLOWPERCENT"><type><REAL /></type></variable>
 					</inputVars>
 					<outputVars>
 						<variable name="INENDVELOCITY"><type><BOOL /></type></variable>

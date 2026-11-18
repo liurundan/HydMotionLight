@@ -257,7 +257,8 @@ static HYD_ContinuousAbsoluteContext buildContinuousAbsoluteContext(
     HYD_REAL pressureLimit,
     HYD_BOOL adaptEndVelEnabled,
     HYD_MotionDirection approachDirection,
-    HYD_MotionDirection sustainDirection)
+    HYD_MotionDirection sustainDirection,
+    HYD_REAL flowPercent)
 {
     HYD_ContinuousAbsoluteContext ctx;
     HYD_MotionDirection normalizedSustainDirection =
@@ -276,6 +277,7 @@ static HYD_ContinuousAbsoluteContext buildContinuousAbsoluteContext(
     ctx.adaptEndVelEnabled = adaptEndVelEnabled;
     ctx.approachDirection = normalizedApproachDirection;
     ctx.sustainDirection = normalizedSustainDirection;
+    ctx.flowPercent = flowPercent;
 
     return ctx;
 }
@@ -2262,6 +2264,7 @@ void __mcl_cmd_MoveContinuousAbsolute(HYD_MOVECONTINUOUSABSOLUTE *data__)
         HYD_REAL rawEndVelocity;
         HYD_REAL requestedEndVelocity;
         HYD_REAL pressureLimit;
+        HYD_REAL flowPercent;
         HYD_MotionSegment approachSegment;
         HYD_ContinuousAbsoluteContext context;
         HYD_DirectStartResult startResult;
@@ -2286,6 +2289,7 @@ void __mcl_cmd_MoveContinuousAbsolute(HYD_MOVECONTINUOUSABSOLUTE *data__)
         if (pressureLimit <= 0.0f) {
             pressureLimit = fb->PRESSURE_LIMIT;
         }
+        flowPercent = __GET_VAR(data__->PUMPFLOWPERCENT);
 
         if (!endDirectionOk ||
             !(requestedVelocity > 0.0f) ||
@@ -2296,7 +2300,10 @@ void __mcl_cmd_MoveContinuousAbsolute(HYD_MOVECONTINUOUSABSOLUTE *data__)
             !isfinite(__GET_VAR(data__->POSITION)) ||
             !HYD_IsValidMotionTimeMs(__GET_VAR(data__->ACCELERATION)) ||
             !HYD_IsValidMotionTimeMs(__GET_VAR(data__->DECELERATION)) ||
-            !isfinite(pressureLimit)) {
+            !isfinite(pressureLimit) ||
+            !isfinite(flowPercent) ||
+            flowPercent < 0.0f ||
+            flowPercent > 100.0f) {
             __SET_VAR(data__->, ERROR, , true);
             __SET_VAR(data__->, ERRORID, , (IEC_WORD)HYD_DIAG_CODE_COMMAND_NOT_ALLOWED);
             __SET_VAR(data__->, EXECUTE0, , execute);
@@ -2341,7 +2348,8 @@ void __mcl_cmd_MoveContinuousAbsolute(HYD_MOVECONTINUOUSABSOLUTE *data__)
             pressureLimit,
             __GET_VAR(data__->ADAPTENDVELTOAVOIDOVERSHOOT),
             approachDirection,
-            sustainDirection);
+            sustainDirection,
+            flowPercent);
 
         startResult = startDirectSegmentExecutionWithKind(
             fb,

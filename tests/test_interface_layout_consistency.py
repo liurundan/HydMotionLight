@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import re
 import subprocess
 import sys
 import xml.etree.ElementTree as ET
@@ -74,6 +75,39 @@ def main() -> int:
         if c_name not in c_header or c_name not in plc_header:
             print(f"expected C and generated-equivalent layouts for {c_name}")
             return 1
+
+    contabs_pou = next(
+        (pou for pou in ET.parse(XML).getroot().iter()
+         if local_name(pou.tag) == "pou" and
+         pou.attrib.get("name") == "HYD_MoveContinuousAbsolute"),
+        None,
+    )
+    if contabs_pou is None:
+        print("expected XML POU HYD_MoveContinuousAbsolute")
+        return 1
+    contabs_xml = [
+        variable.attrib.get("name").upper()
+        for variable in contabs_pou.iter()
+        if local_name(variable.tag) == "variable"
+    ]
+    header_start = c_header.find("// FUNCTION_BLOCK HYD_MoveContinuousAbsolute")
+    header_end = c_header.find("} HYD_MOVECONTINUOUSABSOLUTE;", header_start)
+    if header_start < 0 or header_end < 0:
+        print("expected C layout for HYD_MOVECONTINUOUSABSOLUTE")
+        return 1
+    contabs_c = [
+        name for name in re.findall(
+            r"__DECLARE_VAR\(\s*\w+\s*,\s*(\w+)\s*\)",
+            c_header[header_start:header_end])
+        if name not in ("EN", "ENO")
+    ]
+    if contabs_xml != contabs_c:
+        print(f"HYD_MoveContinuousAbsolute XML {contabs_xml} != C {contabs_c}")
+        return 1
+    if ("PUMPFLOWPERCENT" not in contabs_xml or
+            contabs_xml.index("PUMPFLOWPERCENT") != contabs_xml.index("PRESSURELIMIT") + 1):
+        print("expected PUMPFLOWPERCENT right after PRESSURELIMIT")
+        return 1
 
     debug_pou = next(
         (pou for pou in ET.parse(XML).getroot().iter()
