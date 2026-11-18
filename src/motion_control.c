@@ -1152,6 +1152,44 @@ static HYD_REAL HYD_ResolveContinuousAbsoluteCrossingVelocity(
     return requested;
 }
 
+/* 泵流量百分比模式的基准流量：泵转速上限对应的流量；未配置泵时取 maxFlow。 */
+static HYD_REAL HYD_ResolveFlowPercentBase(const HYD_MotionControlFB* fb) {
+    HYD_REAL base = HYD_GetPumpFlowLimit(fb);
+
+    if (!(base > 0.0f)) {
+        base = fb->_params.maxFlow;
+    }
+    return (base > 0.0f) ? base : 0.0f;
+}
+
+/* 段启动时锚定流量斜坡（固定耗时语义，2026-11-10）：从上一拍指令流量出发，
+ * 上升用 t_acc、下降用 t_dec 到达目标百分比。须在续接恢复规划状态之后调用。 */
+static void HYD_AnchorContinuousAbsoluteFlowRamp(HYD_MotionControlFB* fb,
+                                                 HYD_ContinuousAbsoluteContext* ctx,
+                                                 const HYD_MotionSegment* segment) {
+    HYD_REAL base;
+    HYD_REAL target;
+    HYD_REAL start;
+    HYD_REAL seconds;
+
+    if (fb == NULL || ctx == NULL || segment == NULL) {
+        return;
+    }
+    ctx->flowRampRate = 0.0f;
+    if (!(ctx->flowPercent > 0.0f)) {
+        return;
+    }
+    base = HYD_ResolveFlowPercentBase(fb);
+    target = ctx->flowPercent * 0.01f * base;
+    start = fabs(fb->_plannerState.lastTargetFlow);
+    seconds = HYD_MotionTimeMsToSeconds((target < start)
+                                            ? segment->maxDeceleration
+                                            : segment->maxAcceleration);
+    ctx->flowRampRate = (fabs(target - start) > 0.0f)
+        ? fabs(target - start) / seconds
+        : base / HYD_MotionTimeMsToSeconds(segment->maxAcceleration);
+}
+
 static HYD_BOOL HYD_IsContinuousAbsoluteVelocityReached(const HYD_MotionSegment* segment,
                                                         HYD_REAL actualVelocity,
                                                         HYD_REAL targetVelocity) {
@@ -2008,6 +2046,8 @@ static HYD_BOOL HYD_StartPendingDirectSlot(HYD_MotionControlFB* fb,
             HYD_ResolveContinuousAbsoluteCrossingVelocity(fb,
                                                           &fb->_directContinuousAbsolute,
                                                           &fb->_activeSegment);
+        HYD_AnchorContinuousAbsoluteFlowRamp(fb, &fb->_directContinuousAbsolute,
+                                             &fb->_activeSegment);
     }
     fb->USE_RECIPE = savedUseRecipe;
     return true;
@@ -2534,6 +2574,8 @@ static HYD_BOOL HYD_ExecuteActiveSegmentControl(HYD_MotionControlFB* fb,
         /* Dead time is not a transition time: no 100 ms minimum applies. */
         plannerInput.responseDelay = fb->_params.responseDelayMs * 0.001f;
         HYD_REAL plannedMagnitudeBefore = fabs(fb->_plannerState.lastTargetVelocity);
+        /* 规划器执行时会用不含速比的油缸增益改写 lastTargetFlow，须在执行前取上一拍映射流量 */
+        HYD_REAL mappedFlowBefore = fabs(fb->_plannerState.lastTargetFlow);
         HYD_MotionPlanner_Execute(&plannerInput, plannerOutput);
 
         /* D2：刹距可行性诊断。判定对象是规划器本周期锚定的、指向终点速度的
@@ -2595,6 +2637,12 @@ static HYD_BOOL HYD_ExecuteActiveSegmentControl(HYD_MotionControlFB* fb,
         {
             HYD_REAL velocityFlowLimit = segment->maxFlow;
             HYD_REAL pumpFlowLimit = HYD_GetPumpFlowLimit(fb);
+            HYD_REAL hardwareFlowLimit;
+            HYD_BOOL flowPercentActive =
+                fb->_directOwnerKind == HYD_DIRECT_CMD_MOVE_CONTINUOUS_ABSOLUTE &&
+                fb->_directContinuousAbsolute.valid &&
+                fb->_directContinuousAbsolute.flowPercent > 0.0f;
+            HYD_REAL percentFlowCap = 0.0f;
             if (segment->targetFlow > 0.0f &&
                 segment->targetFlow < velocityFlowLimit) {
                 velocityFlowLimit = segment->targetFlow;
@@ -2603,9 +2651,33 @@ static HYD_BOOL HYD_ExecuteActiveSegmentControl(HYD_MotionControlFB* fb,
                 (velocityFlowLimit <= 0.0f || pumpFlowLimit < velocityFlowLimit)) {
                 velocityFlowLimit = pumpFlowLimit;
             }
+            hardwareFlowLimit = velocityFlowLimit;
+            if (flowPercentActive) {
+                /* spec §4.3.3：q_cap = clamp(q_target, q_prev ∓ rate·dt)。 */
+                HYD_REAL qTarget = fb->_directContinuousAbsolute.flowPercent * 0.01f *
+                                   HYD_ResolveFlowPercentBase(fb);
+                HYD_REAL qPrev = mappedFlowBefore;
+                HYD_REAL step = fb->_directContinuousAbsolute.flowRampRate *
+                                plannerInput.deltaTime;
+
+                percentFlowCap = HYD_ClampReal(qTarget, qPrev - step, qPrev + step);
+                if (!(percentFlowCap > 0.0f)) {
+                    /* 映射层把 maxFlow = 0 当作不限流 */
+                    percentFlowCap = HYD_REAL_EPSILON;
+                }
+                if (velocityFlowLimit <= 0.0f || percentFlowCap < velocityFlowLimit) {
+                    velocityFlowLimit = percentFlowCap;
+                }
+            }
             if (HYD_MotionControlFB_MapTemplateVelocity(
                     fb, segment, plannerOutput->targetVelocity,
                     velocityFlowLimit, &mapped, &mappingCode)) {
+                if (flowPercentActive && mapped.flowLimitActive) {
+                    /* spec §4.3.4：规划速度回算为本周期可实现速度，刹车距离按真实速度计算 */
+                    HYD_REAL sign = (plannerOutput->targetVelocity < 0.0f) ? -1.0f : 1.0f;
+                    plannerOutput->targetVelocity = sign * mapped.maxTemplateVelocity;
+                    fb->_plannerState.lastTargetVelocity = plannerOutput->targetVelocity;
+                }
                 plannerOutput->targetFlow = mapped.requestedFlow;
                 fb->_plannerState.lastTargetFlow = mapped.requestedFlow;
 #if HYD_ENABLE_FLOW_DIAGNOSTIC_TELEMETRY
@@ -2613,11 +2685,17 @@ static HYD_BOOL HYD_ExecuteActiveSegmentControl(HYD_MotionControlFB* fb,
                 fb->STATE.effectiveCylinderGain = mapped.effectiveCylinderGain;
                 fb->STATE.maxTemplateVelocity = mapped.maxTemplateVelocity;
 #endif
-                if (mapped.flowLimitActive) {
+                if (mapped.flowLimitActive &&
+                    (!flowPercentActive ||
+                     (hardwareFlowLimit > 0.0f && hardwareFlowLimit < percentFlowCap))) {
+                    /* spec §4.3.5：百分比上限生效是正常巡航，只有硬件上限更小时才报 FLOW */
                     fb->STATE.limitFlags |= HYD_LIMIT_FLAG_FLOW;
                 }
-                if ((pumpFlowLimit > 0.0f) &&
+                if (!flowPercentActive &&
+                    (pumpFlowLimit > 0.0f) &&
                     (mapped.unlimitedRequestedFlow > pumpFlowLimit)) {
+                    /* 百分比模式下请求流量已被 q_cap（≤ 泵上限）截住，
+                     * 泵转速限幅只由 pump_converter 判定（下方 speedLimitActive） */
                     fb->STATE.limitFlags |= HYD_LIMIT_FLAG_PUMP_SPEED;
                 }
             } else {
@@ -4306,6 +4384,8 @@ HYD_DirectStartResult HYD_MotionControlFB_StartDirectCommand(HYD_MotionControlFB
                 HYD_ResolveContinuousAbsoluteCrossingVelocity(fb,
                                                               &fb->_directContinuousAbsolute,
                                                               &fb->_activeSegment);
+            HYD_AnchorContinuousAbsoluteFlowRamp(fb, &fb->_directContinuousAbsolute,
+                                                 &fb->_activeSegment);
         }
         fb->USE_RECIPE = savedUseRecipe;
         return HYD_DIRECT_START_STARTED;
@@ -4365,6 +4445,8 @@ HYD_DirectStartResult HYD_MotionControlFB_StartDirectCommand(HYD_MotionControlFB
             HYD_ResolveContinuousAbsoluteCrossingVelocity(fb,
                                                           &fb->_directContinuousAbsolute,
                                                           &fb->_activeSegment);
+        HYD_AnchorContinuousAbsoluteFlowRamp(fb, &fb->_directContinuousAbsolute,
+                                             &fb->_activeSegment);
     }
     fb->USE_RECIPE = savedUseRecipe;
     return HYD_DIRECT_START_STARTED;

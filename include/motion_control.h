@@ -249,6 +249,10 @@ typedef struct {
     HYD_MotionDirection sustainDirection;
     HYD_BOOL positionReachedLatched;
     HYD_BOOL inEndVelocityLatched;
+    /* 泵流量百分比模式（spec 2026-11-18）：0 = 关闭；(0,100] = 泵流量上限的百分比。 */
+    HYD_REAL flowPercent;
+    /* 流量斜坡速率 [L/min/s]，段启动时由 HYD_AnchorContinuousAbsoluteFlowRamp 锚定。 */
+    HYD_REAL flowRampRate;
 } HYD_ContinuousAbsoluteContext;
 
 typedef struct {
