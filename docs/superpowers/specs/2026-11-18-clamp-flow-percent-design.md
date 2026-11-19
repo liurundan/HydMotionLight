@@ -4,6 +4,7 @@
 - 分支：feature/rbf-pid-industrialization
 - 状态：已确认（2026-11-18）；实施计划 `docs/superpowers/plans/2026-11-18-clamp-flow-percent.md`
 - 修订（写计划时按代码与探针复核）：§4.2 接口同步文件、§4.3.3 零上限保护、§4.3.6 尺寸、§4.4 零速保护、§5 合模数据、§6 T3~T5 判据、§7 合模初值
+- 修订（2026-11-19 终审）：§4.2 ABI 3、§4.3.2 近似相等按相等处理、§4.3.3 过渡完成后的恢复速率、§4.4 终点速度钳位、§7 低百分比零终速落地验收、§8 速度上限 700 的刹车包络风险
 - 关联：`docs/2026-11-18-clamp-speed-fix.md`（问题分析）、`docs/2026-11-16-clamp-zero-end-decel-analysis.md`（105 几何、面积、段标尺、参数 35/36）
 - 实验数据：`docs/data_deg/vofa_waveform_20261117_161526_748-开合模.csv`
 
@@ -66,7 +67,7 @@
   `tests/plcdemo/POUS.h/.c` 未收录此 FB，不改；`scripts/check_interface_layout_consistency.py` 也未覆盖此 FB，
   在 `tests/test_interface_layout_consistency.py` 中增加 XML 与 C 头文件字段顺序的专门核对；
 - 执行上升沿校验：非有限值、小于 0 或大于 100 时 `ERROR = TRUE`，`ERRORID = COMMAND_NOT_ALLOWED`；
-- 结构体布局改变，**PLC 工程需用新的 pousHydMotion.xml 重新生成并编译**。
+- 结构体布局改变，**PLC 工程需用新的 pousHydMotion.xml 重新生成并编译**；`HYD_ABI_VERSION` 2 → 3。
 
 ### 4.3 库实现
 
@@ -80,11 +81,16 @@
    - `q0 = |_plannerState.lastTargetFlow|`（从静止启动为 0，链式接管时为上一拍指令流量）；
    - `q_target = flowPercent/100 × Q_base`；
    - `flowRampRate = |q_target − q0| / t`，上升取 `t = maxAcceleration`，下降取 `t = maxDeceleration`（ms→s），
-     与 2026-11-10 确定的“任意过渡固定耗时”语义一致；`q_target == q0` 时取 `Q_base / t`。
+     与 2026-11-10 确定的“任意过渡固定耗时”语义一致；`q_target == q0` 时取 `Q_base / t`；
+   - 近似相等按相等处理（2026-11-19 终审）：`|q_target − q0| ≤ HYD_FLOW_PERCENT_RAMP_EQUAL_RATIO × Q_base`
+     （`hyd_config.h` §14B，取 0.02）时取 `Q_base / t_acc`。同百分比链式续接的 Δq 只有 0.003~0.66 L/min，
+     按 Δq/t 锚定的速率只有 0.01~2 L/min/s，上限被规划器短暂下探带下来后爬不回去（棘轮）。
 3. **每周期流量上限**（`HYD_ExecuteActiveSegmentControl` 机构映射前，仅当 owner 为 MoveContinuousAbsolute 且 `flowPercent > 0`）：
    - `q_prev = |_plannerState.lastTargetFlow|`，**须在 `HYD_MotionPlanner_Execute` 之前读取**：规划器内部会用不含速比的增益改写该字段
      （干跑验证：执行后再读，起步斜坡起不来）；
    - `q_cap = clamp(q_target, q_prev − rate·dt, q_prev + rate·dt)`；
+   - 过渡完成（`|q_prev − q_target| ≤ rate·dt`，上限已到目标）后，本段余下的 `rate` 改为 `Q_base / t_acc`（复用 `flowRampRate` 字段）。
+     只换速率、不跳变：上限仍以 `q_prev` 为中心限幅、不超过 `q_target`。大 Δ 过渡中途规划器下探时仍按锚定速率恢复，直到上限到达目标；
    - `velocityFlowLimit = min(现有上限, q_cap)`；
    - `q_cap ≤ 0`（静止起步、本周期 dt = 0）时取 `HYD_REAL_EPSILON`：映射层把 `maxFlow = 0` 当作“不限流”，不能传 0。
 4. **回算**：映射结果 `flowLimitActive` 为真时，把规划器状态 `lastTargetVelocity`、`plannerOutput->targetVelocity`
@@ -103,6 +109,8 @@
     （单独计算，不复用 `rFlowPercent`：后者给 PressureHandle 用，下限钳在 5%）；
   - 段启动沿调用 `fbMaxVel(XFROM := rPos, XTO := rPos, DIRECTION := iDir)`，锁存目标点的泵满流量动模板速度为 `rMaxSpeedSeg`，
     于是 `rEndVel = uiEndSpd% × rMaxSpeedSeg` 即“目标点处 uiEndSpd% 流量对应的动模板速度”；查询失败按现有逻辑报警进 900；
+  - 终点速度钳位（2026-11-19 终审）：`rEndVel` 用 `MIN(uiEndSpd, uiSpd)` 计算，终点流量不超过本段流量。
+    百分比上限在 sustain 阶段同样生效，`uiEndSpd > uiSpd`（如 30%/60%）时 INENDVELOCITY 永不置位、bDone 不来；旧模式不变；
   - `VELOCITY := rToggleVelCap`（FB 局部常量 700 mm/s，大于泵满流量在最小速比处的开模速度 687 mm/s；
     不用 `stHydAxisRef.rMaxSpeed`，因为该字段在本机仍是直压时代的 100 mm/s，会把速度压死）；
   - `uiSpd = 0` 时 `VELOCITY := 0`：保持库端拒绝零速命令的现有行为，避免 PUMPFLOWPERCENT = 0 关闭限流后按 700mm/s 运行。
@@ -175,6 +183,8 @@ T4 的参数 35 取 20（= 对象纯滞后），用来隔离“回算”这一�
 3. 升到 95%，开模减速 700→600→500ms：终点误差 ≤ ±1.5mm，InEndVelocity 正常置位；
    落地段峰值减速度（与现状同一差分窗口）≤ 现状实测 1.85 m/s² 的 1.5 倍（约 2.8 m/s²），无反向回弹；
    误差超差时按 5ms 一档调参数 35，并确认 k≥1；
+   30%~45% 的零终速段（若使用）落地峰值减速度（同一差分窗口）≤ 2.8 m/s²；超出时加大该段 t_dec，
+   或让零终速段保持高百分比。开模仍为单段 95%；
 4. 合模两段：到 10mm 速度 ≤ 现状 43.5mm/s 的 1.1 倍，护模动作与报警不受影响；全程泵转速无台阶式突降；
 5. 周期目标：合模 ≤ 1.30s（含起步段），开模 ≤ 1.25s。
 
@@ -185,6 +195,11 @@ T4 的参数 35 取 20（= 对象纯滞后），用来隔离“回算”这一�
 - 压力限幅（output_limiter）降流量时不回算规划速度，维持现状；
 - 回算改写规划器状态后，`motion_control.c` 的 D2 刹距诊断（BRAKING_DISTANCE）读取的斜坡锚定可能变化，
   探针未覆盖这部分，由 T4/T5 断言无误报；若误报，在百分比模式下改用包络速率判定；
+- 刹车包络按 `VELOCITY = 700` 计算（2026-11-19 终审）：百分比模式下规划器刹车加速度为 `maxVelocity / t_dec`，
+  低百分比零终速段落地比实际速度应有的更硬（20ms 纯滞后、20ms 窗口探针：30%/t_dec 300 为 2.58 m/s²，理想 1.22；
+  45%/400 为 2.74，理想 1.37；70%/700 为 1.70，理想 1.20；95%/700 为 1.03，理想 0.98；95%/500、纯滞后 40ms 为 3.78）。
+  同一 700 也使 BRAKING_DISTANCE 判定偏宽松。不改为 `700 × 百分比`：95%→30% 链式换段时规划速度单拍跌 336mm/s。
+  本次只在 §7 加验收项，不改代码；
 - 范围外：MoveVelocity、配方路径、仿真器改为消耗泵转速闭环。
 
 ## 9. 落地顺序
