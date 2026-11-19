@@ -135,9 +135,9 @@ FUNCTION_BLOCK FB_HydAxis
     iAxisState : UINT := 0;
     rMaxSpeed : REAL;
     rPosition : REAL;
-    rVeloctity : REAL;
-    rFlow : REAL;
-    rPerssure : REAL;
+	rVeloctityRef : REAL;
+	rFlowRef : REAL;
+	rPressureRef : REAL;
     rCycle : REAL;
     rCycleTimeMs : REAL := 1.0;
     rEmergencyStopTimeMs : REAL := 100.0;
@@ -575,7 +575,7 @@ FUNCTION_BLOCK FB_HydAxis
     END_IF;
   END_IF;
 
-  fbHYD_ReadStatus(  AXISID := siAxisId,  ENABLE := TRUE, STATE => iAxisState );
+  fbHYD_ReadStatus(  AXISID := siAxisId,  ENABLE := TRUE, STATE => iAxisState, PRESSUREREFERENCE=>rPressureRef, FLOWREFERENCE=>rFlowRef, VELOCITYREFERENCE=>rVeloctityRef );
 
   stHydAxisRef.iStep := iStep;
 
