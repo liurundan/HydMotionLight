@@ -358,7 +358,7 @@ FUNCTION_BLOCK FB_HydAxis
       rPumpFlowPct := 0.0;
       rVelContAbs := rVel;
   END_IF;
-  rEndVel := UINT_TO_REAL(uiEndSpd)*0.1*0.01*rMaxSpeed;  //终点速度
+  rEndVel := UINT_TO_REAL(SEL(bFlowPctSeg, uiEndSpd, MIN(uiEndSpd, uiSpd)))*0.1*0.01*rMaxSpeed;  //终点速度（百分比模式不超过本段流量）
   rFlowPercent := UINT_TO_REAL(uiSpd)*0.1;
   rFlowPercent := LIMIT(5, rFlowPercent, 100);
 

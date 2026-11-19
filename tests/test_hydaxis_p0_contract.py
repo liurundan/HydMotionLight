@@ -4,6 +4,8 @@ from pathlib import Path
 import unittest
 
 SOURCE = (Path(__file__).resolve().parents[1] / "iec" / "FB_HydAxis.st").read_text(encoding="utf-8")
+# 保留 CRLF 的原始文本，用于整行精确比对
+SOURCE_RAW = (Path(__file__).resolve().parents[1] / "iec" / "FB_HydAxis.st").read_bytes().decode("utf-8")
 
 
 class HydAxisTimeContractTest(unittest.TestCase):
@@ -45,6 +47,13 @@ class HydAxisTimeContractTest(unittest.TestCase):
         self.assertIn("VELOCITY := rVelContAbs", SOURCE)
         self.assertIn("CONTINUOUSUPDATE := TRUE, VELOCITY := rVel,", SOURCE)
         self.assertNotIn("rVel := SEL(", SOURCE)
+        # 终审 I3：百分比模式终点速度不超过本段流量（否则 INENDVELOCITY 永不置位）
+        self.assertIn(
+            "  rEndVel := UINT_TO_REAL(SEL(bFlowPctSeg, uiEndSpd, MIN(uiEndSpd, uiSpd)))"
+            "*0.1*0.01*rMaxSpeed;  //终点速度（百分比模式不超过本段流量）\r\n",
+            SOURCE_RAW,
+        )
+        self.assertNotIn("rEndVel := UINT_TO_REAL(uiEndSpd)*0.1*0.01*rMaxSpeed;", SOURCE)
 
 
 if __name__ == "__main__":
