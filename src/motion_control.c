@@ -1163,7 +1163,8 @@ static HYD_REAL HYD_ResolveFlowPercentBase(const HYD_MotionControlFB* fb) {
 }
 
 /* 段启动时锚定流量斜坡（固定耗时语义，2026-11-10）：从上一拍指令流量出发，
- * 上升用 t_acc、下降用 t_dec 到达目标百分比。须在续接恢复规划状态之后调用。 */
+ * 上升用 t_acc、下降用 t_dec 到达目标百分比。须在续接恢复规划状态之后调用。
+ * 同流量续接（|Δq| ≤ HYD_FLOW_PERCENT_RAMP_EQUAL_RATIO × Q_base）取 Q_base / t_acc。 */
 static void HYD_AnchorContinuousAbsoluteFlowRamp(HYD_MotionControlFB* fb,
                                                  HYD_ContinuousAbsoluteContext* ctx,
                                                  const HYD_MotionSegment* segment) {
@@ -1185,7 +1186,7 @@ static void HYD_AnchorContinuousAbsoluteFlowRamp(HYD_MotionControlFB* fb,
     seconds = HYD_MotionTimeMsToSeconds((target < start)
                                             ? segment->maxDeceleration
                                             : segment->maxAcceleration);
-    ctx->flowRampRate = (fabs(target - start) > 0.0f)
+    ctx->flowRampRate = (fabs(target - start) > HYD_FLOW_PERCENT_RAMP_EQUAL_RATIO * base)
         ? fabs(target - start) / seconds
         : base / HYD_MotionTimeMsToSeconds(segment->maxAcceleration);
 }
@@ -2654,13 +2655,21 @@ static HYD_BOOL HYD_ExecuteActiveSegmentControl(HYD_MotionControlFB* fb,
             hardwareFlowLimit = velocityFlowLimit;
             if (flowPercentActive) {
                 /* spec §4.3.3：q_cap = clamp(q_target, q_prev ∓ rate·dt)。 */
+                HYD_REAL flowBase = HYD_ResolveFlowPercentBase(fb);
                 HYD_REAL qTarget = fb->_directContinuousAbsolute.flowPercent * 0.01f *
-                                   HYD_ResolveFlowPercentBase(fb);
+                                   flowBase;
                 HYD_REAL qPrev = mappedFlowBefore;
                 HYD_REAL step = fb->_directContinuousAbsolute.flowRampRate *
                                 plannerInput.deltaTime;
 
                 percentFlowCap = HYD_ClampReal(qTarget, qPrev - step, qPrev + step);
+                if (fabs(qPrev - qTarget) <= step) {
+                    /* 过渡完成（上限已到目标）：本段余下的恢复速率改为 Q_base / t_acc，
+                     * 规划器短暂下探后不再按很小的过渡速率爬回（终审 I1）。只换速率，
+                     * 上限仍以 q_prev 为中心限幅、不超过 q_target。 */
+                    fb->_directContinuousAbsolute.flowRampRate =
+                        flowBase / HYD_MotionTimeMsToSeconds(segment->maxAcceleration);
+                }
                 if (!(percentFlowCap > 0.0f)) {
                     /* 映射层把 maxFlow = 0 当作不限流 */
                     percentFlowCap = HYD_REAL_EPSILON;

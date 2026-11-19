@@ -14,7 +14,6 @@
 #define DT 0.001f
 #define MAX_DELAY 64
 #define PUMP_MAX_RPM 1700.0f
-#define Q_LIMIT 80.75f   /* 1700 * 50 * 0.95 / 1000 */
 
 typedef struct {
     HYD_REAL history[MAX_DELAY];   /* 泵转速 [rpm] */
@@ -332,6 +331,98 @@ static void test_close_chained_segments_ramp_flow_down(void)
     assert(fabsf(-fb.AXIS_REF.velocity - v10) <= 0.10f * v10);
     assert(!sawBraking);
     assert(!sawDeviation);
+    /* 终审 I1：降百分比过渡完成后，本段余下的恢复速率为 Q_base / t_acc（seg2 t_acc 200ms） */
+    assert(fabsf(fb._directContinuousAbsolute.flowRampRate -
+                 PUMP_MAX_RPM * 50.0f * 0.95f / 1000.0f / 0.2f) <= 0.01f);
+}
+
+/* 终审 I1：同百分比链式开模 1→30（95%，终点 = 30mm 处 95% 速度）→ 300（95%，零终速）。
+ * 两段流量目标只差约 0.4 L/min：旧锚定 |Δq|/t_acc 只有约 2 L/min/s，第 2 段起步时
+ * 规划器短暂下探，上限跟着下来后只能按该速率爬回，泵转速被压在约 1500rpm（棘轮）。
+ * 同时覆盖锚定时 q_target ≈ q0 的回退分支（台账 L29a）。 */
+static void test_open_same_percent_chain_recovers_pump_flow(void)
+{
+    HYD_MotionControlFB fb;
+    HYD_MotionSegment seg1 = make_segment(30.0f, HYD_DIRECTION_EXTEND, 200.0f, 200.0f, 60.0f);
+    HYD_MotionSegment seg2 = make_segment(300.0f, HYD_DIRECTION_EXTEND, 200.0f, 700.0f, 60.0f);
+    HYD_ContinuousAbsoluteContext ctx1;
+    HYD_ContinuousAbsoluteContext ctx2;
+    PumpPlant plant;
+    HYD_REAL cruisePeak = 0.0f;
+    HYD_REAL pumpPeak = 0.0f;
+    HYD_REAL pendingRpm = 0.0f;
+    HYD_REAL finalPosition;
+    HYD_BOOL inEndVelocity = false;
+    HYD_BOOL completed = false;
+    HYD_BOOL sawBraking = false;
+    HYD_BOOL sawDeviation = false;
+    int cycle;
+    int k;
+
+    memset(&plant, 0, sizeof(plant));
+    plant.delayCycles = 20;
+    plant.sign = 1.0f;
+    init_axis(&fb, 1.0f, 20.0f, 60.0f);
+    seg2.stableVelocityLimit = 3.0f;
+    ctx1 = make_context(30.0f, ceiling_at(&fb, 30.0f, HYD_DIRECTION_EXTEND, 95.0f),
+                        HYD_DIRECTION_EXTEND, 95.0f);
+    ctx2 = make_context(300.0f, 0.0f, HYD_DIRECTION_EXTEND, 95.0f);
+
+    assert(HYD_MotionControlFB_StartDirectCommand(&fb, HYD_DIRECT_CMD_MOVE_CONTINUOUS_ABSOLUTE,
+                                                  &seg1, &ctx1, HYD_BUFFER_MODE_ABORT, 0.0f) ==
+           HYD_DIRECT_START_STARTED);
+    for (cycle = 0; cycle < 3000 &&
+         fb._directContinuousAbsolute.phase == HYD_CONTABS_PHASE_APPROACH; ++cycle) {
+        plant_step(&fb, &plant);
+        assert(fb.FB_STATE != HYD_FB_STATE_FAULT);
+        sawBraking |= is_flag(&fb, HYD_LIMIT_FLAG_BRAKING_DISTANCE);
+        sawDeviation |= fb.DIAGNOSTIC.velocityDeviation;
+    }
+    assert(fb._directContinuousAbsolute.phase == HYD_CONTABS_PHASE_SUSTAIN);
+
+    assert(HYD_MotionControlFB_StartDirectCommand(&fb, HYD_DIRECT_CMD_MOVE_CONTINUOUS_ABSOLUTE,
+                                                  &seg2, &ctx2, HYD_BUFFER_MODE_ABORT,
+                                                  fb.AXIS_REF.timestamp) ==
+           HYD_DIRECT_START_STARTED);
+    for (cycle = 0; cycle < 4000; ++cycle) {
+        plant_step(&fb, &plant);
+        assert(fb.FB_STATE != HYD_FB_STATE_FAULT);
+        if (fb.PUMP_SPEED > pumpPeak) {
+            pumpPeak = fb.PUMP_SPEED;
+        }
+        /* 起步下探（x < 60）之后、刹车之前的巡航窗口 */
+        if (fb.AXIS_REF.position >= 60.0f && fb.AXIS_REF.position <= 100.0f &&
+            fb.PUMP_SPEED > cruisePeak) {
+            cruisePeak = fb.PUMP_SPEED;
+        }
+        sawBraking |= is_flag(&fb, HYD_LIMIT_FLAG_BRAKING_DISTANCE);
+        sawDeviation |= fb.DIAGNOSTIC.velocityDeviation;
+        if (fb._directContinuousAbsolute.inEndVelocityLatched) {
+            inEndVelocity = true;
+        }
+        if (inEndVelocity && !fb.STATE.active) {
+            completed = true;
+            break;
+        }
+    }
+    for (k = 0; k < plant.delayCycles; ++k) {
+        pendingRpm += plant.history[k];
+    }
+    finalPosition = fb.AXIS_REF.position +
+        ceiling_at(&fb, fb.AXIS_REF.position, HYD_DIRECTION_EXTEND, 100.0f) *
+        pendingRpm / PUMP_MAX_RPM * DT;
+
+    printf("I1 same-percent chain: seg2 %d ms, cruise peak %.1f rpm (x 60~100), "
+           "pump peak %.1f, final %.3f\n", cycle, cruisePeak, pumpPeak, finalPosition);
+    assert(completed);
+    assert(fabsf(finalPosition - 300.0f) <= 1.5f);
+    /* 上限仍以 q_prev 为中心限幅且不超过 q_target */
+    assert(pumpPeak <= 0.95f * PUMP_MAX_RPM + 0.5f);
+    /* 实测（2026-11-19）：棘轮时窗口内最高 1501 rpm；修复后 1575 rpm（此时只受规划器限制，
+     * 评审探针用 Q_base/t_acc 强制速率得到 1507~1588）。取中点 1540，两侧各留约 35 rpm。 */
+    assert(cruisePeak >= 1540.0f);
+    assert(!sawBraking);
+    assert(!sawDeviation);
 }
 
 /* T6（核心层部分）：flowPercent = 0 时与现有段标尺语义一致 */
@@ -365,6 +456,7 @@ int main(void)
     test_open_zero_end_stop_uses_back_calculated_velocity();
     test_open_cruise_tracks_pump_flow_percent();
     test_close_chained_segments_ramp_flow_down();
+    test_open_same_percent_chain_recovers_pump_flow();
     test_zero_percent_keeps_legacy_velocity_semantics();
     printf("test_toggle_flow_percent_integration passed\n");
     return 0;

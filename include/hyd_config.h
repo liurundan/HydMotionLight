@@ -254,8 +254,11 @@ typedef HYD_REAL HYD_TIME;
 #define HYD_VERSION_STRING "1.1.0"
 
 /* Public state/PLC function-block layouts changed in 1.1.0. Consumers must
- * rebuild all objects against the headers shipped with the static library. */
-#define HYD_ABI_VERSION 2
+ * rebuild all objects against the headers shipped with the static library.
+ * ABI 3 (2026-11-18): the HYD_MoveContinuousAbsolute IEC layout gained
+ * PUMPFLOWPERCENT; PLC projects must be regenerated from the new
+ * pousHydMotion.xml. */
+#define HYD_ABI_VERSION 3
 
 /* 构建时间戳 */
 #ifdef HYD_VERSION_BUILD_TIME
@@ -398,6 +401,19 @@ typedef HYD_REAL HYD_TIME;
 /* 参数 HYDRAULIC_RESPONSE_DELAY 允许写入的上限。单位：ms。 */
 #ifndef HYD_MAX_HYDRAULIC_RESPONSE_DELAY_MS
     #define HYD_MAX_HYDRAULIC_RESPONSE_DELAY_MS 200.0f
+#endif
+
+/* --- 泵流量百分比斜坡锚定（src/motion_control.c MoveContinuousAbsolute） --- */
+
+/* 段启动锚定流量斜坡时，|q_target − q0| ≤ 该比例 × Q_base 视为“同流量续接”，
+ * 斜坡速率取 Q_base / t_acc，而不是 |Δq| / t（Δq 很小时速率趋近 0，上限被
+ * 规划器短暂下探带下来后爬不回去）。
+ * 取值依据（终审 2026-11-19）：同百分比链式续接实测 Δq ≈ 0.003~0.66 L/min
+ * （Q_base = 80.75 L/min，即 < 0.9%），0.02 留约 2 倍余量；真实换挡的 Δq 为
+ * 数十 L/min（如合模 95%→45% 约 39.5 L/min，≈ 49%），仍走固定耗时语义。
+ * 单位：无量纲（相对 Q_base）。 */
+#ifndef HYD_FLOW_PERCENT_RAMP_EQUAL_RATIO
+    #define HYD_FLOW_PERCENT_RAMP_EQUAL_RATIO 0.02f
 #endif
 
 /* --- 压力 ceiling 诊断 debounce / startup-suppress（motion_control.c Init） --- */
