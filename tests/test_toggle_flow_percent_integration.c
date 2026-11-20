@@ -1,4 +1,4 @@
-/* 曲肘轴开合模“泵流量百分比”语义集成测试（spec 2026-11-18 §6 T1~T5）。
+/* 曲肘轴开合模“泵流量百分比”语义集成测试（spec 2026-11-18 §6 T1~T5、T7~T9）。
  * 105 双曲肘（LF = 323），面积 3350/4800 mm²，泵 50cc/1700rpm/0.95，1ms 周期。
  * 对象：泵转速经 delayCycles 个周期纯滞后，再按当前位置速比换算为动模板速度
  * （与可行性探针同一模型）。对象按泵流量运动而不是按规划速度运动，
@@ -450,6 +450,204 @@ static void test_zero_percent_keeps_legacy_velocity_semantics(void)
     assert(fb._directContinuousAbsolute.flowRampRate == 0.0f);
 }
 
+/* T7（spec §4.3.7，2026-11-20）：保持流量段与减速时间无关。
+ * 合模 299.36→30（100%、加速 300、减速 X，终点 = 30mm 处 100% 速度）→ 10（45%、200/150）。
+ * 现库（无 §4.3.7）回放：减速 100 时 x∈[40,220] 泵转速最低 1698rpm；减速 480 时最低约 1493rpm、
+ * 第 1 段报 BRAKING_DISTANCE、耗时 870ms；减速 800 时最低约 1068rpm、耗时 1127ms。 */
+typedef struct {
+    HYD_REAL crossing;
+    HYD_REAL minPump;
+    HYD_REAL v10;
+    HYD_REAL v10Target;
+    unsigned int seg1Cycles;
+    HYD_BOOL seg1Braking;
+    HYD_BOOL sawDeviation;
+} FlowHoldCloseRun;
+
+static FlowHoldCloseRun run_close_flow_hold(HYD_REAL seg1DecMs)
+{
+    HYD_MotionControlFB fb;
+    HYD_MotionSegment seg1 = make_segment(30.0f, HYD_DIRECTION_RETRACT, 300.0f, seg1DecMs, 60.0f);
+    HYD_MotionSegment seg2 = make_segment(10.0f, HYD_DIRECTION_RETRACT, 200.0f, 150.0f, 60.0f);
+    HYD_ContinuousAbsoluteContext ctx1;
+    HYD_ContinuousAbsoluteContext ctx2;
+    PumpPlant plant;
+    FlowHoldCloseRun r;
+    unsigned int cycle;
+
+    memset(&r, 0, sizeof(r));
+    r.minPump = 2.0f * PUMP_MAX_RPM;
+    memset(&plant, 0, sizeof(plant));
+    plant.delayCycles = 20;
+    plant.sign = -1.0f;
+    init_axis(&fb, 299.36f, 20.0f, 60.0f);
+    r.v10Target = ceiling_at(&fb, 10.0f, HYD_DIRECTION_RETRACT, 45.0f);
+    ctx1 = make_context(30.0f, ceiling_at(&fb, 30.0f, HYD_DIRECTION_RETRACT, 100.0f),
+                        HYD_DIRECTION_RETRACT, 100.0f);
+    ctx2 = make_context(10.0f, r.v10Target, HYD_DIRECTION_RETRACT, 45.0f);
+
+    assert(HYD_MotionControlFB_StartDirectCommand(&fb, HYD_DIRECT_CMD_MOVE_CONTINUOUS_ABSOLUTE,
+                                                  &seg1, &ctx1, HYD_BUFFER_MODE_ABORT, 0.0f) ==
+           HYD_DIRECT_START_STARTED);
+    r.crossing = fb._directContinuousAbsolute.crossingVelocity;
+    for (cycle = 0u; cycle < 3000u &&
+         fb._directContinuousAbsolute.phase == HYD_CONTABS_PHASE_APPROACH; ++cycle) {
+        plant_step(&fb, &plant);
+        assert(fb.FB_STATE != HYD_FB_STATE_FAULT);
+        if (fb.AXIS_REF.position >= 40.0f && fb.AXIS_REF.position <= 220.0f &&
+            fb.PUMP_SPEED < r.minPump) {
+            r.minPump = fb.PUMP_SPEED;
+        }
+        r.seg1Braking |= is_flag(&fb, HYD_LIMIT_FLAG_BRAKING_DISTANCE);
+        r.sawDeviation |= fb.DIAGNOSTIC.velocityDeviation;
+    }
+    assert(fb._directContinuousAbsolute.phase == HYD_CONTABS_PHASE_SUSTAIN);
+    r.seg1Cycles = cycle;
+
+    assert(HYD_MotionControlFB_StartDirectCommand(&fb, HYD_DIRECT_CMD_MOVE_CONTINUOUS_ABSOLUTE,
+                                                  &seg2, &ctx2, HYD_BUFFER_MODE_ABORT,
+                                                  fb.AXIS_REF.timestamp) ==
+           HYD_DIRECT_START_STARTED);
+    for (cycle = 0u; cycle < 3000u && fb.AXIS_REF.position > 10.0f; ++cycle) {
+        plant_step(&fb, &plant);
+        assert(fb.FB_STATE != HYD_FB_STATE_FAULT);
+        r.sawDeviation |= fb.DIAGNOSTIC.velocityDeviation;
+    }
+    assert(fb.AXIS_REF.position <= 10.0f);
+    r.v10 = -fb.AXIS_REF.velocity;
+    return r;
+}
+
+static void test_close_flow_hold_ignores_deceleration_time(void)
+{
+    static const HYD_REAL decs[3] = {100.0f, 480.0f, 800.0f};
+    FlowHoldCloseRun r[3];
+    int i;
+    int spread;
+
+    /* 先跑完三组并打印，失败时能看到全部数据（assert 失败会 abort，须先 fflush） */
+    for (i = 0; i < 3; ++i) {
+        r[i] = run_close_flow_hold(decs[i]);
+        printf("T7 flow-hold close d%.0f: crossing %.1f, min pump %.2f (x 40~220), braking %d, "
+               "seg1 %u ms, v@10 %.1f (target %.1f)\n",
+               decs[i], r[i].crossing, r[i].minPump, (int)r[i].seg1Braking,
+               r[i].seg1Cycles, r[i].v10, r[i].v10Target);
+    }
+    fflush(stdout);
+    for (i = 0; i < 3; ++i) {
+        assert(r[i].minPump >= PUMP_MAX_RPM - 0.5f);
+        assert(!r[i].seg1Braking);
+        assert(!r[i].sawDeviation);
+        assert(fabsf(r[i].v10 - r[i].v10Target) <= 0.10f * r[i].v10Target);
+        assert(fabsf(r[i].crossing - 700.0f) <= 0.01f);
+        spread = (int)r[i].seg1Cycles - (int)r[0].seg1Cycles;
+        assert(spread >= -1 && spread <= 1);
+    }
+}
+
+/* T8（spec §4.3.7 条件 4）：降流量的保持流量段仍保留速度域刹车。
+ * 299.36→260（100%、100/100，终点 100%）→ 200（40%、300/300，终点 = 200mm 处 40% 速度）。
+ * 第 2 段 60mm 内流量斜坡走不完，速度域刹车是到点速度达标的唯一保证（spec §5.1）。
+ * 第 1 段从静止起步、100% 保持流量，须触发规则（crossing = 700），第 2 段的“不触发”才有意义。 */
+static void test_ramp_down_flow_hold_keeps_velocity_brake(void)
+{
+    HYD_MotionControlFB fb;
+    HYD_MotionSegment seg1 = make_segment(260.0f, HYD_DIRECTION_RETRACT, 100.0f, 100.0f, 60.0f);
+    HYD_MotionSegment seg2 = make_segment(200.0f, HYD_DIRECTION_RETRACT, 300.0f, 300.0f, 60.0f);
+    HYD_ContinuousAbsoluteContext ctx1;
+    HYD_ContinuousAbsoluteContext ctx2;
+    PumpPlant plant;
+    HYD_REAL v200;
+    HYD_REAL seg1Crossing;
+    HYD_REAL seg2Crossing;
+    unsigned int cycle;
+
+    memset(&plant, 0, sizeof(plant));
+    plant.delayCycles = 20;
+    plant.sign = -1.0f;
+    init_axis(&fb, 299.36f, 20.0f, 60.0f);
+    v200 = ceiling_at(&fb, 200.0f, HYD_DIRECTION_RETRACT, 40.0f);
+    ctx1 = make_context(260.0f, ceiling_at(&fb, 260.0f, HYD_DIRECTION_RETRACT, 100.0f),
+                        HYD_DIRECTION_RETRACT, 100.0f);
+    ctx2 = make_context(200.0f, v200, HYD_DIRECTION_RETRACT, 40.0f);
+
+    assert(HYD_MotionControlFB_StartDirectCommand(&fb, HYD_DIRECT_CMD_MOVE_CONTINUOUS_ABSOLUTE,
+                                                  &seg1, &ctx1, HYD_BUFFER_MODE_ABORT, 0.0f) ==
+           HYD_DIRECT_START_STARTED);
+    seg1Crossing = fb._directContinuousAbsolute.crossingVelocity;
+    for (cycle = 0u; cycle < 3000u &&
+         fb._directContinuousAbsolute.phase == HYD_CONTABS_PHASE_APPROACH; ++cycle) {
+        plant_step(&fb, &plant);
+        assert(fb.FB_STATE != HYD_FB_STATE_FAULT);
+    }
+    assert(fb._directContinuousAbsolute.phase == HYD_CONTABS_PHASE_SUSTAIN);
+
+    assert(HYD_MotionControlFB_StartDirectCommand(&fb, HYD_DIRECT_CMD_MOVE_CONTINUOUS_ABSOLUTE,
+                                                  &seg2, &ctx2, HYD_BUFFER_MODE_ABORT,
+                                                  fb.AXIS_REF.timestamp) ==
+           HYD_DIRECT_START_STARTED);
+    seg2Crossing = fb._directContinuousAbsolute.crossingVelocity;
+
+    printf("T8 ramp-down flow-hold: seg1 crossing %.1f, seg2 crossing %.2f (end velocity %.2f)\n",
+           seg1Crossing, seg2Crossing, v200);
+    fflush(stdout);
+    assert(fabsf(seg1Crossing - 700.0f) <= 0.01f);
+    assert(fabsf(seg2Crossing - v200) <= 0.01f);
+}
+
+/* T9（spec §4.3.7）：判定边界，从静止启动后读 crossingVelocity。
+ * 本机 q_lim = Q_base，条件 3 等价于终点百分比 ≥ 本段百分比 − 2%。 */
+typedef struct {
+    const char *name;
+    HYD_REAL x0;
+    HYD_REAL target;
+    HYD_MotionDirection dir;
+    HYD_REAL percent;
+    HYD_REAL endPercent;
+    HYD_BOOL flowHold;
+} FlowHoldCase;
+
+static HYD_REAL start_and_read_crossing(const FlowHoldCase *c, HYD_REAL *endVelocity)
+{
+    HYD_MotionControlFB fb;
+    HYD_MotionSegment seg = make_segment(c->target, c->dir, 300.0f, 480.0f, 60.0f);
+    HYD_ContinuousAbsoluteContext ctx;
+
+    init_axis(&fb, c->x0, 20.0f, 60.0f);
+    if (!(c->percent > 0.0f)) {
+        seg.maxVelocity = 200.0f;   /* 旧语义：VELOCITY 是动模板速度 */
+    }
+    *endVelocity = ceiling_at(&fb, c->target, c->dir, c->endPercent);
+    ctx = make_context(c->target, *endVelocity, c->dir, c->percent);
+    assert(HYD_MotionControlFB_StartDirectCommand(&fb, HYD_DIRECT_CMD_MOVE_CONTINUOUS_ABSOLUTE,
+                                                  &seg, &ctx, HYD_BUFFER_MODE_ABORT, 0.0f) ==
+           HYD_DIRECT_START_STARTED);
+    return fb._directContinuousAbsolute.crossingVelocity;
+}
+
+static void test_flow_hold_classification_boundaries(void)
+{
+    static const FlowHoldCase cases[] = {
+        {"close 100%/end 99%", 100.0f, 30.0f, HYD_DIRECTION_RETRACT, 100.0f, 99.0f, true},
+        {"close 100%/end 97%", 100.0f, 30.0f, HYD_DIRECTION_RETRACT, 100.0f, 97.0f, false},
+        {"close 60%/end 60%", 100.0f, 30.0f, HYD_DIRECTION_RETRACT, 60.0f, 60.0f, true},
+        {"open 95%/end 95%", 1.0f, 30.0f, HYD_DIRECTION_EXTEND, 95.0f, 95.0f, true},
+        {"legacy 0%", 100.0f, 30.0f, HYD_DIRECTION_RETRACT, 0.0f, 30.0f, false},
+    };
+    unsigned int i;
+
+    for (i = 0u; i < sizeof(cases) / sizeof(cases[0]); ++i) {
+        HYD_REAL endVelocity = 0.0f;
+        HYD_REAL crossing = start_and_read_crossing(&cases[i], &endVelocity);
+        HYD_REAL expected = cases[i].flowHold ? 700.0f : endVelocity;
+
+        printf("T9 %s: end velocity %.2f, crossing %.2f (expected %.2f)\n",
+               cases[i].name, endVelocity, crossing, expected);
+        fflush(stdout);
+        assert(fabsf(crossing - expected) <= 0.01f);
+    }
+}
+
 int main(void)
 {
     /* T4 放第一个：变异检查（去掉回算）时先在 T4 失败 */
@@ -458,6 +656,9 @@ int main(void)
     test_close_chained_segments_ramp_flow_down();
     test_open_same_percent_chain_recovers_pump_flow();
     test_zero_percent_keeps_legacy_velocity_semantics();
+    test_close_flow_hold_ignores_deceleration_time();
+    test_ramp_down_flow_hold_keeps_velocity_brake();
+    test_flow_hold_classification_boundaries();
     printf("test_toggle_flow_percent_integration passed\n");
     return 0;
 }

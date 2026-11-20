@@ -66,6 +66,7 @@ static HYD_DirectCommandKind HYD_InferDirectCommandKindFromSegment(const HYD_Mot
 static void HYD_ClearContinuousAbsoluteContext(HYD_ContinuousAbsoluteContext* ctx);
 static void HYD_CopyContinuousAbsoluteContext(HYD_ContinuousAbsoluteContext* dst,
                                               const HYD_ContinuousAbsoluteContext* src);
+static HYD_REAL HYD_ResolveFlowPercentBase(const HYD_MotionControlFB* fb);
 static HYD_BOOL HYD_PrimeSegmentControllers(HYD_MotionControlFB* fb,
                                             const HYD_MotionSegment* segment,
                                             HYD_TIME timestamp,
@@ -1084,6 +1085,53 @@ static HYD_BOOL HYD_HasCarriedAccelerationAnchor(const HYD_MotionControlFB* fb,
         HYD_NormalizeMotionTimeMs(segment->maxAcceleration));
 }
 
+/* spec §4.3.7（2026-11-20）保持流量终点：终点流量 ≈ 本段流量、且本段不降流量时，段内不需要
+ * 速度域刹车——泵流量不变，曲肘速比自己让动模板降到终点速度。
+ * 条件 3：q_end ≥ q_seg − r·Q_base，q_end = |v_end| / v_lim × q_lim，q_seg = min(pct·Q_base, q_lim)；
+ * 条件 4：q_seg ≥ q0 − r·Q_base，q0 为续接恢复后的上一拍指令流量（与流量斜坡锚定同一起点）。
+ * 降流量段的流量斜坡可能在目标点前走不完，不满足条件 4，保留速度域刹车兜底。
+ * r = HYD_FLOW_PERCENT_RAMP_EQUAL_RATIO，与斜坡锚定共用“流量近似相等”的定义。 */
+static HYD_BOOL HYD_IsContinuousAbsoluteFlowHoldEnd(const HYD_MotionControlFB* fb,
+                                                   const HYD_ContinuousAbsoluteContext* ctx,
+                                                   const HYD_MotionSegment* segment,
+                                                   HYD_REAL requested) {
+    HYD_REAL base;
+    HYD_REAL velocityLimit = 0.0f;
+    HYD_REAL ratio = 0.0f;
+    HYD_REAL flowLimit = 0.0f;
+    HYD_REAL segmentFlow;
+    HYD_REAL endFlow;
+    HYD_REAL tolerance;
+    HYD_DiagnosticCode code = HYD_DIAG_CODE_NONE;
+
+    if (!(ctx->flowPercent > 0.0f)) {
+        return false;
+    }
+    base = HYD_ResolveFlowPercentBase(fb);
+    if (!(base > 0.0f) ||
+        !HYD_MotionControlFB_ResolveMaxTemplateVelocity(fb,
+                                                        segment->targetPosition,
+                                                        segment->targetPosition,
+                                                        ctx->approachDirection,
+                                                        &velocityLimit,
+                                                        &ratio,
+                                                        &flowLimit,
+                                                        &code) ||
+        !(velocityLimit > 0.0f) || !(flowLimit > 0.0f)) {
+        return false;
+    }
+    tolerance = HYD_FLOW_PERCENT_RAMP_EQUAL_RATIO * base;
+    segmentFlow = ctx->flowPercent * 0.01f * base;
+    if (segmentFlow > flowLimit) {
+        segmentFlow = flowLimit;
+    }
+    endFlow = requested / velocityLimit * flowLimit;
+    if (endFlow < segmentFlow - tolerance) {
+        return false;
+    }
+    return segmentFlow >= fabs(fb->_plannerState.lastTargetFlow) - tolerance;
+}
+
 static HYD_REAL HYD_ResolveContinuousAbsoluteCrossingVelocity(
     const HYD_MotionControlFB* fb,
     const HYD_ContinuousAbsoluteContext* ctx,
@@ -1108,6 +1156,12 @@ static HYD_REAL HYD_ResolveContinuousAbsoluteCrossingVelocity(
      * later for stop completion and INENDVELOCITY qualification. */
     if (requested <= HYD_THRESH_DECEL_TARGET_VEL_DONE) {
         return 0.0f;
+    }
+
+    /* spec §4.3.7：保持流量终点不做可达峰值封顶和速度域刹车。只改传给规划器的
+     * 终点速度，sustainVelocity 与 InEndVelocity 判定不变；与 adaptEndVelEnabled 无关。 */
+    if (HYD_IsContinuousAbsoluteFlowHoldEnd(fb, ctx, segment, requested)) {
+        return segment->maxVelocity;
     }
 
     remainingDistance = fabs(segment->targetPosition - fb->AXIS_REF.position);
