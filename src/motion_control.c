@@ -1087,10 +1087,12 @@ static HYD_BOOL HYD_HasCarriedAccelerationAnchor(const HYD_MotionControlFB* fb,
 
 /* spec §4.3.7（2026-11-20）保持流量终点：终点流量 ≈ 本段流量、且本段不降流量时，段内不需要
  * 速度域刹车——泵流量不变，曲肘速比自己让动模板降到终点速度。
- * 条件 3：q_end ≥ q_seg − r·Q_base，q_end = |v_end| / v_lim × q_lim，q_seg = min(pct·Q_base, q_lim)；
+ * 条件 3：q_end ≥ q_seg·(1 − r)，q_end = |v_end| / v_lim × q_lim，q_seg = min(pct·Q_base, q_lim)；相对容差，
+ *   低百分比时不会把 10%/8% 这类明显降速的终点当成保持流量；
  * 条件 4：q_seg ≥ q0 − r·Q_base，q0 为续接恢复后的上一拍指令流量（与流量斜坡锚定同一起点）。
  * 降流量段的流量斜坡可能在目标点前走不完，不满足条件 4，保留速度域刹车兜底。
- * r = HYD_FLOW_PERCENT_RAMP_EQUAL_RATIO，与斜坡锚定共用“流量近似相等”的定义。 */
+ * r = HYD_FLOW_PERCENT_RAMP_EQUAL_RATIO；条件 4 与斜坡锚定一样用绝对容差 r·Q_base（|Δq| ≤ r·Q_base 时斜坡
+ *   速率取 Q_base / t_acc，约 r·t_acc 内走完，不需要刹车兜底）。 */
 static HYD_BOOL HYD_IsContinuousAbsoluteFlowHoldEnd(const HYD_MotionControlFB* fb,
                                                    const HYD_ContinuousAbsoluteContext* ctx,
                                                    const HYD_MotionSegment* segment,
@@ -1126,7 +1128,7 @@ static HYD_BOOL HYD_IsContinuousAbsoluteFlowHoldEnd(const HYD_MotionControlFB* f
         segmentFlow = flowLimit;
     }
     endFlow = requested / velocityLimit * flowLimit;
-    if (endFlow < segmentFlow - tolerance) {
+    if (endFlow < segmentFlow * (1.0f - HYD_FLOW_PERCENT_RAMP_EQUAL_RATIO)) {
         return false;
     }
     return segmentFlow >= fabs(fb->_plannerState.lastTargetFlow) - tolerance;
