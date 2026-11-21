@@ -9,6 +9,8 @@ void HYD_PumpConverter_Execute(const HYD_PumpConverterInput* input,
                                HYD_PumpConverterOutput* output) {
     HYD_REAL requestedFlow;
     HYD_REAL maxFlowFromPumpLimit;
+    HYD_REAL hardwareMinFlow;
+    HYD_REAL effectiveMinFlow;
 
     if (output == NULL) {
         return;
@@ -35,14 +37,24 @@ void HYD_PumpConverter_Execute(const HYD_PumpConverterInput* input,
 
     requestedFlow = input->requestedFlow;
 
-    /* 允许负流量用于快速卸压阶段: 油泵允许小范围反转。
-     * 负流量直接传递到 commandFlow，不做绝对值处理。
-     * 方向信息由 input->direction 字段和调用方维护。
-     * 负流量下限 = -pumpSpeedLimit * RATIO / gain = -maxFlow * RATIO */
+    /* The converter is the final actuator boundary.  A strategy lower bound
+     * may request less reverse flow, but it can never exceed the pump's safe
+     * reverse-speed capability. */
     maxFlowFromPumpLimit = input->pumpSpeedLimit / input->flowToPumpSpeedGain;
+    hardwareMinFlow = -maxFlowFromPumpLimit * HYD_PUMP_NEGATIVE_SPEED_RATIO;
+    effectiveMinFlow = input->minimumFlow;
+    if (!HYD_PumpConverter_IsFiniteReal(effectiveMinFlow)) {
+        effectiveMinFlow = 0.0;
+    }
+    if (effectiveMinFlow < hardwareMinFlow) {
+        effectiveMinFlow = hardwareMinFlow;
+    }
+    if (effectiveMinFlow > maxFlowFromPumpLimit) {
+        effectiveMinFlow = maxFlowFromPumpLimit;
+    }
     output->maxFlow = maxFlowFromPumpLimit;
     output->commandFlow = HYD_ClampReal(requestedFlow,
-        -maxFlowFromPumpLimit * HYD_PUMP_NEGATIVE_SPEED_RATIO,
+        effectiveMinFlow,
         maxFlowFromPumpLimit);
 
     output->pumpSpeed = output->commandFlow * input->flowToPumpSpeedGain;
@@ -88,8 +100,24 @@ void HYD_PumpConverter_ApplySlewLimit(
     limitedSpeed = previousPumpSpeed;
     if (limitedSpeed > input->pumpSpeedLimit) {
         limitedSpeed = input->pumpSpeedLimit;
-    } else if (limitedSpeed < -input->pumpSpeedLimit * HYD_PUMP_NEGATIVE_SPEED_RATIO) {
-        limitedSpeed = -input->pumpSpeedLimit * HYD_PUMP_NEGATIVE_SPEED_RATIO;
+    } else {
+        HYD_REAL minimumFlow = input->minimumFlow;
+        HYD_REAL minimumSpeed;
+        HYD_REAL hardwareMinimumSpeed = -input->pumpSpeedLimit *
+                                         HYD_PUMP_NEGATIVE_SPEED_RATIO;
+        if (!HYD_PumpConverter_IsFiniteReal(minimumFlow)) {
+            minimumFlow = 0.0;
+        }
+        minimumSpeed = minimumFlow * input->flowToPumpSpeedGain;
+        if (minimumSpeed < hardwareMinimumSpeed) {
+            minimumSpeed = hardwareMinimumSpeed;
+        }
+        if (minimumSpeed > input->pumpSpeedLimit) {
+            minimumSpeed = input->pumpSpeedLimit;
+        }
+        if (limitedSpeed < minimumSpeed) {
+            limitedSpeed = minimumSpeed;
+        }
     }
 
     /* A reversal must first decelerate to zero. This prevents a one-scan
@@ -117,10 +145,24 @@ void HYD_PumpConverter_ApplySlewLimit(
         }
     }
 
-    limitedSpeed = HYD_ClampReal(
-        limitedSpeed,
-        -input->pumpSpeedLimit * HYD_PUMP_NEGATIVE_SPEED_RATIO,
-        input->pumpSpeedLimit);
+    {
+        HYD_REAL minimumFlow = input->minimumFlow;
+        HYD_REAL minimumSpeed;
+        HYD_REAL hardwareMinimumSpeed = -input->pumpSpeedLimit *
+                                         HYD_PUMP_NEGATIVE_SPEED_RATIO;
+        if (!HYD_PumpConverter_IsFiniteReal(minimumFlow)) {
+            minimumFlow = 0.0;
+        }
+        minimumSpeed = minimumFlow * input->flowToPumpSpeedGain;
+        if (minimumSpeed < hardwareMinimumSpeed) {
+            minimumSpeed = hardwareMinimumSpeed;
+        }
+        if (minimumSpeed > input->pumpSpeedLimit) {
+            minimumSpeed = input->pumpSpeedLimit;
+        }
+        limitedSpeed = HYD_ClampReal(limitedSpeed, minimumSpeed,
+                                     input->pumpSpeedLimit);
+    }
     output->maxFlow = requested.maxFlow;
     output->pumpSpeed = limitedSpeed;
     output->commandFlow = limitedSpeed / input->flowToPumpSpeedGain;

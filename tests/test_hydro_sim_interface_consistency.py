@@ -45,9 +45,11 @@ POUS = {
         ],
         "outputs": [
             "ACTIVE",
+            "RAW_PRESSURE_BAR",
             "MEASURED_PRESSURE_BAR",
             "REAL_PRESSURE_BAR",
             "ACTUAL_MOTOR_RPM",
+            "PUMP_TORQUE_PERMILLE",
         ],
     },
 }

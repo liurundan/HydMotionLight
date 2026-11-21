@@ -7,6 +7,9 @@
 
 #define HYD_TOGGLE_VALIDATION_POINTS 257u
 #define HYD_TOGGLE_BOUNDARY_ITERATIONS 24u
+/* Interior samples (plus both endpoints) used to find the worst |dXs/dXm|
+ * over a template range; 16 keeps the 105 geometry within 0.2 %. */
+#define HYD_TOGGLE_RANGE_RATIO_SAMPLES 16u
 
 typedef enum {
     HYD_TOGGLE_ERROR_NONE = 0,

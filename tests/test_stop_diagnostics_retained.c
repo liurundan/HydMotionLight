@@ -95,6 +95,45 @@ static void test_normal_stop_does_not_false_alarm(void) {
     printf("test_normal_stop_does_not_false_alarm PASSED\n");
 }
 
+static void test_natural_stop_settling_does_not_false_alarm(void) {
+    HYD_MotionControlFB fb;
+    int i;
+
+    HYD_MotionControlFB_Init(&fb);
+    prime_velocity_run(&fb);
+
+    fb.AXIS_REF.timestamp = 0.0;
+    assert(HYD_MotionControlFB_StartSegment(&fb, 0, 0.0));
+    /* Exercise the default hydraulic settling floor instead of an explicit
+     * segment timeout. */
+    fb._activeSegment.timeoutLimit = 0.0;
+    for (i = 0; i < 20; i++) {
+        fb.AXIS_REF.timestamp = (HYD_TIME)(i * 0.01);
+        fb.AXIS_REF.velocity = 50.0;
+        HYD_MotionControlFB_Execute(&fb);
+    }
+
+    assert(HYD_MotionControlFB_Stop(&fb, 0.20, 500.0));
+    /* Hydraulic axes may need about two seconds to coast to zero after the
+     * commanded 100 ms flow ramp has reached zero.  The stop watchdog must
+     * not classify that measured deceleration as a stuck actuator. */
+    for (i = 0; i < 300; i++) {
+        HYD_TIME elapsed = 0.20 + (HYD_TIME)((i + 1) * 0.01);
+        HYD_REAL remaining = 50.0 * (1.0 - ((HYD_REAL)(i + 1) / 200.0));
+        fb.AXIS_REF.timestamp = elapsed;
+        fb.AXIS_REF.velocity = (remaining > 0.0) ? remaining : 0.0;
+        HYD_MotionControlFB_Execute(&fb);
+        if (fb.FB_STATE == HYD_FB_STATE_DONE) {
+            break;
+        }
+    }
+
+    assert(fb.FB_STATE == HYD_FB_STATE_DONE);
+    assert(!fb.STATE.faultActive);
+    assert(fb.DIAGNOSTIC.code != HYD_DIAG_CODE_TIMEOUT);
+    printf("test_natural_stop_settling_does_not_false_alarm PASSED\n");
+}
+
 static void test_stop_branch_detects_sensor_fault(void) {
     HYD_MotionControlFB fb;
     int i;
@@ -142,9 +181,8 @@ static void test_stop_branch_detects_stuck_velocity_timeout(void) {
         HYD_MotionControlFB_Execute(&fb);
     }
 
-    /* Stop with deceleration 200 mm/s^2; ideal stop time = 50/200 = 0.25 s.
-     * Default protection threshold = 5x + 1.0 = ~2.25 s, but we run up to
-     * 30 s of monotonic-time to make the assertion robust. */
+    /* prime_velocity_run configures a 5 s segment timeout; run long enough
+     * to confirm that the explicit stop-timeout override is honored. */
     assert(HYD_MotionControlFB_Stop(&fb, 0.20, 200.0));
 
     for (i = 0; i < 3000; i++) {
@@ -162,10 +200,66 @@ static void test_stop_branch_detects_stuck_velocity_timeout(void) {
     printf("test_stop_branch_detects_stuck_velocity_timeout PASSED\n");
 }
 
+static void test_stop_branch_detects_timeout_with_zero_planned_velocity(void) {
+    /* The planner command can already be zero while the hydraulic axis keeps
+     * moving because of inertia or a stale feedback signal. Stop must still
+     * arm its watchdog in this case instead of waiting forever for velocity
+     * to fall below HYD_THRESH_STOP_VEL_DONE_MAG. */
+    HYD_MotionControlFB fb;
+
+    HYD_MotionControlFB_Init(&fb);
+    prime_velocity_run(&fb);
+
+    fb.AXIS_REF.timestamp = 0.0;
+    assert(HYD_MotionControlFB_StartSegment(&fb, 0, 0.0));
+    for (int i = 0; i < 20; i++) {
+        fb.AXIS_REF.timestamp = (HYD_TIME)(i * 0.01);
+        fb.AXIS_REF.velocity = 50.0;
+        HYD_MotionControlFB_Execute(&fb);
+    }
+    assert(fb.STATE.active);
+    fb._activeSegment.timeoutLimit = 0.0;
+
+    /* Preserve the zero planner command contract: Stop must not synthesize a
+     * new deceleration ramp from the measured velocity. */
+    fb.STATE.plannedVelocity = 0.0;
+    fb._plannerState.lastTargetVelocity = 0.0;
+    fb._plannerState.lastTargetFlow = 0.0;
+    fb._lastCommandedFlow = 0.0;
+    fb.AXIS_REF.velocity = 30.0;
+
+    assert(HYD_MotionControlFB_Stop(&fb, 0.20, 200.0));
+    fb.AXIS_REF.timestamp = 0.20;
+    HYD_MotionControlFB_Execute(&fb);
+    assert(fb._isStopping);
+    assert(fb._stopStartVel == 0.0);
+    assert(fb.PUMP_SPEED == 0.0);
+
+    /* With T=200 ms, the T-based threshold is short, but the configured
+     * hydraulic natural-settling floor remains authoritative at 30 s. */
+    fb.AXIS_REF.timestamp = 30.19;
+    fb.AXIS_REF.velocity = 30.0;
+    HYD_MotionControlFB_Execute(&fb);
+    assert(fb._isStopping);
+    assert(!fb.STATE.faultActive);
+
+    fb.AXIS_REF.timestamp = 30.21;
+    fb.AXIS_REF.velocity = 30.0;
+    HYD_MotionControlFB_Execute(&fb);
+
+    assert(fb.FB_STATE == HYD_FB_STATE_FAULT);
+    assert(fb.STATE.faultActive);
+    assert(fb.ERROR_ID == HYD_DIAG_CODE_TIMEOUT);
+    assert(fb.DIAGNOSTIC.code == HYD_DIAG_CODE_TIMEOUT);
+    printf("test_stop_branch_detects_timeout_with_zero_planned_velocity PASSED\n");
+}
+
 int main(void) {
     test_stop_branch_detects_timestamp_rollback();
     test_normal_stop_does_not_false_alarm();
+    test_natural_stop_settling_does_not_false_alarm();
     test_stop_branch_detects_sensor_fault();
     test_stop_branch_detects_stuck_velocity_timeout();
+    test_stop_branch_detects_timeout_with_zero_planned_velocity();
     return 0;
 }

@@ -669,6 +669,107 @@ static void test_omitted_direction_reaches_position_and_end_velocity(void) {
                 "Axis velocity should remain non-zero after the omitted-direction case reaches sustain");
 }
 
+static void test_current_direction_does_not_complete_from_wrong_side(void) {
+    HYD_MOVECONTINUOUSABSOLUTE cmd;
+    HYD_MotionControlFB* core;
+    int axisId;
+
+    __HydMotion_framework_Init();
+    axisId = create_manual_axis();
+    ASSERT_TRUE(axisId >= 0, "CreateMotion should allocate a manual axis for CURRENT direction completion");
+    if (axisId < 0) {
+        return;
+    }
+
+    core = __MK_GetPublic_MotionControlFB(axisId);
+    ASSERT_TRUE(core != NULL, "Public motion FB should be available for CURRENT direction completion");
+    if (core == NULL) {
+        return;
+    }
+
+    ASSERT_TRUE(set_axis_feedback(axisId, 200.0f, 0.0f, 0.0f, 0.0f, 0.0f),
+                "Manual feedback should place the axis on the positive side of the target");
+    core->_lastActiveDirection = HYD_DIRECTION_NEGATIVE;
+
+    init_movecontinuousabsolute(&cmd, axisId, 10.0f, 20.0f, 0.0f,
+                                HYD_DIRECTION_CURRENT,
+                                HYD_DIRECTION_CURRENT);
+    rising_edge_scan(&cmd);
+    ASSERT_TRUE(IEC_VAL(cmd.ERROR) == false,
+                "CURRENT direction should accept a target below the current position");
+
+    __HydMotion_framework_Publish();
+    hold_true_scan(&cmd);
+
+    ASSERT_TRUE(IEC_VAL(cmd.POSITIONREACHED) == false,
+                "CURRENT negative direction must not report POSITIONREACHED before crossing the target");
+    ASSERT_TRUE(core->_directContinuousAbsolute.phase == HYD_CONTABS_PHASE_APPROACH,
+                "CURRENT negative direction must remain in APPROACH before crossing the target");
+}
+
+static void test_chained_movecontinuousabsolute_accepts_lagging_feedback(void) {
+    HYD_MOVECONTINUOUSABSOLUTE first;
+    HYD_MOVECONTINUOUSABSOLUTE second;
+    HYD_MotionControlFB* core;
+    int axisId;
+
+    __HydMotion_framework_Init();
+    axisId = create_manual_axis();
+    ASSERT_TRUE(axisId >= 0, "CreateMotion should allocate a manual axis for lagging-feedback validation");
+    if (axisId < 0) {
+        return;
+    }
+
+    core = __MK_GetPublic_MotionControlFB(axisId);
+    ASSERT_TRUE(core != NULL, "Public motion FB should be available for lagging-feedback validation");
+    if (core == NULL) {
+        return;
+    }
+
+    /* The first command has logically reached 200, while the feedback still
+     * contains the old position 0 when the next PLC command is scanned. */
+    init_movecontinuousabsolute(&first, axisId, 200.0f, 20.0f, 5.0f,
+                                HYD_DIRECTION_POSITIVE,
+                                HYD_DIRECTION_POSITIVE);
+    rising_edge_scan(&first);
+    ASSERT_TRUE(IEC_VAL(first.ERROR) == false,
+                "The first continuous absolute command should be accepted");
+
+    init_movecontinuousabsolute(&second, axisId, 10.0f, 20.0f, 5.0f,
+                                HYD_DIRECTION_NEGATIVE,
+                                HYD_DIRECTION_NEGATIVE);
+    rising_edge_scan(&second);
+
+    ASSERT_TRUE(IEC_VAL(second.ERROR) == false,
+                "A chained negative command should not be rejected by one-scan-old feedback");
+    ASSERT_TRUE(IEC_VAL(second.BUSY) == true,
+                "The chained negative command should own the axis after takeover");
+    ASSERT_TRUE(core->DIRECT_SEGMENT.targetPosition == 10.0f,
+                "The chained command should replace the active target after takeover");
+
+    __HydMotion_framework_Init();
+    axisId = create_manual_axis();
+    ASSERT_TRUE(axisId >= 0,
+                "CreateMotion should allocate an axis for the incompatible logical-target guard");
+    if (axisId < 0) {
+        return;
+    }
+
+    init_movecontinuousabsolute(&first, axisId, 200.0f, 20.0f, 5.0f,
+                                HYD_DIRECTION_POSITIVE,
+                                HYD_DIRECTION_POSITIVE);
+    rising_edge_scan(&first);
+    init_movecontinuousabsolute(&second, axisId, 250.0f, 20.0f, 5.0f,
+                                HYD_DIRECTION_NEGATIVE,
+                                HYD_DIRECTION_NEGATIVE);
+    rising_edge_scan(&second);
+
+    ASSERT_TRUE(IEC_VAL(second.ERROR) == true,
+                "A negative command beyond the previous logical target must remain rejected");
+    ASSERT_TRUE(IEC_VAL(second.ERRORID) == HYD_DIAG_CODE_COMMAND_NOT_ALLOWED,
+                "An incompatible logical target should retain COMMAND_NOT_ALLOWED");
+}
+
 static void test_negative_same_direction_latches_inendvelocity_on_target_crossing(void) {
     HYD_MOVECONTINUOUSABSOLUTE cmd;
     int axisId;
@@ -715,6 +816,62 @@ static void test_negative_same_direction_latches_inendvelocity_on_target_crossin
     }
     ASSERT_TRUE(finalVelocity < -VELOCITY_EPSILON,
                 "Negative same-direction MoveContinuousAbsolute should sustain a negative end velocity after crossing the target");
+}
+
+static void test_inendvelocity_uses_measured_axis_velocity(void) {
+    HYD_MOVECONTINUOUSABSOLUTE cmd;
+    int axisId;
+    int positionReachedStep = -1;
+    HYD_MotionControlFB* core;
+
+    __HydMotion_framework_Init();
+    axisId = create_manual_axis();
+    ASSERT_TRUE(axisId >= 0,
+                "CreateMotion should allocate a manual axis for measured end-velocity checks");
+    if (axisId < 0) {
+        return;
+    }
+    core = __MK_GetPublic_MotionControlFB(axisId);
+    ASSERT_TRUE(core != NULL,
+                "Manual measured end-velocity test should expose the public FB");
+    if (core == NULL) {
+        return;
+    }
+    ASSERT_TRUE(set_axis_feedback(axisId, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f),
+                "Manual feedback should initialize the axis before the command");
+
+    init_movecontinuousabsolute(&cmd, axisId, 1.0f, 10.0f, 5.0f,
+                                HYD_DIRECTION_POSITIVE,
+                                HYD_DIRECTION_POSITIVE);
+    IEC_VAL(cmd.ADAPTENDVELTOAVOIDOVERSHOOT) = false;
+    rising_edge_scan(&cmd);
+
+    ASSERT_TRUE(set_axis_feedback(axisId, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f),
+                "Manual feedback should move to the target while actual velocity remains below EndVelocity");
+    for (int step = 0; step < 4; step++) {
+        __HydMotion_framework_Publish();
+        hold_true_scan(&cmd);
+        if (IEC_VAL(cmd.POSITIONREACHED)) {
+            positionReachedStep = step + 1;
+            break;
+        }
+    }
+
+    ASSERT_TRUE(positionReachedStep > 0,
+                "Manual position feedback should latch POSITIONREACHED");
+    ASSERT_TRUE(IEC_VAL(cmd.INENDVELOCITY) == false,
+                "INENDVELOCITY must remain false while actual axis velocity is outside EndVelocity tolerance");
+    ASSERT_TRUE(fabsf(core->AXIS_REF.velocity) < 0.01f,
+                "The test should prove measured velocity differs from the requested nonzero end velocity");
+
+    ASSERT_TRUE(set_axis_feedback(axisId, 1.0f, 5.0f, 0.0f, 0.0f, 0.0f),
+                "Manual feedback should then report the requested end velocity");
+    for (int step = 0; step < 4 && !IEC_VAL(cmd.INENDVELOCITY); step++) {
+        __HydMotion_framework_Publish();
+        hold_true_scan(&cmd);
+    }
+    ASSERT_TRUE(IEC_VAL(cmd.INENDVELOCITY) == true,
+                "INENDVELOCITY should latch after actual axis velocity enters tolerance");
 }
 
 static void test_adapt_lowers_crossing_velocity_when_distance_is_too_short_to_accelerate(void) {
@@ -781,9 +938,10 @@ static void test_adapt_lowers_crossing_velocity_when_distance_is_too_short_to_ac
                 "Adapt mode should not reverse direction before the first target reach on a short accelerate-up move");
 }
 
-static void test_adapt_raises_crossing_velocity_when_distance_is_too_short_to_decelerate(void) {
+static void test_adapt_does_not_raise_crossing_velocity_when_distance_is_too_short_to_decelerate(void) {
     HYD_MOVECONTINUOUSABSOLUTE cmd;
     HYD_MOVEVELOCITY mv;
+    HYD_MotionControlFB* core;
     int axisId;
     int positionReachedStep;
     bool reversedBeforeTarget = false;
@@ -793,12 +951,17 @@ static void test_adapt_raises_crossing_velocity_when_distance_is_too_short_to_de
     bool sawValidFeedback = false;
     const HYD_REAL targetPosition = 6.0f;
     const HYD_REAL endVelocity = 5.0f;
-    const HYD_REAL deceleration = 100.0f;
 
     __HydMotion_framework_Init();
     axisId = create_sim_axis();
     ASSERT_TRUE(axisId >= 0, "CreateMotion should allocate a simulation axis");
     if (axisId < 0) {
+        return;
+    }
+    core = __MK_GetPublic_MotionControlFB(axisId);
+    ASSERT_TRUE(core != NULL,
+                "Short-distance adapt test should expose the public FB");
+    if (core == NULL) {
         return;
     }
 
@@ -833,15 +996,17 @@ static void test_adapt_raises_crossing_velocity_when_distance_is_too_short_to_de
     }
     ASSERT_TRUE(seededPosition < targetPosition,
                 "The short decelerate-down case should still be before the target when the high seed velocity is observed");
-    ASSERT_TRUE((targetPosition - seededPosition) <
-                ((observedVelocity * observedVelocity) - (endVelocity * endVelocity)) / (2.0f * deceleration),
-                "The short decelerate-down case should prove the remaining distance is too short to decelerate from the seeded velocity to the requested end velocity");
+    ASSERT_TRUE((targetPosition - seededPosition) > 0.0f,
+                "The short decelerate-down case should still have positive remaining distance");
 
     init_movecontinuousabsolute(&cmd, axisId, targetPosition, 35.0f, endVelocity,
                                 HYD_DIRECTION_POSITIVE,
                                 HYD_DIRECTION_POSITIVE);
     IEC_VAL(cmd.ADAPTENDVELTOAVOIDOVERSHOOT) = true;
     rising_edge_scan(&cmd);
+
+    ASSERT_TRUE(core->_directContinuousAbsolute.crossingVelocity <= endVelocity + 1e-4f,
+                "Adapt mode must not raise the requested crossing velocity when braking distance is insufficient");
 
     positionReachedStep = -1;
     for (int step = 0; step < MAX_SIM_STEPS; step++) {
@@ -884,6 +1049,292 @@ static void test_adapt_raises_crossing_velocity_when_distance_is_too_short_to_de
                 "Adapt mode should observe at least one valid public velocity sample on the short decelerate-down move");
     ASSERT_TRUE(reversedBeforeTarget == false,
                 "Adapt mode should not reverse direction before the first target reach on a short decelerate-down move");
+}
+
+static void test_zero_end_velocity_completes_after_position_stop(void) {
+    HYD_MOVECONTINUOUSABSOLUTE cmd;
+    HYD_MotionControlFB* core;
+    int axisId;
+    int positionReachedStep = -1;
+    int inEndVelocityStep = -1;
+    HYD_REAL finalPosition = 0.0f;
+    HYD_REAL finalVelocity = 0.0f;
+
+    __HydMotion_framework_Init();
+    axisId = create_sim_axis();
+    ASSERT_TRUE(axisId >= 0,
+                "CreateMotion should allocate a simulation axis for zero-end stop");
+    if (axisId < 0) {
+        return;
+    }
+    core = __MK_GetPublic_MotionControlFB(axisId);
+    ASSERT_TRUE(core != NULL,
+                "Zero-end stop test should expose the public FB");
+    if (core == NULL) {
+        return;
+    }
+
+    init_movecontinuousabsolute(&cmd, axisId, 20.0f, 15.0f, 0.0f,
+                                HYD_DIRECTION_POSITIVE,
+                                HYD_DIRECTION_POSITIVE);
+    IEC_VAL(cmd.ADAPTENDVELTOAVOIDOVERSHOOT) = true;
+    rising_edge_scan(&cmd);
+
+    for (int step = 0; step < MAX_SIM_STEPS; step++) {
+        __HydMotion_framework_Publish();
+        hold_true_scan(&cmd);
+
+        if (positionReachedStep < 0 && IEC_VAL(cmd.POSITIONREACHED)) {
+            positionReachedStep = step + 1;
+            ASSERT_TRUE(core->_activeSegment.mode == HYD_MODE_POSITION,
+                        "Zero EndVelocity should remain in position planning after POSITIONREACHED");
+            ASSERT_TRUE(core->_directContinuousAbsolute.phase != HYD_CONTABS_PHASE_SUSTAIN,
+                        "Zero EndVelocity should never enter the continuous SUSTAIN phase");
+        }
+        if (IEC_VAL(cmd.INENDVELOCITY) && !IEC_VAL(cmd.BUSY)) {
+            inEndVelocityStep = step + 1;
+            break;
+        }
+        if (IEC_VAL(cmd.ERROR) || IEC_VAL(cmd.COMMANDABORTED)) {
+            break;
+        }
+    }
+
+    ASSERT_TRUE(positionReachedStep > 0,
+                "Zero EndVelocity move should report target position reached");
+    ASSERT_TRUE(inEndVelocityStep > positionReachedStep,
+                "Zero EndVelocity should report end velocity only after the stop phase");
+    ASSERT_TRUE(IEC_VAL(cmd.INENDVELOCITY) == true,
+                "Zero EndVelocity should eventually report the measured stop");
+    ASSERT_TRUE(IEC_VAL(cmd.BUSY) == false,
+                "Zero EndVelocity should finish the direct command after stopping");
+
+    if (read_sim_feedback(axisId, &finalPosition, &finalVelocity, NULL, NULL)) {
+        ASSERT_TRUE(fabsf(finalVelocity) <= VELOCITY_EPSILON,
+                    "Zero-end command should be complete only when simulated feedback is stationary");
+        ASSERT_TRUE(fabsf(finalPosition - 20.0f) <= 0.1f,
+                    "Zero-end stop should settle inside the configured position tolerance");
+    } else {
+        ASSERT_TRUE(false,
+                    "ReadSimFeedback should expose the final zero-end position and velocity");
+    }
+}
+
+static bool write_parameter(int axisId, int parameterNumber, HYD_REAL value) {
+    HYD_WRITEPARAMETER write;
+
+    memset(&write, 0, sizeof(write));
+    IEC_VAL(write.EN) = true;
+    IEC_VAL(write.AXISID) = axisId;
+    IEC_VAL(write.EXECUTE) = true;
+    IEC_VAL(write.PARAMETERNUMBER) = parameterNumber;
+    IEC_VAL(write.VALUE) = value;
+    __mcl_cmd_WriteParameter(&write);
+    return IEC_VAL(write.DONE) && !IEC_VAL(write.ERROR);
+}
+
+/* Measured settle noise after a zero-end stop (filtered clamp feedback) must
+ * not block INENDVELOCITY once the dedicated settle threshold is configured,
+ * and configuring it must not arm velocity-deviation diagnostics. */
+static void test_zero_end_settle_velocity_parameter_gates_inendvelocity(void) {
+    HYD_MOVECONTINUOUSABSOLUTE cmd;
+    HYD_MotionControlFB* core;
+    int axisId;
+    bool positionReached = false;
+
+    __HydMotion_framework_Init();
+    axisId = create_manual_axis();
+    ASSERT_TRUE(axisId >= 0,
+                "CreateMotion should allocate a manual axis for the settle-threshold test");
+    if (axisId < 0) {
+        return;
+    }
+    core = __MK_GetPublic_MotionControlFB(axisId);
+    ASSERT_TRUE(core != NULL, "Settle-threshold test should expose the public FB");
+    if (core == NULL) {
+        return;
+    }
+    ASSERT_TRUE(write_parameter(axisId, HYD_PARAM_POSITION_TOLERANCE, 0.1f),
+                "Position tolerance should be writable");
+    ASSERT_TRUE(write_parameter(axisId, HYD_PARAM_ZERO_END_SETTLE_VELOCITY, 3.0f),
+                "Zero-end settle velocity should be writable through the IEC adapter");
+    ASSERT_TRUE(set_axis_feedback(axisId, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f),
+                "Manual feedback should initialize the axis");
+
+    init_movecontinuousabsolute(&cmd, axisId, 1.0f, 10.0f, 0.0f,
+                                HYD_DIRECTION_POSITIVE,
+                                HYD_DIRECTION_POSITIVE);
+    rising_edge_scan(&cmd);
+    ASSERT_TRUE(!IEC_VAL(cmd.ERROR), "Zero-end command should be accepted");
+
+    /* Target reached; filtered feedback still shows 1.5 mm/s of noise. */
+    ASSERT_TRUE(set_axis_feedback(axisId, 1.0f, 1.5f, 0.0f, 0.0f, 0.0f),
+                "Manual feedback should report the target with residual noise");
+    for (int step = 0; step < 400 && !IEC_VAL(cmd.INENDVELOCITY); step++) {
+        __HydMotion_framework_Publish();
+        hold_true_scan(&cmd);
+        positionReached = positionReached || IEC_VAL(cmd.POSITIONREACHED);
+        if (IEC_VAL(cmd.ERROR)) {
+            break;
+        }
+    }
+
+    ASSERT_TRUE(positionReached, "Zero-end command should latch POSITIONREACHED");
+    ASSERT_TRUE(IEC_VAL(cmd.INENDVELOCITY),
+                "1.5 mm/s settle noise must satisfy a 3 mm/s zero-end settle threshold");
+    ASSERT_TRUE(!IEC_VAL(cmd.ERROR),
+                "The settle threshold must not raise an error");
+    ASSERT_TRUE(!core->DIAGNOSTIC.velocityDeviation,
+                "The settle threshold must not arm velocity-deviation diagnostics");
+}
+
+typedef struct {
+    bool completed;
+    bool error;
+    int brakeStartStep;
+    int brakeEndStep;
+    HYD_REAL peakPlanned;
+    HYD_REAL maxBrakeStepDrop;
+    HYD_REAL finalPosition;
+} DelayedStopResult;
+
+#define DELAYED_PLANT_MAX_DELAY_CYCLES 100
+
+/* Manual-feedback plant: actual platen velocity = plantGain * planned velocity
+ * delayed by delayCycles (1 ms each), i.e. a hydraulic dead time. */
+static DelayedStopResult run_delayed_zero_end_stop(HYD_REAL startPosition,
+                                                   HYD_REAL targetPosition,
+                                                   HYD_REAL responseDelayMs,
+                                                   HYD_REAL plantGain,
+                                                   int delayCycles) {
+    DelayedStopResult result;
+    HYD_MOVECONTINUOUSABSOLUTE cmd;
+    HYD_MotionControlFB* core;
+    HYD_REAL history[DELAYED_PLANT_MAX_DELAY_CYCLES];
+    HYD_REAL position = startPosition;
+    HYD_REAL velocity = 0.0f;
+    HYD_REAL previousPlanned = 0.0f;
+    int axisId;
+    int head = 0;
+    int step;
+
+    memset(&result, 0, sizeof(result));
+    result.brakeStartStep = -1;
+    result.brakeEndStep = -1;
+    memset(history, 0, sizeof(history));
+
+    __HydMotion_framework_Init();
+    axisId = create_manual_axis();
+    core = __MK_GetPublic_MotionControlFB(axisId);
+    if (axisId < 0 || core == NULL ||
+        !write_parameter(axisId, HYD_PARAM_HYDRAULIC_RESPONSE_DELAY, responseDelayMs) ||
+        !set_axis_feedback(axisId, position, 0.0f, 0.0f, 0.0f, 0.0f)) {
+        result.error = true;
+        return result;
+    }
+
+    init_movecontinuousabsolute(&cmd, axisId, targetPosition, 20.0f, 0.0f,
+                                HYD_DIRECTION_POSITIVE,
+                                HYD_DIRECTION_POSITIVE);
+    IEC_VAL(cmd.ACCELERATION) = 500.0f;
+    IEC_VAL(cmd.DECELERATION) = 500.0f;
+    IEC_VAL(cmd.ADAPTENDVELTOAVOIDOVERSHOOT) = true;
+    rising_edge_scan(&cmd);
+
+    for (step = 0; step < 15000; step++) {
+        HYD_REAL planned;
+
+        set_axis_feedback(axisId, position, velocity, 0.0f, 0.0f, 0.0f);
+        __HydMotion_framework_Publish();
+        hold_true_scan(&cmd);
+        if (IEC_VAL(cmd.ERROR) || IEC_VAL(cmd.COMMANDABORTED)) {
+            result.error = true;
+            break;
+        }
+
+        planned = core->STATE.plannedVelocity;
+        if (planned > result.peakPlanned) {
+            result.peakPlanned = planned;
+        }
+        if (result.brakeStartStep < 0 && result.peakPlanned > 1.0f &&
+            planned < previousPlanned) {
+            result.brakeStartStep = step;
+        }
+        if (result.brakeStartStep >= 0 && result.brakeEndStep < 0) {
+            if (previousPlanned - planned > result.maxBrakeStepDrop) {
+                result.maxBrakeStepDrop = previousPlanned - planned;
+            }
+            if (fabsf(planned) <= VELOCITY_EPSILON) {
+                result.brakeEndStep = step;
+            }
+        }
+        previousPlanned = planned;
+
+        history[head] = planned;
+        head = (head + 1) % delayCycles;
+        velocity = plantGain * history[head];
+        position += velocity * 0.001f;
+
+        if (IEC_VAL(cmd.INENDVELOCITY) && !IEC_VAL(cmd.BUSY)) {
+            result.completed = true;
+            break;
+        }
+    }
+
+    /* Let the dead-time buffer drain with a zero command. */
+    for (int drain = 0; drain < delayCycles + 1; drain++) {
+        history[head] = 0.0f;
+        head = (head + 1) % delayCycles;
+        position += plantGain * history[head] * 0.001f;
+    }
+    result.finalPosition = position;
+    return result;
+}
+
+/* Field case: 45 ms hydraulic dead time, planned == actual velocity (k = 1).
+ * The zero-end stop must use the configured 500 ms deceleration and land on
+ * the target once the response delay is compensated. */
+static void test_zero_end_stop_compensates_hydraulic_response_delay(void) {
+    DelayedStopResult r = run_delayed_zero_end_stop(200.0f, 300.0f, 40.0f, 1.0f, 45);
+    int decelMs = r.brakeEndStep - r.brakeStartStep;
+
+    ASSERT_TRUE(!r.error, "Delayed-plant zero-end stop should run without error");
+    ASSERT_TRUE(r.completed, "Delayed-plant zero-end stop should complete with INENDVELOCITY");
+    ASSERT_TRUE(r.brakeStartStep > 0 && r.brakeEndStep > r.brakeStartStep,
+                "Delayed-plant zero-end stop should show a braking ramp");
+    ASSERT_TRUE(decelMs >= 450 && decelMs <= 550,
+                "Planned deceleration should last the configured 500 ms");
+    ASSERT_TRUE(fabsf(r.finalPosition - 300.0f) < 0.3f,
+                "Compensated stop should land within 0.3 mm of the target");
+    /* Nominal ramp: 20 mm/s over 500 ms = 0.04 mm/s per 1 ms cycle. A
+     * collapsing distance envelope shows up as a much steeper single step. */
+    ASSERT_TRUE(r.maxBrakeStepDrop <= 0.08f,
+                "The braking ramp must not collapse faster than twice the configured rate");
+    if (decelMs < 450 || decelMs > 550 || fabsf(r.finalPosition - 300.0f) >= 0.3f ||
+        r.maxBrakeStepDrop > 0.08f) {
+        printf("  observed decel=%d ms final=%.4f mm maxDrop=%.4f\n",
+               decelMs, r.finalPosition, r.maxBrakeStepDrop);
+    }
+}
+
+/* Short stroke (3 mm) never reaches cruise; the reachable-peak ramp must
+ * still brake over the configured 500 ms with the dead time compensated. */
+static void test_short_zero_end_stop_compensates_hydraulic_response_delay(void) {
+    DelayedStopResult r = run_delayed_zero_end_stop(297.0f, 300.0f, 40.0f, 1.0f, 45);
+    int decelMs = r.brakeEndStep - r.brakeStartStep;
+
+    ASSERT_TRUE(!r.error && r.completed,
+                "Short delayed-plant zero-end stop should complete without error");
+    ASSERT_TRUE(r.peakPlanned > 1.0f && r.peakPlanned < 20.0f,
+                "Short stroke should stay below the 20 mm/s cruise velocity");
+    ASSERT_TRUE(decelMs >= 450 && decelMs <= 550,
+                "Short-stroke planned deceleration should last the configured 500 ms");
+    ASSERT_TRUE(fabsf(r.finalPosition - 300.0f) < 0.3f,
+                "Short compensated stop should land within 0.3 mm of the target");
+    if (decelMs < 450 || decelMs > 550 || fabsf(r.finalPosition - 300.0f) >= 0.3f) {
+        printf("  observed short decel=%d ms peak=%.3f final=%.4f mm\n",
+               decelMs, r.peakPlanned, r.finalPosition);
+    }
 }
 
 static void test_reverse_sustain_delays_inendvelocity(void) {
@@ -1026,7 +1477,7 @@ static void test_pressure_limit_can_hold_positionreached_true_while_inendvelocit
                 "Pressure limiting should allow a scan where POSITIONREACHED stays true while INENDVELOCITY remains false");
 }
 
-static void test_pressure_limit_fault_surfaces_as_error(void) {
+static void test_pressure_limit_stays_running_without_error(void) {
     HYD_MOVECONTINUOUSABSOLUTE cmd;
     HYD_MotionControlFB* fb;
     int axisId;
@@ -1038,7 +1489,7 @@ static void test_pressure_limit_fault_surfaces_as_error(void) {
         return;
     }
     fb = __MK_GetPublic_MotionControlFB(axisId);
-    ASSERT_TRUE(fb != NULL, "Fault-escalation test should expose the public FB");
+    ASSERT_TRUE(fb != NULL, "Pressure-limit test should expose the public FB");
     if (fb == NULL) {
         return;
     }
@@ -1059,10 +1510,14 @@ static void test_pressure_limit_fault_surfaces_as_error(void) {
         }
     }
 
-    ASSERT_TRUE(IEC_VAL(cmd.ERROR) == true,
-                "Fault-level pressure limiting should surface ERROR on the command");
-    ASSERT_TRUE(IEC_VAL(cmd.BUSY) == false,
-                "Fault-level pressure limiting should clear Busy on the command");
+    ASSERT_TRUE(IEC_VAL(cmd.ERROR) == false,
+                "Process pressure limiting should not surface ERROR on the command");
+    ASSERT_TRUE(IEC_VAL(cmd.BUSY) == true,
+                "Process pressure limiting should keep MoveContinuousAbsolute busy");
+    ASSERT_TRUE((fb->STATE.limitFlags & HYD_LIMIT_FLAG_PRESSURE) != 0u,
+                "MoveContinuousAbsolute should expose the pressure limit status");
+    ASSERT_TRUE(fb->DIAGNOSTIC.code == HYD_DIAG_CODE_NONE,
+                "Process pressure limiting should not create a library diagnostic");
 }
 
 static void test_chained_same_direction_segments_keep_end_velocity_on_takeover_scan(void) {
@@ -1215,6 +1670,51 @@ static void test_low_acceleration_start_does_not_false_trip_position_deviation(v
     }
 }
 
+/* spec 2026-11-18 T6：PUMPFLOWPERCENT 校验，合法值写入上下文 */
+static void test_pump_flow_percent_input_is_validated(void) {
+    const HYD_REAL invalid[3] = { -1.0f, 101.0f, NAN };
+    HYD_MOVECONTINUOUSABSOLUTE cmd;
+    HYD_MotionControlFB* core;
+    int axisId;
+
+    for (int i = 0; i < 3; i++) {
+        __HydMotion_framework_Init();
+        axisId = create_manual_axis();
+        ASSERT_TRUE(axisId >= 0, "CreateMotion should allocate a manual axis");
+        if (axisId < 0) {
+            return;
+        }
+        ASSERT_TRUE(set_axis_feedback(axisId, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f),
+                    "Manual feedback should initialize the axis");
+        init_movecontinuousabsolute(&cmd, axisId, 10.0f, 10.0f, 0.0f,
+                                    HYD_DIRECTION_POSITIVE, HYD_DIRECTION_POSITIVE);
+        IEC_VAL(cmd.PUMPFLOWPERCENT) = invalid[i];
+        rising_edge_scan(&cmd);
+        ASSERT_TRUE(IEC_VAL(cmd.ERROR), "Out-of-range PUMPFLOWPERCENT must be rejected");
+        ASSERT_TRUE(IEC_VAL(cmd.ERRORID) == (IEC_WORD)HYD_DIAG_CODE_COMMAND_NOT_ALLOWED,
+                    "Rejected PUMPFLOWPERCENT should report COMMAND_NOT_ALLOWED");
+    }
+
+    __HydMotion_framework_Init();
+    axisId = create_manual_axis();
+    core = __MK_GetPublic_MotionControlFB(axisId);
+    ASSERT_TRUE(core != NULL, "Public FB should be available");
+    if (core == NULL) {
+        return;
+    }
+    ASSERT_TRUE(set_axis_feedback(axisId, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f),
+                "Manual feedback should initialize the axis");
+    init_movecontinuousabsolute(&cmd, axisId, 10.0f, 10.0f, 0.0f,
+                                HYD_DIRECTION_POSITIVE, HYD_DIRECTION_POSITIVE);
+    IEC_VAL(cmd.PUMPFLOWPERCENT) = 95.0f;
+    rising_edge_scan(&cmd);
+    ASSERT_TRUE(!IEC_VAL(cmd.ERROR), "PUMPFLOWPERCENT = 95 should be accepted");
+    ASSERT_TRUE(fabsf(core->_directContinuousAbsolute.flowPercent - 95.0f) < 1e-6f,
+                "Accepted PUMPFLOWPERCENT should be latched in the context");
+    ASSERT_TRUE(core->_directContinuousAbsolute.flowRampRate > 0.0f,
+                "Accepted PUMPFLOWPERCENT should anchor a flow ramp");
+}
+
 static void test_stop_takes_over_and_sets_commandaborted(void) {
     HYD_MOVECONTINUOUSABSOLUTE cmd;
     HYD_STOP stop;
@@ -1290,17 +1790,25 @@ int main(void) {
     test_current_end_velocity_direction_uses_velocity_then_last_active_direction();
     test_same_direction_reaches_position_and_end_velocity();
     test_same_direction_keeps_velocity_across_position_to_sustain_switch();
+    test_inendvelocity_uses_measured_axis_velocity();
     test_omitted_direction_reaches_position_and_end_velocity();
+    test_current_direction_does_not_complete_from_wrong_side();
+    test_chained_movecontinuousabsolute_accepts_lagging_feedback();
     test_negative_same_direction_latches_inendvelocity_on_target_crossing();
     test_adapt_lowers_crossing_velocity_when_distance_is_too_short_to_accelerate();
-    test_adapt_raises_crossing_velocity_when_distance_is_too_short_to_decelerate();
+    test_adapt_does_not_raise_crossing_velocity_when_distance_is_too_short_to_decelerate();
+    test_zero_end_velocity_completes_after_position_stop();
+    test_zero_end_settle_velocity_parameter_gates_inendvelocity();
+    test_zero_end_stop_compensates_hydraulic_response_delay();
+    test_short_zero_end_stop_compensates_hydraulic_response_delay();
     test_reverse_sustain_delays_inendvelocity();
     test_plc_pressure_feedback_and_movecontinuousabsolute_limit_use_bar();
     test_pressure_limit_can_hold_positionreached_true_while_inendvelocity_stays_false();
-    test_pressure_limit_fault_surfaces_as_error();
+    test_pressure_limit_stays_running_without_error();
     test_chained_same_direction_segments_keep_end_velocity_on_takeover_scan();
     test_low_acceleration_start_does_not_false_trip_position_deviation();
     test_stop_takes_over_and_sets_commandaborted();
+    test_pump_flow_percent_input_is_validated();
 
     printf("\n=== Results: %d/%d passed ===\n", tests_passed, tests_run);
     return (tests_failed == 0) ? 0 : 1;

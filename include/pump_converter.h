@@ -4,7 +4,8 @@
 #include "common_types.h"
 
 typedef struct {
-    HYD_REAL requestedFlow;          /* L/min magnitude request; negative values are normalized, non-finite values are rejected to safe zero */
+    HYD_REAL requestedFlow;          /* Requested flow [L/min]. */
+    HYD_REAL minimumFlow;            /* Strategy lower bound [L/min]. */
     HYD_REAL flowToPumpSpeedGain;    /* rpm per L/min, finite and > 0 */
     HYD_REAL pumpSpeedLimit;         /* rpm, finite and >= 0 */
     HYD_MotionDirection direction;   /* reserved for future directional pump mappings */

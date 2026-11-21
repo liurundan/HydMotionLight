@@ -12,8 +12,14 @@ typedef struct {
     HYD_ProtectionAction protectionAction;
     HYD_REAL derateRatio;
 
-    /* --- 负流量允许（新增） --- */
-    HYD_BOOL allowNegativeFlow;    /* true = 允许小幅负流量/负转速用于快速卸压 */
+    /* Resolved strategy lower bound [L/min].  The effective lower bound is
+     * max(minimumFlow, hardware reverse-flow capability). */
+    HYD_REAL minimumFlow;
+
+    /* Legacy compatibility flag.  New callers must provide minimumFlow; this
+     * flag is used only when minimumFlow is zero and no canonical negative
+     * policy was supplied by an older caller. */
+    HYD_BOOL allowNegativeFlow;
 
     /* --- 压力限制（新增） --- */
     HYD_REAL actualPressure;         /* 当前压力反馈 [bar] */
@@ -43,10 +49,11 @@ typedef struct {
 
 /* output_limiter 内部持久状态（由调用方持有，每段开始时 reset） */
 typedef struct {
-    /* 压力限制计时 */
-    HYD_BOOL pressureBreachActive;     /* 当前是否处于超压状态 */
-    HYD_TIME pressureBreachStartTime;  /* 超压开始时间 */
-    HYD_BOOL pressureFaultEscalated;   /* 已升级为 FAULT */
+    /* 压力限制运行状态。位置/速度段使用滞回保持限压状态，
+     * 不在这里升级为库级压力故障。 */
+    HYD_BOOL pressureLimitActive;
+    HYD_REAL pressureScale;
+    HYD_TIME pressureScaleLastTime;
 
     /* 软限位计时 */
     HYD_BOOL softLimitBreachActive;    /* 当前是否处于越界状态 */
@@ -58,7 +65,7 @@ typedef struct {
 void HYD_OutputLimiter_Execute(const HYD_OutputLimiterInput* input,
                                HYD_OutputLimiterOutput* output);
 
-/* 带状态的扩展版本（支持压力限制 + 软限位 + debounce + 故障升级） */
+/* 带状态的扩展版本（支持压力滞回/缓释 + 软限位诊断） */
 void HYD_OutputLimiter_ExecuteWithProtection(
     const HYD_OutputLimiterInput* input,
     HYD_OutputLimiterState* state,

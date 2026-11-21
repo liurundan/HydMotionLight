@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <math.h>
 #include <string.h>
 #include "motion_control.h"
 
@@ -107,6 +108,112 @@ static void test_write_read_roundtrip(void) {
     ok = HYD_MotionControlFB_ReadParameter(&fb, HYD_PARAM_VELOCITY_CORRECTION_LIMIT, &val);
     ASSERT_TRUE(ok, "Read velocityCorrectionLimit should succeed");
     ASSERT_FLOAT_EQ(val, 20.0f, 0.001f, "velocityCorrectionLimit should round-trip");
+}
+
+static void test_ksys_bar_per_rpm_roundtrip_and_validation(void) {
+    HYD_MotionControlFB fb;
+    HYD_REAL value = -1.0;
+    HYD_BOOL ok;
+
+    HYD_MotionControlFB_Init(&fb);
+
+    ok = HYD_MotionControlFB_ReadParameter(
+        &fb, HYD_PARAM_KSYS_BAR_PER_RPM, &value);
+    ASSERT_TRUE(ok, "Ksys parameter should be readable");
+    ASSERT_FLOAT_EQ(value, 0.0f, 0.001f,
+                    "Ksys should default to disabled zero");
+
+    ok = HYD_MotionControlFB_WriteParameter(
+        &fb, HYD_PARAM_KSYS_BAR_PER_RPM, 1.5f);
+    ASSERT_TRUE(ok, "Positive Ksys should be writable");
+    ok = HYD_MotionControlFB_ReadParameter(
+        &fb, HYD_PARAM_KSYS_BAR_PER_RPM, &value);
+    ASSERT_TRUE(ok, "Written Ksys should be readable");
+    ASSERT_FLOAT_EQ(value, 1.5f, 0.001f,
+                    "Ksys should round-trip in bar/rpm");
+
+    ok = HYD_MotionControlFB_WriteParameter(
+        &fb, HYD_PARAM_KSYS_BAR_PER_RPM, 0.0f);
+    ASSERT_TRUE(ok, "Zero Ksys should disable the feature");
+
+    ok = HYD_MotionControlFB_WriteParameter(
+        &fb, HYD_PARAM_KSYS_BAR_PER_RPM, -1.0f);
+    ASSERT_TRUE(!ok, "Negative Ksys should be rejected");
+    ok = HYD_MotionControlFB_WriteParameter(
+        &fb, HYD_PARAM_KSYS_BAR_PER_RPM, NAN);
+    ASSERT_TRUE(!ok, "Non-finite Ksys should be rejected");
+}
+
+static void test_zero_end_settle_velocity_roundtrip_and_validation(void) {
+    HYD_MotionControlFB fb;
+    HYD_REAL value = -1.0f;
+    HYD_BOOL ok;
+
+    HYD_MotionControlFB_Init(&fb);
+
+    ok = HYD_MotionControlFB_ReadParameter(
+        &fb, HYD_PARAM_ZERO_END_SETTLE_VELOCITY, &value);
+    ASSERT_TRUE(ok, "Zero-end settle velocity should be readable");
+    ASSERT_FLOAT_EQ(value, 0.0f, 0.0f,
+                    "Zero-end settle velocity should default to disabled zero");
+
+    ok = HYD_MotionControlFB_WriteParameter(
+        &fb, HYD_PARAM_ZERO_END_SETTLE_VELOCITY, 3.0f);
+    ASSERT_TRUE(ok, "Positive zero-end settle velocity should be writable");
+    ok = HYD_MotionControlFB_ReadParameter(
+        &fb, HYD_PARAM_ZERO_END_SETTLE_VELOCITY, &value);
+    ASSERT_TRUE(ok, "Written zero-end settle velocity should be readable");
+    ASSERT_FLOAT_EQ(value, 3.0f, 0.0001f,
+                    "Zero-end settle velocity should round-trip in mm/s");
+    ASSERT_FLOAT_EQ(fb._params.velocityTolerance, 0.0f, 0.0f,
+                    "Writing the settle threshold must not arm velocity deviation diagnostics");
+
+    ok = HYD_MotionControlFB_WriteParameter(
+        &fb, HYD_PARAM_ZERO_END_SETTLE_VELOCITY, -1.0f);
+    ASSERT_TRUE(!ok, "Negative zero-end settle velocity should be rejected");
+    ok = HYD_MotionControlFB_WriteParameter(
+        &fb, HYD_PARAM_ZERO_END_SETTLE_VELOCITY, NAN);
+    ASSERT_TRUE(!ok, "Non-finite zero-end settle velocity should be rejected");
+}
+
+static void test_hydraulic_response_delay_roundtrip_and_validation(void) {
+    HYD_MotionControlFB fb;
+    HYD_REAL value = -1.0f;
+    HYD_BOOL ok;
+
+    HYD_MotionControlFB_Init(&fb);
+
+    ok = HYD_MotionControlFB_ReadParameter(
+        &fb, HYD_PARAM_HYDRAULIC_RESPONSE_DELAY, &value);
+    ASSERT_TRUE(ok, "Hydraulic response delay should be readable");
+    ASSERT_FLOAT_EQ(value, 0.0f, 0.0f,
+                    "Hydraulic response delay should default to disabled zero");
+
+    ok = HYD_MotionControlFB_WriteParameter(
+        &fb, HYD_PARAM_HYDRAULIC_RESPONSE_DELAY, 40.0f);
+    ASSERT_TRUE(ok, "A 40 ms hydraulic response delay should be writable");
+    ok = HYD_MotionControlFB_ReadParameter(
+        &fb, HYD_PARAM_HYDRAULIC_RESPONSE_DELAY, &value);
+    ASSERT_TRUE(ok, "Written hydraulic response delay should be readable");
+    ASSERT_FLOAT_EQ(value, 40.0f, 0.0001f,
+                    "Hydraulic response delay should round-trip in ms");
+
+    ok = HYD_MotionControlFB_WriteParameter(
+        &fb, HYD_PARAM_HYDRAULIC_RESPONSE_DELAY, 200.0f);
+    ASSERT_TRUE(ok, "The 200 ms upper bound should be accepted");
+    ok = HYD_MotionControlFB_WriteParameter(
+        &fb, HYD_PARAM_HYDRAULIC_RESPONSE_DELAY, 200.5f);
+    ASSERT_TRUE(!ok, "Delays above 200 ms should be rejected");
+    ok = HYD_MotionControlFB_WriteParameter(
+        &fb, HYD_PARAM_HYDRAULIC_RESPONSE_DELAY, -1.0f);
+    ASSERT_TRUE(!ok, "Negative hydraulic response delay should be rejected");
+    ok = HYD_MotionControlFB_WriteParameter(
+        &fb, HYD_PARAM_HYDRAULIC_RESPONSE_DELAY, NAN);
+    ASSERT_TRUE(!ok, "Non-finite hydraulic response delay should be rejected");
+    ok = HYD_MotionControlFB_ReadParameter(
+        &fb, HYD_PARAM_HYDRAULIC_RESPONSE_DELAY, &value);
+    ASSERT_FLOAT_EQ(value, 200.0f, 0.0001f,
+                    "Rejected writes must keep the last accepted delay");
 }
 
 static void test_pressure_controller_type_validation(void) {
@@ -235,6 +342,9 @@ int main(void) {
     test_init_sets_defaults();
     test_init_syncs_legacy_fields();
     test_write_read_roundtrip();
+    test_ksys_bar_per_rpm_roundtrip_and_validation();
+    test_zero_end_settle_velocity_roundtrip_and_validation();
+    test_hydraulic_response_delay_roundtrip_and_validation();
     test_pressure_controller_type_validation();
     test_write_read_bool_roundtrip();
     test_invalid_param_number();

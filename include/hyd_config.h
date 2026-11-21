@@ -254,8 +254,11 @@ typedef HYD_REAL HYD_TIME;
 #define HYD_VERSION_STRING "1.1.0"
 
 /* Public state/PLC function-block layouts changed in 1.1.0. Consumers must
- * rebuild all objects against the headers shipped with the static library. */
-#define HYD_ABI_VERSION 2
+ * rebuild all objects against the headers shipped with the static library.
+ * ABI 3 (2026-11-18): the HYD_MoveContinuousAbsolute IEC layout gained
+ * PUMPFLOWPERCENT; PLC projects must be regenerated from the new
+ * pousHydMotion.xml. */
+#define HYD_ABI_VERSION 3
 
 /* 构建时间戳 */
 #ifdef HYD_VERSION_BUILD_TIME
@@ -369,6 +372,50 @@ typedef HYD_REAL HYD_TIME;
 #define HYD_THRESH_STOP_TIMEOUT_IDEAL_MULT   5.0f
 #define HYD_THRESH_STOP_TIMEOUT_SLACK_S      1.0f
 
+/* 液压轴在指令流量归零后通常仍需依靠摩擦和油液压缩性自然收敛。
+ * 未显式配置 segment.timeoutLimit 时，为这段自然停机保留最小观察窗口。
+ * 该值是安全兜底的默认值，设备可在标定后通过 segment.timeoutLimit 覆盖。 */
+#define HYD_THRESH_STOP_TIMEOUT_NATURAL_MIN_S 30.0f
+
+/* --- 短行程可达峰值下限（src/motion_planner.c D2 vp cap） --- */
+
+/* 语义A 短行程可达峰值（freshVp）的结果型爬行闸门下限。
+ * 单位：mm/s（与 velocity / plannerOutput.targetVelocity 同维度）。
+ * 用途：可达峰值低于该值（或非有限）时不施加 vp cap，保持 maxV 目标的
+ * 快速包络/落点下限削顶再逼近——低于该值的行程属亚死区噪声，恒时间
+ * 迷你梯形会以亚 mm/s 爬行完成，造成泵死区滞止。
+ * 出处：本计划 Task 2/5 裁定链（2026-11-10 decel-semantics-and-reachability）。 */
+#ifndef HYD_THRESH_SHORT_STROKE_MIN_PEAK
+    #define HYD_THRESH_SHORT_STROKE_MIN_PEAK 1.0f
+#endif
+
+/* --- 零终速液压纯滞后补偿（src/motion_planner.c 零终速 blend 刹车） --- */
+
+/* 泵指令到执行器速度响应之间的纯滞后默认值（参数 HYDRAULIC_RESPONSE_DELAY）。
+ * 0 表示不补偿（保持原有零终速刹车触发距离与零延迟包络）。
+ * 单位：ms。 */
+#ifndef HYD_DEFAULT_HYDRAULIC_RESPONSE_DELAY_MS
+    #define HYD_DEFAULT_HYDRAULIC_RESPONSE_DELAY_MS 0.0f
+#endif
+
+/* 参数 HYDRAULIC_RESPONSE_DELAY 允许写入的上限。单位：ms。 */
+#ifndef HYD_MAX_HYDRAULIC_RESPONSE_DELAY_MS
+    #define HYD_MAX_HYDRAULIC_RESPONSE_DELAY_MS 200.0f
+#endif
+
+/* --- 泵流量百分比斜坡锚定（src/motion_control.c MoveContinuousAbsolute） --- */
+
+/* 段启动锚定流量斜坡时，|q_target − q0| ≤ 该比例 × Q_base 视为“同流量续接”，
+ * 斜坡速率取 Q_base / t_acc，而不是 |Δq| / t（Δq 很小时速率趋近 0，上限被
+ * 规划器短暂下探带下来后爬不回去）。
+ * 取值依据（终审 2026-11-19）：同百分比链式续接实测 Δq ≈ 0.003~0.66 L/min
+ * （Q_base = 80.75 L/min，即 < 0.9%），0.02 留约 2 倍余量；真实换挡的 Δq 为
+ * 数十 L/min（如合模 95%→45% 约 39.5 L/min，≈ 49%），仍走固定耗时语义。
+ * 单位：无量纲（相对 Q_base）。 */
+#ifndef HYD_FLOW_PERCENT_RAMP_EQUAL_RATIO
+    #define HYD_FLOW_PERCENT_RAMP_EQUAL_RATIO 0.02f
+#endif
+
 /* --- 压力 ceiling 诊断 debounce / startup-suppress（motion_control.c Init） --- */
 
 /* PRESSURE_CEILING_EXCEEDED 触发前的 debounce 时长。短于一般 pressure
@@ -397,19 +444,28 @@ typedef HYD_REAL HYD_TIME;
  * 单位：无量纲。 */
 #define HYD_THRESH_PRESSURE_LIMIT_KP             3.0f
 
-/* 压力限制最小缩放比：比例限速的下限，不允许完全停泵。
- * 完全停泵由 FAULT/STOP 保护层负责。
- * 单位：无量纲 [0, 1)。 */
-#define HYD_THRESH_PRESSURE_LIMIT_MIN_SCALE      0.1f
+/* 压力限制最小缩放比：比例限速的下限。
+ * 位置/速度段没有压力限幅故障升级；压力明显高于限制时允许将正向流量
+ * 降到零，避免在堵转状态下持续憋压。单位：无量纲 [0, 1]。 */
+#define HYD_THRESH_PRESSURE_LIMIT_MIN_SCALE      0.0f
 
-/* 压力限制 WARNING 触发前的 debounce 时长。
- * 取较宽值避免瞬态压力尖峰误报（如射胶段切换瞬间）。
- * 单位：秒。 */
+/* 压力限幅释放回差比例。限压状态只有在压力低于
+ * maxPressure * (1 - ratio) 后才解除，避免限制点附近反复进出。 */
+#define HYD_THRESH_PRESSURE_LIMIT_HYSTERESIS_RATIO 0.02f
+
+/* 限压状态下输出恢复速率，单位 1/s。压力下降后逐步恢复流量，避免
+ * 在限制点附近一次性恢复满流量再次把压力推过上限。 */
+#define HYD_THRESH_PRESSURE_LIMIT_SCALE_RELEASE_RATE 2.0f
+
+/* 限压解除后的快速恢复速率，单位 1/s。实际压力已低于释放阈值
+ * maxPressure*(1-回差比例) 时使用，避免压力早已卸荷仍按慢速率爬坡
+ * （实测：压力段切到低限压位置段后泵速爬坡 500ms）。仍处于回差带内时
+ * 沿用 HYD_THRESH_PRESSURE_LIMIT_SCALE_RELEASE_RATE 防振荡。 */
+#define HYD_THRESH_PRESSURE_LIMIT_SCALE_FAST_RELEASE_RATE 10.0f
+
+/* Retained for source compatibility with older integrations. Process
+ * pressure limiting no longer escalates these timers to a library fault. */
 #define HYD_THRESH_PRESSURE_LIMIT_DEBOUNCE_S     0.20f
-
-/* 压力限制 WARNING → FAULT 升级时长。
- * 射胶段压力波动较大，取 1.0s 避免误停机。
- * 单位：秒。 */
 #define HYD_THRESH_PRESSURE_LIMIT_FAULT_ESCALATION_S  1.0f
 
 /* --- 软限位保护阈值（src/output_limiter.c） --- */
@@ -423,35 +479,6 @@ typedef HYD_REAL HYD_TIME;
  * 单位：秒。 */
 #define HYD_THRESH_SOFT_LIMIT_FAULT_DEBOUNCE_S   0.50f
 
-/* --- RBF-PID 数值死区与滤波（src/rbf_pid.c） --- */
-
-/* 设定值归一化绝对值低于该阈值视为"零设定"，直接清零输出，避免
- * 控制器在小目标下放大噪声。
- * 单位：归一化（无量纲）。原值：rbf_pid.c:327,345 `1e-6f`. */
-#define HYD_THRESH_RBF_SETPOINT_ZERO_EPS     1e-6f
-
-/* 设定值零判定时的反馈死区——只有反馈也接近零才置 0 输出。
- * 单位：归一化（无量纲）。原值：rbf_pid.c:327,345 `0.02f`. */
-#define HYD_THRESH_RBF_FEEDBACK_ZERO_BAND    0.02f
-
-/* 前馈加速度补偿激活的最小压力二阶差分（绝对值）.
- * 单位：归一化压力的二阶差分（无量纲）。fddPress 为 fActPress（即
- * pid->Feedback，归一化压力）的二阶差分，量纲同为归一化（无量纲）。
- * 原值：rbf_pid.c:312,314 `0.0001f`. */
-#define HYD_THRESH_RBF_FF_ACCEL_DEAD_BAND    0.0001f
-
-/* 一阶低通滤波器系数（微分项 raw_de 滤波）.
- * `delta_temp = (1 - alpha) * prev + alpha * raw_de`.
- * 原值：rbf_pid.c:297 `0.12f`. */
-#define HYD_THRESH_RBF_DERIV_FILTER_ALPHA    0.12f
-
-/* 自适应学习率缩放下界（误差归一化后）.
- * 原值：rbf_pid.c:273 `0.01f`. */
-#define HYD_THRESH_RBF_ETA_SCALE_MIN         0.01f
-
-/* 自适应学习率缩放倍数（误差归一化 × 倍数 → eta_scale，再 clamp 到 [min,1]）.
- * 原值：rbf_pid.c:273 `4.0f`. */
-#define HYD_THRESH_RBF_ETA_SCALE_GAIN        4.0f
 
 #define HYD_MAX_AXIS_MOTION  20 /* 最大液压轴数量，包括合模、射胶、顶出、座台、中子等 */
 
@@ -468,22 +495,17 @@ typedef HYD_REAL HYD_TIME;
 #endif
 
 /* ============================================================================
- * 14C. 泵负转速下限比例（Pump Negative Speed Ratio）
+ * 14C. 泵反向转速边界
  *
- * 允许油泵小范围反转以快速卸压时，反转转速上限占 pumpSpeedLimit 的比例。
- * 例：pumpSpeedLimit=1500rpm, RATIO=0.05 → 最大反转转速 = -75rpm
- *
- * 使用此宏的模块：
- *   - output_limiter.c  HYD_OutputLimiter_GetLimits()
- *   - output_limiter.c  HYD_OutputLimiter_Execute() 硬裁剪
- *   - output_limiter.c  HYD_OutputLimiter_ExecuteWithProtection() 硬裁剪
- *   - pump_converter.c  HYD_PumpConverter_Execute()
- *   - motion_interface.c __mcl_cmd_GetPumpRequest()（间接，依赖上游保证）
+ * 压力闭环的反向卸压使用与正向相同的 pumpSpeedLimit，实际策略下限由
+ * 压力控制器外层通过 outputMin 统一下发。该宏保留为硬件兼容点，默认
+ * 为 1.0，避免在流量转速换算和最终限幅器中再次引入额外的反向缩放。
  * ============================================================================ */
-#define HYD_PUMP_NEGATIVE_SPEED_RATIO      0.05f
+#define HYD_PUMP_NEGATIVE_SPEED_RATIO      1.0f
 
-/* Default normal-operation pump speed slew rates (rpm/s). Protected STOP and
- * FAULT paths bypass these limits and retain immediate zero output. */
+/* Default pump speed slew rates for sign-reversal protection (rpm/s). Normal
+ * motion and pressure handovers use the planner/limiter result directly.
+ * Protected STOP and FAULT paths retain immediate zero output. */
 #ifndef HYD_PUMP_DEFAULT_ACCELERATION_RPM_PER_SECOND
 #define HYD_PUMP_DEFAULT_ACCELERATION_RPM_PER_SECOND 20000.0f
 #endif

@@ -35,14 +35,20 @@ add_library(HydroSimLib STATIC ${HYDRO_SIM_SRCS})
 target_include_directories(HydroSimLib PUBLIC ${HYDRO_INCLUDE_DIRS})
 target_link_libraries(HydroSimLib PUBLIC m)
 
-add_executable(test_motion_planner tests/test_motion_planner.c)
-target_link_libraries(test_motion_planner PRIVATE HydroMotionLib)
+add_executable(test_motion_planner_time_ramp tests/test_motion_planner_time_ramp.c)
+target_link_libraries(test_motion_planner_time_ramp PRIVATE HydroMotionLib)
+
+add_executable(test_motion_time_contract tests/test_motion_time_contract.c)
+target_link_libraries(test_motion_time_contract PRIVATE HydroMotionLib)
 
 add_executable(test_recipe_validator tests/test_recipe_validator.c)
 target_link_libraries(test_recipe_validator PRIVATE HydroMotionLib)
 
 add_executable(test_pressure_controller tests/test_pressure_controller.c)
 target_link_libraries(test_pressure_controller PRIVATE HydroMotionLib)
+
+add_executable(test_pressure_ramp_time tests/test_pressure_ramp_time.c)
+target_link_libraries(test_pressure_ramp_time PRIVATE HydroMotionLib)
 
 add_executable(test_pump_converter tests/test_pump_converter.c)
 target_link_libraries(test_pump_converter PRIVATE HydroMotionLib)
@@ -74,11 +80,17 @@ target_link_libraries(test_rbf_pid_contract PRIVATE HydroMotionLib HydroSimLib)
 add_executable(test_rbf_pid_pressure_benchmark tests/test_rbf_pid_pressure_benchmark.c)
 target_link_libraries(test_rbf_pid_pressure_benchmark PRIVATE HydroMotionLib HydroSimLib)
 
+add_executable(test_rbf_pid_relief_first_order tests/test_rbf_pid_relief_first_order.c)
+target_link_libraries(test_rbf_pid_relief_first_order PRIVATE HydroMotionLib)
+
 add_executable(test_negative_flow tests/test_negative_flow.c)
 target_link_libraries(test_negative_flow PRIVATE HydroMotionLib)
 
 add_executable(test_diagnostic_monitor tests/test_diagnostic_monitor.c)
 target_link_libraries(test_diagnostic_monitor PRIVATE HydroMotionLib)
+
+add_executable(test_debug_values tests/test_debug_values.c)
+target_link_libraries(test_debug_values PRIVATE HydroMotionLib)
 
 add_executable(test_diagnostic_criteria tests/test_diagnostic_criteria.c)
 target_link_libraries(test_diagnostic_criteria PRIVATE HydroMotionLib)
@@ -112,6 +124,7 @@ target_link_libraries(test_hydro_sim_fb PRIVATE HydroSimLib)
 add_executable(test_pressure_model tests/test_pressure_model.c)
 target_link_libraries(test_pressure_model PRIVATE HydroMotionLib HydroSimLib)
 
+
 add_executable(test_pressure_hold_diagnosis tests/test_pressure_hold_diagnosis.c)
 target_link_libraries(test_pressure_hold_diagnosis PRIVATE HydroMotionLib HydroSimLib)
 
@@ -121,8 +134,6 @@ target_link_libraries(test_pressure_hold_diagnosis PRIVATE HydroMotionLib HydroS
 add_executable(test_motion_interface_unit tests/test_motion_interface_unit.c)
 target_link_libraries(test_motion_interface_unit PRIVATE HydroMotionLib)
 
-add_executable(test_motion_interface_arbitration tests/test_motion_interface_arbitration.c)
-target_link_libraries(test_motion_interface_arbitration PRIVATE HydroMotionLib)
 
 add_executable(test_motion_interface_done_signals tests/test_motion_interface_done_signals.c)
 target_link_libraries(test_motion_interface_done_signals PRIVATE HydroMotionLib)
@@ -143,8 +154,6 @@ target_link_libraries(test_movecontinuousabsolute_external_sim_integration
 add_executable(test_moveabsolute_stop_integration tests/test_moveabsolute_stop_integration.c)
 target_link_libraries(test_moveabsolute_stop_integration PRIVATE HydroMotionLib)
 
-add_executable(test_moveabsolute_blending_done tests/test_moveabsolute_blending_done.c)
-target_link_libraries(test_moveabsolute_blending_done PRIVATE HydroMotionLib)
 
 add_executable(test_stop_immediate_done tests/test_stop_immediate_done.c)
 target_link_libraries(test_stop_immediate_done PRIVATE HydroMotionLib)
@@ -192,6 +201,9 @@ add_executable(test_pump_cylinder_config tests/test_pump_cylinder_config.c)
 target_link_libraries(test_pump_cylinder_config PRIVATE HydroMotionLib m)
 add_test(NAME test_pump_cylinder_config COMMAND test_pump_cylinder_config)
 add_test(NAME test_mode_switch_bumpless COMMAND test_mode_switch_bumpless)
+add_executable(test_decel_semantics_fb tests/test_decel_semantics_fb.c)
+target_link_libraries(test_decel_semantics_fb PRIVATE HydroMotionLib)
+add_test(NAME test_decel_semantics_fb COMMAND test_decel_semantics_fb)
 
 add_executable(test_toggle_kinematics tests/test_toggle_kinematics.c)
 target_link_libraries(test_toggle_kinematics PRIVATE HydroMotionLib m)
@@ -208,6 +220,9 @@ target_link_libraries(test_toggle_motion_interface PRIVATE HydroMotionLib m)
 add_executable(test_toggle_motion_integration tests/test_toggle_motion_integration.c)
 target_link_libraries(test_toggle_motion_integration PRIVATE HydroMotionLib m)
 
+add_executable(test_toggle_flow_percent_integration tests/test_toggle_flow_percent_integration.c)
+target_link_libraries(test_toggle_flow_percent_integration PRIVATE HydroMotionLib m)
+
 add_executable(test_toggle_hydraulic_sim tests/test_toggle_hydraulic_sim.c)
 target_link_libraries(test_toggle_hydraulic_sim PRIVATE HydroMotionLib HydroSimLib m)
 
@@ -222,9 +237,11 @@ target_link_libraries(benchmark_performance PRIVATE HydroMotionLib)
 # to avoid flakiness in the main test suite.
 
 enable_testing()
-add_test(NAME test_motion_planner COMMAND test_motion_planner)
+add_test(NAME test_motion_planner_time_ramp COMMAND test_motion_planner_time_ramp)
+add_test(NAME test_motion_time_contract COMMAND test_motion_time_contract)
 add_test(NAME test_recipe_validator COMMAND test_recipe_validator)
 add_test(NAME test_pressure_controller COMMAND test_pressure_controller)
+add_test(NAME test_pressure_ramp_time COMMAND test_pressure_ramp_time)
 add_test(NAME test_pump_converter COMMAND test_pump_converter)
 add_test(NAME test_output_limiter COMMAND test_output_limiter)
 add_test(NAME test_velocity_controller COMMAND test_velocity_controller)
@@ -232,9 +249,12 @@ add_test(NAME test_action_profile COMMAND test_action_profile)
 add_test(NAME test_vp_transfer COMMAND test_vp_transfer)
 add_test(NAME test_segment_completion COMMAND segment_completion_test)
 add_test(NAME test_rbf_pid COMMAND rbf_pid_test)
+add_test(NAME test_rbf_pid_p0_fixes COMMAND rbf_pid_p0_fixes_test)
 add_test(NAME test_rbf_pid_contract COMMAND test_rbf_pid_contract)
 add_test(NAME test_rbf_pid_pressure_benchmark COMMAND test_rbf_pid_pressure_benchmark)
+add_test(NAME test_rbf_pid_relief_first_order COMMAND test_rbf_pid_relief_first_order)
 add_test(NAME test_diagnostic_monitor COMMAND test_diagnostic_monitor)
+add_test(NAME test_debug_values COMMAND test_debug_values)
 add_test(NAME test_diagnostic_criteria COMMAND test_diagnostic_criteria)
 add_test(NAME test_sprint3_integration COMMAND test_sprint3_integration)
 add_test(NAME test_sprint_b_integration COMMAND test_sprint_b_integration)
@@ -248,7 +268,6 @@ add_test(NAME test_hydro_sim_fb COMMAND test_hydro_sim_fb)
 add_test(NAME test_pressure_model COMMAND test_pressure_model)
 add_test(NAME test_pressure_hold_diagnosis COMMAND test_pressure_hold_diagnosis)
 add_test(NAME test_motion_interface_unit COMMAND test_motion_interface_unit)
-add_test(NAME test_motion_interface_arbitration COMMAND test_motion_interface_arbitration)
 add_test(NAME test_motion_interface_done_signals COMMAND test_motion_interface_done_signals)
 add_test(NAME test_movevelocity_stop_reverse_restart
          COMMAND test_movevelocity_stop_reverse_restart)
@@ -257,7 +276,6 @@ add_test(NAME test_movecontinuousabsolute_integration
 add_test(NAME test_movecontinuousabsolute_external_sim_integration
          COMMAND test_movecontinuousabsolute_external_sim_integration)
 add_test(NAME test_moveabsolute_stop_integration COMMAND test_moveabsolute_stop_integration)
-add_test(NAME test_moveabsolute_blending_done COMMAND test_moveabsolute_blending_done)
 add_test(NAME test_stop_immediate_done COMMAND test_stop_immediate_done)
 add_test(NAME test_ramp_controller_detailed COMMAND test_ramp_controller)
 add_test(NAME test_fault_recovery
@@ -299,6 +317,9 @@ add_test(NAME test_interface_layout_consistency
 add_test(NAME test_hydro_sim_interface_consistency
          COMMAND ${CMAKE_COMMAND} -E env PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}
                  python3 ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_hydro_sim_interface_consistency.py)
+add_test(NAME test_hydaxis_p0_contract
+         COMMAND ${CMAKE_COMMAND} -E env PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}
+                 python3 ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_hydaxis_p0_contract.py)
 
 add_test(NAME test_negative_flow COMMAND test_negative_flow)
 add_test(NAME test_toggle_kinematics COMMAND test_toggle_kinematics)
@@ -306,6 +327,7 @@ add_test(NAME test_toggle_mechanism_pool COMMAND test_toggle_mechanism_pool)
 add_test(NAME test_actuation_mapper COMMAND test_actuation_mapper)
 add_test(NAME test_toggle_motion_interface COMMAND test_toggle_motion_interface)
 add_test(NAME test_toggle_motion_integration COMMAND test_toggle_motion_integration)
+add_test(NAME test_toggle_flow_percent_integration COMMAND test_toggle_flow_percent_integration)
 add_test(NAME test_toggle_hydraulic_sim COMMAND test_toggle_hydraulic_sim)
 
 add_executable(test_motion_interface_negative_speed tests/test_motion_interface_negative_speed.c)

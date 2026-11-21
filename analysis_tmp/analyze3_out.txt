@@ -1,0 +1,512 @@
+
+================================================================================================
+OPEN open-8-10-12_rpm.csv cmd=8   idx[5148:21614] n=16466 (16.47s)  shaft=7.9626 rpm  f_rev=0.1327 Hz  revs_avail=2.19
+P mean=42.8017 sd=4.1544 p2p=18.2240 bar
+n_cmd mean=8.0000 sd=0.0000 p2p=0.0000 rpm
+torque mean=-51.1943 sd=5.7332 p2p=34.4000 %
+  P      revs=2 mean=  43.6698 rms=  3.1945 order_rms(1..80)=  2.6779 -> deterministic share= 70.27%
+  n_cmd  revs=2 mean=   8.0000 rms=  0.0000 order_rms(1..80)=  0.0000 -> deterministic share=  0.00%
+  torque revs=2 mean= -52.0481 rms=  4.7483 order_rms(1..80)=  3.4534 -> deterministic share= 52.90%
+  flow   revs=2 mean=  -7.2000 rms=  0.0000 order_rms(1..80)=  0.0000 -> deterministic share=  0.00%
+  --- order table (amp, phase_deg) over 2 revs ---
+   order    f(Hz)                      P                  n_cmd                 torque                   flow
+       1    0.133     3.2265@   -97.4      0.0000@    -0.0      3.4818@    78.3      0.0000@    97.4  
+       2    0.265     1.0331@   -97.8      0.0000@    -0.0      1.0560@    81.9      0.0000@  -113.3  
+       3    0.398     0.7851@   -90.0      0.0000@    -0.0      1.0222@    85.9      0.0000@    -0.4  
+       4    0.531     0.4666@   -94.8      0.0000@    -0.0      0.3799@   113.2      0.0000@   179.5  
+       5    0.664     0.4271@   -87.1      0.0000@    -0.0      0.5542@    93.3      0.0000@   -48.6  
+       6    0.796     0.4224@   -97.9      0.0000@    -0.0      0.4940@    70.7      0.0000@    23.4  
+       8    1.062     0.3776@   -87.5      0.0000@    -0.0      0.5030@    58.7      0.0000@    42.9  
+      13    1.725     0.7230@     6.3      0.0000@    -0.0      1.8210@    71.2      0.0000@    13.5  
+      26    3.450     0.3616@    82.5      0.0000@    -0.0      0.9821@   -86.5      0.0000@   -10.4  
+      39    5.176     0.2372@   -88.8      0.0000@    -0.0      0.4537@  -113.2      0.0000@  -127.6  
+      52    6.901     0.2758@  -107.4      0.0000@    -0.0      0.6255@   170.4      0.0000@   152.9  
+      65    8.626     0.1037@  -132.2      0.0000@    -0.0      0.4498@   107.1      0.0000@   120.4  
+      78   10.351     0.0164@  -128.2      0.0000@    -0.0      0.2369@   -15.7      0.0000@  -156.3  
+  --- loop phase relation (n_cmd relative to P) ---
+   order  13 @  1.725 Hz : P amp=0.7230 bar  n_cmd amp=0.0000 rpm  |P/n|=inf bar/rpm  phase(n-P)=   -6.31 deg  -> delay equiv  -10.16 ms
+                torque amp=1.8210 %  phase(P-T)=  -64.94 deg  |T/P|=2.5185 %/bar
+   order  26 @  3.450 Hz : P amp=0.3616 bar  n_cmd amp=0.0000 rpm  |P/n|=inf bar/rpm  phase(n-P)=  -82.54 deg  -> delay equiv  -66.45 ms
+                torque amp=0.9821 %  phase(P-T)=  169.01 deg  |T/P|=2.7163 %/bar
+   order  39 @  5.176 Hz : P amp=0.2372 bar  n_cmd amp=0.0000 rpm  |P/n|=inf bar/rpm  phase(n-P)=   88.82 deg  -> delay equiv   47.67 ms
+                torque amp=0.4537 %  phase(P-T)=   24.37 deg  |T/P|=1.9124 %/bar
+   order  52 @  6.901 Hz : P amp=0.2758 bar  n_cmd amp=0.0000 rpm  |P/n|=inf bar/rpm  phase(n-P)=  107.42 deg  -> delay equiv   43.24 ms
+                torque amp=0.6255 %  phase(P-T)=   82.18 deg  |T/P|=2.2676 %/bar
+
+================================================================================================
+OPEN open-8-10-12_rpm.csv cmd=10   idx[31960:52207] n=20247 (20.25s)  shaft=9.9752 rpm  f_rev=0.1663 Hz  revs_avail=3.37
+P mean=60.0090 sd=3.3181 p2p=13.2080 bar
+n_cmd mean=10.0000 sd=0.0000 p2p=0.0000 rpm
+torque mean=-67.9670 sd=5.2171 p2p=33.2000 %
+  P      revs=2 mean=  59.6239 rms=  3.1599 order_rms(1..80)=  1.2339 -> deterministic share= 15.25%
+  n_cmd  revs=2 mean=  10.0000 rms=  0.0000 order_rms(1..80)=  0.0000 -> deterministic share= 14.36%
+  torque revs=2 mean= -67.5182 rms=  4.9223 order_rms(1..80)=  2.5754 -> deterministic share= 27.37%
+  flow   revs=2 mean=  -7.2000 rms=  0.0000 order_rms(1..80)=  0.0000 -> deterministic share=  0.00%
+  --- order table (amp, phase_deg) over 2 revs ---
+   order    f(Hz)                      P                  n_cmd                 torque                   flow
+       1    0.166     1.0542@    14.4      0.0000@   152.5      1.1930@  -152.3      0.0000@   -80.1  
+       2    0.333     0.5309@    28.5      0.0000@  -139.7      0.3204@  -153.4      0.0000@   102.2  
+       3    0.499     0.1209@    -8.5      0.0000@   -68.9      0.1150@    60.7      0.0000@   -95.2  
+      13    2.161     0.9822@   141.4      0.0000@  -111.0      2.1786@  -176.6      0.0000@  -121.1  
+      24    3.990     0.1932@    97.6      0.0000@   -44.2      0.5958@    56.9      0.0000@    77.4  
+      26    4.323     0.5686@   -76.9      0.0000@    77.1      1.3907@   150.9      0.0000@  -107.7  
+      39    6.484     0.2032@   -95.4      0.0000@   -32.5      0.6342@  -130.9      0.0000@    -8.7  
+      52    8.645     0.2712@   -19.5      0.0000@  -106.8      0.7328@  -113.1      0.0000@    81.7  
+      65   10.806     0.0944@    51.0      0.0000@    -1.3      0.3921@   -47.1      0.0000@   151.3  
+      72   11.970     0.2965@  -114.9      0.0000@    86.2      1.3132@  -169.5      0.0000@  -105.5  
+      78   12.968     0.0462@    26.3      0.0000@    83.4      0.3741@   -32.5      0.0000@  -126.7  
+  --- loop phase relation (n_cmd relative to P) ---
+   order  13 @  2.161 Hz : P amp=0.9822 bar  n_cmd amp=0.0000 rpm  |P/n|=135092052378573904.0000 bar/rpm  phase(n-P)=  107.52 deg  -> delay equiv  138.19 ms
+                torque amp=2.1786 %  phase(P-T)=  -41.92 deg  |T/P|=2.2182 %/bar
+   order  26 @  4.323 Hz : P amp=0.5686 bar  n_cmd amp=0.0000 rpm  |P/n|=3955459433283545.5000 bar/rpm  phase(n-P)=  154.06 deg  -> delay equiv   99.00 ms
+                torque amp=1.3907 %  phase(P-T)=  132.21 deg  |T/P|=2.4459 %/bar
+   order  39 @  6.484 Hz : P amp=0.2032 bar  n_cmd amp=0.0000 rpm  |P/n|=19154272246502056.0000 bar/rpm  phase(n-P)=   62.95 deg  -> delay equiv   26.97 ms
+                torque amp=0.6342 %  phase(P-T)=   35.53 deg  |T/P|=3.1207 %/bar
+   order  52 @  8.645 Hz : P amp=0.2712 bar  n_cmd amp=0.0000 rpm  |P/n|=4604152995593362.0000 bar/rpm  phase(n-P)=  -87.34 deg  -> delay equiv  -28.06 ms
+                torque amp=0.7328 %  phase(P-T)=   93.66 deg  |T/P|=2.7019 %/bar
+
+================================================================================================
+OPEN open-8-10-12_rpm.csv cmd=12   idx[60565:78014] n=17449 (17.45s)  shaft=11.9971 rpm  f_rev=0.2000 Hz  revs_avail=3.49
+P mean=73.6617 sd=3.3805 p2p=13.4160 bar
+n_cmd mean=12.0000 sd=0.0000 p2p=0.0000 rpm
+torque mean=-80.7598 sd=5.2836 p2p=34.7000 %
+  P      revs=2 mean=  74.1680 rms=  3.3075 order_rms(1..80)=  1.3938 -> deterministic share= 17.76%
+  n_cmd  revs=2 mean=  12.0000 rms=  0.0000 order_rms(1..80)=  0.0000 -> deterministic share= 19.14%
+  torque revs=2 mean= -80.9448 rms=  5.0856 order_rms(1..80)=  3.1214 -> deterministic share= 37.67%
+  flow   revs=2 mean=  -7.2000 rms=  0.0000 order_rms(1..80)=  0.0000 -> deterministic share=  0.00%
+  --- order table (amp, phase_deg) over 2 revs ---
+   order    f(Hz)                      P                  n_cmd                 torque                   flow
+       1    0.200     1.4470@    27.3      0.0000@   171.9      1.5446@  -168.8      0.0000@  -144.8  
+       2    0.400     0.1887@   155.5      0.0000@    58.0      0.0581@   -66.2      0.0000@   154.4  
+       3    0.600     0.0702@    48.7      0.0000@    77.0      0.1909@   174.4      0.0000@  -123.9  
+      13    2.599     0.9868@   -75.2      0.0000@   -27.3      2.7958@   -42.4      0.0000@  -110.6  
+      24    4.799     0.2290@  -108.6      0.0000@   -60.8      0.7701@  -173.0      0.0000@    32.0  
+      26    5.199     0.6532@  -178.2      0.0000@    55.2      1.6416@    63.8      0.0000@  -103.3  
+      39    7.798     0.2152@   -46.2      0.0000@    71.6      0.7466@  -102.4      0.0000@  -129.4  
+      52   10.398     0.2844@   159.2      0.0000@  -143.8      0.6992@    93.4      0.0000@    60.2  
+      65   12.997     0.1077@    -2.6      0.0000@   -27.8      0.7350@   -97.0      0.0000@   118.3  
+      72   14.397     0.2613@    13.5      0.0000@    71.3      1.5777@   -42.0      0.0000@    71.6  
+      78   15.596     0.0665@   123.7      0.0000@    23.0      0.4456@    63.0      0.0000@    29.2  
+  --- loop phase relation (n_cmd relative to P) ---
+   order  13 @  2.599 Hz : P amp=0.9868 bar  n_cmd amp=0.0000 rpm  |P/n|=57332510943544840.0000 bar/rpm  phase(n-P)=   47.96 deg  -> delay equiv   51.25 ms
+                torque amp=2.7958 %  phase(P-T)=  -32.85 deg  |T/P|=2.8333 %/bar
+   order  26 @  5.199 Hz : P amp=0.6532 bar  n_cmd amp=0.0000 rpm  |P/n|=4569564340081379.0000 bar/rpm  phase(n-P)= -126.62 deg  -> delay equiv  -67.66 ms
+                torque amp=1.6416 %  phase(P-T)=  118.09 deg  |T/P|=2.5132 %/bar
+   order  39 @  7.798 Hz : P amp=0.2152 bar  n_cmd amp=0.0000 rpm  |P/n|=11205522212017816.0000 bar/rpm  phase(n-P)=  117.81 deg  -> delay equiv   41.97 ms
+                torque amp=0.7466 %  phase(P-T)=   56.24 deg  |T/P|=3.4692 %/bar
+   order  52 @ 10.398 Hz : P amp=0.2844 bar  n_cmd amp=0.0000 rpm  |P/n|=2066618284332002.0000 bar/rpm  phase(n-P)=   56.96 deg  -> delay equiv   15.22 ms
+                torque amp=0.6992 %  phase(P-T)=   65.87 deg  |T/P|=2.4588 %/bar
+
+================================================================================================
+OPEN open-15-20_rpmp.csv cmd=15   idx[11048:36649] n=25601 (25.60s)  shaft=14.9883 rpm  f_rev=0.2498 Hz  revs_avail=6.40
+P mean=99.0599 sd=3.8651 p2p=19.9480 bar
+n_cmd mean=15.0000 sd=0.0000 p2p=0.0000 rpm
+torque mean=-103.8987 sd=6.0480 p2p=41.7000 %
+  P      revs=4 mean=  99.4056 rms=  3.5801 order_rms(1..80)=  1.5127 -> deterministic share= 17.85%
+  n_cmd  revs=4 mean=  15.0000 rms=  0.0000 order_rms(1..80)=  0.0000 -> deterministic share=  6.79%
+  torque revs=4 mean=-103.9033 rms=  5.7324 order_rms(1..80)=  4.0777 -> deterministic share= 50.60%
+  flow   revs=4 mean=  -7.2000 rms=  0.0000 order_rms(1..80)=  0.0000 -> deterministic share=  0.00%
+  --- order table (amp, phase_deg) over 4 revs ---
+   order    f(Hz)                      P                  n_cmd                 torque                   flow
+       1    0.250     1.3737@    35.9      0.0000@  -138.2      1.4814@  -177.7      0.0000@   -37.1  
+       2    0.500     0.3951@    76.8      0.0000@   156.3      0.3170@   -62.4      0.0000@    -5.2  
+       3    0.749     0.2292@    57.6      0.0000@  -126.9      0.2049@  -116.9      0.0000@   144.0  
+      13    3.247     1.0685@    -1.3      0.0000@   -93.1      4.0372@    14.8      0.0000@    50.7  
+      24    5.995     0.2981@     3.0      0.0000@   148.3      0.9420@   -49.6      0.0000@   -93.8  
+      26    6.495     0.9243@   -59.9      0.0000@   -42.3      2.5058@  -158.0      0.0000@   144.2  
+      39    9.742     0.2404@   157.9      0.0000@   126.6      1.1445@   103.9      0.0000@    -9.4  
+      52   12.990     0.3081@    51.9      0.0000@     5.5      1.0679@   -39.8      0.0000@  -156.9  
+      65   16.237     0.1403@   -57.8      0.0000@  -161.0      1.1414@  -132.4      0.0000@   -75.5  
+      78   19.485     0.0806@   143.0      0.0000@    89.4      0.6597@   101.6      0.0000@   -90.0  
+  --- loop phase relation (n_cmd relative to P) ---
+   order  13 @  3.247 Hz : P amp=1.0685 bar  n_cmd amp=0.0000 rpm  |P/n|=20376963616005620.0000 bar/rpm  phase(n-P)=  -91.76 deg  -> delay equiv  -78.49 ms
+                torque amp=4.0372 %  phase(P-T)=  -16.10 deg  |T/P|=3.7785 %/bar
+   order  26 @  6.495 Hz : P amp=0.9243 bar  n_cmd amp=0.0000 rpm  |P/n|=9982713882423246.0000 bar/rpm  phase(n-P)=   17.61 deg  -> delay equiv    7.53 ms
+                torque amp=2.5058 %  phase(P-T)=   98.11 deg  |T/P|=2.7111 %/bar
+   order  39 @  9.742 Hz : P amp=0.2404 bar  n_cmd amp=0.0000 rpm  |P/n|=16241398455085992.0000 bar/rpm  phase(n-P)=  -31.23 deg  -> delay equiv   -8.90 ms
+                torque amp=1.1445 %  phase(P-T)=   53.94 deg  |T/P|=4.7615 %/bar
+   order  52 @ 12.990 Hz : P amp=0.3081 bar  n_cmd amp=0.0000 rpm  |P/n|=5564321225164565.0000 bar/rpm  phase(n-P)=  -46.40 deg  -> delay equiv   -9.92 ms
+                torque amp=1.0679 %  phase(P-T)=   91.70 deg  |T/P|=3.4659 %/bar
+
+================================================================================================
+OPEN open-15-20_rpmp.csv cmd=20   idx[47634:66621] n=18987 (18.99s)  shaft=19.9674 rpm  f_rev=0.3328 Hz  revs_avail=6.32
+P mean=126.0992 sd=3.6258 p2p=16.8120 bar
+n_cmd mean=20.0000 sd=0.0000 p2p=0.0000 rpm
+torque mean=-128.1881 sd=6.8780 p2p=41.1000 %
+  P      revs=4 mean= 125.7994 rms=  3.6978 order_rms(1..80)=  1.6756 -> deterministic share= 20.53%
+  n_cmd  revs=4 mean=  20.0000 rms=  0.0000 order_rms(1..80)=  0.0000 -> deterministic share=  7.62%
+  torque revs=4 mean=-127.2660 rms=  6.8040 order_rms(1..80)=  5.3470 -> deterministic share= 61.76%
+  flow   revs=4 mean=  -7.2000 rms=  0.0000 order_rms(1..80)=  0.0000 -> deterministic share=  0.00%
+  --- order table (amp, phase_deg) over 4 revs ---
+   order    f(Hz)                      P                  n_cmd                 torque                   flow
+       1    0.333     1.5819@    16.7      0.0000@     7.5      1.8970@   170.3      0.0000@   171.3  
+       2    0.666     0.4546@   -77.1      0.0000@    45.8      0.5442@    94.4      0.0000@   166.3  
+       3    0.998     0.0760@   113.5      0.0000@   154.1      0.0715@    82.0      0.0000@  -139.8  
+      13    4.326     1.1055@   172.5      0.0000@    41.4      5.6135@   170.0      0.0000@   -83.1  
+      24    7.987     0.4231@  -143.9      0.0000@    68.9      1.5299@   158.6      0.0000@   -19.2  
+      26    8.653     1.0925@  -101.5      0.0000@   -53.8      3.2984@   166.9      0.0000@    85.6  
+      39   12.979     0.1951@   -80.5      0.0000@   -75.1      1.1128@  -143.1      0.0000@   -46.3  
+      52   17.305     0.3204@   -35.6      0.0000@     9.6      1.4418@  -107.8      0.0000@    80.1  
+      65   21.631     0.1503@    10.6      0.0000@    62.7      1.3108@   -62.6      0.0000@   153.4  
+      72   23.961     0.1753@   -34.1      0.0000@    24.6      1.4595@   -86.2      0.0000@    55.8  
+      78   25.958     0.0816@    26.5      0.0000@   -94.1      0.7846@   -20.4      0.0000@  -179.8  
+  --- loop phase relation (n_cmd relative to P) ---
+   order  13 @  4.326 Hz : P amp=1.1055 bar  n_cmd amp=0.0000 rpm  |P/n|=56863532007603704.0000 bar/rpm  phase(n-P)= -131.04 deg  -> delay equiv  -84.14 ms
+                torque amp=5.6135 %  phase(P-T)=    2.45 deg  |T/P|=5.0779 %/bar
+   order  26 @  8.653 Hz : P amp=1.0925 bar  n_cmd amp=0.0000 rpm  |P/n|=25430425999556764.0000 bar/rpm  phase(n-P)=   47.71 deg  -> delay equiv   15.32 ms
+                torque amp=3.2984 %  phase(P-T)=   91.58 deg  |T/P|=3.0190 %/bar
+   order  39 @ 12.979 Hz : P amp=0.1951 bar  n_cmd amp=0.0000 rpm  |P/n|=8983960075027652.0000 bar/rpm  phase(n-P)=    5.34 deg  -> delay equiv    1.14 ms
+                torque amp=1.1128 %  phase(P-T)=   62.64 deg  |T/P|=5.7038 %/bar
+   order  52 @ 17.305 Hz : P amp=0.3204 bar  n_cmd amp=0.0000 rpm  |P/n|=8853815845090506.0000 bar/rpm  phase(n-P)=   45.22 deg  -> delay equiv    7.26 ms
+                torque amp=1.4418 %  phase(P-T)=   72.19 deg  |T/P|=4.4998 %/bar
+
+================================================================================================
+CLOSE close-50-80-100-120-140_bar_deg.csv cmd=50   idx[5939:12811] n=6872 (6.87s)  shaft=8.6002 rpm  f_rev=0.1433 Hz  revs_avail=0.99
+P mean=49.9985 sd=0.3189 p2p=2.1920 bar
+n_cmd mean=8.6116 sd=1.7310 p2p=10.6519 rpm
+torque mean=-58.8750 sd=3.4856 p2p=24.0000 %
+  P: <1 rev, skip order analysis
+  n_cmd: <1 rev, skip order analysis
+  torque: <1 rev, skip order analysis
+  flow: <1 rev, skip order analysis
+
+================================================================================================
+CLOSE close-50-80-100-120-140_bar_deg.csv cmd=80   idx[21553:29152] n=7599 (7.60s)  shaft=12.4583 rpm  f_rev=0.2076 Hz  revs_avail=1.58
+P mean=79.9965 sd=0.4883 p2p=3.9360 bar
+n_cmd mean=12.4870 sd=2.5723 p2p=18.9554 rpm
+torque mean=-86.3681 sd=4.4662 p2p=29.0000 %
+  P      revs=1 mean=  79.9660 rms=  0.4492 order_rms(1..80)=  0.4076 -> deterministic share= 82.33%
+  n_cmd  revs=1 mean=  12.4935 rms=  2.2618 order_rms(1..80)=  2.1245 -> deterministic share= 88.23%
+  torque revs=1 mean= -86.7413 rms=  4.4631 order_rms(1..80)=  3.7288 -> deterministic share= 69.80%
+  flow   revs=1 mean=   0.6247 rms=  0.1131 order_rms(1..80)=  0.1062 -> deterministic share= 88.23%
+  --- order table (amp, phase_deg) over 1 revs ---
+   order    f(Hz)                      P                  n_cmd                 torque                   flow
+       1    0.208     0.0137@    57.4      0.7434@   -34.4      1.3762@   -39.9      0.0372@   -34.4  
+       2    0.415     0.0089@   -33.9      0.0880@   -66.8      0.7686@   -28.8      0.0044@   -66.8  
+       3    0.623     0.0093@    52.2      0.1684@   -70.0      0.1520@   -34.2      0.0084@   -70.0  
+      13    2.699     0.1514@    46.7      0.9701@   -70.1      3.9970@  -169.7      0.0485@   -70.1  
+      24    4.983     0.1086@   -93.4      0.5985@   124.2      0.8004@   -42.2      0.0299@   124.2  
+      26    5.399     0.2778@  -161.4      1.5560@    58.5      1.2013@  -172.0      0.0778@    58.5  
+      39    8.098     0.1875@  -119.5      0.8760@    99.5      0.9887@   -99.5      0.0438@    99.5  
+      52   10.797     0.2466@   -33.4      1.1416@   175.8      0.7704@   -42.4      0.0571@   175.8  
+      65   13.496     0.1531@    40.8      0.6474@  -108.3      0.9447@    21.0      0.0324@  -108.3  
+      72   14.950     0.2590@  -100.7      1.1821@   102.2      1.3367@  -111.1      0.0591@   102.2  
+      78   16.196     0.1071@    89.9      0.4342@   -58.0      0.7757@    50.3      0.0217@   -58.0  
+      91   18.895     0.1077@   167.7      0.4533@    19.7      0.4595@   132.0      0.0227@    19.7  
+  --- loop phase relation (n_cmd relative to P) ---
+   order  13 @  2.699 Hz : P amp=0.1514 bar  n_cmd amp=0.9701 rpm  |P/n|=0.1560 bar/rpm  phase(n-P)= -116.85 deg  -> delay equiv -120.25 ms
+                torque amp=3.9970 %  phase(P-T)= -143.52 deg  |T/P|=26.4046 %/bar
+   order  26 @  5.399 Hz : P amp=0.2778 bar  n_cmd amp=1.5560 rpm  |P/n|=0.1785 bar/rpm  phase(n-P)= -140.03 deg  -> delay equiv  -72.05 ms
+                torque amp=1.2013 %  phase(P-T)=   10.56 deg  |T/P|=4.3242 %/bar
+   order  39 @  8.098 Hz : P amp=0.1875 bar  n_cmd amp=0.8760 rpm  |P/n|=0.2140 bar/rpm  phase(n-P)= -140.96 deg  -> delay equiv  -48.35 ms
+                torque amp=0.9887 %  phase(P-T)=  -20.03 deg  |T/P|=5.2739 %/bar
+   order  52 @ 10.797 Hz : P amp=0.2466 bar  n_cmd amp=1.1416 rpm  |P/n|=0.2160 bar/rpm  phase(n-P)= -150.79 deg  -> delay equiv  -38.79 ms
+                torque amp=0.7704 %  phase(P-T)=    8.99 deg  |T/P|=3.1243 %/bar
+
+================================================================================================
+CLOSE close-50-80-100-120-140_bar_deg.csv cmd=100   idx[37343:45124] n=7781 (7.78s)  shaft=15.6275 rpm  f_rev=0.2605 Hz  revs_avail=2.03
+P mean=99.9253 sd=0.6297 p2p=4.5880 bar
+n_cmd mean=15.6566 sd=3.4865 p2p=26.6318 rpm
+torque mean=-104.0392 sd=5.2842 p2p=33.7000 %
+  P      revs=2 mean=  99.8769 rms=  0.6391 order_rms(1..80)=  0.5731 -> deterministic share= 80.42%
+  n_cmd  revs=2 mean=  16.2236 rms=  3.3197 order_rms(1..80)=  2.9841 -> deterministic share= 80.80%
+  torque revs=2 mean=-103.7164 rms=  5.3899 order_rms(1..80)=  4.6515 -> deterministic share= 74.48%
+  flow   revs=2 mean=   0.8112 rms=  0.1660 order_rms(1..80)=  0.1492 -> deterministic share= 80.80%
+  --- order table (amp, phase_deg) over 2 revs ---
+   order    f(Hz)                      P                  n_cmd                 torque                   flow
+       1    0.260     0.0257@    97.1      0.4150@   165.5      0.9207@   120.4      0.0207@   165.5  
+       2    0.521     0.0193@   154.7      0.1758@   -71.5      0.3131@   105.7      0.0088@   -71.5  
+       3    0.781     0.0136@  -100.4      0.1153@   164.0      0.1260@   113.5      0.0058@   164.0  
+      13    3.386     0.2880@   -52.6      1.7196@  -162.3      5.0817@   103.1      0.0860@  -162.3  
+      24    6.251     0.1715@    82.7      0.8973@   -64.6      0.8490@   115.7      0.0449@   -64.6  
+      26    6.772     0.4509@    37.6      2.6443@  -107.5      2.4847@    24.7      0.1322@  -107.5  
+      39   10.158     0.2238@   -13.8      1.1044@  -151.4      1.1996@    14.2      0.0552@  -151.4  
+      52   13.544     0.3407@    -4.8      1.6003@  -154.4      1.4362@   -26.1      0.0800@  -154.4  
+      65   16.930     0.1884@   -18.0      0.8855@  -162.9      1.2099@   -47.4      0.0443@  -162.9  
+      72   18.753     0.2698@    75.0      1.1739@   -78.3      1.6109@    63.5      0.0587@   -78.3  
+      78   20.316     0.1394@   -46.5      0.6199@   169.6      0.8019@   -72.9      0.0310@   169.6  
+  --- loop phase relation (n_cmd relative to P) ---
+   order  13 @  3.386 Hz : P amp=0.2880 bar  n_cmd amp=1.7196 rpm  |P/n|=0.1675 bar/rpm  phase(n-P)= -109.68 deg  -> delay equiv  -89.98 ms
+                torque amp=5.0817 %  phase(P-T)= -155.63 deg  |T/P|=17.6477 %/bar
+   order  26 @  6.772 Hz : P amp=0.4509 bar  n_cmd amp=2.6443 rpm  |P/n|=0.1705 bar/rpm  phase(n-P)= -145.16 deg  -> delay equiv  -59.54 ms
+                torque amp=2.4847 %  phase(P-T)=   12.93 deg  |T/P|=5.5109 %/bar
+   order  39 @ 10.158 Hz : P amp=0.2238 bar  n_cmd amp=1.1044 rpm  |P/n|=0.2027 bar/rpm  phase(n-P)= -137.59 deg  -> delay equiv  -37.63 ms
+                torque amp=1.1996 %  phase(P-T)=  -27.93 deg  |T/P|=5.3598 %/bar
+   order  52 @ 13.544 Hz : P amp=0.3407 bar  n_cmd amp=1.6003 rpm  |P/n|=0.2129 bar/rpm  phase(n-P)= -149.63 deg  -> delay equiv  -30.69 ms
+                torque amp=1.4362 %  phase(P-T)=   21.35 deg  |T/P|=4.2152 %/bar
+
+================================================================================================
+CLOSE close-50-80-100-120-140_bar_deg.csv cmd=120   idx[52333:58587] n=6254 (6.25s)  shaft=19.0104 rpm  f_rev=0.3168 Hz  revs_avail=1.98
+P mean=119.7698 sd=0.7627 p2p=6.0280 bar
+n_cmd mean=19.0909 sd=4.5062 p2p=33.0229 rpm
+torque mean=-122.2846 sd=6.4236 p2p=41.9000 %
+  P      revs=1 mean= 119.6895 rms=  0.8124 order_rms(1..80)=  0.7581 -> deterministic share= 87.07%
+  n_cmd  revs=1 mean=  20.2221 rms=  4.4192 order_rms(1..80)=  4.1953 -> deterministic share= 90.12%
+  torque revs=1 mean=-121.3442 rms=  6.4697 order_rms(1..80)=  5.8788 -> deterministic share= 82.57%
+  flow   revs=1 mean=   1.0111 rms=  0.2210 order_rms(1..80)=  0.2098 -> deterministic share= 90.12%
+  --- order table (amp, phase_deg) over 1 revs ---
+   order    f(Hz)                      P                  n_cmd                 torque                   flow
+       1    0.317     0.0650@     3.2      0.6803@   167.1      1.6678@   107.4      0.0340@   167.1  
+       2    0.634     0.0412@  -136.9      0.3609@    70.9      0.5130@    73.3      0.0180@    70.9  
+       3    0.951     0.0350@  -125.8      0.1695@    -3.1      0.1717@   106.9      0.0085@    -3.1  
+      13    4.119     0.4616@   -17.9      2.4605@  -116.6      6.1617@   141.9      0.1230@  -116.6  
+      24    7.604     0.2725@   115.0      1.3395@   -34.3      1.2498@   139.4      0.0670@   -34.3  
+      26    8.238     0.5907@   126.7      3.8058@   -21.2      3.4600@   115.7      0.1903@   -21.2  
+      39   12.357     0.2409@   104.6      1.2760@   -21.9      1.4738@   143.6      0.0638@   -21.9  
+      52   16.476     0.4160@   164.8      2.0779@    18.1      1.8298@   147.8      0.1039@    18.1  
+      65   20.595     0.2507@  -162.7      1.2603@    54.6      1.6225@   179.7      0.0630@    54.6  
+      72   22.812     0.2594@  -136.7      1.1360@    68.3      1.7161@  -151.6      0.0568@    68.3  
+      78   24.714     0.1740@  -141.0      0.8488@    79.3      1.0620@  -158.3      0.0424@    79.3  
+      91   28.832     0.1771@  -108.7      0.8398@   108.9      0.8785@  -123.3      0.0420@   108.9  
+  --- loop phase relation (n_cmd relative to P) ---
+   order  13 @  4.119 Hz : P amp=0.4616 bar  n_cmd amp=2.4605 rpm  |P/n|=0.1876 bar/rpm  phase(n-P)=  -98.74 deg  -> delay equiv  -66.59 ms
+                torque amp=6.1617 %  phase(P-T)= -159.80 deg  |T/P|=13.3496 %/bar
+   order  26 @  8.238 Hz : P amp=0.5907 bar  n_cmd amp=3.8058 rpm  |P/n|=0.1552 bar/rpm  phase(n-P)= -147.81 deg  -> delay equiv  -49.84 ms
+                torque amp=3.4600 %  phase(P-T)=   11.00 deg  |T/P|=5.8578 %/bar
+   order  39 @ 12.357 Hz : P amp=0.2409 bar  n_cmd amp=1.2760 rpm  |P/n|=0.1888 bar/rpm  phase(n-P)= -126.50 deg  -> delay equiv  -28.44 ms
+                torque amp=1.4738 %  phase(P-T)=  -39.03 deg  |T/P|=6.1185 %/bar
+   order  52 @ 16.476 Hz : P amp=0.4160 bar  n_cmd amp=2.0779 rpm  |P/n|=0.2002 bar/rpm  phase(n-P)= -146.69 deg  -> delay equiv  -24.73 ms
+                torque amp=1.8298 %  phase(P-T)=   16.94 deg  |T/P|=4.3991 %/bar
+
+================================================================================================
+CLOSE close-50-80-100-120-140_bar_deg.csv cmd=140   idx[66316:74137] n=7821 (7.82s)  shaft=22.7313 rpm  f_rev=0.3789 Hz  revs_avail=2.96
+P mean=139.5947 sd=0.8822 p2p=6.8840 bar
+n_cmd mean=22.7547 sd=5.5073 p2p=39.4080 rpm
+torque mean=-138.7633 sd=7.5801 p2p=50.1000 %
+  P      revs=2 mean= 139.5376 rms=  0.8735 order_rms(1..80)=  0.7706 -> deterministic share= 77.84%
+  n_cmd  revs=2 mean=  23.3806 rms=  4.8938 order_rms(1..80)=  4.4249 -> deterministic share= 81.75%
+  torque revs=2 mean=-138.3612 rms=  7.6938 order_rms(1..80)=  6.8282 -> deterministic share= 78.76%
+  flow   revs=2 mean=   1.1690 rms=  0.2447 order_rms(1..80)=  0.2212 -> deterministic share= 81.75%
+  --- order table (amp, phase_deg) over 2 revs ---
+   order    f(Hz)                      P                  n_cmd                 torque                   flow
+       1    0.379     0.0256@  -165.1      0.6210@   -28.7      1.5272@   -55.6      0.0310@   -28.7  
+       2    0.758     0.0519@   171.1      0.2003@    -3.0      0.3398@   -82.2      0.0100@    -3.0  
+       3    1.137     0.0609@   -32.7      0.1246@  -166.5      0.0831@  -175.3      0.0062@  -166.4  
+      13    4.925     0.3742@   -87.8      2.4826@  -158.4      7.3815@    67.8      0.1241@  -158.4  
+      24    9.093     0.3042@    26.9      1.5131@  -125.1      1.4974@    55.0      0.0757@  -125.1  
+      26    9.850     0.6045@   -24.4      4.0379@  -168.3      3.8439@   -27.8      0.2019@  -168.3  
+      39   14.775     0.2730@   -94.7      1.5831@   138.9      1.8551@   -65.2      0.0792@   138.9  
+      52   19.700     0.4793@  -119.7      2.3495@    96.0      2.2214@  -135.3      0.1175@    96.0  
+      65   24.626     0.2979@  -154.4      1.4623@    64.0      1.8850@  -172.8      0.0731@    64.0  
+      72   27.278     0.2560@   -17.5      1.0809@  -171.8      1.9074@   -37.5      0.0540@  -171.8  
+      78   29.551     0.2140@   167.6      1.0416@    26.7      1.3302@   150.7      0.0521@    26.7  
+      91   34.476     0.2151@   120.5      0.9990@   -22.5      1.3204@   101.8      0.0499@   -22.5  
+  --- loop phase relation (n_cmd relative to P) ---
+   order  13 @  4.925 Hz : P amp=0.3742 bar  n_cmd amp=2.4826 rpm  |P/n|=0.1507 bar/rpm  phase(n-P)=  -70.64 deg  -> delay equiv  -39.84 ms
+                torque amp=7.3815 %  phase(P-T)= -155.60 deg  |T/P|=19.7249 %/bar
+   order  26 @  9.850 Hz : P amp=0.6045 bar  n_cmd amp=4.0379 rpm  |P/n|=0.1497 bar/rpm  phase(n-P)= -143.86 deg  -> delay equiv  -40.57 ms
+                torque amp=3.8439 %  phase(P-T)=    3.40 deg  |T/P|=6.3583 %/bar
+   order  39 @ 14.775 Hz : P amp=0.2730 bar  n_cmd amp=1.5831 rpm  |P/n|=0.1724 bar/rpm  phase(n-P)= -126.38 deg  -> delay equiv  -23.76 ms
+                torque amp=1.8551 %  phase(P-T)=  -29.44 deg  |T/P|=6.7961 %/bar
+   order  52 @ 19.700 Hz : P amp=0.4793 bar  n_cmd amp=2.3495 rpm  |P/n|=0.2040 bar/rpm  phase(n-P)= -144.31 deg  -> delay equiv  -20.35 ms
+                torque amp=2.2214 %  phase(P-T)=   15.65 deg  |T/P|=4.6349 %/bar
+
+================================================================================================
+OPEN-LOOP 1-s AVERAGED TRAJECTORY (equilibrium / drift check)
+  open-8-10-12_rpm.csv cmd=8 rpm:
+    t=  0.0-  1.0s  P=   5.826 +- 5.501
+    t=  1.0-  2.0s  P=  23.707 +- 3.884
+    t=  2.0-  3.0s  P=  30.954 +- 1.091
+    t=  3.0-  4.0s  P=  32.646 +- 0.887
+    t=  4.0-  5.0s  P=  33.333 +- 0.941
+    t=  5.0-  6.0s  P=  34.695 +- 1.140
+    t=  6.0-  7.0s  P=  37.772 +- 0.816
+    t=  7.0-  8.0s  P=  40.404 +- 1.043
+    t=  8.0-  9.0s  P=  42.905 +- 0.881
+    t=  9.0- 10.0s  P=  45.548 +- 0.669
+    t= 10.0- 11.0s  P=  46.442 +- 0.581
+    t= 11.0- 12.0s  P=  46.101 +- 0.561
+    t= 12.0- 13.0s  P=  44.542 +- 0.876
+    t= 13.0- 14.0s  P=  43.458 +- 1.256
+    t= 14.0- 15.0s  P=  42.361 +- 1.061
+    t= 15.0- 16.0s  P=  41.925 +- 0.929
+    t= 16.0- 17.0s  P=  42.149 +- 1.096
+    t= 17.0- 18.0s  P=  44.383 +- 1.011
+    t= 18.0- 19.0s  P=  46.366 +- 0.928
+    t= 19.0- 20.0s  P=  47.654 +- 0.730
+    t= 20.0- 20.6s  P=  48.910 +- 0.549
+  open-8-10-12_rpm.csv cmd=10 rpm:
+    t=  0.0-  1.0s  P=  17.313 +-11.012
+    t=  1.0-  2.0s  P=  43.131 +- 4.213
+    t=  2.0-  3.0s  P=  51.726 +- 1.617
+    t=  3.0-  4.0s  P=  54.615 +- 1.036
+    t=  4.0-  5.0s  P=  55.101 +- 0.985
+    t=  5.0-  6.0s  P=  55.047 +- 1.120
+    t=  6.0-  7.0s  P=  56.458 +- 1.410
+    t=  7.0-  8.0s  P=  60.027 +- 1.228
+    t=  8.0-  9.0s  P=  62.491 +- 1.053
+    t=  9.0- 10.0s  P=  64.695 +- 0.743
+    t= 10.0- 11.0s  P=  64.598 +- 0.682
+    t= 11.0- 12.0s  P=  62.102 +- 1.252
+    t= 12.0- 13.0s  P=  59.697 +- 1.252
+    t= 13.0- 14.0s  P=  57.868 +- 1.161
+    t= 14.0- 15.0s  P=  56.512 +- 1.169
+    t= 15.0- 16.0s  P=  56.943 +- 1.186
+    t= 16.0- 17.0s  P=  59.548 +- 1.002
+    t= 17.0- 18.0s  P=  61.496 +- 0.838
+    t= 18.0- 19.0s  P=  63.571 +- 0.800
+    t= 19.0- 20.0s  P=  64.744 +- 0.550
+    t= 20.0- 21.0s  P=  63.260 +- 0.933
+    t= 21.0- 22.0s  P=  60.911 +- 1.159
+    t= 22.0- 23.0s  P=  58.390 +- 1.229
+    t= 23.0- 24.0s  P=  56.215 +- 1.443
+    t= 24.0- 25.0s  P=  56.039 +- 1.150
+    t= 25.0- 25.3s  P=  57.582 +- 0.531
+  open-8-10-12_rpm.csv cmd=12 rpm:
+    t=  0.0-  1.0s  P=  30.426 +-13.861
+    t=  1.0-  2.0s  P=  59.297 +- 4.900
+    t=  2.0-  3.0s  P=  70.178 +- 1.811
+    t=  3.0-  4.0s  P=  72.294 +- 0.769
+    t=  4.0-  5.0s  P=  71.278 +- 0.982
+    t=  5.0-  6.0s  P=  70.330 +- 1.089
+    t=  6.0-  7.0s  P=  68.890 +- 1.089
+    t=  7.0-  8.0s  P=  70.324 +- 1.445
+    t=  8.0-  9.0s  P=  73.064 +- 1.040
+    t=  9.0- 10.0s  P=  75.853 +- 1.028
+    t= 10.0- 11.0s  P=  77.937 +- 0.695
+    t= 11.0- 12.0s  P=  76.140 +- 1.043
+    t= 12.0- 13.0s  P=  73.251 +- 1.322
+    t= 13.0- 14.0s  P=  69.893 +- 1.397
+    t= 14.0- 15.0s  P=  68.655 +- 1.229
+    t= 15.0- 16.0s  P=  71.588 +- 1.563
+    t= 16.0- 17.0s  P=  75.002 +- 1.229
+    t= 17.0- 18.0s  P=  77.680 +- 0.994
+    t= 18.0- 19.0s  P=  78.163 +- 0.897
+    t= 19.0- 20.0s  P=  76.858 +- 0.959
+    t= 20.0- 21.0s  P=  75.829 +- 1.114
+    t= 21.0- 21.8s  P=  74.584 +- 1.244
+  open-15-20_rpmp.csv cmd=15 rpm:
+    t=  0.0-  1.0s  P=  21.041 +-16.030
+    t=  1.0-  2.0s  P=  62.179 +- 6.515
+    t=  2.0-  3.0s  P=  76.877 +- 2.847
+    t=  3.0-  4.0s  P=  84.003 +- 1.334
+    t=  4.0-  5.0s  P=  86.193 +- 0.823
+    t=  5.0-  6.0s  P=  86.392 +- 1.131
+    t=  6.0-  7.0s  P=  88.361 +- 1.463
+    t=  7.0-  8.0s  P=  94.340 +- 2.078
+    t=  8.0-  9.0s  P=  99.567 +- 1.524
+    t=  9.0- 10.0s  P= 101.820 +- 0.995
+    t= 10.0- 11.0s  P= 100.141 +- 1.162
+    t= 11.0- 12.0s  P=  97.747 +- 1.584
+    t= 12.0- 13.0s  P=  95.300 +- 1.279
+    t= 13.0- 14.0s  P=  96.830 +- 1.838
+    t= 14.0- 15.0s  P= 101.515 +- 1.756
+    t= 15.0- 16.0s  P= 104.980 +- 1.090
+    t= 16.0- 17.0s  P= 102.702 +- 1.488
+    t= 17.0- 18.0s  P=  97.870 +- 1.923
+    t= 18.0- 19.0s  P=  95.181 +- 1.212
+    t= 19.0- 20.0s  P=  97.294 +- 1.838
+    t= 20.0- 21.0s  P= 101.600 +- 1.241
+    t= 21.0- 22.0s  P= 103.663 +- 1.022
+    t= 22.0- 23.0s  P= 102.441 +- 1.217
+    t= 23.0- 24.0s  P=  99.471 +- 1.704
+    t= 24.0- 25.0s  P=  95.921 +- 1.305
+    t= 25.0- 26.0s  P=  95.562 +- 1.652
+    t= 26.0- 27.0s  P= 100.264 +- 1.748
+    t= 27.0- 28.0s  P= 104.460 +- 1.270
+    t= 28.0- 29.0s  P= 103.747 +- 1.397
+    t= 29.0- 30.0s  P=  98.929 +- 1.943
+    t= 30.0- 31.0s  P=  95.351 +- 1.283
+    t= 31.0- 32.0s  P=  95.788 +- 1.583
+  open-15-20_rpmp.csv cmd=20 rpm:
+    t=  0.0-  1.0s  P=  41.436 +-25.613
+    t=  1.0-  2.0s  P=  96.059 +- 7.812
+    t=  2.0-  3.0s  P= 110.904 +- 2.081
+    t=  3.0-  4.0s  P= 114.348 +- 1.279
+    t=  4.0-  5.0s  P= 117.816 +- 2.871
+    t=  5.0-  6.0s  P= 126.719 +- 2.361
+    t=  6.0-  7.0s  P= 129.506 +- 1.336
+    t=  7.0-  8.0s  P= 124.579 +- 1.932
+    t=  8.0-  9.0s  P= 122.208 +- 1.422
+    t=  9.0- 10.0s  P= 125.756 +- 1.938
+    t= 10.0- 11.0s  P= 129.858 +- 1.497
+    t= 11.0- 12.0s  P= 129.650 +- 1.669
+    t= 12.0- 13.0s  P= 124.472 +- 1.968
+    t= 13.0- 14.0s  P= 121.668 +- 1.911
+    t= 14.0- 15.0s  P= 128.490 +- 2.067
+    t= 15.0- 16.0s  P= 131.258 +- 1.234
+    t= 16.0- 17.0s  P= 126.378 +- 2.023
+    t= 17.0- 18.0s  P= 122.656 +- 1.557
+    t= 18.0- 19.0s  P= 123.720 +- 2.279
+    t= 19.0- 20.0s  P= 128.575 +- 1.770
+    t= 20.0- 21.0s  P= 130.084 +- 1.490
+    t= 21.0- 22.0s  P= 125.009 +- 2.122
+    t= 22.0- 23.0s  P= 120.705 +- 1.611
+    t= 23.0- 23.7s  P= 125.719 +- 1.971
+
+================================================================================================
+STEP INITIAL SLOPE -> beta_e/V (plant integrator gain)
+  ->   50.0 bar: first  10 ms  dP/dt~      0.0 bar/s  n_cmd max=  44.39 flow max=  2.220 L/min  P_end=   0.00
+  ->   50.0 bar: first  20 ms  dP/dt~     15.2 bar/s  n_cmd max= 101.22 flow max=  5.061 L/min  P_end=   0.69
+  ->   50.0 bar: first  50 ms  dP/dt~    520.4 bar/s  n_cmd max= 133.59 flow max=  6.680 L/min  P_end=  24.99
+  ->   50.0 bar: first 100 ms  dP/dt~    758.2 bar/s  n_cmd max= 133.59 flow max=  6.680 L/min  P_end=  43.56
+
+  ->   80.0 bar: first  10 ms  dP/dt~     -3.6 bar/s  n_cmd max=  43.35 flow max=  2.167 L/min  P_end=   0.93
+  ->   80.0 bar: first  20 ms  dP/dt~     99.6 bar/s  n_cmd max=  92.14 flow max=  4.607 L/min  P_end=   3.28
+  ->   80.0 bar: first  50 ms  dP/dt~    691.8 bar/s  n_cmd max= 107.79 flow max=  5.389 L/min  P_end=  29.09
+  ->   80.0 bar: first 100 ms  dP/dt~    948.7 bar/s  n_cmd max= 107.79 flow max=  5.389 L/min  P_end=  62.03
+
+  ->  100.0 bar: first  10 ms  dP/dt~    -30.4 bar/s  n_cmd max=  42.42 flow max=  2.121 L/min  P_end=   2.07
+  ->  100.0 bar: first  20 ms  dP/dt~     66.8 bar/s  n_cmd max=  89.57 flow max=  4.479 L/min  P_end=   4.30
+  ->  100.0 bar: first  50 ms  dP/dt~    689.5 bar/s  n_cmd max= 100.91 flow max=  5.046 L/min  P_end=  29.68
+  ->  100.0 bar: first 100 ms  dP/dt~    954.1 bar/s  n_cmd max= 100.91 flow max=  5.046 L/min  P_end=  69.42
+
+  ->  120.0 bar: first  10 ms  dP/dt~     37.0 bar/s  n_cmd max=  43.75 flow max=  2.187 L/min  P_end=   0.43
+  ->  120.0 bar: first  20 ms  dP/dt~    111.9 bar/s  n_cmd max=  92.37 flow max=  4.619 L/min  P_end=   2.77
+  ->  120.0 bar: first  50 ms  dP/dt~    681.4 bar/s  n_cmd max= 109.33 flow max=  5.466 L/min  P_end=  28.79
+  ->  120.0 bar: first 100 ms  dP/dt~    965.4 bar/s  n_cmd max= 109.33 flow max=  5.466 L/min  P_end=  68.19
+
+  ->  140.0 bar: first  10 ms  dP/dt~     34.2 bar/s  n_cmd max=  43.50 flow max=  2.175 L/min  P_end=   0.77
+  ->  140.0 bar: first  20 ms  dP/dt~    122.3 bar/s  n_cmd max=  91.08 flow max=  4.554 L/min  P_end=   3.25
+  ->  140.0 bar: first  50 ms  dP/dt~    693.3 bar/s  n_cmd max= 106.07 flow max=  5.304 L/min  P_end=  28.80
+  ->  140.0 bar: first 100 ms  dP/dt~    968.7 bar/s  n_cmd max= 106.07 flow max=  5.304 L/min  P_end=  68.27
+
+  ->   50.0 bar: first  10 ms  dP/dt~     -9.6 bar/s  n_cmd max=  43.41 flow max=  2.170 L/min  P_end=   0.69
+  ->   50.0 bar: first  20 ms  dP/dt~     81.5 bar/s  n_cmd max=  93.50 flow max=  4.675 L/min  P_end=   2.91
+  ->   50.0 bar: first  50 ms  dP/dt~    685.8 bar/s  n_cmd max= 107.88 flow max=  5.394 L/min  P_end=  28.95
+  ->   50.0 bar: first 100 ms  dP/dt~    769.6 bar/s  n_cmd max= 107.88 flow max=  5.394 L/min  P_end=  44.13
+
+================================================================================================
+OPEN vs CLOSED LOOP ORDER AMPLITUDES AT MATCHED SHAFT SPEED
+  CLOSE close-50-80-100-120-140_bar_deg.csv cmd=80  shaft=12.458 rpm  (13th=2.699 Hz, 26th=5.399 Hz)
+     order  13: open(interp)= 0.9994 bar  closed= 0.1514 bar  sensitivity S= 0.151  reduction= 6.60x
+     order  26: open(interp)= 0.6950 bar  closed= 0.2778 bar  sensitivity S= 0.400  reduction= 2.50x
+     order  39: open(interp)= 0.2191 bar  closed= 0.1875 bar  sensitivity S= 0.856  reduction= 1.17x
+     order  52: open(interp)= 0.2880 bar  closed= 0.2466 bar  sensitivity S= 0.856  reduction= 1.17x
+  CLOSE close-50-80-100-120-140_bar_deg.csv cmd=100  shaft=15.628 rpm  (13th=3.386 Hz, 26th=6.772 Hz)
+     order  13: open(interp)= 1.0732 bar  closed= 0.2880 bar  sensitivity S= 0.268  reduction= 3.73x
+     order  26: open(interp)= 0.9459 bar  closed= 0.4509 bar  sensitivity S= 0.477  reduction= 2.10x
+     order  39: open(interp)= 0.2346 bar  closed= 0.2238 bar  sensitivity S= 0.954  reduction= 1.05x
+     order  52: open(interp)= 0.3097 bar  closed= 0.3407 bar  sensitivity S= 1.100  reduction= 0.91x
+  CLOSE close-50-80-100-120-140_bar_deg.csv cmd=120  shaft=19.010 rpm  (13th=4.119 Hz, 26th=8.238 Hz)
+     order  13: open(interp)= 1.0984 bar  closed= 0.4616 bar  sensitivity S= 0.420  reduction= 2.38x
+     order  26: open(interp)= 1.0602 bar  closed= 0.5907 bar  sensitivity S= 0.557  reduction= 1.79x
+     order  39: open(interp)= 0.2038 bar  closed= 0.2409 bar  sensitivity S= 1.182  reduction= 0.85x
+     order  52: open(interp)= 0.3180 bar  closed= 0.4160 bar  sensitivity S= 1.308  reduction= 0.76x
+  CLOSE close-50-80-100-120-140_bar_deg.csv cmd=140  shaft=22.731 rpm  (13th=4.925 Hz, 26th=9.850 Hz)
+     order  13: open(interp)= n/a (outside range)  closed= 0.3742 bar
+     order  26: open(interp)= n/a (outside range)  closed= 0.6045 bar
+     order  39: open(interp)= n/a (outside range)  closed= 0.2730 bar
+     order  52: open(interp)= n/a (outside range)  closed= 0.4793 bar
+
+================================================================================================
+SCALING LAWS
+OPEN LOOP order amplitude vs shaft speed / pressure:
+    n(rpm)   P(bar)      A13      A26      A39      A52    A13/n    A26/n
+     7.963    42.80   0.7230   0.3616   0.2372   0.2758   0.0908   0.0454
+     9.975    60.01   0.9822   0.5686   0.2032   0.2712   0.0985   0.0570
+    11.997    73.66   0.9868   0.6532   0.2152   0.2844   0.0823   0.0544
+    14.988    99.06   1.0685   0.9243   0.2404   0.3081   0.0713   0.0617
+    19.967   126.10   1.1055   1.0925   0.1951   0.3204   0.0554   0.0547
+CLOSED LOOP:
+     P_set   n(rpm)     P_sd    P_p2p     n_sd    n_p2p      A13      A26      A52     flow
+     80.00   12.458   0.4883    3.936   2.5723   18.955   0.1514   0.2778   0.2466   0.6243
+     99.93   15.628   0.6297    4.588   3.4865   26.632   0.2880   0.4509   0.3407   0.7828
+    119.77   19.010   0.7627    6.028   4.5062   33.023   0.4616   0.5907   0.4160   0.9545
+    139.59   22.731   0.8822    6.884   5.5073   39.408   0.3742   0.6045   0.4793   1.1377
+
+n_cmd jitter vs mean (closed loop):
+  P=  80.00 bar  n_mean= 12.487  n_sd= 2.572  n_p2p= 18.955  p2p/mean= 151.8%  flow_sd=0.1286 L/min
+  P=  99.93 bar  n_mean= 15.657  n_sd= 3.487  n_p2p= 26.632  p2p/mean= 170.1%  flow_sd=0.1743 L/min
+  P= 119.77 bar  n_mean= 19.091  n_sd= 4.506  n_p2p= 33.023  p2p/mean= 173.0%  flow_sd=0.2253 L/min
+  P= 139.59 bar  n_mean= 22.755  n_sd= 5.507  n_p2p= 39.408  p2p/mean= 173.2%  flow_sd=0.2754 L/min

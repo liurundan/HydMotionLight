@@ -373,6 +373,102 @@ static void test_active_axis_rejects_configuration(void)
     assert(fabs(IEC_VAL(after.DC) - IEC_VAL(before.DC)) < 1e-9);
 }
 
+static void write_parameter(int axis, int number, double value)
+{
+    HYD_WRITEPARAMETER write;
+
+    memset(&write, 0, sizeof(write));
+    IEC_VAL(write.AXISID) = (IEC_SINT)axis;
+    IEC_VAL(write.EXECUTE) = true;
+    IEC_VAL(write.PARAMETERNUMBER) = (IEC_INT)number;
+    IEC_VAL(write.VALUE) = value;
+    __mcl_cmd_WriteParameter(&write);
+    assert(IEC_VAL(write.DONE));
+}
+
+static HYD_READMAXTEMPLATEVELOCITY read_max_velocity(int axis,
+                                                     float x_from,
+                                                     float x_to,
+                                                     int direction)
+{
+    HYD_READMAXTEMPLATEVELOCITY read;
+
+    memset(&read, 0, sizeof(read));
+    IEC_VAL(read.AXISID) = (IEC_SINT)axis;
+    IEC_VAL(read.ENABLE) = true;
+    IEC_VAL(read.XFROM) = x_from;
+    IEC_VAL(read.XTO) = x_to;
+    IEC_VAL(read.DIRECTION) = (IEC_SINT)direction;
+    __mcl_cmd_ReadMaxTemplateVelocity(&read);
+    return read;
+}
+
+/* Machine 105 (LF = 323) with areas 3350/4800 mm^2 and a 50 cc pump at
+ * 1700 rpm, 0.95 volumetric efficiency -> 80.75 L/min flow cap. */
+static void test_read_max_template_velocity_scales_by_segment(void)
+{
+    HYD_ToggleGeometryConfig raw = {
+        260.0f, 323.0f, 190.0f, 100.0f, 125.0f,
+        200.0f, 170.0f, 580.0f, 450.0f,
+        0.0f, (int8_t)-1, (int8_t)-1, (int8_t)-1, (int8_t)-1
+    };
+    HYD_CONFIGURETOGGLEMECHANISM configure;
+    HYD_READMAXTEMPLATEVELOCITY read;
+    int axis;
+
+    __HydMotion_framework_Init();
+    axis = create_toggle_axis();
+    set_config_inputs(&configure, axis, &raw);
+    configure_until_terminal(&configure);
+    assert(IEC_VAL(configure.DONE));
+    write_parameter(axis, HYD_PARAM_CYLINDER_AREA_EXTEND, 3350.0);
+    write_parameter(axis, HYD_PARAM_CYLINDER_AREA_RETRACT, 4800.0);
+
+    /* No pump model configured: the 90 L/min maxFlow default is the cap. */
+    read = read_max_velocity(axis, 150.0f, 10.0f, HYD_DIRECTION_NEGATIVE);
+    assert(IEC_VAL(read.VALID) && !IEC_VAL(read.ERROR));
+    assert(fabsf(IEC_VAL(read.FLOWLIMIT) - 90.0f) < 1.0e-3f);
+
+    write_parameter(axis, HYD_PARAM_PUMP_DISPLACEMENT, 50.0);
+    write_parameter(axis, HYD_PARAM_PUMP_VOLUMETRIC_EFF, 0.95);
+    write_parameter(axis, HYD_PARAM_PUMP_MAX_SPEED, 1700.0);
+
+    read = read_max_velocity(axis, 150.0f, 10.0f, HYD_DIRECTION_NEGATIVE);
+    assert(IEC_VAL(read.VALID) && !IEC_VAL(read.ERROR));
+    assert(fabsf(IEC_VAL(read.FLOWLIMIT) - 80.75f) < 0.01f);
+    assert(fabsf(IEC_VAL(read.VELOCITYRATIOMAX) - 2.6461f) < 0.002f);
+    assert(fabsf(IEC_VAL(read.MAXVELOCITY) - 105.96f) < 0.2f);
+
+    /* DIRECTION 0 follows the XTO - XFROM sign: 200 -> 300 opens (extend). */
+    read = read_max_velocity(axis, 200.0f, 300.0f, HYD_DIRECTION_SHORTEST_WAY);
+    assert(IEC_VAL(read.VALID));
+    assert(fabsf(IEC_VAL(read.MAXVELOCITY) - 654.4f) < 1.3f);
+
+    /* A lower process maxFlow takes over from the pump limit. */
+    write_parameter(axis, HYD_PARAM_MAX_FLOW, 40.0);
+    read = read_max_velocity(axis, 150.0f, 10.0f, HYD_DIRECTION_NEGATIVE);
+    assert(fabsf(IEC_VAL(read.FLOWLIMIT) - 40.0f) < 1.0e-3f);
+    assert(fabsf(IEC_VAL(read.MAXVELOCITY) - 52.49f) < 0.1f);
+
+    read = read_max_velocity(axis, 460.0f, 500.0f, HYD_DIRECTION_POSITIVE);
+    assert(!IEC_VAL(read.VALID));
+    assert(IEC_VAL(read.ERROR));
+    assert(IEC_VAL(read.ERRORID) ==
+           HYD_DIAG_CODE_KINEMATICS_POSITION_OUT_OF_RANGE);
+    assert(IEC_VAL(read.MAXVELOCITY) == 0.0f);
+
+    read = read_max_velocity(19, 150.0f, 10.0f, HYD_DIRECTION_NEGATIVE);
+    assert(!IEC_VAL(read.VALID));
+    assert(IEC_VAL(read.ERROR));
+    assert(IEC_VAL(read.ERRORID) == HYD_DIAG_CODE_START_CONTEXT_INVALID);
+
+    read = read_max_velocity(axis, 150.0f, 10.0f, HYD_DIRECTION_NEGATIVE);
+    IEC_VAL(read.ENABLE) = false;
+    __mcl_cmd_ReadMaxTemplateVelocity(&read);
+    assert(!IEC_VAL(read.VALID) && !IEC_VAL(read.ERROR));
+    assert(IEC_VAL(read.MAXVELOCITY) == 0.0f);
+}
+
 int main(void)
 {
     test_zero_initialized_create_remains_direct();
@@ -386,5 +482,6 @@ int main(void)
     test_invalid_configure_preserves_committed_geometry();
     test_handoff_validation_and_automatic_mode();
     test_active_axis_rejects_configuration();
+    test_read_max_template_velocity_scales_by_segment();
     return 0;
 }

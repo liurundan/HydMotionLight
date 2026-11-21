@@ -180,7 +180,8 @@ typedef enum {
 typedef enum {
     HYD_CONTABS_PHASE_NONE = 0,
     HYD_CONTABS_PHASE_APPROACH,
-    HYD_CONTABS_PHASE_SUSTAIN
+    HYD_CONTABS_PHASE_SUSTAIN,
+    HYD_CONTABS_PHASE_STOPPING
 } HYD_ContinuousAbsolutePhase;
 
 typedef enum {
@@ -224,11 +225,11 @@ typedef struct {
     uint16_t ownerTicket;
     HYD_REAL targetPosition;
     HYD_REAL maxVelocity;
-    HYD_REAL maxAcceleration;
-    HYD_REAL maxDeceleration;
+    HYD_REAL maxAcceleration; /* ms transition time */
+    HYD_REAL maxDeceleration; /* ms transition time */
     HYD_REAL maxPressure;
     HYD_REAL targetPressure;
-    HYD_REAL pressureRampRate;
+    HYD_REAL pressureRampRate; /* ms pressure transition time */
     HYD_MotionDirection direction;
     /* Absolute pressure-segment flow cap [L/min]; only used with
      * HYD_LIVE_UPDATE_MAX_FLOW. Kept at the end to preserve legacy offsets. */
@@ -248,6 +249,10 @@ typedef struct {
     HYD_MotionDirection sustainDirection;
     HYD_BOOL positionReachedLatched;
     HYD_BOOL inEndVelocityLatched;
+    /* 泵流量百分比模式（spec 2026-11-18）：0 = 关闭；(0,100] = 泵流量上限的百分比。 */
+    HYD_REAL flowPercent;
+    /* 流量斜坡速率 [L/min/s]，段启动时由 HYD_AnchorContinuousAbsoluteFlowRamp 锚定。 */
+    HYD_REAL flowRampRate;
 } HYD_ContinuousAbsoluteContext;
 
 typedef struct {
@@ -438,6 +443,11 @@ static inline HYD_BOOL HYD_MotionControlFB_IsError(const HYD_MotionControlFB* fb
 /* Full reset of configuration, recipe, runtime state, and internal helpers. */
 void HYD_MotionControlFB_Init(HYD_MotionControlFB* fb);
 
+/* Shared single-pump feedback. The snapshot is system-owned and read by all
+ * axis controllers; it is intentionally separate from HYD_SETAXISFEEDBACK. */
+void HYD_MotionControl_SetPumpFeedback(const HYD_PumpFeedback* feedback);
+void HYD_MotionControl_GetPumpFeedback(HYD_PumpFeedback* feedback);
+
 /*
  * Soft reset: clears runtime execution state, active segment, fault status,
  * diagnostic retention, and internal controllers, but preserves recipe,
@@ -536,6 +546,18 @@ HYD_BOOL HYD_MotionControlFB_MapTemplateVelocity(
     HYD_REAL templateVelocity,
     HYD_REAL maxFlow,
     HYD_ActuationMapperOutput *mapped,
+    HYD_DiagnosticCode *code);
+
+/* Template velocity that keeps the worst point of [xFrom, xTo] at the
+ * effective flow cap min(params.maxFlow, pump speed limit / gain). */
+HYD_BOOL HYD_MotionControlFB_ResolveMaxTemplateVelocity(
+    const HYD_MotionControlFB *fb,
+    HYD_REAL xFrom,
+    HYD_REAL xTo,
+    HYD_MotionDirection direction,
+    HYD_REAL *maxTemplateVelocity,
+    HYD_REAL *velocityRatioMax,
+    HYD_REAL *flowLimit,
     HYD_DiagnosticCode *code);
 
 /* Parameter accessors for IEC Read/Write Parameter FBs.

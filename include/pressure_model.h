@@ -12,6 +12,8 @@ extern "C" {
 #define PRESSURE_MODEL_FIRST_ORDER_MAX_DELAY_STEPS 1000
 #define PRESSURE_MODEL_PHYSICAL_MAX_DELAY_STEPS 64
 #define PRESSURE_MODEL_PHYSICAL_DELAY_SLOTS (PRESSURE_MODEL_PHYSICAL_MAX_DELAY_STEPS + 1)
+/* Model-2 K_NUM is normalized to this reference interval at the IEC boundary. */
+#define PRESSURE_MODEL_INTEGRATOR_REFERENCE_TIME_S 1.0f
 
 /*
  * Physical/HIL admission bounds for the fixed 1 ms plant step. The configured
@@ -39,7 +41,10 @@ enum {
 typedef enum {
     PRESSURE_MODEL_TYPE_PHYSICAL_CALIBRATED = 0u,
     PRESSURE_MODEL_TYPE_PHYSICAL = PRESSURE_MODEL_TYPE_PHYSICAL_CALIBRATED,
-    PRESSURE_MODEL_TYPE_FIRST_ORDER = 1u
+    PRESSURE_MODEL_TYPE_FIRST_ORDER = 1u,
+    /* Closed-cavity pressure plant: P(s) / Q(s) ~= beta_e / V_eff / s. */
+    PRESSURE_MODEL_TYPE_PRESSURE_INTEGRATOR = 2u,
+    PRESSURE_MODEL_TYPE_INTEGRATOR = PRESSURE_MODEL_TYPE_PRESSURE_INTEGRATOR
 } PressureModelType;
 
 typedef struct {
@@ -106,6 +111,8 @@ typedef struct {
     float motor_noise_std_rpm;
     float process_noise_std_m3_s;
     float flow_ripple_ratio;
+    /* Sensor-visible periodic pressure ripple relative to real pressure. */
+    float pressure_ripple_ratio;
     float tooth_drop_depth_ratio;
     float tooth_drop_width_ratio;
     float min_rpm;
@@ -128,6 +135,8 @@ typedef struct {
     float first_order_k_bar_per_rpm;
     float first_order_tau_s;
     float first_order_delay_s;
+    /* Model-2 internal gain, in bar/(rpm*s); IEC K_NUM is normalized by Tref. */
+    float pressure_integrator_gain_bar_per_rpm_s;
     PressureModelPhysicalParams physical;
 } PressureModelParams;
 
@@ -154,6 +163,7 @@ typedef struct {
 } PressureModelState;
 
 typedef struct {
+    float raw_pressure_bar;
     float measured_pressure_bar;
     float real_pressure_bar;
     float actual_motor_rpm;

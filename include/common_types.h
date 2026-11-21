@@ -18,6 +18,9 @@ typedef uint8_t HYD_UINT8;
 typedef uint16_t HYD_UINT16;
 typedef uint16_t HYD_UINT;
 
+#define HYD_FALSE 0
+#define HYD_TRUE  1
+
 enum {
     HYD_PUMP_FEEDBACK_VALID_RPM = 1u << 0,
     HYD_PUMP_FEEDBACK_VALID_ANGLE = 1u << 1,
@@ -191,7 +194,8 @@ typedef enum {
     HYD_DIAG_CODE_MECHANISM_CONFIG_BUSY,
     HYD_DIAG_CODE_MECHANISM_CONFIG_INVALID,
     HYD_DIAG_CODE_KINEMATICS_POSITION_OUT_OF_RANGE,
-    HYD_DIAG_CODE_KINEMATICS_RUNTIME_INVALID
+    HYD_DIAG_CODE_KINEMATICS_RUNTIME_INVALID,
+    HYD_DIAG_CODE_BRAKING_DISTANCE_INSUFFICIENT  /* WARNING: 剩余行程不足以按包络减速到终点速度 */
 } HYD_DiagnosticCode;
 
 typedef HYD_UINT16 HYD_DiagnosticFlags;
@@ -330,8 +334,8 @@ typedef struct {
     HYD_REAL targetPosition;
     HYD_REAL targetFlow;      /* L/min, mode-dependent setpoint/cap/feedforward */
     HYD_REAL targetPressure;  /* bar */
-    HYD_REAL maxAcceleration;
-    HYD_REAL maxDeceleration;
+    HYD_REAL maxAcceleration; /* ms: transition time to target velocity */
+    HYD_REAL maxDeceleration; /* ms: transition time to terminal velocity */
     HYD_REAL maxVelocity;     /* mm/s, velocity magnitude limit */
     HYD_REAL maxFlow;         /* L/min, flow magnitude limit before pump conversion */
     HYD_TIME duration;        /* s, used by HYD_END_TIME */
@@ -355,7 +359,7 @@ typedef struct {
     HYD_REAL velocityKp;        /* L/min per mm/s, 0 disables velocity feedback correction */
     HYD_REAL velocityDeadband;  /* mm/s, 0 means no deadband */
     HYD_REAL velocityCorrectionLimit; /* L/min absolute correction limit, 0 uses maxFlow */
-    HYD_REAL pressureRampRate;   /* bar/s, target pressure ramp rate */
+    HYD_REAL pressureRampRate;   /* ms, target pressure transition time */
 
     /* Pressure-controller tuning. Zero values keep legacy-compatible defaults.
      * Adaptive RBF-PID reuses the generic filter/deadband envelope and exposes
@@ -488,7 +492,8 @@ typedef enum {
     HYD_LIMIT_FLAG_PUMP_SPEED = 1u << 1,
     HYD_LIMIT_FLAG_PRESSURE = 1u << 2,
     HYD_LIMIT_FLAG_SOFT = 1u << 3,
-    HYD_LIMIT_FLAG_DERATE = 1u << 4
+    HYD_LIMIT_FLAG_DERATE = 1u << 4,
+    HYD_LIMIT_FLAG_BRAKING_DISTANCE = 1u << 5
 } HYD_LimitFlags;
 
 typedef struct {
@@ -591,6 +596,9 @@ typedef enum {
     HYD_PARAM_CYLINDER_AREA_EXTEND,     /* mm² */
     HYD_PARAM_CYLINDER_AREA_RETRACT,    /* mm² */
     HYD_PARAM_CYLINDER_STROKE,          /* mm */
+    HYD_PARAM_KSYS_BAR_PER_RPM,         /* bar/rpm; 0 disables Ksys feedforward */
+    HYD_PARAM_HYDRAULIC_RESPONSE_DELAY, /* ms; 0 disables zero-end delay compensation */
+    HYD_PARAM_ZERO_END_SETTLE_VELOCITY, /* mm/s; 0 keeps the legacy zero-end settle gate */
     HYD_PARAM_COUNT
 } HYD_ParameterNumber;
 
@@ -602,10 +610,10 @@ typedef struct {
     HYD_REAL timeoutLimit;
     HYD_REAL velocityToFlowGain;
     HYD_REAL maxVelocity;
-    HYD_REAL maxAcceleration;
-    HYD_REAL maxDeceleration;
+    HYD_REAL maxAcceleration; /* ms: transition time to target velocity */
+    HYD_REAL maxDeceleration; /* ms: transition time to terminal velocity */
     HYD_REAL maxFlow;
-    HYD_REAL pressureRampRate;
+    HYD_REAL pressureRampRate; /* ms, target pressure transition time */
     HYD_REAL pressureKp;
     HYD_REAL pressureKpHigh;
     HYD_REAL pressureGainBand;
@@ -623,6 +631,9 @@ typedef struct {
     HYD_REAL pressureControllerType;
     HYD_REAL defaultTargetFlow;
     HYD_BOOL useSimulation;
+    HYD_REAL ksysBarPerRpm;              /* bar/rpm; 0 disables Ksys feedforward */
+    HYD_REAL responseDelayMs;            /* ms; hydraulic dead time for zero-end braking */
+    HYD_REAL zeroEndSettleVelocity;      /* mm/s; zero-end settle gate, 0 = legacy */
 } HYD_MotionFBParams;
 
 /* ============================================================================

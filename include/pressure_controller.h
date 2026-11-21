@@ -4,6 +4,11 @@
 #include "common_types.h"
 #include "rbf_pid.h"
 
+#define HYD_RBF_GAIN_OVERRIDE_KP 0x01u
+#define HYD_RBF_GAIN_OVERRIDE_KI 0x02u
+#define HYD_RBF_GAIN_OVERRIDE_KD 0x04u
+#define HYD_RBF_DEBUG_GAIN_WINDOW_RATIO 0.20f
+
 typedef struct {
     HYD_REAL targetPressure;
     HYD_REAL measuredPressure;
@@ -13,18 +18,24 @@ typedef struct {
     HYD_REAL flowToPumpSpeedGain;  /* rpm per L/min, > 0 — used by RBF PID for fMaxFlow derivation */
     HYD_REAL pumpSpeedLimit;       /* rpm, >= 0 — pump speed upper bound */
     HYD_TIME timestamp;
+    HYD_REAL systemGainBarPerRpm;  /* offline calibrated Ksys [bar/rpm], 0 disables */
+    HYD_PumpFeedback pumpFeedback;  /* shared system-level pump feedback snapshot */
 } HYD_PressureControllerInput;
 
 typedef struct {
     HYD_BOOL initialized;
     HYD_BOOL trackingRequested;
     HYD_BOOL rbfInitialized;
+    HYD_UINT8 rbfDebugGainOverrideMask; /* Active segment PLC debug gains. */
     HYD_REAL integralOutput;
     HYD_REAL previousError;
     HYD_REAL previousFilteredPressure;
     HYD_REAL previousFilteredPressureRate;
     HYD_REAL previousOutput;
     HYD_TIME previousTimestamp;
+    HYD_REAL previousTargetPressure;
+    HYD_BOOL targetPressureInitialized;
+    HYD_BOOL reliefActive;
     HYD_PressureControllerType activeStrategy;
     RBF_PID_Handle rbfPid;
 } HYD_PressureControllerState;
@@ -43,6 +54,10 @@ typedef struct {
     HYD_REAL feedbackFlow;
     HYD_REAL unsaturatedOutputFlow;
     HYD_REAL outputFlow;
+    HYD_REAL requestedOutputMin;
+    HYD_REAL reliefPolicyMin;
+    HYD_REAL pumpCapabilityMin;
+    HYD_REAL effectiveOutputMin;
     HYD_REAL samplingPeriod;
     HYD_REAL adaptiveKp;
     HYD_REAL adaptiveKi;
@@ -51,6 +66,7 @@ typedef struct {
     HYD_BOOL trackingApplied;
     HYD_BOOL saturated;
     HYD_BOOL adaptiveActive;
+    HYD_BOOL reliefActive;
 } HYD_PressureControllerOutput;
 
 void HYD_PressureController_ClearState(HYD_PressureControllerState* state);

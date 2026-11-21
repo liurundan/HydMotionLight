@@ -35,5 +35,18 @@ HYD_BOOL HYD_ActuationMapper_FlowToTemplateVelocity(
     HYD_REAL actuatorFlow,
     HYD_REAL *templateVelocity,
     HYD_ToggleError *error);
+/* Highest template velocity that keeps actuator flow <= input->maxFlow over
+ * the whole template range [xFrom, xTo] (order free, clipped to the online
+ * envelope). direction is the template direction (EXTEND/RETRACT); any other
+ * value returns the slower of both directions. Uses cylinderConfig /
+ * fallback gain like MapVelocity; templatePosition/templateVelocity unused. */
+HYD_BOOL HYD_ActuationMapper_MaxTemplateVelocityOverRange(
+    const HYD_ActuationMapperInput *input,
+    HYD_REAL xFrom,
+    HYD_REAL xTo,
+    HYD_MotionDirection direction,
+    HYD_REAL *maxTemplateVelocity,
+    HYD_REAL *velocityRatioMax,
+    HYD_ToggleError *error);
 
 #endif

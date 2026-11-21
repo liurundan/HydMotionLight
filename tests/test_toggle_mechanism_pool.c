@@ -4,7 +4,7 @@
 #include "motion_control.h"
 #include "toggle_mechanism_pool.h"
 
-#define HYD_BASELINE_MOTION_FB_BYTES 3176U /* host ABI at commit f8bc1b9 */
+#define HYD_BASELINE_MOTION_FB_BYTES 3280U /* host ABI at current pre-feature baseline */
 
 static HYD_TogglePreparedConfig validated_default(void)
 {

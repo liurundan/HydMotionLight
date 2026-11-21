@@ -10,11 +10,17 @@ typedef struct {
     HYD_TIME timestamp;
     HYD_TIME* candidateStartTime;
     HYD_BOOL* candidateActive;
+    HYD_MotionDirection lastActiveDirection; /* direction memory for CURRENT */
 } HYD_SegmentCompletionContext;
 
 HYD_BOOL HYD_SegmentCompletion_IsPositionReachedRaw(const HYD_MotionSegment* segment,
                                                     const HYD_AxisRef* axisRef,
                                                     HYD_REAL positionTolerance);
+HYD_BOOL HYD_SegmentCompletion_IsPositionReachedRawWithDirection(
+    const HYD_MotionSegment* segment,
+    const HYD_AxisRef* axisRef,
+    HYD_REAL positionTolerance,
+    HYD_MotionDirection lastActiveDirection);
 HYD_BOOL HYD_SegmentCompletion_CheckWithContext(const HYD_SegmentCompletionContext* context);
 HYD_BOOL HYD_SegmentCompletion_Check(const HYD_MotionSegment* segment,
                                      const HYD_AxisRef* axisRef,

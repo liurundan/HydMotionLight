@@ -150,7 +150,7 @@ static void test_runtime_reference_context_overrides_segment_targets(void) {
     HYD_MotionSegment segment = create_segment();
     HYD_AxisRef axisRef;
     HYD_ExecutionReference references = {0};
-    HYD_SegmentCompletionContext context;
+    HYD_SegmentCompletionContext context = {0};
 
     printf("Testing runtime reference context override behavior...\n");
     segment.endCondition = HYD_END_PRESSURE;
@@ -288,7 +288,7 @@ static void test_position_completion_requires_stable_window(void) {
     HYD_MotionSegment segment;
     HYD_AxisRef axisRef;
     HYD_ExecutionReference references;
-    HYD_SegmentCompletionContext context;
+    HYD_SegmentCompletionContext context = {0};
     HYD_TIME candidateStart = 0.0;
     HYD_BOOL candidateActive = false;
 
@@ -332,7 +332,7 @@ static void test_position_completion_requires_stable_window(void) {
 static void test_position_completion_resets_when_velocity_not_settled(void) {
     HYD_MotionSegment segment;
     HYD_AxisRef axisRef;
-    HYD_SegmentCompletionContext context;
+    HYD_SegmentCompletionContext context = {0};
     HYD_TIME candidateStart = 0.0;
     HYD_BOOL candidateActive = false;
 
@@ -362,6 +362,36 @@ static void test_position_completion_resets_when_velocity_not_settled(void) {
     printf("✓ Stable velocity gate completion reset test passed\n");
 }
 
+static void test_current_direction_uses_last_active_direction(void) {
+    HYD_MotionSegment segment;
+    HYD_AxisRef axisRef;
+    HYD_ExecutionReference references;
+    HYD_SegmentCompletionContext context;
+
+    memset(&segment, 0, sizeof(segment));
+    segment.mode = HYD_MODE_POSITION;
+    segment.endCondition = HYD_END_POSITION;
+    segment.direction = HYD_DIRECTION_CURRENT;
+    segment.targetPosition = 10.0;
+    segment.positionTolerance = 0.1;
+
+    memset(&axisRef, 0, sizeof(axisRef));
+    axisRef.position = 200.0;
+
+    memset(&references, 0, sizeof(references));
+    memset(&context, 0, sizeof(context));
+    context.segment = &segment;
+    context.axisRef = &axisRef;
+    context.references = &references;
+    context.lastActiveDirection = HYD_DIRECTION_NEGATIVE;
+
+    assert(!HYD_SegmentCompletion_CheckWithContext(&context));
+
+    axisRef.position = 10.0;
+    assert(HYD_SegmentCompletion_CheckWithContext(&context));
+    printf("✓ CURRENT completion uses last active direction passed by the axis\n");
+}
+
 int main(void) {
     printf("Running SegmentCompletion tests...\n\n");
     test_position_completion_extend();
@@ -379,6 +409,7 @@ int main(void) {
     test_pressure_completion_ignores_velocity_reference_gate();
     test_position_completion_requires_stable_window();
     test_position_completion_resets_when_velocity_not_settled();
+    test_current_direction_uses_last_active_direction();
     printf("\n✅ All SegmentCompletion tests passed successfully!\n");
     return 0;
 }

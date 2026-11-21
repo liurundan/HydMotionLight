@@ -3,8 +3,19 @@
 #include <string.h>
 
 #define HYD_LEGACY_PRESSURE_FLOW_KP 1.5
-#define HYD_DEFAULT_PRESSURE_FILTER_ALPHA 0.1
 #define HYD_DEFAULT_PRESSURE_DERIVATIVE_FILTER_ALPHA 0.05
+
+/* The pressure input has already been filtered by the sensor/data layer.
+ * These thresholds are deliberately small and asymmetric: reverse flow is
+ * admitted only while pressure is materially above the requested target. */
+#define HYD_RELIEF_MIN_FEEDBACK_PRESSURE 5.0
+#define HYD_RELIEF_STOP_TARGET_PRESSURE 0.1
+#define HYD_RELIEF_ENTER_ERROR 2.0
+#define HYD_RELIEF_EXIT_ERROR 0.5
+#define HYD_RELIEF_TARGET_DROP 2.0
+
+/* 配置指纹比较容差 */
+#define HYD_RBF_CFG_EPS 1.0e-6f
 
 typedef struct {
     HYD_PressureControllerType strategy;
@@ -14,19 +25,13 @@ typedef struct {
 } HYD_PressureStrategySpec;
 
 typedef struct {
-    HYD_REAL minKp;
-    HYD_REAL maxKp;
-    HYD_REAL minKi;
-    HYD_REAL maxKi;
-    HYD_REAL minKd;
-    HYD_REAL maxKd;
-    HYD_REAL etaW;
-    HYD_REAL etaC;
-    HYD_REAL etaB;
-    HYD_REAL etaP;
-    HYD_REAL etaI;
-    HYD_REAL etaD;
-    HYD_BOOL disablePressureAccelFeedforward;
+    HYD_REAL minKp; HYD_REAL maxKp;
+    HYD_REAL minKi; HYD_REAL maxKi;
+    HYD_REAL minKd; HYD_REAL maxKd;
+    HYD_REAL etaW; HYD_REAL etaC; HYD_REAL etaB;
+    HYD_REAL etaP; HYD_REAL etaI; HYD_REAL etaD;
+    /* 语义更新：>0 表示禁用压力速度阻尼（原为加速度前馈开关） */
+    HYD_REAL disablePressureAccelFeedforward;
 } HYD_RbfPidResolvedConfig;
 
 typedef struct {
@@ -49,56 +54,51 @@ typedef struct {
 } HYD_PressureResolvedConfig;
 
 static const HYD_PressureStrategySpec HYD_PRESSURE_STRATEGY_SPECS[] = {
-    {HYD_PRESSURE_CONTROLLER_P, false, false, false},
-    {HYD_PRESSURE_CONTROLLER_PI, true, false, false},
-    {HYD_PRESSURE_CONTROLLER_PID, true, true, false},
-    {HYD_PRESSURE_CONTROLLER_RBF_PID, true, true, true},
-    {HYD_PRESSURE_CONTROLLER_RBF_PI, true, false, true}
+    {HYD_PRESSURE_CONTROLLER_P,       false, false, false},
+    {HYD_PRESSURE_CONTROLLER_PI,      true,  false, false},
+    {HYD_PRESSURE_CONTROLLER_PID,     true,  true,  false},
+    {HYD_PRESSURE_CONTROLLER_RBF_PID, true,  true,  true},
+    {HYD_PRESSURE_CONTROLLER_RBF_PI,  true,  false, true}
 };
 
-static const HYD_PressureStrategySpec* HYD_FindPressureStrategySpec(HYD_PressureControllerType strategy) {
+static const HYD_PressureStrategySpec* HYD_FindPressureStrategySpec(HYD_PressureControllerType strategy)
+{
     size_t index;
-
-    for (index = 0U; index < sizeof(HYD_PRESSURE_STRATEGY_SPECS) / sizeof(HYD_PRESSURE_STRATEGY_SPECS[0]); ++index) {
+    for (index = 0U;
+         index < sizeof(HYD_PRESSURE_STRATEGY_SPECS) / sizeof(HYD_PRESSURE_STRATEGY_SPECS[0]);
+         ++index) {
         if (HYD_PRESSURE_STRATEGY_SPECS[index].strategy == strategy) {
             return &HYD_PRESSURE_STRATEGY_SPECS[index];
         }
     }
-
     return NULL;
 }
 
-static const HYD_PressureStrategySpec* HYD_ResolvePressureStrategySpec(const HYD_MotionSegment* segment) {
+static const HYD_PressureStrategySpec* HYD_ResolvePressureStrategySpec(const HYD_MotionSegment* segment)
+{
     const HYD_PressureStrategySpec* spec;
-
     if (segment != NULL) {
         spec = HYD_FindPressureStrategySpec(segment->pressureController);
-        if (spec != NULL) {
-            return spec;
-        }
+        if (spec != NULL) return spec;
     }
-
     return HYD_FindPressureStrategySpec(HYD_PRESSURE_CONTROLLER_P);
 }
 
-static HYD_REAL HYD_ResolvePositiveOrDefault(HYD_REAL configuredValue, HYD_REAL defaultValue) {
-    if (configuredValue > 0.0) {
-        return configuredValue;
-    }
-    return defaultValue;
+static HYD_REAL HYD_ResolvePositiveOrDefault(HYD_REAL configuredValue, HYD_REAL defaultValue)
+{
+    return (configuredValue > 0.0) ? configuredValue : defaultValue;
 }
 
-static HYD_REAL HYD_ResolveGain(HYD_REAL configuredGain, HYD_REAL fallbackGain) {
+static HYD_REAL HYD_ResolveGain(HYD_REAL configuredGain, HYD_REAL fallbackGain)
+{
     return HYD_ResolvePositiveOrDefault(configuredGain, fallbackGain);
 }
 
-static HYD_REAL HYD_ResolveIntegralLimit(const HYD_MotionSegment* segment,
-                                         const HYD_PressureControllerInput* input) {
+static HYD_REAL HYD_ResolveIntegralLimit(const HYD_MotionSegment* segment, const HYD_PressureControllerInput* input)
+{
     HYD_REAL limit;
 
-    if (segment == NULL) {
-        return 0.0;
-    }
+    if (segment == NULL) return 0.0;
 
     if (segment->pressureIntegralLimit > 0.0) {
         limit = segment->pressureIntegralLimit;
@@ -116,42 +116,32 @@ static HYD_REAL HYD_ResolveIntegralLimit(const HYD_MotionSegment* segment,
     return limit;
 }
 
-static HYD_REAL HYD_ResolveFilterAlpha(const HYD_MotionSegment* segment) {
-    if (segment == NULL) {
-        return HYD_DEFAULT_PRESSURE_FILTER_ALPHA;
-    }
-
-    if (segment->pressureFilterAlpha > 0.0) {
-        return HYD_ClampReal(segment->pressureFilterAlpha, 0.0, 1.0);
-    }
-
-    return HYD_DEFAULT_PRESSURE_FILTER_ALPHA;
+static HYD_REAL HYD_ResolveFilterAlpha(const HYD_MotionSegment* segment)
+{
+    (void)segment;
+    return 1.0;
 }
 
-static HYD_REAL HYD_ResolveDerivativeFilterAlpha(const HYD_MotionSegment* segment) {
-    if (segment == NULL) {
-        return HYD_DEFAULT_PRESSURE_DERIVATIVE_FILTER_ALPHA;
-    }
-
+static HYD_REAL HYD_ResolveDerivativeFilterAlpha(const HYD_MotionSegment* segment)
+{
+    if (segment == NULL) return HYD_DEFAULT_PRESSURE_DERIVATIVE_FILTER_ALPHA;
     if (segment->pressureDerivativeFilterAlpha > 0.0) {
         return HYD_ClampReal(segment->pressureDerivativeFilterAlpha, 0.0, 1.0);
     }
-
     return HYD_DEFAULT_PRESSURE_DERIVATIVE_FILTER_ALPHA;
 }
 
-static HYD_REAL HYD_ResolveDeadband(const HYD_MotionSegment* segment) {
-    if (segment == NULL || segment->pressureDeadband <= 0.0) {
-        return 0.0;
-    }
+static HYD_REAL HYD_ResolveDeadband(const HYD_MotionSegment* segment)
+{
+    if (segment == NULL || segment->pressureDeadband <= 0.0) return 0.0;
     return segment->pressureDeadband;
 }
 
-static HYD_REAL HYD_ApplyPressureDeadband(HYD_REAL error, HYD_REAL deadband) {
+static HYD_REAL HYD_ApplyPressureDeadband(HYD_REAL error, HYD_REAL deadband)
+{
     if (deadband <= 0.0 || fabs(error) <= deadband) {
         return deadband > 0.0 ? 0.0 : error;
     }
-
     return error > 0.0 ? error - deadband : error + deadband;
 }
 
@@ -159,40 +149,88 @@ static HYD_REAL HYD_ResolveTrackedIntegralOutput(const HYD_MotionSegment* segmen
                                                  const HYD_PressureControllerInput* input,
                                                  HYD_REAL proportionalTerm,
                                                  HYD_REAL derivativeTerm,
-                                                 HYD_REAL trackedOutputFlow) {
+                                                 HYD_REAL trackedOutputFlow)
+{
     HYD_REAL trackedIntegral;
     HYD_REAL integralLimit;
 
-    if (input == NULL) {
-        return 0.0;
-    }
+    if (input == NULL) return 0.0;
 
-    trackedIntegral = trackedOutputFlow - input->feedforwardFlow - proportionalTerm - derivativeTerm;
+    trackedIntegral = trackedOutputFlow - input->feedforwardFlow
+                    - proportionalTerm - derivativeTerm;
     integralLimit = HYD_ResolveIntegralLimit(segment, input);
+
     if (integralLimit > 0.0) {
         trackedIntegral = HYD_ClampReal(trackedIntegral, -integralLimit, integralLimit);
     }
+
     return trackedIntegral;
 }
 
-static HYD_REAL HYD_ResolveAdaptiveSamplingPeriod(const HYD_PressureControllerState* state,
-                                                  HYD_REAL dt) {
-    if (dt > 0.0) {
-        return dt;
-    }
-
-    if (state != NULL && state->rbfInitialized && state->rbfPid.sampling_period > 0.0f) {
-        return (HYD_REAL)state->rbfPid.sampling_period;
-    }
-
+static HYD_REAL HYD_ResolveAdaptiveSamplingPeriod(const HYD_PressureControllerState* state, HYD_REAL dt)
+{
+    (void)state;
+    (void)dt;
     return HYD_DEFAULT_RBF_PID_SAMPLING_PERIOD;
 }
 
-static void HYD_ResolveRbfPidConfig(const HYD_MotionSegment* segment,
-                                    HYD_RbfPidResolvedConfig* config) {
-    if (config == NULL) {
+static HYD_REAL HYD_ResolvePumpCapabilityMin(const HYD_PressureControllerInput* input)
+{
+    if (input == NULL || !isfinite(input->flowToPumpSpeedGain) ||
+        !isfinite(input->pumpSpeedLimit) || input->flowToPumpSpeedGain <= 0.0 ||
+        input->pumpSpeedLimit < 0.0) {
+        /* Unit-level callers may omit pump metadata.  Preserve the requested
+         * policy lower bound; the pump converter remains the final hardware
+         * safety boundary when its configuration is available. */
+        return (input != NULL && isfinite(input->outputMin) && input->outputMin < 0.0)
+            ? input->outputMin : 0.0;
+    }
+
+    return -input->pumpSpeedLimit * HYD_PUMP_NEGATIVE_SPEED_RATIO /
+           input->flowToPumpSpeedGain;
+}
+
+static HYD_BOOL HYD_ShouldClampReverseFlow(const HYD_PressureControllerInput* input)
+{
+    return input != NULL && isfinite(input->targetPressure) &&
+           isfinite(input->measuredPressure) &&
+           input->targetPressure < HYD_RELIEF_STOP_TARGET_PRESSURE &&
+           input->measuredPressure < HYD_RELIEF_MIN_FEEDBACK_PRESSURE;
+}
+
+static void HYD_UpdateReliefState(HYD_PressureControllerState* state,
+                                  const HYD_PressureControllerInput* input)
+{
+    HYD_REAL pressureError;
+    HYD_REAL targetDrop;
+
+    if (state == NULL || input == NULL || !isfinite(input->targetPressure) ||
+        !isfinite(input->measuredPressure)) {
         return;
     }
+
+    pressureError = input->targetPressure - input->measuredPressure;
+    targetDrop = state->targetPressureInitialized ?
+                 state->previousTargetPressure - input->targetPressure : 0.0;
+
+    if (!state->reliefActive) {
+        if (input->measuredPressure > HYD_RELIEF_MIN_FEEDBACK_PRESSURE &&
+            (pressureError <= -HYD_RELIEF_ENTER_ERROR ||
+             targetDrop >= HYD_RELIEF_TARGET_DROP)) {
+            state->reliefActive = HYD_TRUE;
+        }
+    } else if (input->measuredPressure <= HYD_RELIEF_MIN_FEEDBACK_PRESSURE ||
+               pressureError >= -HYD_RELIEF_EXIT_ERROR) {
+        state->reliefActive = HYD_FALSE;
+    }
+
+    state->previousTargetPressure = input->targetPressure;
+    state->targetPressureInitialized = HYD_TRUE;
+}
+
+static void HYD_ResolveRbfPidConfig(const HYD_MotionSegment* segment, HYD_RbfPidResolvedConfig* config)
+{
+    if (config == NULL) return;
 
     memset(config, 0, sizeof(*config));
     config->minKp = (HYD_REAL)PID_MIN_KP;
@@ -207,11 +245,9 @@ static void HYD_ResolveRbfPidConfig(const HYD_MotionSegment* segment,
     config->etaP = (HYD_REAL)HYD_DEFAULT_PID_P_LEARNING_RATE;
     config->etaI = (HYD_REAL)HYD_DEFAULT_PID_I_LEARNING_RATE;
     config->etaD = (HYD_REAL)HYD_DEFAULT_PID_D_LEARNING_RATE;
-    config->disablePressureAccelFeedforward = false;
+    config->disablePressureAccelFeedforward = 0.0;
 
-    if (segment == NULL) {
-        return;
-    }
+    if (segment == NULL) return;
 
     config->minKp = HYD_ResolvePositiveOrDefault(segment->pressureRbfConfig.minKp, config->minKp);
     config->maxKp = HYD_ResolvePositiveOrDefault(segment->pressureRbfConfig.maxKp, config->maxKp);
@@ -226,18 +262,53 @@ static void HYD_ResolveRbfPidConfig(const HYD_MotionSegment* segment,
     config->etaI = HYD_ResolvePositiveOrDefault(segment->pressureRbfConfig.etaI, config->etaI);
     config->etaD = HYD_ResolvePositiveOrDefault(segment->pressureRbfConfig.etaD, config->etaD);
     config->disablePressureAccelFeedforward =
-        segment->pressureRbfConfig.disablePressureAccelFeedforward > 0.0 ? true : false;
+        segment->pressureRbfConfig.disablePressureAccelFeedforward > 0.0 ? 1.0 : 0.0;
+}
+
+static HYD_BOOL HYD_IsCenteredDebugGainWindow(HYD_REAL center,
+                                             HYD_REAL minValue,
+                                             HYD_REAL maxValue)
+{
+    HYD_REAL expectedMin;
+    HYD_REAL expectedMax;
+    HYD_REAL tolerance;
+
+    if (!isfinite(center) || center <= 0.0 ||
+        !isfinite(minValue) || !isfinite(maxValue)) {
+        return HYD_FALSE;
+    }
+
+    expectedMin = center *
+        ((HYD_REAL)1.0 - (HYD_REAL)HYD_RBF_DEBUG_GAIN_WINDOW_RATIO);
+    expectedMax = center *
+        ((HYD_REAL)1.0 + (HYD_REAL)HYD_RBF_DEBUG_GAIN_WINDOW_RATIO);
+    tolerance = ((HYD_REAL)1.0 + fabs(center)) * (HYD_REAL)HYD_RBF_CFG_EPS;
+
+    return fabs(minValue - expectedMin) <= tolerance &&
+           fabs(maxValue - expectedMax) <= tolerance;
+}
+
+/* 压力归一化标量解析（供 Apply 与配置指纹比较共用，避免逻辑漂移） */
+static HYD_REAL HYD_ResolvePressureNormalizationScale(const HYD_MotionSegment* segment)
+{
+    if (segment != NULL && segment->pressureCeiling > 0.0) {
+        return segment->pressureCeiling;
+    }
+    if (segment != NULL && segment->targetPressure > 0.0) {
+        HYD_REAL candidate = segment->targetPressure * 3.0;
+        return (candidate > (HYD_REAL)MAX_PRESSURE) ? candidate : (HYD_REAL)MAX_PRESSURE;
+    }
+    return (HYD_REAL)MAX_PRESSURE;
 }
 
 static void HYD_ResolvePressureControllerConfig(const HYD_MotionSegment* segment,
                                                 const HYD_PressureControllerState* state,
                                                 const HYD_PressureControllerInput* input,
-                                                HYD_PressureResolvedConfig* config) {
+                                                HYD_PressureResolvedConfig* config)
+{
     const HYD_PressureStrategySpec* strategySpec;
 
-    if (config == NULL) {
-        return;
-    }
+    if (config == NULL) return;
 
     memset(config, 0, sizeof(*config));
     strategySpec = HYD_ResolvePressureStrategySpec(segment);
@@ -245,188 +316,322 @@ static void HYD_ResolvePressureControllerConfig(const HYD_MotionSegment* segment
     config->strategy = strategySpec->strategy;
     config->kp = HYD_ResolveGain((segment != NULL) ? segment->pressureKp : 0.0,
                                  HYD_LEGACY_PRESSURE_FLOW_KP);
-    config->kpHigh = (segment != NULL && segment->pressureKpHigh > 0.0)
-        ? segment->pressureKpHigh : 0.0;
-    config->gainBand = (segment != NULL && segment->pressureGainBand > 0.0)
-        ? segment->pressureGainBand : 0.2;
-    config->ki = strategySpec->supportsIntegral
-        ? HYD_ResolveGain((segment != NULL) ? segment->pressureKi : 0.0, 0.0)
-        : 0.0;
-    config->kd = strategySpec->supportsDerivative
-        ? HYD_ResolveGain((segment != NULL) ? segment->pressureKd : 0.0, 0.0)
-        : 0.0;
+    config->kpHigh = (segment != NULL && segment->pressureKpHigh > 0.0) ? segment->pressureKpHigh : 0.0;
+    config->gainBand = (segment != NULL && segment->pressureGainBand > 0.0) ? segment->pressureGainBand : 0.2;
+    config->ki = strategySpec->supportsIntegral ?
+                 HYD_ResolveGain((segment != NULL) ? segment->pressureKi : 0.0, 0.0) : 0.0;
+    config->kd = strategySpec->supportsDerivative ?
+                 HYD_ResolveGain((segment != NULL) ? segment->pressureKd : 0.0, 0.0) : 0.0;
     config->integralLimit = HYD_ResolveIntegralLimit(segment, input);
     config->deadband = HYD_ResolveDeadband(segment);
     config->filterAlpha = HYD_ResolveFilterAlpha(segment);
     config->derivativeFilterAlpha = HYD_ResolveDerivativeFilterAlpha(segment);
-    config->outputMin = (input != NULL) ? input->outputMin : 0.0;
-    /* M4: 泄压目标下限钳位：仅在目标压和反馈压都进入低压区时禁止负流量 */
-    if (input != NULL &&
-        input->targetPressure < 5.0 &&
-        input->measuredPressure < 5.0) {
-        config->outputMin = 0.0; /* 目标压力 < 5 bar 时禁止负流量 */
+    /* Lower bound is resolved once here and shared by both PID paths. */
+    if (input != NULL) {
+        HYD_REAL requestedMin = isfinite(input->outputMin) ? input->outputMin : 0.0;
+        HYD_REAL reliefPolicyMin = (state != NULL && state->reliefActive &&
+                                    !HYD_ShouldClampReverseFlow(input)) ? requestedMin : 0.0;
+        HYD_REAL pumpCapabilityMin = HYD_ResolvePumpCapabilityMin(input);
+
+        config->outputMin = reliefPolicyMin > pumpCapabilityMin ?
+                            reliefPolicyMin : pumpCapabilityMin;
+    } else {
+        config->outputMin = 0.0;
     }
 
     config->outputMax = (input != NULL) ? input->outputMax : 0.0;
-    if (config->outputMax < config->outputMin) {
-        config->outputMax = config->outputMin;
-    }
+    if (config->outputMax < config->outputMin) config->outputMax = config->outputMin;
 
-    if (input != NULL && state != NULL) {
-        config->dt = input->timestamp - state->previousTimestamp;
-        if (config->dt < 0.0) {
-            config->dt = 0.0;
-        }
-    }
+    config->dt = HYD_DEFAULT_RBF_PID_SAMPLING_PERIOD;
     config->samplingPeriod = HYD_ResolveAdaptiveSamplingPeriod(state, config->dt);
 
-
     HYD_ResolveRbfPidConfig(segment, &config->rbf);
-
 }
 
+/* ---- 正式版本：HYD_EnsureRbfPidInitialized ---- */
 static void HYD_EnsureRbfPidInitialized(HYD_PressureControllerState* state,
                                         HYD_REAL samplingPeriod,
                                         HYD_REAL outputMax,
                                         HYD_REAL flowToPumpSpeedGain,
-                                        HYD_REAL pumpSpeedLimit) {
+                                        HYD_REAL pumpSpeedLimit)
+{
     HYD_REAL resolvedOutputMax;
     float fMaxFlow, fFlowRateLimit;
 
-    if (state == NULL) {
-        return;
-    }
+    if (state == NULL) return;
 
     resolvedOutputMax = (outputMax > 0.0) ? outputMax : 0.0;
 
-    /* Compute max pump flow [L/min] = pumpSpeedLimit [rpm] / flowToPumpSpeedGain [rpm/(L/min)] */
     if (flowToPumpSpeedGain > 0.0 && pumpSpeedLimit >= 0.0) {
         fMaxFlow = (float)(pumpSpeedLimit / flowToPumpSpeedGain);
     } else {
         fMaxFlow = 0.0f;
     }
-    if (fMaxFlow <= 0.0f) fMaxFlow = 90.0f;  /* safe fallback: 1800 rpm / 20 rpm per L/min */
 
-    /* Compute flow rate limit as fraction of max flow, capped at 1.0 */
-    fFlowRateLimit = (resolvedOutputMax > 0.0 && fMaxFlow > 0.0f)
-        ? (float)(resolvedOutputMax / (HYD_REAL)fMaxFlow) : 1.0f;
+    if (fMaxFlow <= 0.0f) fMaxFlow = 90.0f;
+
+    fFlowRateLimit = (resolvedOutputMax > 0.0 && fMaxFlow > 0.0f) ?
+                     (float)(resolvedOutputMax / (HYD_REAL)fMaxFlow) : 1.0f;
     if (fFlowRateLimit > 1.0f) fFlowRateLimit = 1.0f;
 
     if (!state->rbfInitialized) {
-        RBF_PID_Init(&state->rbfPid,
-                     (float)samplingPeriod,
-                     fMaxFlow,
-                     fFlowRateLimit);
+        RBF_PID_Init(&state->rbfPid, (float)samplingPeriod, fMaxFlow, fFlowRateLimit);
         state->rbfInitialized = true;
     }
 
     state->rbfPid.sampling_period = (float)samplingPeriod;
     state->rbfPid.fMaxFlow = fMaxFlow;
     state->rbfPid.fFlowRateLimit = fFlowRateLimit;
-    state->rbfPid.output_min_flow = (float)MIN_OUTPUT;
     state->rbfPid.output_max_flow = (float)resolvedOutputMax;
 }
 
+/*
+ * 配置指纹比较（P1-7）：全部 setter 配置与句柄当前值逐项比较，
+ * 全部一致返回 HYD_TRUE，外层可跳过整块 setter 调用。
+ */
+static HYD_BOOL HYD_RbfPidConfigMatches(const HYD_PressureControllerState* state,
+                                        const HYD_PressureResolvedConfig* config,
+                                        const HYD_MotionSegment* segment)
+{
+    const RBF_PID_Handle* pid;
+    float pressureScale;
+    float k;
+    int dampDisabled;
+    RBF_PID_ControlMode targetMode;
+
+    if (state == NULL || config == NULL || !state->rbfInitialized) {
+        return HYD_FALSE;
+    }
+
+    pid = &state->rbfPid;
+
+    if ((float)config->outputMin != pid->output_min_flow) return HYD_FALSE;
+    if ((float)config->outputMax != pid->output_max_flow) return HYD_FALSE;
+
+    if (fabs((double)((float)config->rbf.minKp - pid->min_KP)) > HYD_RBF_CFG_EPS) return HYD_FALSE;
+    if (fabs((double)((float)config->rbf.maxKp - pid->max_KP)) > HYD_RBF_CFG_EPS) return HYD_FALSE;
+    if (fabs((double)((float)config->rbf.minKi - pid->min_KI)) > HYD_RBF_CFG_EPS) return HYD_FALSE;
+    if (fabs((double)((float)config->rbf.maxKi - pid->max_KI)) > HYD_RBF_CFG_EPS) return HYD_FALSE;
+    if (fabs((double)((float)config->rbf.minKd - pid->min_KD)) > HYD_RBF_CFG_EPS) return HYD_FALSE;
+    if (fabs((double)((float)config->rbf.maxKd - pid->max_KD)) > HYD_RBF_CFG_EPS) return HYD_FALSE;
+    if (fabs((double)((float)config->rbf.etaW - pid->eta_w)) > HYD_RBF_CFG_EPS) return HYD_FALSE;
+    if (fabs((double)((float)config->rbf.etaC - pid->eta_c)) > HYD_RBF_CFG_EPS) return HYD_FALSE;
+    if (fabs((double)((float)config->rbf.etaB - pid->eta_b)) > HYD_RBF_CFG_EPS) return HYD_FALSE;
+    if (fabs((double)((float)config->rbf.etaP - pid->eta_p)) > HYD_RBF_CFG_EPS) return HYD_FALSE;
+    if (fabs((double)((float)config->rbf.etaI - pid->eta_i)) > HYD_RBF_CFG_EPS) return HYD_FALSE;
+    if (fabs((double)((float)config->rbf.etaD - pid->eta_d)) > HYD_RBF_CFG_EPS) return HYD_FALSE;
+
+    dampDisabled = (config->rbf.disablePressureAccelFeedforward > 0.0) ? 1 : 0;
+    if ((dampDisabled != 0) == (pid->pressure_vel_damp_enabled)) return HYD_FALSE;
+
+    pressureScale = (float)HYD_ResolvePressureNormalizationScale(segment);
+    if (fabs((double)(pressureScale - pid->pressure_normalization_scale)) > HYD_RBF_CFG_EPS) return HYD_FALSE;
+
+    k = (segment != NULL && segment->systemGain > 0.0) ? (float)segment->systemGain : 0.0f;
+    if (fabs((double)(k - pid->K)) > HYD_RBF_CFG_EPS) return HYD_FALSE;
+
+    targetMode = (config->strategy == HYD_PRESSURE_CONTROLLER_RBF_PI) ?
+                 RBF_PID_CONTROL_MODE_PI : RBF_PID_CONTROL_MODE_PID;
+    if (targetMode != pid->control_mode) return HYD_FALSE;
+
+    return HYD_TRUE;
+}
+
+/*
+ * RBF 配置下发（P1-7）：
+ * - forceApply=HYD_TRUE（段切换/跟踪请求/首次初始化）：无条件全量下发；
+ * - forceApply=HYD_FALSE：先做配置指纹比较，未变化则跳过 setter 块，
+ *   仅保留 EnsureRbfPidInitialized 的量程刷新（成本低且必须每拍跟进）。
+ */
 static void HYD_ApplyRbfPidConfig(HYD_PressureControllerState* state,
                                   const HYD_PressureResolvedConfig* config,
                                   const HYD_MotionSegment* segment,
                                   HYD_REAL flowToPumpSpeedGain,
-                                  HYD_REAL pumpSpeedLimit) {
-    if (state == NULL || config == NULL) {
+                                  HYD_REAL pumpSpeedLimit,
+                                  HYD_REAL systemGainBarPerRpm,
+                                  HYD_BOOL forceApply)
+{
+    HYD_REAL pressureScale;
+    HYD_PressureResolvedConfig effectiveConfig;
+    HYD_BOOL wasRbfInitialized;
+
+    if (state == NULL || config == NULL) return;
+
+    effectiveConfig = *config;
+    if (segment != NULL) {
+        if (state->rbfDebugGainOverrideMask & HYD_RBF_GAIN_OVERRIDE_KP) {
+            effectiveConfig.rbf.minKp = segment->pressureKp *
+                ((HYD_REAL)1.0 - (HYD_REAL)HYD_RBF_DEBUG_GAIN_WINDOW_RATIO);
+            effectiveConfig.rbf.maxKp = segment->pressureKp *
+                ((HYD_REAL)1.0 + (HYD_REAL)HYD_RBF_DEBUG_GAIN_WINDOW_RATIO);
+        }
+        if (state->rbfDebugGainOverrideMask & HYD_RBF_GAIN_OVERRIDE_KI) {
+            effectiveConfig.rbf.minKi = segment->pressureKi *
+                ((HYD_REAL)1.0 - (HYD_REAL)HYD_RBF_DEBUG_GAIN_WINDOW_RATIO);
+            effectiveConfig.rbf.maxKi = segment->pressureKi *
+                ((HYD_REAL)1.0 + (HYD_REAL)HYD_RBF_DEBUG_GAIN_WINDOW_RATIO);
+        }
+        if (state->rbfDebugGainOverrideMask & HYD_RBF_GAIN_OVERRIDE_KD) {
+            effectiveConfig.rbf.minKd = segment->pressureKd *
+                ((HYD_REAL)1.0 - (HYD_REAL)HYD_RBF_DEBUG_GAIN_WINDOW_RATIO);
+            effectiveConfig.rbf.maxKd = segment->pressureKd *
+                ((HYD_REAL)1.0 + (HYD_REAL)HYD_RBF_DEBUG_GAIN_WINDOW_RATIO);
+        }
+    }
+    config = &effectiveConfig;
+
+    wasRbfInitialized = state->rbfInitialized;
+    HYD_EnsureRbfPidInitialized(state, config->samplingPeriod, config->outputMax,
+                                flowToPumpSpeedGain, pumpSpeedLimit);
+
+    /* A PLC debug window is centered on the segment gain. If the controller
+     * is reinitialized after the active source segment is reloaded, restore
+     * that center instead of starting from RBF_PID_Init's default gain. */
+    if (!wasRbfInitialized && segment != NULL) {
+        if (HYD_IsCenteredDebugGainWindow(segment->pressureKp,
+                                          segment->pressureRbfConfig.minKp,
+                                          segment->pressureRbfConfig.maxKp)) {
+            state->rbfPid.KP = (float)segment->pressureKp;
+        }
+        if (HYD_IsCenteredDebugGainWindow(segment->pressureKi,
+                                          segment->pressureRbfConfig.minKi,
+                                          segment->pressureRbfConfig.maxKi)) {
+            state->rbfPid.KI = (float)segment->pressureKi;
+        }
+        if (HYD_IsCenteredDebugGainWindow(segment->pressureKd,
+                                          segment->pressureRbfConfig.minKd,
+                                          segment->pressureRbfConfig.maxKd)) {
+            state->rbfPid.KD = (float)segment->pressureKd;
+            state->rbfPid.pid_mode_kd = (float)segment->pressureKd;
+        }
+    }
+
+    /* A prior config refresh may already have clamped the live gain to the
+     * built-in defaults. Restore the latest debug value before applying the
+     * persistent debug window; gains still adapt normally inside that window. */
+    if (segment != NULL &&
+        (state->rbfDebugGainOverrideMask & HYD_RBF_GAIN_OVERRIDE_KP) &&
+        (!wasRbfInitialized || !isfinite(state->rbfPid.KP) ||
+         state->rbfPid.KP < (float)config->rbf.minKp ||
+         state->rbfPid.KP > (float)config->rbf.maxKp)) {
+        state->rbfPid.KP = (float)segment->pressureKp;
+    }
+    if (segment != NULL &&
+        (state->rbfDebugGainOverrideMask & HYD_RBF_GAIN_OVERRIDE_KI) &&
+        (!wasRbfInitialized || !isfinite(state->rbfPid.KI) ||
+         state->rbfPid.KI < (float)config->rbf.minKi ||
+         state->rbfPid.KI > (float)config->rbf.maxKi)) {
+        state->rbfPid.KI = (float)segment->pressureKi;
+    }
+    if (segment != NULL &&
+        (state->rbfDebugGainOverrideMask & HYD_RBF_GAIN_OVERRIDE_KD) &&
+        (!wasRbfInitialized || !isfinite(state->rbfPid.KD) ||
+         state->rbfPid.KD < (float)config->rbf.minKd ||
+         state->rbfPid.KD > (float)config->rbf.maxKd)) {
+        state->rbfPid.KD = (float)segment->pressureKd;
+        state->rbfPid.pid_mode_kd = (float)segment->pressureKd;
+    }
+
+    if (!forceApply && HYD_RbfPidConfigMatches(state, config, segment)) {
         return;
     }
 
-    HYD_EnsureRbfPidInitialized(state, config->samplingPeriod, config->outputMax,
-                                flowToPumpSpeedGain, pumpSpeedLimit);
     state->rbfPid.output_min_flow = (float)config->outputMin;
     state->rbfPid.output_max_flow = (float)config->outputMax;
+
     RBF_PID_SetParamLimits(&state->rbfPid,
-                           (float)config->rbf.minKp,
-                           (float)config->rbf.maxKp,
-                           (float)config->rbf.minKi,
-                           (float)config->rbf.maxKi,
-                           (float)config->rbf.minKd,
-                           (float)config->rbf.maxKd);
+                           (float)config->rbf.minKp, (float)config->rbf.maxKp,
+                           (float)config->rbf.minKi, (float)config->rbf.maxKi,
+                           (float)config->rbf.minKd, (float)config->rbf.maxKd);
+
     RBF_PID_SetLearningRates(&state->rbfPid,
-                             (float)config->rbf.etaW,
-                             (float)config->rbf.etaC,
-                             (float)config->rbf.etaB,
-                             (float)config->rbf.etaP,
-                             (float)config->rbf.etaI,
-                             (float)config->rbf.etaD);
-    RBF_PID_SetControlMode(
-        &state->rbfPid,
-        config->strategy == HYD_PRESSURE_CONTROLLER_RBF_PI
-            ? RBF_PID_CONTROL_MODE_PI
-            : RBF_PID_CONTROL_MODE_PID);
-    RBF_PID_SetPressureAccelFeedforwardEnabled(
-        &state->rbfPid,
-        config->strategy == HYD_PRESSURE_CONTROLLER_RBF_PI ||
-            config->rbf.disablePressureAccelFeedforward ? false : true);
-    RBF_PID_SetFlowNormalization(
-        &state->rbfPid,
+                             (float)config->rbf.etaW, (float)config->rbf.etaC,
+                             (float)config->rbf.etaB, (float)config->rbf.etaP,
+                             (float)config->rbf.etaI, (float)config->rbf.etaD);
+
+    RBF_PID_SetControlMode(&state->rbfPid,
+                           config->strategy == HYD_PRESSURE_CONTROLLER_RBF_PI ?
+                           RBF_PID_CONTROL_MODE_PI : RBF_PID_CONTROL_MODE_PID);
+
+    /* P1-5：速度阻尼配置（原加速度前馈调用已删除） */
+    RBF_PID_SetPressureVelocityDamping(&state->rbfPid,
+        config->rbf.disablePressureAccelFeedforward > 0.0 ?
+        0.0f : (float)RBF_PID_DEFAULT_PRESSURE_VEL_DAMP_GAIN);
+
+    /* v3.2：flow_normalization_scale 兼作辨识器 x[0]=u 的归一化标尺 */
+    RBF_PID_SetFlowNormalization(&state->rbfPid,
         (float)HYD_ResolvePositiveOrDefault(config->outputMax,
                                             (HYD_REAL)state->rbfPid.fMaxFlow));
+
     state->rbfPid.KP = (float)HYD_ClampReal((HYD_REAL)state->rbfPid.KP,
-                                            config->rbf.minKp,
-                                            config->rbf.maxKp);
+                                            config->rbf.minKp, config->rbf.maxKp);
     state->rbfPid.KI = (float)HYD_ClampReal((HYD_REAL)state->rbfPid.KI,
-                                            config->rbf.minKi,
-                                            config->rbf.maxKi);
+                                            config->rbf.minKi, config->rbf.maxKi);
     state->rbfPid.KD = (float)HYD_ClampReal((HYD_REAL)state->rbfPid.KD,
-                                            config->rbf.minKd,
-                                            config->rbf.maxKd);
+                                            config->rbf.minKd, config->rbf.maxKd);
     state->rbfPid.pid_mode_kd = state->rbfPid.KD;
+
     if (config->strategy == HYD_PRESSURE_CONTROLLER_RBF_PI) {
         state->rbfPid.KD = 0.0f;
     }
 
-    {
-        HYD_REAL pressureScale = 0.0;
-        if (segment != NULL && segment->pressureCeiling > 0.0) {
-            pressureScale = segment->pressureCeiling;
-        } else if (segment != NULL && segment->targetPressure > 0.0) {
-            HYD_REAL candidate = segment->targetPressure * 3.0;
-            pressureScale = (candidate > (HYD_REAL)MAX_PRESSURE) ?
-                candidate : (HYD_REAL)MAX_PRESSURE;
-        }
-        RBF_PID_SetPressureNormalization(&state->rbfPid, (float)pressureScale);
-    }
+    pressureScale = HYD_ResolvePressureNormalizationScale(segment);
+    RBF_PID_SetPressureNormalization(&state->rbfPid, (float)pressureScale);
 
-    if (segment != NULL && segment->systemGain > 0.0) {
+    if (systemGainBarPerRpm > 0.0 && flowToPumpSpeedGain > 0.0) {
+        RBF_PID_SetGainCompensation(&state->rbfPid,
+                                    (float)(systemGainBarPerRpm * flowToPumpSpeedGain));
+    } else if (segment != NULL && segment->systemGain > 0.0) {
         RBF_PID_SetGainCompensation(&state->rbfPid, (float)segment->systemGain);
     } else {
         RBF_PID_SetGainCompensation(&state->rbfPid, 0.0f);
     }
-
-
 }
 
+/*
+ * RBF 状态同步（P0-1 核心修改）：
+ * - 使用 RBF_PID_SoftReset 替代 RBF_PID_Reset：仅复位控制器运行状态，
+ *   保留 RBF 网络权值与自适应增益 → 跨段、跨模次学习保持；
+ *
+ * v3.2 P0 修复：
+ * - F1 前馈链路接通（种子）：SoftReset 清零 feedforward_flow/prev，
+ *   此处将两者同置当前前馈值 → 同步拍 ff_delta = 0，无虚假前馈阶跃；
+ * - F3 双重死区治理：置位外层死区接管（内层误差死区旁路），
+ *   段配置死区成为全链路唯一死区（标志持久，随句柄保存）。
+ */
 static void HYD_SynchronizeRbfPidState(HYD_PressureControllerState* state,
                                        HYD_REAL trackedOutputFlow,
                                        HYD_REAL targetPressure,
                                        HYD_REAL measuredPressure,
+                                       HYD_REAL feedforwardFlow,
                                        const HYD_PressureResolvedConfig* config,
                                        const HYD_MotionSegment* segment,
                                        HYD_REAL flowToPumpSpeedGain,
-                                       HYD_REAL pumpSpeedLimit) {
+                                       HYD_REAL pumpSpeedLimit,
+                                       HYD_REAL systemGainBarPerRpm)
+{
     HYD_REAL seededFlow;
     HYD_REAL error;
 
-    if (state == NULL || config == NULL) {
-        return;
-    }
+    if (state == NULL || config == NULL) return;
 
-    RBF_PID_Reset(&state->rbfPid);
-    HYD_ApplyRbfPidConfig(state, config, segment,
-                          flowToPumpSpeedGain, pumpSpeedLimit);
+    RBF_PID_SoftReset(&state->rbfPid);
+    HYD_ApplyRbfPidConfig(state, config, segment, flowToPumpSpeedGain,
+                          pumpSpeedLimit, systemGainBarPerRpm, HYD_TRUE);
+
+    /* P0-F3：段配置死区为唯一死区——内层误差死区旁路 */
+    RBF_PID_SetExternalDeadbandEnabled(&state->rbfPid, true);
+
+    /* P0-F1：前馈链路接通（Synchronize 种子）——
+       ff 与 ff_prev 同置当前值，首拍 ff_delta = 0 */
+    state->rbfPid.feedforward_flow = (float)feedforwardFlow;
+    state->rbfPid.feedforward_flow_prev = (float)feedforwardFlow;
+
     seededFlow = HYD_ClampReal(trackedOutputFlow, config->outputMin, config->outputMax);
-
     error = targetPressure - measuredPressure;
 
     state->rbfPid.Output = (float)seededFlow;
     state->rbfPid.u_prev = (float)seededFlow;
-
     state->rbfPid.P_set = (float)targetPressure;
     state->rbfPid.P_actual = (float)measuredPressure;
     state->rbfPid.Error = (float)error;
@@ -440,15 +645,11 @@ static void HYD_SynchronizeRbfPidState(HYD_PressureControllerState* state,
     state->rbfPid.fLastActPress2 = (float)measuredPressure;
     state->rbfPid.last_ref = (float)targetPressure;
     state->rbfPid.output_saturated = false;
-    state->rbfPid.Status = 1;
-    state->rbfPid.TuneResult = 0;
 }
 
-void HYD_PressureController_ClearState(HYD_PressureControllerState* state) {
-    if (state == NULL) {
-        return;
-    }
-
+void HYD_PressureController_ClearState(HYD_PressureControllerState* state)
+{
+    if (state == NULL) return;
     memset(state, 0, sizeof(*state));
     state->activeStrategy = HYD_PRESSURE_CONTROLLER_NONE;
 }
@@ -456,10 +657,9 @@ void HYD_PressureController_ClearState(HYD_PressureControllerState* state) {
 void HYD_PressureController_InitState(HYD_PressureControllerState* state,
                                       HYD_REAL initialPressure,
                                       HYD_REAL initialOutputFlow,
-                                      HYD_TIME timestamp) {
-    if (state == NULL) {
-        return;
-    }
+                                      HYD_TIME timestamp)
+{
+    if (state == NULL) return;
 
     HYD_PressureController_ClearState(state);
     state->initialized = true;
@@ -468,14 +668,14 @@ void HYD_PressureController_InitState(HYD_PressureControllerState* state,
     state->previousFilteredPressureRate = 0.0;
     state->previousOutput = initialOutputFlow;
     state->previousTimestamp = timestamp;
+    state->previousTargetPressure = 0.0;
+    state->targetPressureInitialized = HYD_FALSE;
+    state->reliefActive = HYD_FALSE;
 }
 
-void HYD_PressureController_RequestTracking(HYD_PressureControllerState* state,
-                                           HYD_REAL trackedOutputFlow) {
-    if (state == NULL) {
-        return;
-    }
-
+void HYD_PressureController_RequestTracking(HYD_PressureControllerState* state, HYD_REAL trackedOutputFlow)
+{
+    if (state == NULL) return;
     state->previousOutput = trackedOutputFlow;
     state->trackingRequested = true;
 }
@@ -483,7 +683,8 @@ void HYD_PressureController_RequestTracking(HYD_PressureControllerState* state,
 void HYD_PressureController_Execute(const HYD_MotionSegment* segment,
                                     HYD_PressureControllerState* state,
                                     const HYD_PressureControllerInput* input,
-                                    HYD_PressureControllerOutput* output) {
+                                    HYD_PressureControllerOutput* output)
+{
     HYD_PressureResolvedConfig config;
     HYD_REAL filteredPressure;
     HYD_REAL rawPressureRate;
@@ -499,30 +700,26 @@ void HYD_PressureController_Execute(const HYD_MotionSegment* segment,
     HYD_REAL trackedOutputFlow;
     HYD_BOOL trackingRequested;
 
-    if (output == NULL) {
-        return;
-    }
+    if (output == NULL) return;
 
     memset(output, 0, sizeof(*output));
     output->appliedStrategy = HYD_PRESSURE_CONTROLLER_NONE;
 
-    if (segment == NULL || state == NULL || input == NULL) {
-        return;
-    }
+    if (segment == NULL || state == NULL || input == NULL) return;
 
     if (!state->initialized) {
-        HYD_PressureController_InitState(state,
-                                         input->measuredPressure,
-                                         HYD_ClampReal(input->feedforwardFlow,
-                                                       input->outputMin,
-                                                       input->outputMax),
-                                         input->timestamp);
+        HYD_PressureController_InitState(state, input->measuredPressure,
+            HYD_ClampReal(input->feedforwardFlow, input->outputMin, input->outputMax),
+            input->timestamp);
     }
 
+    HYD_UpdateReliefState(state, input);
     HYD_ResolvePressureControllerConfig(segment, state, input, &config);
 
-    filteredPressure = state->previousFilteredPressure +
-        config.filterAlpha * (input->measuredPressure - state->previousFilteredPressure);
+    /* Sensor processing already supplies filtered pressure.  Do not add a
+     * second low-pass here; it would add phase lag to the 1 ms loop. */
+    filteredPressure = input->measuredPressure;
+
     filteredPressureRate = state->previousFilteredPressureRate;
     if (config.dt > 0.0) {
         rawPressureRate = (filteredPressure - state->previousFilteredPressure) / config.dt;
@@ -530,12 +727,14 @@ void HYD_PressureController_Execute(const HYD_MotionSegment* segment,
             config.derivativeFilterAlpha * (rawPressureRate - state->previousFilteredPressureRate);
     }
 
-    error = HYD_ApplyPressureDeadband(input->targetPressure - filteredPressure,
-                                      config.deadband);
+    /* F3：外层段死区是 RBF 分支的唯一死区（内层已旁路）；
+       对非 RBF 分支此处仍为唯一死区，行为不变 */
+    error = HYD_ApplyPressureDeadband(input->targetPressure - filteredPressure, config.deadband);
 
     trackingRequested = state->trackingRequested ||
-        ((state->activeStrategy != HYD_PRESSURE_CONTROLLER_NONE) &&
-         (state->activeStrategy != config.strategy));
+                        ((state->activeStrategy != HYD_PRESSURE_CONTROLLER_NONE) &&
+                         (state->activeStrategy != config.strategy));
+
     trackedOutputFlow = HYD_ClampReal(state->previousOutput, config.outputMin, config.outputMax);
 
     output->appliedStrategy = config.strategy;
@@ -544,45 +743,65 @@ void HYD_PressureController_Execute(const HYD_MotionSegment* segment,
     output->filteredPressureRate = filteredPressureRate;
     output->controlError = error;
     output->feedforwardFlow = input->feedforwardFlow;
+    output->requestedOutputMin = isfinite(input->outputMin) ? input->outputMin : 0.0;
+    output->reliefPolicyMin = (state->reliefActive && !HYD_ShouldClampReverseFlow(input)) ?
+                              output->requestedOutputMin : 0.0;
+    output->pumpCapabilityMin = HYD_ResolvePumpCapabilityMin(input);
+    output->effectiveOutputMin = config.outputMin;
+    output->reliefActive = state->reliefActive;
     output->samplingPeriod = config.dt;
     output->adaptiveActive = config.strategySpec->adaptive;
 
     if (config.strategy == HYD_PRESSURE_CONTROLLER_RBF_PID ||
         config.strategy == HYD_PRESSURE_CONTROLLER_RBF_PI) {
+
         HYD_REAL effectiveTargetPressure;
         HYD_REAL rawOutputFlow;
         HYD_BOOL needsAdaptiveReset;
         HYD_BOOL internalSaturated;
 
-        needsAdaptiveReset =  !state->rbfInitialized || trackingRequested;
-        		//|| (input->targetPressure + 1e-6 < (HYD_REAL)state->rbfPid.P_set) ;
-        HYD_ApplyRbfPidConfig(state, &config, segment,
-                              input->flowToPumpSpeedGain, input->pumpSpeedLimit);
+        needsAdaptiveReset = !state->rbfInitialized || trackingRequested;
 
         if (needsAdaptiveReset) {
+            /* 段切换/跟踪请求：软复位（保留网络）+ 全量配置下发 + 状态种子 */
             output->trackingApplied = true;
-            HYD_SynchronizeRbfPidState(state,
-                                       trackedOutputFlow,
-                                       input->targetPressure,
-                                       filteredPressure,
-                                       &config,
-                                       segment,
-                                       input->flowToPumpSpeedGain,
-                                       input->pumpSpeedLimit);
+            HYD_SynchronizeRbfPidState(state, trackedOutputFlow,
+                                       input->targetPressure, filteredPressure,
+                                       input->feedforwardFlow,
+                                       &config, segment,
+                                       input->flowToPumpSpeedGain, input->pumpSpeedLimit,
+                                       input->systemGainBarPerRpm);
+        } else {
+            /* 正常运行：配置指纹比较，未变化则跳过 setter 块（P1-7） */
+            HYD_ApplyRbfPidConfig(state, &config, segment,
+                                  input->flowToPumpSpeedGain, input->pumpSpeedLimit,
+                                  input->systemGainBarPerRpm, HYD_FALSE);
         }
 
+        /*
+         * P0-F1：前馈链路接通（正常路径）——每拍在 Update 前刷新前馈状态，
+         * 内层 ff_delta = ff_k − ff_{k−1} 将拍间变化透传至输出
+         * （v3.1 输出公式 Output = u_prev + du + f_velfb + ff_delta 的生效前提）。
+         * 同步拍已在 Synchronize 中种子，此处刷新为同值，ff_delta 保持 0。
+         */
+        state->rbfPid.feedforward_flow = (float)input->feedforwardFlow;
+
         effectiveTargetPressure = input->targetPressure -
-            ((input->targetPressure - filteredPressure) - error);
+                                  ((input->targetPressure - filteredPressure) - error);
+
         rawOutputFlow = (HYD_REAL)RBF_PID_Update(&state->rbfPid,
                                                  (float)effectiveTargetPressure,
                                                  (float)filteredPressure);
+
         internalSaturated = state->rbfPid.output_saturated;
 
         outputFlow = HYD_ClampReal(rawOutputFlow, config.outputMin, config.outputMax);
 
-        /* 负流量死区：仅当压力偏差 <= -2.0 bar（超压 >= 2 bar）时才允许负流量 */
-        if (config.outputMin < 0.0 && outputFlow < 0.0 && fabs(error) < 5.0) {
-            outputFlow = 0.0; /* 小偏差时不使用负流量，防止0附近震荡 */
+        /* Reverse flow is a relief-only capability.  The same state machine
+         * is used by RBF and conventional PID below. */
+        if (outputFlow < 0.0 &&
+            (!state->reliefActive || HYD_ShouldClampReverseFlow(input))) {
+            outputFlow = 0.0;
         }
 
         output->targetPressure = effectiveTargetPressure;
@@ -594,9 +813,8 @@ void HYD_PressureController_Execute(const HYD_MotionSegment* segment,
         output->adaptiveKi = (HYD_REAL)state->rbfPid.KI;
         output->adaptiveKd = (HYD_REAL)state->rbfPid.KD;
         output->adaptiveJacobian = (HYD_REAL)state->rbfPid.Jacobian;
-        output->saturated =
-            (config.strategy == HYD_PRESSURE_CONTROLLER_RBF_PI && internalSaturated) ||
-            (outputFlow != rawOutputFlow);
+        output->saturated = (config.strategy == HYD_PRESSURE_CONTROLLER_RBF_PI && internalSaturated) ||
+                            (outputFlow != rawOutputFlow);
 
         state->rbfPid.output_saturated = output->saturated ? true : false;
         state->rbfPid.Output = (float)outputFlow;
@@ -613,6 +831,8 @@ void HYD_PressureController_Execute(const HYD_MotionSegment* segment,
         state->activeStrategy = config.strategy;
         return;
     }
+
+    /* ---------- 非自适应策略（P/PI/PID）：逻辑不变 ---------- */
 
     proportionalTerm = config.kp * error;
 
@@ -634,25 +854,25 @@ void HYD_PressureController_Execute(const HYD_MotionSegment* segment,
     if (trackingRequested) {
         output->trackingApplied = true;
         if (config.strategySpec->supportsIntegral) {
-            integralTerm = HYD_ResolveTrackedIntegralOutput(segment,
-                                                            input,
+            integralTerm = HYD_ResolveTrackedIntegralOutput(segment, input,
                                                             proportionalTerm,
                                                             derivativeTerm,
                                                             trackedOutputFlow);
         } else {
-            trackingTerm = trackedOutputFlow - input->feedforwardFlow - proportionalTerm - derivativeTerm;
+            trackingTerm = trackedOutputFlow - input->feedforwardFlow
+                         - proportionalTerm - derivativeTerm;
         }
     }
 
     if (config.strategySpec->supportsIntegral && config.dt > 0.0 && config.ki > 0.0) {
         integralCandidate = integralTerm + config.ki * error * config.dt;
         if (config.integralLimit > 0.0) {
-            integralCandidate = HYD_ClampReal(integralCandidate,
-                                              -config.integralLimit,
-                                              config.integralLimit);
+            integralCandidate = HYD_ClampReal(integralCandidate, -config.integralLimit, config.integralLimit);
         }
 
-        unsaturatedOutput = input->feedforwardFlow + proportionalTerm + integralCandidate + derivativeTerm + trackingTerm;
+        unsaturatedOutput = input->feedforwardFlow + proportionalTerm
+                          + integralCandidate + derivativeTerm + trackingTerm;
+
         if ((unsaturatedOutput >= config.outputMin && unsaturatedOutput <= config.outputMax) ||
             (unsaturatedOutput > config.outputMax && error < 0.0) ||
             (unsaturatedOutput < config.outputMin && error > 0.0)) {
@@ -660,12 +880,14 @@ void HYD_PressureController_Execute(const HYD_MotionSegment* segment,
         }
     }
 
-    unsaturatedOutput = input->feedforwardFlow + proportionalTerm + integralTerm + derivativeTerm + trackingTerm;
+    unsaturatedOutput = input->feedforwardFlow + proportionalTerm
+                      + integralTerm + derivativeTerm + trackingTerm;
     outputFlow = HYD_ClampReal(unsaturatedOutput, config.outputMin, config.outputMax);
 
-    /* 负流量死区：仅当压力偏差 <= -2.0 bar（超压 >= 2 bar）时才允许负流量 */
-    if (config.outputMin < 0.0 && outputFlow < 0.0 && error > -2.0) {
-        outputFlow = HYD_ClampReal(unsaturatedOutput, 0.0, config.outputMax);
+    /* Keep reverse flow semantics identical to the RBF path. */
+    if (outputFlow < 0.0 &&
+        (!state->reliefActive || HYD_ShouldClampReverseFlow(input))) {
+        outputFlow = 0.0;
     }
 
     output->proportionalTerm = proportionalTerm;

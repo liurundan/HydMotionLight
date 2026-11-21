@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import re
 import subprocess
 import sys
 import xml.etree.ElementTree as ET
@@ -64,6 +65,8 @@ def main() -> int:
     required_pous = {
         "HYD_ConfigureToggleMechanism": "HYD_CONFIGURETOGGLEMECHANISM",
         "HYD_ReadToggleMechanism": "HYD_READTOGGLEMECHANISM",
+        "HYD_ReadMaxTemplateVelocity": "HYD_READMAXTEMPLATEVELOCITY",
+        "HYD_ReadDebug": "HYD_READDEBUG",
     }
     for pou_name, c_name in required_pous.items():
         if f'<pou name="{pou_name}"' not in xml_source:
@@ -72,6 +75,78 @@ def main() -> int:
         if c_name not in c_header or c_name not in plc_header:
             print(f"expected C and generated-equivalent layouts for {c_name}")
             return 1
+
+    contabs_pou = next(
+        (pou for pou in ET.parse(XML).getroot().iter()
+         if local_name(pou.tag) == "pou" and
+         pou.attrib.get("name") == "HYD_MoveContinuousAbsolute"),
+        None,
+    )
+    if contabs_pou is None:
+        print("expected XML POU HYD_MoveContinuousAbsolute")
+        return 1
+    contabs_xml = [
+        variable.attrib.get("name").upper()
+        for variable in contabs_pou.iter()
+        if local_name(variable.tag) == "variable"
+    ]
+    header_start = c_header.find("// FUNCTION_BLOCK HYD_MoveContinuousAbsolute")
+    header_end = c_header.find("} HYD_MOVECONTINUOUSABSOLUTE;", header_start)
+    if header_start < 0 or header_end < 0:
+        print("expected C layout for HYD_MOVECONTINUOUSABSOLUTE")
+        return 1
+    contabs_c = [
+        name for name in re.findall(
+            r"__DECLARE_VAR\(\s*\w+\s*,\s*(\w+)\s*\)",
+            c_header[header_start:header_end])
+        if name not in ("EN", "ENO")
+    ]
+    if contabs_xml != contabs_c:
+        print(f"HYD_MoveContinuousAbsolute XML {contabs_xml} != C {contabs_c}")
+        return 1
+    if ("PUMPFLOWPERCENT" not in contabs_xml or
+            contabs_xml.index("PUMPFLOWPERCENT") != contabs_xml.index("PRESSURELIMIT") + 1):
+        print("expected PUMPFLOWPERCENT right after PRESSURELIMIT")
+        return 1
+
+    debug_pou = next(
+        (pou for pou in ET.parse(XML).getroot().iter()
+         if local_name(pou.tag) == "pou" and
+         pou.attrib.get("name") == "HYD_ReadDebug"),
+        None,
+    )
+    if debug_pou is None:
+        print("expected XML POU HYD_ReadDebug")
+        return 1
+    debug_fields = [
+        variable.attrib.get("name")
+        for variable in debug_pou.iter()
+        if local_name(variable.tag) == "variable"
+    ]
+    expected_debug_fields = [
+        "ENABLE", "VALID", "BUSY", "ERROR", "ERRORID",
+        "VALUE0", "VALUE1", "VALUE2", "VALUE3",
+        "VALUE4", "VALUE5", "VALUE6", "VALUE7",
+    ]
+    if debug_fields != expected_debug_fields:
+        print(f"HYD_ReadDebug XML fields {debug_fields} != {expected_debug_fields}")
+        return 1
+    if "__mcl_cmd_ReadDebug(HYD_READDEBUG*);" not in xml_source:
+        print("expected HYD_ReadDebug XML body adapter declaration")
+        return 1
+    debug_init_start = plc_source.find("void HYD_READDEBUG_init__")
+    debug_init_end = plc_source.find("// Code part", debug_init_start)
+    if debug_init_start < 0 or debug_init_end < 0:
+        print("expected generated HYD_READDEBUG initializer")
+        return 1
+    debug_init = plc_source[debug_init_start:debug_init_end]
+    for field in ("VALID", "BUSY", "ERROR", "ERRORID", *[f"VALUE{i}" for i in range(8)]):
+        if field not in debug_init:
+            print(f"expected generated HYD_READDEBUG initializer for {field}")
+            return 1
+    if "__mcl_cmd_ReadDebug(HYD_READDEBUG*);" not in plc_source:
+        print("expected generated HYD_READDEBUG adapter call")
+        return 1
 
     create_start = plc_source.find("void HYD_CREATEMOTION_init__")
     create_end = plc_source.find("// Code part", create_start)
@@ -145,6 +220,40 @@ def main() -> int:
         "MECHANISMCONFIGVERSION",
     ):
         if field not in plc_source[init_start:init_end]:
+            print(f"expected generated HYD_READSTATUS initializer to clear {field}")
+            return 1
+
+    status_pou = next(
+        (pou for pou in ET.parse(XML).getroot().iter()
+         if local_name(pou.tag) == "pou" and
+         pou.attrib.get("name") == "HYD_ReadStatus"),
+        None,
+    )
+    if status_pou is None:
+        print("expected XML POU HYD_ReadStatus")
+        return 1
+    status_outputs = [
+        variable.attrib.get("name")
+        for section in status_pou.iter()
+        if local_name(section.tag) == "outputVars"
+        for variable in section
+        if local_name(variable.tag) == "variable"
+    ]
+    expected_references = ["PRESSUREREFERENCE", "FLOWREFERENCE", "VELOCITYREFERENCE"]
+    if status_outputs[-3:] != expected_references:
+        print(f"HYD_ReadStatus runtime reference outputs {status_outputs[-3:]} != {expected_references}")
+        return 1
+    for field in expected_references:
+        variable = next(
+            (variable for variable in status_pou.iter()
+             if local_name(variable.tag) == "variable" and
+             variable.attrib.get("name") == field),
+            None,
+        )
+        if variable is None or not any(local_name(child.tag) == "REAL" for child in variable.iter()):
+            print(f"expected HYD_ReadStatus {field} to be REAL in XML")
+            return 1
+        if f"data__->{field},0,retain" not in plc_source[init_start:init_end]:
             print(f"expected generated HYD_READSTATUS initializer to clear {field}")
             return 1
 

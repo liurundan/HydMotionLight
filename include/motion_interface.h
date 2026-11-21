@@ -2,6 +2,7 @@
 #define HYD_MOTION_INTERFACE_H
 
 #include "motion_control.h"
+#include "debug_values.h"
 #include "accessor.h"
 #include "iec_types_all.h"
  
@@ -24,16 +25,16 @@
 
 /*
  * IEC pressure-unit contract:
- * All PLC-facing pressure values use bar and bar/s:
+ * PLC-facing pressure values use bar; pressure target transition time uses ms:
  *   HYD_AXISMOTION.SETPRESSURE / ACTPRESSURE / PRESSURERAMPRATE,
  *   HYD_MOVECONTINUOUSABSOLUTE.PRESSURELIMIT,
  *   HYD_MOVEVELOCITY.PRESSURELIMIT,
- *   HYD_PRESSUREHANDLE.PRESSURE / PRESSURERAMPRATE. PressureHandle's
+ *   HYD_PRESSUREHANDLE.PRESSURE / PRESSURERAMPRATE (ms). PressureHandle's
  *   FLOWLIMITPERCENT is a separate percentage of its 20 L/min base limit.
  *   HYD_SETAXISFEEDBACK.ACT_PRESSURE,
  *   HYD_READSIMFEEDBACK.PRESSURE.
- * The IEC adapter passes these values into HydroMotionLib without pressure-unit
- * conversion; the pressure closed-loop path consumes the same bar domain.
+ * The IEC adapter passes pressure values in bar and ramp time in ms; the
+ * pressure closed-loop path consumes the same bar domain.
  */
 
 /*
@@ -83,9 +84,11 @@ __DECLARE_STRUCT_TYPE(HYD_AXISMOTION,
     REAL SETVELOCITY;
     REAL SETFLOW;
     REAL SETPRESSURE;
+    /* Transition times in milliseconds, zero defaults to 100 milliseconds. */
     REAL ACCELERATION;
     REAL DECELERATION;
     REAL DURATION;
+    /* Pressure target transition time in milliseconds, zero defaults to 20 milliseconds. */
     REAL PRESSURERAMPRATE;
     REAL ACTPOSITION;
     REAL ACTVELOCITY;
@@ -216,6 +219,8 @@ typedef struct {
 // FUNCTION_BLOCK HYD_MoveAbsolute
 // Note: JERK and CONTINUOUSUPDATE are currently reserved compatibility pins.
 // Non-default values are rejected by the IEC adapter until runtime support exists.
+// ACCELERATION and DECELERATION are transition times in milliseconds.
+// POSITIONREACHED reports final position tolerance independently of DONE.
 // Data part
 typedef struct {
   // FB Interface - IN, OUT, IN_OUT variables
@@ -226,12 +231,14 @@ typedef struct {
   __DECLARE_VAR(BOOL,CONTINUOUSUPDATE)
   __DECLARE_VAR(REAL,POSITION)
   __DECLARE_VAR(REAL,VELOCITY)
+  /* Acceleration/deceleration transition times in milliseconds (minimum 100 milliseconds). */
   __DECLARE_VAR(REAL,ACCELERATION)
   __DECLARE_VAR(REAL,DECELERATION)
   __DECLARE_VAR(REAL,JERK)
   __DECLARE_VAR(SINT,DIRECTION)
   __DECLARE_VAR(INT,BUFFERMODE)
   __DECLARE_VAR(BOOL,DONE)
+  __DECLARE_VAR(BOOL,POSITIONREACHED)
   __DECLARE_VAR(BOOL,BUSY)
   __DECLARE_VAR(BOOL,ACTIVE)
   __DECLARE_VAR(BOOL,COMMANDABORTED)
@@ -241,6 +248,7 @@ typedef struct {
   // FB private variables - TEMP, private and located variables
   __DECLARE_VAR(BOOL,EXECUTE0)
   __DECLARE_VAR(BOOL,DONE0)
+  __DECLARE_VAR(BOOL,POSITIONREACHED0)
   __DECLARE_VAR(BOOL,ACTIVE0)
   __DECLARE_VAR(BOOL,_PENDING)
   __DECLARE_VAR(WORD,_EXEC_ID)
@@ -257,12 +265,15 @@ typedef struct {
   __DECLARE_VAR(REAL,VELOCITY)
   __DECLARE_VAR(REAL,ENDVELOCITY)
   __DECLARE_VAR(SINT,ENDVELOCITYDIRECTION)
+  /* Acceleration/deceleration transition times in milliseconds (minimum 100 milliseconds). */
   __DECLARE_VAR(REAL,ACCELERATION)
   __DECLARE_VAR(REAL,DECELERATION)
   __DECLARE_VAR(REAL,JERK)
   __DECLARE_VAR(SINT,DIRECTION)
   __DECLARE_VAR(BOOL,ADAPTENDVELTOAVOIDOVERSHOOT)
   __DECLARE_VAR(REAL,PRESSURELIMIT)
+  /* 泵流量百分比（%）：0 = 关闭；(0,100] = 巡航按泵流量上限的百分比，VELOCITY 仅作安全上限。 */
+  __DECLARE_VAR(REAL,PUMPFLOWPERCENT)
   __DECLARE_VAR(BOOL,INENDVELOCITY)
   __DECLARE_VAR(BOOL,POSITIONREACHED)
   __DECLARE_VAR(BOOL,BUSY)
@@ -293,6 +304,7 @@ typedef struct {
   __DECLARE_VAR(BOOL,EXECUTE)
   __DECLARE_VAR(BOOL,CONTINUOUSUPDATE)
   __DECLARE_VAR(REAL,VELOCITY)
+  /* Acceleration/deceleration transition times in milliseconds (minimum 100 milliseconds). */
   __DECLARE_VAR(REAL,ACCELERATION)
   __DECLARE_VAR(REAL,DECELERATION)
   __DECLARE_VAR(REAL,JERK)
@@ -344,6 +356,7 @@ typedef struct {
   __DECLARE_VAR(BOOL,EXECUTE)
   __DECLARE_VAR(BOOL,CONTINUOUSUPDATE)
   __DECLARE_VAR(REAL,PRESSURE)
+  /* Pressure target transition time in milliseconds, zero defaults to 20 milliseconds. */
   __DECLARE_VAR(REAL,PRESSURERAMPRATE)
   __DECLARE_VAR(REAL,DURATION)
   /* Percentage of the PressureHandle 20 L/min process cap; (0,100], default 100. */
@@ -466,6 +479,28 @@ typedef struct {
 
 } HYD_READTOGGLEMECHANISM;
 
+// FUNCTION_BLOCK HYD_READMAXTEMPLATEVELOCITY
+// Data part
+typedef struct {
+  // FB Interface - IN, OUT, IN_OUT variables
+  __DECLARE_VAR(BOOL,EN)
+  __DECLARE_VAR(BOOL,ENO)
+  __DECLARE_VAR(SINT,AXISID)
+  __DECLARE_VAR(BOOL,ENABLE)
+  /* Template range [mm]; DIRECTION uses PLCopen codes, 0 = sign of XTO-XFROM. */
+  __DECLARE_VAR(REAL,XFROM)
+  __DECLARE_VAR(REAL,XTO)
+  __DECLARE_VAR(SINT,DIRECTION)
+  __DECLARE_VAR(BOOL,VALID)
+  __DECLARE_VAR(BOOL,ERROR)
+  __DECLARE_VAR(WORD,ERRORID)
+  /* mm/s template velocity at the flow cap; max |dXs/dXm|; L/min flow cap. */
+  __DECLARE_VAR(REAL,MAXVELOCITY)
+  __DECLARE_VAR(REAL,VELOCITYRATIOMAX)
+  __DECLARE_VAR(REAL,FLOWLIMIT)
+
+} HYD_READMAXTEMPLATEVELOCITY;
+
 // FUNCTION_BLOCK HYD_SETAXISFEEDBACK
 // Data part
 typedef struct {
@@ -488,6 +523,22 @@ typedef struct {
   __DECLARE_VAR(BOOL,DONE0)
 
 } HYD_SETAXISFEEDBACK;
+
+/* System-level shared single-pump feedback. This is deliberately separate
+ * from HYD_SETAXISFEEDBACK because one pump serves multiple axes. */
+typedef struct {
+  __DECLARE_VAR(BOOL,EN)
+  __DECLARE_VAR(BOOL,ENO)
+  __DECLARE_VAR(BOOL,ENABLE)
+  __DECLARE_VAR(REAL,PUMP_SPEED_RPM)
+  __DECLARE_VAR(REAL,PUMP_ANGLE_DEG)
+  __DECLARE_VAR(REAL,PUMP_TORQUE_PCT_TN)
+  __DECLARE_VAR(REAL,TIMESTAMP)
+  __DECLARE_VAR(BOOL,DONE)
+  __DECLARE_VAR(BOOL,BUSY)
+  __DECLARE_VAR(BOOL,ERROR)
+  __DECLARE_VAR(WORD,ERRORID)
+} HYD_SETPUMPFEEDBACK;
 
 // FUNCTION_BLOCK HYD_GETPUMPREQUEST
 // Data part
@@ -540,6 +591,10 @@ typedef struct {
   __DECLARE_VAR(BOOL,PRESSURELIMITACTIVE)
   __DECLARE_VAR(BOOL,SOFTLIMITACTIVE)
   __DECLARE_VAR(BOOL,DERATED)
+  /* Current runtime references: bar, L/min, and signed mm/s. */
+  __DECLARE_VAR(REAL,PRESSUREREFERENCE)
+  __DECLARE_VAR(REAL,FLOWREFERENCE)
+  __DECLARE_VAR(REAL,VELOCITYREFERENCE)
 
   // FB private variables - TEMP, private and located variables
 
@@ -582,6 +637,30 @@ typedef struct {
   // FB private variables - TEMP, private and located variables
 
 } HYD_READSIMFEEDBACK;
+
+// FUNCTION_BLOCK HYD_READDEBUG
+// Reads the global eight-channel debug value bank.
+typedef struct {
+  // FB Interface - IN, OUT, IN_OUT variables
+  __DECLARE_VAR(BOOL,EN)
+  __DECLARE_VAR(BOOL,ENO)
+  __DECLARE_VAR(BOOL,ENABLE)
+  __DECLARE_VAR(BOOL,VALID)
+  __DECLARE_VAR(BOOL,BUSY)
+  __DECLARE_VAR(BOOL,ERROR)
+  __DECLARE_VAR(WORD,ERRORID)
+  __DECLARE_VAR(REAL,VALUE0)
+  __DECLARE_VAR(REAL,VALUE1)
+  __DECLARE_VAR(REAL,VALUE2)
+  __DECLARE_VAR(REAL,VALUE3)
+  __DECLARE_VAR(REAL,VALUE4)
+  __DECLARE_VAR(REAL,VALUE5)
+  __DECLARE_VAR(REAL,VALUE6)
+  __DECLARE_VAR(REAL,VALUE7)
+
+  // FB private variables - TEMP, private and located variables
+
+} HYD_READDEBUG;
 
 // FUNCTION_BLOCK HYD_READPARAMETER
 // Data part
@@ -675,6 +754,7 @@ extern void __mcl_cmd_CreateMotion(HYD_CREATEMOTION *data__);
 extern void __mcl_cmd_ConfigureToggleMechanism(
     HYD_CONFIGURETOGGLEMECHANISM *data__);
 extern void __mcl_cmd_ReadToggleMechanism(HYD_READTOGGLEMECHANISM *data__);
+extern void __mcl_cmd_ReadMaxTemplateVelocity(HYD_READMAXTEMPLATEVELOCITY *data__);
 extern void __mcl_cmd_LoadProfile(HYD_LOADPROFILE *data__);
 extern void __mcl_cmd_MoveProfile(HYD_MOVEPROFILE *data__);
 extern void __mcl_cmd_Stop(HYD_STOP *data__);
@@ -686,11 +766,13 @@ extern void __mcl_cmd_Reset(HYD_RESET *data__);
 extern void __mcl_cmd_MoveVelocity(HYD_MOVEVELOCITY *data__);
 extern void __mcl_cmd_PressureHandle(HYD_PRESSUREHANDLE *data__);
 extern void __mcl_cmd_SetAxisFeedback(HYD_SETAXISFEEDBACK *data__);
+extern void __mcl_cmd_SetPumpFeedback(HYD_SETPUMPFEEDBACK *data__);
 extern void __mcl_cmd_GetPumpRequest(HYD_GETPUMPREQUEST *data__);
 
 extern void __mcl_cmd_ReadStatus(HYD_READSTATUS* data__);
 extern void __mcl_cmd_ReadError(HYD_READERROR* data__);
 extern void __mcl_cmd_ReadSimFeedback(HYD_READSIMFEEDBACK* data__);
+extern void __mcl_cmd_ReadDebug(HYD_READDEBUG* data__);
 
 extern void __mcl_cmd_ReadParameter(HYD_READPARAMETER* data__);
 extern void __mcl_cmd_WriteParameter(HYD_WRITEPARAMETER* data__);

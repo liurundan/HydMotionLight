@@ -8,6 +8,9 @@ typedef struct {
     HYD_REAL lastTargetVelocity;
     HYD_REAL lastTargetFlow;
     HYD_TIME lastTimestamp;
+    HYD_REAL transitionTargetVelocity;
+    HYD_REAL transitionRate;
+    HYD_REAL transitionTimeMs;
 } HYD_MotionPlannerState;
 
 typedef struct {
@@ -29,6 +32,7 @@ typedef struct {
     HYD_MotionPlannerState* state;
     const HYD_MotionBlendContext* blend;
     HYD_MotionDirection lastActiveDirection;  /* for CURRENT direction resolution */
+    HYD_REAL responseDelay;  /* s; hydraulic dead time reserved by zero-end blend stops */
 } HYD_MotionPlannerInput;
 
 typedef struct {

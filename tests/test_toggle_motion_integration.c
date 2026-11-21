@@ -98,14 +98,14 @@ static void test_direct_position_and_velocity_flow_are_unchanged(void)
     HYD_MotionSegment velocity_segment = make_speed_segment();
 
     run_first_control_cycle(&position_fb, &position_segment, 0.0f);
-    assert_near(position_fb.STATE.plannedVelocity, 1.0f, 0.001f);
-    assert_near(position_fb.STATE.plannedFlow, 2.0f, 0.001f);
-    assert_near(position_fb.PUMP_SPEED, 20.0f, 0.001f);
+    assert_near(position_fb.STATE.plannedVelocity, 20.0f, 0.001f);
+    assert_near(position_fb.STATE.plannedFlow, 40.0f, 0.001f);
+    assert_near(position_fb.PUMP_SPEED, 400.0f, 0.001f);
 
     run_first_control_cycle(&velocity_fb, &velocity_segment, 0.0f);
-    assert_near(velocity_fb.STATE.plannedVelocity, 10.0f, 0.001f);
-    assert_near(velocity_fb.STATE.plannedFlow, 20.0f, 0.001f);
-    assert_near(velocity_fb.PUMP_SPEED, 200.0f, 0.001f);
+    assert_near(velocity_fb.STATE.plannedVelocity, 20.0f, 0.001f);
+    assert_near(velocity_fb.STATE.plannedFlow, 40.0f, 0.001f);
+    assert_near(velocity_fb.PUMP_SPEED, 400.0f, 0.001f);
 }
 
 static void run_toggle_speed_cycle(HYD_MotionControlFB *fb,
@@ -196,7 +196,7 @@ static void test_pressure_flow_bypasses_toggle_velocity_mapping(void)
     HYD_MotionControlFB_Scan(&toggle);
 
     assert_near(toggle.STATE.plannedFlow, direct.STATE.plannedFlow, 0.0001f);
-    assert_near(toggle.STATE.plannedFlow, 5.0f, 0.0001f);
+    assert_near(toggle.STATE.plannedFlow, 5.0f / 3.5f, 0.0001f);
 }
 
 static void start_bound_toggle_speed(
@@ -243,6 +243,41 @@ static void test_stop_deceleration_uses_dynamic_gain_at_each_position(void)
 {
     assert_toggle_stop_flow_at_position(101.0f);
     assert_toggle_stop_flow_at_position(180.0f);
+}
+
+static void test_toggle_stop_remaps_at_current_position_each_cycle(void)
+{
+    HYD_TogglePreparedConfig prepared = prepare_default_toggle();
+    HYD_MotionControlFB fb;
+    HYD_ToggleSolution solution;
+    HYD_ToggleError error = HYD_TOGGLE_ERROR_NONE;
+    HYD_REAL previousMagnitude;
+    unsigned int step;
+
+    start_bound_toggle_speed(&fb, &prepared, 101.0f);
+    fb.AXIS_REF.velocity = fb.STATE.plannedVelocity;
+    previousMagnitude = fabsf(fb.STATE.plannedVelocity);
+    assert(previousMagnitude > 0.1f);
+    assert(HYD_MotionControlFB_Stop(&fb, fb.AXIS_REF.timestamp, 200.0f));
+
+    for (step = 0U; step < 10U; ++step) {
+        HYD_REAL positionStep = fb.STATE.plannedVelocity * 0.01f;
+
+        fb.AXIS_REF.position += positionStep;
+        fb.AXIS_REF.velocity = fb.STATE.plannedVelocity;
+        fb.AXIS_REF.timestamp += 0.01f;
+        HYD_MotionControlFB_Cycle(&fb);
+
+        assert(fabsf(fb.STATE.plannedVelocity) <= previousMagnitude + 0.001f);
+        assert(fb.STATE.plannedVelocity >= 0.0f);
+        assert(HYD_ToggleKinematics_SolveOnline(
+            &prepared, fb.AXIS_REF.position, fb.STATE.plannedVelocity,
+            &solution, &error));
+        assert_near(fb.STATE.plannedFlow, fabsf(solution.vs) * 2.0f, 0.003f);
+        assert_near(fb.PUMP_SPEED, fb.STATE.plannedFlow * 10.0f, 0.003f);
+
+        previousMagnitude = fabsf(fb.STATE.plannedVelocity);
+    }
 }
 
 static void test_runtime_mapping_failures_zero_outputs_in_same_cycle(void)
@@ -502,18 +537,103 @@ static void test_buffered_blend_recomputes_toggle_flow_after_cutover(void)
     assert_near(fb.STATE.plannedFlow, expected.requestedFlow, 0.003f);
 }
 
+/* Clamp close 150 -> 10 on machine 105 (LF = 323), retract area 4800 mm^2,
+ * 50 cc / 1700 rpm / 0.95 pump. At the segment scale the actuator flow reaches
+ * the pump limit exactly where the worst ratio occurs (x = 10). The test holds
+ * the platen at the scale velocity in a SPEED_RAMP segment and walks it to the
+ * die-side end so the worst point is reached at full speed. */
+static void run_105_close_at_scale_fraction(HYD_REAL fraction,
+                                            HYD_REAL *peakPumpSpeed,
+                                            HYD_BOOL *sawLimit)
+{
+    HYD_ToggleGeometryConfig raw = {
+        260.0f, 323.0f, 190.0f, 100.0f, 125.0f,
+        200.0f, 170.0f, 580.0f, 450.0f,
+        0.0f, (int8_t)-1, (int8_t)-1, (int8_t)-1, (int8_t)-1
+    };
+    HYD_TogglePreparedConfig prepared;
+    HYD_ToggleError error = HYD_TOGGLE_ERROR_NONE;
+    HYD_MotionControlFB fb;
+    HYD_MotionSegment segment;
+    HYD_DiagnosticCode code = HYD_DIAG_CODE_NONE;
+    HYD_REAL scale = 0.0f;
+    HYD_REAL ratio = 0.0f;
+    HYD_REAL flowLimit = 0.0f;
+    unsigned int cycle;
+
+    assert(HYD_ToggleKinematics_ValidateBlocking(&raw, &prepared, &error));
+    HYD_MotionControlFB_Init(&fb);
+    fb.pumpConfig.displacementMlRev = 50.0f;
+    fb.pumpConfig.volumetricEfficiency = 0.95f;
+    fb.pumpConfig.maxSpeedRpm = 1700.0f;
+    fb.cylinderConfig.areaExtendMm2 = 3350.0f;
+    fb.cylinderConfig.areaRetractMm2 = 4800.0f;
+    fb.AXIS_REF.position = 150.0f;
+    fb.AXIS_REF.pressure = 20.0f;
+    bind_toggle(&fb, &prepared);
+
+    assert(HYD_MotionControlFB_ResolveMaxTemplateVelocity(
+        &fb, 150.0f, 10.0f, HYD_DIRECTION_RETRACT,
+        &scale, &ratio, &flowLimit, &code));
+    assert_near(flowLimit, 80.75f, 0.01f);
+
+    segment = make_speed_segment();
+    segment.direction = HYD_DIRECTION_RETRACT;
+    segment.maxVelocity = fraction * scale;
+    segment.maxAcceleration = 100.0f;
+    segment.maxDeceleration = 100.0f;
+    segment.maxFlow = 90.0f;
+    assert(HYD_MotionControlFB_StartDirectCommand(
+               &fb, HYD_DIRECT_CMD_MOVE_VELOCITY, &segment, NULL,
+               HYD_BUFFER_MODE_ABORT, 0.0f) == HYD_DIRECT_START_STARTED);
+
+    *peakPumpSpeed = 0.0f;
+    *sawLimit = false;
+    for (cycle = 0U; cycle < 20000U && fb.AXIS_REF.position > 10.0f; ++cycle) {
+        advance_template_plant(&fb, 0.001f);
+        assert(fb.FB_STATE != HYD_FB_STATE_FAULT);
+        if (fb.AXIS_REF.position < 10.0f) {
+            break;  /* beyond the queried range */
+        }
+        if (fb.PUMP_SPEED > *peakPumpSpeed) {
+            *peakPumpSpeed = fb.PUMP_SPEED;
+        }
+        if ((fb.STATE.limitFlags &
+             (HYD_LIMIT_FLAG_FLOW | HYD_LIMIT_FLAG_PUMP_SPEED)) != 0u) {
+            *sawLimit = true;
+        }
+    }
+    assert(fb.AXIS_REF.position <= 10.0f);
+}
+
+static void test_segment_scale_puts_worst_point_at_pump_limit(void)
+{
+    HYD_REAL peak = 0.0f;
+    HYD_BOOL limited = true;
+
+    run_105_close_at_scale_fraction(0.99f, &peak, &limited);
+    assert(!limited);
+    assert_near(peak, 0.99f * 1700.0f, 6.0f);
+
+    run_105_close_at_scale_fraction(1.05f, &peak, &limited);
+    assert(limited);
+    assert(peak <= 1700.0f + 0.01f);
+}
+
 int main(void)
 {
     test_direct_position_and_velocity_flow_are_unchanged();
     test_toggle_mapping_varies_with_position_in_actuator_space();
     test_pressure_flow_bypasses_toggle_velocity_mapping();
     test_stop_deceleration_uses_dynamic_gain_at_each_position();
+    test_toggle_stop_remaps_at_current_position_each_cycle();
     test_runtime_mapping_failures_zero_outputs_in_same_cycle();
     test_soft_reset_preserves_toggle_binding();
     test_hold_resume_preserves_template_position();
     test_pressure_to_velocity_uses_dynamic_inverse_and_faults_safely();
     test_continuous_absolute_transition_stays_in_template_space();
     test_buffered_blend_recomputes_toggle_flow_after_cutover();
+    test_segment_scale_puts_worst_point_at_pump_limit();
     printf("toggle motion integration tests passed\n");
     return 0;
 }

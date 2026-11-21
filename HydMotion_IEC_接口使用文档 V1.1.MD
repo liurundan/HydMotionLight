@@ -17,6 +17,7 @@ IEC 接口层位于 PLC 运行时与核心控制引擎之间，负责：
 - 命令仲裁（Recipe/Direct 模式互斥）
 - 所有权追踪（`_EXEC_ID` / `_PENDING` 两阶段模型）
 - 信号映射（PLCopen 标准输出：ACTIVE / BUSY / DONE / ERROR / COMMANDABORTED）
+- 提供全局八通道调试变量读取接口，供 PLC 转发给显示或存储工具
 
 > 接口定义参见 [motion_interface.h](include/motion_interface.h#L1-L381)，命令分发实现参见 [motion_interface.c](src/motion_interface.c#L1-L1035)
 
@@ -749,6 +750,49 @@ END_IF
 
 ---
 
+### 4.14 HYD_READDEBUG — 读取八通道调试变量
+
+读取液压库内部通过 `HYD_Debug_SetValue(index, value)` 写入的全局调试值。
+该接口不绑定轴号，八个通道的具体含义由开发人员在液压库内部约定。
+
+**核心写入接口**
+
+```c
+HYD_BOOL HYD_Debug_SetValue(HYD_UINT8 index, float value);
+```
+
+- `index` 使用 0..7；越界调用返回 `FALSE`，不会修改已有值。
+- 每次调用只更新一个通道；不保存历史、不提供时间戳，也不保证八个值来自同一时刻。
+- `__HydMotion_framework_Init()` 会将八个通道清零。
+- 该函数应在同一控制任务内调用；当前实现不提供中断或多线程同步。
+
+**IEC 接口定义**
+
+| 参数 | 类型 | 方向 | 说明 |
+|------|------|------|------|
+| `EN` | BOOL | IN | 使能 |
+| `ENO` | BOOL | OUT | 使能输出 |
+| `ENABLE` | BOOL | IN | 读取使能 |
+| `VALID` | BOOL | OUT | 使能时为 TRUE |
+| `BUSY` | BOOL | OUT | 始终为 FALSE |
+| `ERROR` | BOOL | OUT | 调试读取接口错误标志，正常为 FALSE |
+| `ERRORID` | WORD | OUT | 正常为 `HYD_DIAG_CODE_NONE` |
+| `VALUE0`…`VALUE7` | REAL | OUT | 八个当前调试值 |
+
+当 `ENABLE=FALSE` 时，`VALUE0`…`VALUE7` 清零且 `VALID=FALSE`；重新使能后输出库中保存的最新值。
+
+**典型调用**
+
+```c
+/* 液压算法内部：按约定把中间变量写入通道 0 和 1 */
+HYD_Debug_SetValue(0U, pressureError);
+HYD_Debug_SetValue(1U, controllerOutput);
+
+/* PLC 周期内：调用 HYD_READDEBUG，读取 VALUE0..VALUE7 */
+```
+
+---
+
 ## 5. 典型注塑周期调用流程
 
 ### 5.1 完整注塑周期（Direct 模式）
@@ -933,6 +977,7 @@ fbMoveProfile(EXECUTE := segStart,
 | 版本 | 日期 | 说明 |
 |------|------|------|
 | V1.0 | 2026-06 | 初始版本，覆盖全部 13 个 IEC 功能块接口 |
+| V1.1 | 2026-10 | 增加全局八通道调试变量写入接口和 `HYD_READDEBUG` 功能块 |
 
 ---
 
