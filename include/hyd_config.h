@@ -468,6 +468,89 @@ typedef HYD_REAL HYD_TIME;
 #define HYD_THRESH_PRESSURE_LIMIT_DEBOUNCE_S     0.20f
 #define HYD_THRESH_PRESSURE_LIMIT_FAULT_ESCALATION_S  1.0f
 
+/* --- 压力闭环二自由度结构（src/ramp_controller.c、src/pressure_controller.c、
+ *     src/motion_control.c；spec 2026-11-23 §4.2–§4.4） --- */
+
+/* η：参考轨迹速率上限只占可用流量的这一比例，余量留给反馈。
+ * v_rise = η·Kq_f·max(Qmax − Pt/R_f, r·Qmax)，v_fall = η·Kq_f·max(|Qrev| + Pt/R_f, r·Qmax)。
+ * 单位：无量纲。 */
+#ifndef HYD_THRESH_PRESSURE_PROFILE_RATE_MARGIN
+    #define HYD_THRESH_PRESSURE_PROFILE_RATE_MARGIN 0.6f
+#endif
+
+/* 上式中的 r：保压流量接近 Qmax 时，速率上限不低于 r·Qmax 对应的速率。
+ * 单位：无量纲（相对 Qmax）。 */
+#ifndef HYD_THRESH_PRESSURE_PROFILE_MIN_FLOW_RATIO
+    #define HYD_THRESH_PRESSURE_PROFILE_MIN_FLOW_RATIO 0.1f
+#endif
+
+/* 参数 38 PRESSURE_BRAKE_TIME 为 0 时的制动时间：减速度 = 速率上限 / 该时间。
+ * 单位：s。 */
+#ifndef HYD_THRESH_PRESSURE_PROFILE_BRAKE_TIME_S
+    #define HYD_THRESH_PRESSURE_PROFILE_BRAKE_TIME_S 0.12f
+#endif
+
+/* 参数 38 允许写入的上限。单位：ms。 */
+#ifndef HYD_MAX_PRESSURE_BRAKE_TIME_MS
+    #define HYD_MAX_PRESSURE_BRAKE_TIME_MS 2000.0f
+#endif
+
+/* 反馈误差用的参考延迟拍数（1 拍 = 1 ms），与“MA3 + 伺服起步”的回路延迟匹配，
+ * 前馈正常起效时反馈不抢油。整数，数组维度。 */
+#ifndef HYD_PRESSURE_REF_DELAY_SAMPLES
+    #define HYD_PRESSURE_REF_DELAY_SAMPLES 12
+#endif
+
+/* --- 泵轴角同步纹波补偿（src/pressure_ripple_comp.c；spec 2026-11-23 §4.5） --- */
+
+/* LMS 学习速率。单位：1/s。 */
+#ifndef HYD_THRESH_PRESSURE_RIPPLE_MU
+    #define HYD_THRESH_PRESSURE_RIPPLE_MU 4.0f
+#endif
+
+/* 次级通道模型里的纯延迟。单位：s。 */
+#ifndef HYD_THRESH_PRESSURE_RIPPLE_PATH_DELAY_S
+    #define HYD_THRESH_PRESSURE_RIPPLE_PATH_DELAY_S 0.006f
+#endif
+
+/* 低于该泵转速不学习。单位：rpm。 */
+#ifndef HYD_THRESH_PRESSURE_RIPPLE_MIN_RPM
+    #define HYD_THRESH_PRESSURE_RIPPLE_MIN_RPM 3.0f
+#endif
+
+/* |误差| 不小于该值时不学习。单位：bar。 */
+#ifndef HYD_THRESH_PRESSURE_RIPPLE_MAX_ERROR
+    #define HYD_THRESH_PRESSURE_RIPPLE_MAX_ERROR 3.0f
+#endif
+
+/* 参考静止并且反馈有效持续该时间后，才开始学习和淡入。单位：s。 */
+#ifndef HYD_THRESH_PRESSURE_RIPPLE_HOLD_S
+    #define HYD_THRESH_PRESSURE_RIPPLE_HOLD_S 0.05f
+#endif
+
+/* 输出淡入 / 淡出时间。单位：s。 */
+#ifndef HYD_THRESH_PRESSURE_RIPPLE_FADE_IN_S
+    #define HYD_THRESH_PRESSURE_RIPPLE_FADE_IN_S 0.05f
+#endif
+#ifndef HYD_THRESH_PRESSURE_RIPPLE_FADE_OUT_S
+    #define HYD_THRESH_PRESSURE_RIPPLE_FADE_OUT_S 0.02f
+#endif
+
+/* 每阶补偿流量幅值上限。单位：L/min。 */
+#ifndef HYD_THRESH_PRESSURE_RIPPLE_MAX_FLOW
+    #define HYD_THRESH_PRESSURE_RIPPLE_MAX_FLOW 1.5f
+#endif
+
+/* 2N 阶频率不低于该值时淡出且不学习（采样 1 kHz，相位模型失真）。单位：Hz。 */
+#ifndef HYD_THRESH_PRESSURE_RIPPLE_MAX_FREQ_HZ
+    #define HYD_THRESH_PRESSURE_RIPPLE_MAX_FREQ_HZ 100.0f
+#endif
+
+/* 参数 39 PUMP_RIPPLE_ORDER 允许写入的上限（整数）。 */
+#ifndef HYD_MAX_PUMP_RIPPLE_ORDER
+    #define HYD_MAX_PUMP_RIPPLE_ORDER 64
+#endif
+
 /* --- 软限位保护阈值（src/output_limiter.c） --- */
 
 /* 软限位默认减速带宽度（当 cylinderConfig.softLimitBandMm 未设置时的参考值）。

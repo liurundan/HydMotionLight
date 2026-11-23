@@ -5,6 +5,7 @@
 
 #include "../include/ramp_controller.h"
 #include "../include/common_types.h"
+#include <assert.h>
 #include <stdio.h>
 #include <math.h>
 
@@ -237,6 +238,156 @@ void test_zero_ramp_rate(void) {
     }
 }
 
+/* ===================== Profiled reference (spec 2026-11-23 §4.2, T1) ===================== */
+
+typedef struct {
+    HYD_REAL maxRef;
+    HYD_REAL minRef;
+    HYD_REAL maxAbsRate;
+    HYD_REAL maxAbsRateStep;
+    int arrivalStep; /* first step with ref == target and rate == 0, -1 if never */
+} ProfileRun;
+
+static const HYD_RampProfileLimits kProfileLimits = {600.0f, 300.0f, 0.12f};
+
+static void run_profile(HYD_RampController* controller, HYD_REAL target, HYD_REAL rampMs,
+                        const HYD_RampProfileLimits* limits, int steps, ProfileRun* run) {
+    HYD_RampControllerInput input;
+    HYD_RampControllerOutput output;
+    HYD_REAL previousRate = controller->profileRate;
+    int k;
+
+    run->maxRef = controller->rampedPressure;
+    run->minRef = controller->rampedPressure;
+    run->maxAbsRate = 0.0f;
+    run->maxAbsRateStep = 0.0f;
+    run->arrivalStep = -1;
+    input.targetPressure = target;
+    input.rampRate = rampMs;
+    for (k = 1; k <= steps; ++k) {
+        input.currentTime = controller->lastTimestamp + 0.001f;
+        HYD_RampController_ExecuteProfiledWithDt(controller, &input, limits, 0.001f, &output);
+        if (output.rampedPressure > run->maxRef) run->maxRef = output.rampedPressure;
+        if (output.rampedPressure < run->minRef) run->minRef = output.rampedPressure;
+        if (fabs(output.rampedPressureRate) > run->maxAbsRate) {
+            run->maxAbsRate = (HYD_REAL)fabs(output.rampedPressureRate);
+        }
+        if (fabs(output.rampedPressureRate - previousRate) > run->maxAbsRateStep) {
+            run->maxAbsRateStep = (HYD_REAL)fabs(output.rampedPressureRate - previousRate);
+        }
+        previousRate = output.rampedPressureRate;
+        if (run->arrivalStep < 0 && output.rampedPressure == target &&
+            output.rampedPressureRate == 0.0f) {
+            run->arrivalStep = k;
+        }
+    }
+}
+
+static void test_profile_rise_is_bounded_and_lands_exactly(void) {
+    HYD_RampController controller;
+    ProfileRun run;
+    /* a = 600 / 0.12 = 5000 bar/s^2: accelerate 120 ms (36 bar), cruise
+     * 28 bar at 600 bar/s (47 ms), brake 120 ms (36 bar) -> about 287 ms. */
+    HYD_RampController_Init(&controller, 0.0f, 0.0f);
+    run_profile(&controller, 100.0f, 20.0f, &kProfileLimits, 1000, &run);
+
+    assert(run.maxRef <= 100.0f);
+    assert(run.maxAbsRate <= 600.0f + 1.0e-3f);
+    assert(run.maxAbsRateStep <= 3.0f * 5000.0f * 0.001f);
+    assert(run.arrivalStep >= 270 && run.arrivalStep <= 300);
+    assert(controller.rampedPressure == 100.0f);
+    printf("✓ profile rise: arrival %d ms, max slope %.1f bar/s\n",
+           run.arrivalStep, (double)run.maxAbsRate);
+}
+
+static void test_profile_fall_uses_fall_bound(void) {
+    HYD_RampController controller;
+    ProfileRun run;
+
+    HYD_RampController_Init(&controller, 140.0f, 0.0f);
+    run_profile(&controller, 80.0f, 20.0f, &kProfileLimits, 1000, &run);
+
+    assert(run.minRef >= 80.0f);
+    assert(run.maxAbsRate <= 300.0f + 1.0e-3f);
+    assert(run.maxAbsRate >= 290.0f);
+    assert(run.arrivalStep > 0);
+    assert(controller.rampedPressure == 80.0f);
+    printf("✓ profile fall: arrival %d ms, max slope %.1f bar/s\n",
+           run.arrivalStep, (double)run.maxAbsRate);
+}
+
+static void test_profile_slower_user_time_wins(void) {
+    HYD_RampController controller;
+    ProfileRun run;
+
+    HYD_RampController_Init(&controller, 0.0f, 0.0f);
+    run_profile(&controller, 100.0f, 1000.0f, &kProfileLimits, 1500, &run);
+
+    assert(run.maxAbsRate <= 100.0f + 1.0e-3f);
+    assert(run.arrivalStep >= 1000 && run.arrivalStep <= 1100);
+    printf("✓ profile 1000 ms transition: arrival %d ms\n", run.arrivalStep);
+}
+
+static void test_profile_reversal_stops_reference(void) {
+    HYD_RampController controller;
+    ProfileRun run;
+    HYD_REAL atSwitch;
+
+    HYD_RampController_Init(&controller, 0.0f, 0.0f);
+    run_profile(&controller, 140.0f, 20.0f, &kProfileLimits, 200, &run);
+    atSwitch = controller.rampedPressure;
+    assert(atSwitch > 70.0f);
+    assert(controller.profileRate > 100.0f);
+
+    run_profile(&controller, 60.0f, 20.0f, &kProfileLimits, 1000, &run);
+    assert(run.maxRef <= atSwitch);
+    assert(run.minRef >= 60.0f);
+    assert(controller.rampedPressure == 60.0f);
+    printf("✓ profile reversal: stopped at %.2f bar, landed on 60\n", (double)atSwitch);
+}
+
+static void test_profile_retarget_same_direction_is_continuous(void) {
+    HYD_RampController controller;
+    ProfileRun run;
+
+    HYD_RampController_Init(&controller, 0.0f, 0.0f);
+    run_profile(&controller, 100.0f, 20.0f, &kProfileLimits, 100, &run);
+    run_profile(&controller, 120.0f, 20.0f, &kProfileLimits, 1000, &run);
+
+    assert(run.maxAbsRateStep <= 3.0f * 5000.0f * 0.001f);
+    assert(run.maxRef <= 120.0f);
+    assert(controller.rampedPressure == 120.0f);
+    printf("✓ profile retarget 100 -> 120 while rising is continuous\n");
+}
+
+static void test_profile_zero_bounds_snap_to_target(void) {
+    HYD_RampController controller;
+    HYD_RampProfileLimits zero = {0.0f, 0.0f, 0.12f};
+    ProfileRun run;
+
+    HYD_RampController_Init(&controller, 10.0f, 0.0f);
+    run_profile(&controller, 50.0f, 20.0f, &zero, 1, &run);
+    assert(controller.rampedPressure == 50.0f);
+    assert(run.maxAbsRate == 0.0f);
+    printf("✓ profile with zero bounds snaps to the target\n");
+}
+
+static void test_legacy_reports_zero_rate(void) {
+    HYD_RampController controller;
+    HYD_RampControllerInput input;
+    HYD_RampControllerOutput output;
+
+    HYD_RampController_Init(&controller, 0.0f, 0.0f);
+    input.targetPressure = 100.0f;
+    input.rampRate = 100.0f;
+    input.currentTime = 0.001f;
+    output.rampedPressureRate = 123.0f;
+    HYD_RampController_ExecuteWithDt(&controller, &input, 0.001f, &output);
+    assert(output.rampedPressure > 0.0f && output.rampedPressure < 100.0f);
+    assert(output.rampedPressureRate == 0.0f);
+    printf("✓ legacy ramp reports zero slope\n");
+}
+
 int main(void) {
     printf("╔════════════════════════════════════════╗\n");
     printf("║  Pressure Ramp Controller Test Suite  ║\n");
@@ -247,6 +398,13 @@ int main(void) {
     test_ramp_symmetry();
     test_ramp_rate_calculation();
     test_zero_ramp_rate();
+    test_profile_rise_is_bounded_and_lands_exactly();
+    test_profile_fall_uses_fall_bound();
+    test_profile_slower_user_time_wins();
+    test_profile_reversal_stops_reference();
+    test_profile_retarget_same_direction_is_continuous();
+    test_profile_zero_bounds_snap_to_target();
+    test_legacy_reports_zero_rate();
 
     printf("\n╔════════════════════════════════════════╗\n");
     printf("║  All tests completed                  ║\n");

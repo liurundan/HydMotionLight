@@ -445,8 +445,9 @@ int main(void) {
 #if HYD_REAL_PRECISION_FLOAT
     assert(sizeof(HYD_MotionPlannerState) <= 28U);
     /* +8: _params.responseDelayMs / zeroEndSettleVelocity (zero-end stop).
-     * +16: 两份 HYD_ContinuousAbsoluteContext 各加 flowPercent / flowRampRate。 */
-    assert(sizeof(HYD_MotionControlFB) <= 3328U);
+     * +16: 两份 HYD_ContinuousAbsoluteContext 各加 flowPercent / flowRampRate。
+     * +104: 压力环二自由度（参考延迟线、轨迹状态、参数 37–39、纹波补偿系数）。 */
+    assert(sizeof(HYD_MotionControlFB) <= 3432U);
 #endif
     printf("Running bumpless direct mode handover tests...\n");
     test_position_pressure_handover();
