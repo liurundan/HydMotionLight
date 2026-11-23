@@ -24,6 +24,13 @@ void HYD_RampController_ExecuteWithDt(HYD_RampController* controller,
         return;
     }
 
+    /* The profiled reference was driving this controller, so restart the time-based ramp from here. */
+    if (controller->profileLatched) {
+        controller->profileLatched = false;
+        controller->profileRate = 0.0;
+        controller->transitionDuration = -1.0;
+    }
+
     if (deltaTime < 0.0) {
         deltaTime = 0.0;
     }

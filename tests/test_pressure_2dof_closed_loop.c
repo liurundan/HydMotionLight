@@ -67,30 +67,89 @@ static void configure_fb(HYD_MotionControlFB* fb, HYD_REAL rippleOrder) {
     assert(HYD_MotionControlFB_WriteParameter(fb, HYD_PARAM_PUMP_RIPPLE_ORDER, rippleOrder));
 }
 
+/* Valve-closed hor1121 plant with servo dead time and MA3 feedback. */
+typedef struct {
+    double pressure;
+    double angle;
+    double history[3];
+    double measured;
+    double speedLine[MAX_SERVO_DELAY];
+    int delay;                 /* servo dead time, scans */
+    int lineIndex;
+    int step;
+} PlantState;
+
+static void plant_reset(PlantState* plant, int delay) {
+    memset(plant, 0, sizeof(*plant));
+    assert(delay >= 1 && delay <= MAX_SERVO_DELAY);
+    plant->delay = delay;
+}
+
+/* One scan: feed the FB, cycle it, then advance the plant by DT. */
+static void plant_scan(PlantState* plant, HYD_MotionControlFB* fb, double kqScale) {
+    double speedCommand;
+    double appliedSpeed;
+    double kq;
+    double w12;
+    double ripple;
+
+    ++plant->step;
+    fb->AXIS_REF.timestamp = (HYD_TIME)(plant->step * DT);
+    fb->AXIS_REF.pressure = (HYD_REAL)plant->measured;
+    HYD_MotionControl_SetPumpFeedback(&(HYD_PumpFeedback){
+        (HYD_REAL)plant->speedLine[plant->lineIndex],
+        (HYD_REAL)(fmod(plant->angle, TWO_PI) * 360.0 / TWO_PI),
+        0.0f, (HYD_TIME)(plant->step * DT),
+        HYD_PUMP_FEEDBACK_VALID_RPM | HYD_PUMP_FEEDBACK_VALID_ANGLE});
+    HYD_MotionControlFB_Cycle(fb);
+    assert(!fb->STATE.faultActive);
+    speedCommand = fb->PUMP_SPEED;
+
+    appliedSpeed = plant->speedLine[plant->lineIndex];
+    plant->speedLine[plant->lineIndex] = speedCommand;
+    plant->lineIndex = (plant->lineIndex + 1) % plant->delay;
+
+    plant->angle += appliedSpeed / 60.0 * TWO_PI * DT;
+    kq = kqScale * (64.0 + 0.4 * fmax(plant->pressure - 100.0, 0.0));
+    w12 = 12.0 * fabs(appliedSpeed) / 60.0 * TWO_PI;
+    ripple = 1.2 * w12 / 64.0 * sin(12.0 * plant->angle + 0.7) +
+             0.36 * w12 / 64.0 * sin(24.0 * plant->angle + 1.9);
+    plant->pressure += kq * (appliedSpeed / GAIN + ripple - plant->pressure / 104.0) * DT;
+    if (plant->pressure < 0.0) plant->pressure = 0.0;
+    plant->history[0] = plant->history[1];
+    plant->history[1] = plant->history[2];
+    plant->history[2] = plant->pressure;
+    plant->measured = (plant->history[0] + plant->history[1] + plant->history[2]) / 3.0;
+}
+
+static void start_hold_segment(HYD_MotionControlFB* fb) {
+    HYD_MotionSegment segment = make_hold_segment(0.0);
+    assert(HYD_MotionControlFB_LoadDirectSegment(fb, &segment));
+    fb->AXIS_REF.timestamp = 0.0f;
+    assert(HYD_MotionControlFB_StartSegment(fb, 0U, 0.0f));
+}
+
+static void apply_live_target(HYD_MotionControlFB* fb, double target) {
+    HYD_LiveUpdateRequest request;
+    memset(&request, 0, sizeof(request));
+    request.flags = HYD_LIVE_UPDATE_TARGET_PRESSURE;
+    request.ownerKind = fb->_directOwnerKind;
+    request.ownerTicket = fb->_directOwnerTicket;
+    request.targetPressure = (HYD_REAL)target;
+    assert(HYD_MotionControlFB_ApplyLiveUpdate(fb, &request));
+}
+
 static void run_sequence(const PlantCase* plantCase, LoopMetrics* metrics) {
     static HYD_MotionControlFB fb;
-    HYD_MotionSegment segment;
-    double pressure = 0.0;
-    double angle = 0.0;
-    double history[3] = {0.0, 0.0, 0.0};
-    double measured = 0.0;
-    double speedLine[MAX_SERVO_DELAY];
-    int delay = (int)plantCase->servoDelay;
-    int lineIndex = 0;
+    PlantState plant;
     int seg;
     int k;
-    int step = 0;
 
     memset(metrics, 0, sizeof(*metrics));
-    memset(speedLine, 0, sizeof(speedLine));
-    assert(delay >= 1 && delay <= MAX_SERVO_DELAY);
+    plant_reset(&plant, (int)plantCase->servoDelay);
     HYD_Debug_Reset();
     configure_fb(&fb, plantCase->rippleOrder);
-
-    segment = make_hold_segment(0.0);
-    assert(HYD_MotionControlFB_LoadDirectSegment(&fb, &segment));
-    fb.AXIS_REF.timestamp = 0.0f;
-    assert(HYD_MotionControlFB_StartSegment(&fb, 0U, 0.0f));
+    start_hold_segment(&fb);
 
     for (seg = 0; seg <= SEGMENT_COUNT; ++seg) {
         int steps = (seg == 0) ? kLeadSteps : kSegmentSteps;
@@ -103,50 +162,15 @@ static void run_sequence(const PlantCase* plantCase, LoopMetrics* metrics) {
         int t98 = -1;
 
         if (seg > 0) {
-            HYD_LiveUpdateRequest request;
-            memset(&request, 0, sizeof(request));
-            request.flags = HYD_LIVE_UPDATE_TARGET_PRESSURE;
-            request.ownerKind = fb._directOwnerKind;
-            request.ownerTicket = fb._directOwnerTicket;
-            request.targetPressure = (HYD_REAL)target;
-            assert(HYD_MotionControlFB_ApplyLiveUpdate(&fb, &request));
+            apply_live_target(&fb, target);
         }
 
         for (k = 0; k < steps; ++k) {
-            double speedCommand;
-            double appliedSpeed;
-            double kq;
-            double w12;
-            double ripple;
+            double measured;
             int i;
 
-            ++step;
-            fb.AXIS_REF.timestamp = (HYD_TIME)(step * DT);
-            fb.AXIS_REF.pressure = (HYD_REAL)measured;
-            HYD_MotionControl_SetPumpFeedback(&(HYD_PumpFeedback){
-                (HYD_REAL)speedLine[lineIndex],
-                (HYD_REAL)(fmod(angle, TWO_PI) * 360.0 / TWO_PI),
-                0.0f, (HYD_TIME)(step * DT),
-                HYD_PUMP_FEEDBACK_VALID_RPM | HYD_PUMP_FEEDBACK_VALID_ANGLE});
-            HYD_MotionControlFB_Cycle(&fb);
-            assert(!fb.STATE.faultActive);
-            speedCommand = fb.PUMP_SPEED;
-
-            appliedSpeed = speedLine[lineIndex];
-            speedLine[lineIndex] = speedCommand;
-            lineIndex = (lineIndex + 1) % delay;
-
-            angle += appliedSpeed / 60.0 * TWO_PI * DT;
-            kq = plantCase->kqScale * (64.0 + 0.4 * fmax(pressure - 100.0, 0.0));
-            w12 = 12.0 * fabs(appliedSpeed) / 60.0 * TWO_PI;
-            ripple = 1.2 * w12 / 64.0 * sin(12.0 * angle + 0.7) +
-                     0.36 * w12 / 64.0 * sin(24.0 * angle + 1.9);
-            pressure += kq * (appliedSpeed / GAIN + ripple - pressure / 104.0) * DT;
-            if (pressure < 0.0) pressure = 0.0;
-            history[0] = history[1];
-            history[1] = history[2];
-            history[2] = pressure;
-            measured = (history[0] + history[1] + history[2]) / 3.0;
+            plant_scan(&plant, &fb, plantCase->kqScale);
+            measured = plant.measured;
 
             if (seg > 0) {
                 if (measured > maxP) maxP = measured;
@@ -231,10 +255,43 @@ static void test_robust_to_servo_delay_and_lower_configured_kq(void) {
     }
 }
 
+/* Parameter 37 written to 0 while the profiled reference is mid-ramp: the
+ * legacy 20 ms ramp takes over and must still reach the target (legacy
+ * overshoot is expected, so it is not asserted). */
+static void test_kq_switched_off_mid_ramp_still_reaches_target(void) {
+    static HYD_MotionControlFB fb;
+    PlantState plant;
+    double measuredSum = 0.0;
+    double measuredMean;
+    int k;
+
+    plant_reset(&plant, 5);
+    HYD_Debug_Reset();
+    configure_fb(&fb, 12.0f);
+    start_hold_segment(&fb);
+    for (k = 0; k < kLeadSteps; ++k) plant_scan(&plant, &fb, 1.0);
+
+    apply_live_target(&fb, 100.0);
+    for (k = 0; k < kSegmentSteps; ++k) {
+        if (k == 60) {
+            assert(HYD_MotionControlFB_WriteParameter(&fb, HYD_PARAM_KQ_BAR_PER_S_RPM, 0.0f));
+        }
+        plant_scan(&plant, &fb, 1.0);
+        if (k >= kSegmentSteps - 500) measuredSum += plant.measured;
+    }
+    measuredMean = measuredSum / 500.0;
+    printf("%-26s | 0->100 ref %.2f mean(last 500) %.2f\n", "B2 Kq -> 0 at k = 60",
+           (double)fb._rampController.rampedPressure, measuredMean);
+    assert(fb._rampController.rampedPressure == 100.0f);
+    assert(!fb.STATE.faultActive);
+    assert(fabs(measuredMean - 100.0) <= 2.0);
+}
+
 int main(void) {
     test_nominal_without_ripple_compensation();
     test_nominal_with_ripple_compensation();
     test_robust_to_servo_delay_and_lower_configured_kq();
+    test_kq_switched_off_mid_ramp_still_reaches_target();
     puts("2-DOF pressure closed-loop tests passed.");
     return 0;
 }

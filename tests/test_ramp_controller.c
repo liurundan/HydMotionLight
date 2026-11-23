@@ -388,6 +388,34 @@ static void test_legacy_reports_zero_rate(void) {
     printf("✓ legacy ramp reports zero slope\n");
 }
 
+static void test_profile_then_legacy_continues_to_target(void) {
+    HYD_RampController controller;
+    HYD_RampControllerInput input;
+    HYD_RampControllerOutput output;
+    ProfileRun run;
+    HYD_REAL atSwitch;
+    int k;
+
+    HYD_RampController_Init(&controller, 0.0f, 0.0f);
+    run_profile(&controller, 100.0f, 20.0f, &kProfileLimits, 30, &run);
+    atSwitch = controller.rampedPressure;
+    assert(atSwitch > 0.0f && atSwitch < 100.0f);
+    assert(controller.profileLatched);
+
+    /* Parameter 37 set to 0 mid-ramp: the time-based ramp takes over with
+     * the same target and transition time. */
+    input.targetPressure = 100.0f;
+    input.rampRate = 20.0f;
+    for (k = 0; k < 30; ++k) {
+        input.currentTime = controller.lastTimestamp + 0.001f;
+        HYD_RampController_ExecuteWithDt(&controller, &input, 0.001f, &output);
+    }
+    assert(output.rampedPressure == 100.0f);
+    assert(!controller.profileLatched);
+    assert(output.rampedPressureRate == 0.0f);
+    printf("✓ profile -> legacy at %.2f bar continues to 100\n", (double)atSwitch);
+}
+
 int main(void) {
     printf("╔════════════════════════════════════════╗\n");
     printf("║  Pressure Ramp Controller Test Suite  ║\n");
@@ -405,6 +433,7 @@ int main(void) {
     test_profile_retarget_same_direction_is_continuous();
     test_profile_zero_bounds_snap_to_target();
     test_legacy_reports_zero_rate();
+    test_profile_then_legacy_continues_to_target();
 
     printf("\n╔════════════════════════════════════════╗\n");
     printf("║  All tests completed                  ║\n");
