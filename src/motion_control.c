@@ -1907,6 +1907,11 @@ static HYD_BOOL HYD_PrimeSegmentControllers(HYD_MotionControlFB* fb,
                                      fb->AXIS_REF.pressure,
                                      initialPressureControlOutput,
                                      controllerTime);
+    /* Spec 4.5: no ripple output while a new segment rises; the learned
+     * coefficients carry over. */
+    fb->_pressureRippleComp.fade = 0.0;
+    fb->_pressureRippleComp.holdTime = 0.0;
+    fb->_pressureRippleComp.lastClipped = false;
     if (segment->mode == HYD_MODE_PRESSURE_CLOSED_LOOP && trackingFlowReference > 0.0) {
         HYD_PressureController_RequestTracking(&fb->_pressureController, initialPressureControlOutput);
     }

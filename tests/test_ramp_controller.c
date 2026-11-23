@@ -416,6 +416,30 @@ static void test_profile_then_legacy_continues_to_target(void) {
     printf("✓ profile -> legacy at %.2f bar continues to 100\n", (double)atSwitch);
 }
 
+static void test_profile_nan_dt_keeps_reference(void) {
+    HYD_RampController controller;
+    HYD_RampControllerInput input;
+    HYD_RampControllerOutput output;
+    ProfileRun run;
+    HYD_REAL before;
+
+    HYD_RampController_Init(&controller, 0.0f, 0.0f);
+    run_profile(&controller, 100.0f, 20.0f, &kProfileLimits, 30, &run);
+    before = controller.rampedPressure;
+    assert(before > 0.0f && before < 100.0f);
+
+    input.targetPressure = 100.0f;
+    input.rampRate = 20.0f;
+    input.currentTime = controller.lastTimestamp + 0.001f;
+    HYD_RampController_ExecuteProfiledWithDt(&controller, &input, &kProfileLimits,
+                                             (HYD_TIME)NAN, &output);
+    assert(isfinite(controller.rampedPressure));
+    assert(isfinite(controller.profileRate));
+    assert(controller.rampedPressure == before);
+    assert(output.rampedPressure == before);
+    printf("✓ profile ignores NaN dt\n");
+}
+
 int main(void) {
     printf("╔════════════════════════════════════════╗\n");
     printf("║  Pressure Ramp Controller Test Suite  ║\n");
@@ -434,6 +458,7 @@ int main(void) {
     test_profile_zero_bounds_snap_to_target();
     test_legacy_reports_zero_rate();
     test_profile_then_legacy_continues_to_target();
+    test_profile_nan_dt_keeps_reference();
 
     printf("\n╔════════════════════════════════════════╗\n");
     printf("║  All tests completed                  ║\n");

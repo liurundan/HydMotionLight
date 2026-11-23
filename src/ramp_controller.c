@@ -90,7 +90,7 @@ void HYD_RampController_ExecuteProfiledWithDt(HYD_RampController* controller,
         return;
     }
 
-    if (deltaTime < 0.0) {
+    if (!(deltaTime > 0.0)) { /* also catches NaN */
         deltaTime = 0.0;
     }
     controller->lastTimestamp = input->currentTime;

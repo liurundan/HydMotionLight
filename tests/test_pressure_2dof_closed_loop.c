@@ -287,11 +287,54 @@ static void test_kq_switched_off_mid_ramp_still_reaches_target(void) {
     assert(fabs(measuredMean - 100.0) <= 2.0);
 }
 
+/* Spec §4.5: ripple compensation must not act during a rise. A new pressure
+ * segment starts with fade, hold time and the clip flag cleared, while the
+ * learned coefficients carry over. */
+static void test_new_segment_restarts_ripple_fade_and_keeps_coefficients(void) {
+    static HYD_MotionControlFB fb;
+    PlantState plant;
+    HYD_MotionSegment segment;
+    HYD_REAL coeffRe[HYD_PRESSURE_RIPPLE_HARMONICS];
+    HYD_REAL coeffIm[HYD_PRESSURE_RIPPLE_HARMONICS];
+    int k;
+
+    plant_reset(&plant, 5);
+    HYD_Debug_Reset();
+    configure_fb(&fb, 12.0f);
+    start_hold_segment(&fb);
+    for (k = 0; k < kLeadSteps; ++k) plant_scan(&plant, &fb, 1.0);
+    apply_live_target(&fb, 100.0);
+    for (k = 0; k < kSegmentSteps; ++k) plant_scan(&plant, &fb, 1.0);
+
+    assert(fb._pressureRippleComp.fade == 1.0f);
+    assert(fb._pressureRippleComp.coeffRe[0] != 0.0f || fb._pressureRippleComp.coeffIm[0] != 0.0f);
+    memcpy(coeffRe, fb._pressureRippleComp.coeffRe, sizeof(coeffRe));
+    memcpy(coeffIm, fb._pressureRippleComp.coeffIm, sizeof(coeffIm));
+    fb._pressureRippleComp.lastClipped = true;
+
+    segment = make_hold_segment(140.0);
+    assert(HYD_MotionControlFB_StartDirectCommand(&fb, HYD_DIRECT_CMD_PRESSURE_HANDLE, &segment,
+                                                  NULL, HYD_BUFFER_MODE_ABORT,
+                                                  fb.AXIS_REF.timestamp) == HYD_DIRECT_START_STARTED);
+    for (k = 0; k < 3; ++k) {
+        plant_scan(&plant, &fb, 1.0);
+        assert(fb._rampController.rampedPressure < 140.0f);
+        assert(fb._pressureRippleComp.fade == 0.0f);
+        assert(fb._pressureRippleComp.holdTime == 0.0f);
+        assert(!fb._pressureRippleComp.lastClipped);
+        assert(fb._pressureRippleComp.order == 12U);
+        assert(memcmp(coeffRe, fb._pressureRippleComp.coeffRe, sizeof(coeffRe)) == 0);
+        assert(memcmp(coeffIm, fb._pressureRippleComp.coeffIm, sizeof(coeffIm)) == 0);
+    }
+    printf("%-26s | fade/hold/clip cleared, coefficients kept\n", "B2 new segment 100->140");
+}
+
 int main(void) {
     test_nominal_without_ripple_compensation();
     test_nominal_with_ripple_compensation();
     test_robust_to_servo_delay_and_lower_configured_kq();
     test_kq_switched_off_mid_ramp_still_reaches_target();
+    test_new_segment_restarts_ripple_fade_and_keeps_coefficients();
     puts("2-DOF pressure closed-loop tests passed.");
     return 0;
 }
