@@ -216,6 +216,63 @@ static void test_hydraulic_response_delay_roundtrip_and_validation(void) {
                     "Rejected writes must keep the last accepted delay");
 }
 
+static void test_pressure_model_parameters_roundtrip_and_validation(void) {
+    HYD_MotionControlFB fb;
+    HYD_REAL value = -1.0f;
+    HYD_BOOL ok;
+
+    HYD_MotionControlFB_Init(&fb);
+
+    ok = HYD_MotionControlFB_ReadParameter(&fb, HYD_PARAM_KQ_BAR_PER_S_RPM, &value);
+    ASSERT_TRUE(ok, "Kq parameter should be readable");
+    ASSERT_FLOAT_EQ(value, 0.0f, 0.0f, "Kq should default to zero (legacy path)");
+    ok = HYD_MotionControlFB_ReadParameter(&fb, HYD_PARAM_PRESSURE_BRAKE_TIME, &value);
+    ASSERT_TRUE(ok, "Pressure brake time should be readable");
+    ASSERT_FLOAT_EQ(value, 0.0f, 0.0f, "Pressure brake time should default to zero");
+    ok = HYD_MotionControlFB_ReadParameter(&fb, HYD_PARAM_PUMP_RIPPLE_ORDER, &value);
+    ASSERT_TRUE(ok, "Pump ripple order should be readable");
+    ASSERT_FLOAT_EQ(value, 0.0f, 0.0f, "Pump ripple order should default to zero");
+
+    ASSERT_EQ((int)HYD_PARAM_KQ_BAR_PER_S_RPM, 37, "Kq is parameter 37");
+    ASSERT_EQ((int)HYD_PARAM_PRESSURE_BRAKE_TIME, 38, "Brake time is parameter 38");
+    ASSERT_EQ((int)HYD_PARAM_PUMP_RIPPLE_ORDER, 39, "Ripple order is parameter 39");
+
+    ok = HYD_MotionControlFB_WriteParameter(&fb, HYD_PARAM_KQ_BAR_PER_S_RPM, 2.9f);
+    ASSERT_TRUE(ok, "Positive Kq should be writable");
+    ok = HYD_MotionControlFB_ReadParameter(&fb, HYD_PARAM_KQ_BAR_PER_S_RPM, &value);
+    ASSERT_FLOAT_EQ(value, 2.9f, 0.0001f, "Kq should round-trip in bar/s/rpm");
+    ASSERT_TRUE(!HYD_MotionControlFB_WriteParameter(&fb, HYD_PARAM_KQ_BAR_PER_S_RPM, -1.0f),
+                "Negative Kq should be rejected");
+    ASSERT_TRUE(!HYD_MotionControlFB_WriteParameter(&fb, HYD_PARAM_KQ_BAR_PER_S_RPM, NAN),
+                "Non-finite Kq should be rejected");
+    ASSERT_TRUE(HYD_MotionControlFB_WriteParameter(&fb, HYD_PARAM_KQ_BAR_PER_S_RPM, 0.0f),
+                "Zero Kq should select the legacy path");
+
+    ok = HYD_MotionControlFB_WriteParameter(&fb, HYD_PARAM_PRESSURE_BRAKE_TIME, 150.0f);
+    ASSERT_TRUE(ok, "A 150 ms brake time should be writable");
+    ok = HYD_MotionControlFB_ReadParameter(&fb, HYD_PARAM_PRESSURE_BRAKE_TIME, &value);
+    ASSERT_FLOAT_EQ(value, 150.0f, 0.0001f, "Brake time should round-trip in ms");
+    ASSERT_TRUE(HYD_MotionControlFB_WriteParameter(&fb, HYD_PARAM_PRESSURE_BRAKE_TIME, 2000.0f),
+                "The 2000 ms upper bound should be accepted");
+    ASSERT_TRUE(!HYD_MotionControlFB_WriteParameter(&fb, HYD_PARAM_PRESSURE_BRAKE_TIME, 2000.5f),
+                "Brake times above 2000 ms should be rejected");
+    ASSERT_TRUE(!HYD_MotionControlFB_WriteParameter(&fb, HYD_PARAM_PRESSURE_BRAKE_TIME, -1.0f),
+                "Negative brake time should be rejected");
+
+    ok = HYD_MotionControlFB_WriteParameter(&fb, HYD_PARAM_PUMP_RIPPLE_ORDER, 12.0f);
+    ASSERT_TRUE(ok, "Ripple order 12 should be writable");
+    ok = HYD_MotionControlFB_ReadParameter(&fb, HYD_PARAM_PUMP_RIPPLE_ORDER, &value);
+    ASSERT_FLOAT_EQ(value, 12.0f, 0.0f, "Ripple order should round-trip");
+    ASSERT_TRUE(!HYD_MotionControlFB_WriteParameter(&fb, HYD_PARAM_PUMP_RIPPLE_ORDER, 12.5f),
+                "Non-integer ripple order should be rejected");
+    ASSERT_TRUE(!HYD_MotionControlFB_WriteParameter(&fb, HYD_PARAM_PUMP_RIPPLE_ORDER, 65.0f),
+                "Ripple order above 64 should be rejected");
+    ASSERT_TRUE(!HYD_MotionControlFB_WriteParameter(&fb, HYD_PARAM_PUMP_RIPPLE_ORDER, -1.0f),
+                "Negative ripple order should be rejected");
+    ok = HYD_MotionControlFB_ReadParameter(&fb, HYD_PARAM_PUMP_RIPPLE_ORDER, &value);
+    ASSERT_FLOAT_EQ(value, 12.0f, 0.0f, "Rejected writes keep the last accepted order");
+}
+
 static void test_pressure_controller_type_validation(void) {
     HYD_MotionControlFB fb;
     HYD_REAL val;
@@ -345,6 +402,7 @@ int main(void) {
     test_ksys_bar_per_rpm_roundtrip_and_validation();
     test_zero_end_settle_velocity_roundtrip_and_validation();
     test_hydraulic_response_delay_roundtrip_and_validation();
+    test_pressure_model_parameters_roundtrip_and_validation();
     test_pressure_controller_type_validation();
     test_write_read_bool_roundtrip();
     test_invalid_param_number();

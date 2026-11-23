@@ -4062,6 +4062,9 @@ void HYD_MotionControlFB_Init(HYD_MotionControlFB* fb) {
     fb->_params.ksysBarPerRpm = 0.0f;
     fb->_params.responseDelayMs = HYD_DEFAULT_HYDRAULIC_RESPONSE_DELAY_MS;
     fb->_params.zeroEndSettleVelocity = 0.0f;
+    fb->_params.kqBarPerSecRpm = 0.0f;
+    fb->_params.pressureBrakeTimeMs = 0.0f;
+    fb->_params.pumpRippleOrder = 0.0f;
 
     /* Legacy defaults — used when pumpConfig/cylinderConfig are not configured.
      * pumpConfig and cylinderConfig are zero after memset — inactive by default. */
@@ -4688,6 +4691,9 @@ HYD_BOOL HYD_MotionControlFB_ReadParameter(const HYD_MotionControlFB* fb, int pa
         case HYD_PARAM_KSYS_BAR_PER_RPM:               *value = fb->_params.ksysBarPerRpm; break;
         case HYD_PARAM_HYDRAULIC_RESPONSE_DELAY:       *value = fb->_params.responseDelayMs; break;
         case HYD_PARAM_ZERO_END_SETTLE_VELOCITY:       *value = fb->_params.zeroEndSettleVelocity; break;
+        case HYD_PARAM_KQ_BAR_PER_S_RPM:               *value = fb->_params.kqBarPerSecRpm; break;
+        case HYD_PARAM_PRESSURE_BRAKE_TIME:            *value = fb->_params.pressureBrakeTimeMs; break;
+        case HYD_PARAM_PUMP_RIPPLE_ORDER:              *value = fb->_params.pumpRippleOrder; break;
         default: return false;
     }
     return true;
@@ -4772,6 +4778,21 @@ HYD_BOOL HYD_MotionControlFB_WriteParameter(HYD_MotionControlFB* fb, int paramNu
         case HYD_PARAM_ZERO_END_SETTLE_VELOCITY:
             if (!isfinite(value) || value < 0.0) return false;
             fb->_params.zeroEndSettleVelocity = value;
+            break;
+        case HYD_PARAM_KQ_BAR_PER_S_RPM:
+            if (!isfinite(value) || value < 0.0) return false;
+            fb->_params.kqBarPerSecRpm = value;
+            break;
+        case HYD_PARAM_PRESSURE_BRAKE_TIME:
+            if (!isfinite(value) || value < 0.0 ||
+                value > HYD_MAX_PRESSURE_BRAKE_TIME_MS) return false;
+            fb->_params.pressureBrakeTimeMs = value;
+            break;
+        case HYD_PARAM_PUMP_RIPPLE_ORDER:
+            if (!isfinite(value) || value < 0.0 ||
+                value > (HYD_REAL)HYD_MAX_PUMP_RIPPLE_ORDER ||
+                (HYD_REAL)(int)value != value) return false;
+            fb->_params.pumpRippleOrder = value;
             break;
         default: return false;
     }

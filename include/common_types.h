@@ -599,6 +599,9 @@ typedef enum {
     HYD_PARAM_KSYS_BAR_PER_RPM,         /* bar/rpm; 0 disables Ksys feedforward */
     HYD_PARAM_HYDRAULIC_RESPONSE_DELAY, /* ms; 0 disables zero-end delay compensation */
     HYD_PARAM_ZERO_END_SETTLE_VELOCITY, /* mm/s; 0 keeps the legacy zero-end settle gate */
+    HYD_PARAM_KQ_BAR_PER_S_RPM,         /* bar/s per rpm; 0 keeps the legacy pressure path */
+    HYD_PARAM_PRESSURE_BRAKE_TIME,      /* ms; 0 uses HYD_THRESH_PRESSURE_PROFILE_BRAKE_TIME_S */
+    HYD_PARAM_PUMP_RIPPLE_ORDER,        /* ripples per pump revolution (integer); 0 disables compensation */
     HYD_PARAM_COUNT
 } HYD_ParameterNumber;
 
@@ -634,6 +637,9 @@ typedef struct {
     HYD_REAL ksysBarPerRpm;              /* bar/rpm; 0 disables Ksys feedforward */
     HYD_REAL responseDelayMs;            /* ms; hydraulic dead time for zero-end braking */
     HYD_REAL zeroEndSettleVelocity;      /* mm/s; zero-end settle gate, 0 = legacy */
+    HYD_REAL kqBarPerSecRpm;             /* bar/s per rpm; 0 keeps the legacy pressure path */
+    HYD_REAL pressureBrakeTimeMs;        /* ms; 0 uses the built-in brake time */
+    HYD_REAL pumpRippleOrder;            /* ripples per pump revolution (integer); 0 disables */
 } HYD_MotionFBParams;
 
 /* ============================================================================
