@@ -1,4 +1,5 @@
 #include "pressure_controller.h"
+#include "debug_values.h"
 #include <math.h>
 #include <string.h>
 
@@ -147,6 +148,7 @@ static HYD_REAL HYD_ApplyPressureDeadband(HYD_REAL error, HYD_REAL deadband)
 
 static HYD_REAL HYD_ResolveTrackedIntegralOutput(const HYD_MotionSegment* segment,
                                                  const HYD_PressureControllerInput* input,
+                                                 HYD_REAL feedforwardFlow,
                                                  HYD_REAL proportionalTerm,
                                                  HYD_REAL derivativeTerm,
                                                  HYD_REAL trackedOutputFlow)
@@ -156,7 +158,7 @@ static HYD_REAL HYD_ResolveTrackedIntegralOutput(const HYD_MotionSegment* segmen
 
     if (input == NULL) return 0.0;
 
-    trackedIntegral = trackedOutputFlow - input->feedforwardFlow
+    trackedIntegral = trackedOutputFlow - feedforwardFlow
                     - proportionalTerm - derivativeTerm;
     integralLimit = HYD_ResolveIntegralLimit(segment, input);
 
@@ -203,6 +205,7 @@ static void HYD_UpdateReliefState(HYD_PressureControllerState* state,
 {
     HYD_REAL pressureError;
     HYD_REAL targetDrop;
+    HYD_REAL targetRate;
 
     if (state == NULL || input == NULL || !isfinite(input->targetPressure) ||
         !isfinite(input->measuredPressure)) {
@@ -212,15 +215,20 @@ static void HYD_UpdateReliefState(HYD_PressureControllerState* state,
     pressureError = input->targetPressure - input->measuredPressure;
     targetDrop = state->targetPressureInitialized ?
                  state->previousTargetPressure - input->targetPressure : 0.0;
+    /* A profiled reference never drops 2 bar in one scan; a falling slope
+     * is what admits reverse relief there. Legacy ramp reports 0. */
+    targetRate = isfinite(input->targetPressureRate) ? input->targetPressureRate : 0.0;
 
     if (!state->reliefActive) {
         if (input->measuredPressure > HYD_RELIEF_MIN_FEEDBACK_PRESSURE &&
             (pressureError <= -HYD_RELIEF_ENTER_ERROR ||
-             targetDrop >= HYD_RELIEF_TARGET_DROP)) {
+             targetDrop >= HYD_RELIEF_TARGET_DROP ||
+             targetRate < 0.0)) {
             state->reliefActive = HYD_TRUE;
         }
-    } else if (input->measuredPressure <= HYD_RELIEF_MIN_FEEDBACK_PRESSURE ||
-               pressureError >= -HYD_RELIEF_EXIT_ERROR) {
+    } else if ((input->measuredPressure <= HYD_RELIEF_MIN_FEEDBACK_PRESSURE ||
+                pressureError >= -HYD_RELIEF_EXIT_ERROR) &&
+               targetRate >= 0.0) {
         state->reliefActive = HYD_FALSE;
     }
 
@@ -647,6 +655,91 @@ static void HYD_SynchronizeRbfPidState(HYD_PressureControllerState* state,
     state->rbfPid.output_saturated = false;
 }
 
+/* ---- 模型路径（spec 2026-11-23 §4.3–§4.5）：Kq > 0 且策略不是 RBF ---- */
+
+static HYD_BOOL HYD_IsModelPathActive(const HYD_PressureResolvedConfig* config,
+                                      const HYD_PressureControllerInput* input)
+{
+    return config->strategy != HYD_PRESSURE_CONTROLLER_RBF_PID &&
+           config->strategy != HYD_PRESSURE_CONTROLLER_RBF_PI &&
+           isfinite(input->kqBarPerSecRpm) && input->kqBarPerSecRpm > 0.0 &&
+           isfinite(input->flowToPumpSpeedGain) && input->flowToPumpSpeedGain > 0.0;
+}
+
+/* Qff = ṙ/Kq_f + r/R_f, Kq_f = Kq·G, R_f = ksys·G (ksys = 0 drops the leak term). */
+static HYD_REAL HYD_ResolveModelFeedforward(const HYD_PressureControllerInput* input)
+{
+    HYD_REAL gain = input->flowToPumpSpeedGain;
+    HYD_REAL feedforward = input->targetPressureRate / (input->kqBarPerSecRpm * gain);
+
+    if (isfinite(input->systemGainBarPerRpm) && input->systemGainBarPerRpm > 0.0) {
+        feedforward += input->targetPressure / (input->systemGainBarPerRpm * gain);
+    }
+    return feedforward;
+}
+
+/* Returns the reference from HYD_PRESSURE_REF_DELAY_SAMPLES scans ago. The
+ * first call of a segment fills the line with the current reference. */
+static HYD_REAL HYD_DelayReference(HYD_PressureControllerState* state, HYD_REAL reference)
+{
+    HYD_REAL delayed;
+    unsigned int index;
+
+    if (!state->referenceDelayPrimed) {
+        for (index = 0U; index < (unsigned int)HYD_PRESSURE_REF_DELAY_SAMPLES; ++index) {
+            state->referenceDelay[index] = reference;
+        }
+        state->referenceDelayIndex = 0U;
+        state->referenceDelayPrimed = HYD_TRUE;
+    }
+
+    delayed = state->referenceDelay[state->referenceDelayIndex];
+    state->referenceDelay[state->referenceDelayIndex] = reference;
+    state->referenceDelayIndex = (HYD_UINT8)
+        ((state->referenceDelayIndex + 1U) % (unsigned int)HYD_PRESSURE_REF_DELAY_SAMPLES);
+    return delayed;
+}
+
+HYD_BOOL HYD_PressureController_ResolveRateLimits(HYD_REAL kqBarPerSecRpm,
+                                                  HYD_REAL ksysBarPerRpm,
+                                                  HYD_REAL flowToPumpSpeedGain,
+                                                  HYD_REAL targetPressure,
+                                                  HYD_REAL outputMax,
+                                                  HYD_REAL reliefFlow,
+                                                  HYD_REAL* riseRate,
+                                                  HYD_REAL* fallRate)
+{
+    HYD_REAL kqFlow;
+    HYD_REAL holdFlow = 0.0;
+    HYD_REAL minimumFlow;
+    HYD_REAL riseFlow;
+    HYD_REAL fallFlow;
+
+    if (riseRate == NULL || fallRate == NULL) return HYD_FALSE;
+    *riseRate = 0.0;
+    *fallRate = 0.0;
+    if (!isfinite(kqBarPerSecRpm) || kqBarPerSecRpm <= 0.0 ||
+        !isfinite(flowToPumpSpeedGain) || flowToPumpSpeedGain <= 0.0 ||
+        !isfinite(outputMax) || outputMax <= 0.0) {
+        return HYD_FALSE;
+    }
+
+    kqFlow = kqBarPerSecRpm * flowToPumpSpeedGain;
+    if (isfinite(ksysBarPerRpm) && ksysBarPerRpm > 0.0 &&
+        isfinite(targetPressure) && targetPressure > 0.0) {
+        holdFlow = targetPressure / (ksysBarPerRpm * flowToPumpSpeedGain);
+    }
+    minimumFlow = HYD_THRESH_PRESSURE_PROFILE_MIN_FLOW_RATIO * outputMax;
+    riseFlow = outputMax - holdFlow;
+    fallFlow = (isfinite(reliefFlow) ? fabs(reliefFlow) : 0.0) + holdFlow;
+    if (riseFlow < minimumFlow) riseFlow = minimumFlow;
+    if (fallFlow < minimumFlow) fallFlow = minimumFlow;
+
+    *riseRate = HYD_THRESH_PRESSURE_PROFILE_RATE_MARGIN * kqFlow * riseFlow;
+    *fallRate = HYD_THRESH_PRESSURE_PROFILE_RATE_MARGIN * kqFlow * fallFlow;
+    return HYD_TRUE;
+}
+
 void HYD_PressureController_ClearState(HYD_PressureControllerState* state)
 {
     if (state == NULL) return;
@@ -699,10 +792,16 @@ void HYD_PressureController_Execute(const HYD_MotionSegment* segment,
     HYD_REAL outputFlow;
     HYD_REAL trackedOutputFlow;
     HYD_BOOL trackingRequested;
+    HYD_BOOL modelActive;
+    HYD_REAL referencePressure;
+    HYD_REAL feedforwardFlow;
+    HYD_REAL rippleFlow = 0.0;
+    HYD_PressureRippleCompOutput rippleOutput;
 
     if (output == NULL) return;
 
     memset(output, 0, sizeof(*output));
+    memset(&rippleOutput, 0, sizeof(rippleOutput));
     output->appliedStrategy = HYD_PRESSURE_CONTROLLER_NONE;
 
     if (segment == NULL || state == NULL || input == NULL) return;
@@ -715,6 +814,14 @@ void HYD_PressureController_Execute(const HYD_MotionSegment* segment,
 
     HYD_UpdateReliefState(state, input);
     HYD_ResolvePressureControllerConfig(segment, state, input, &config);
+
+    /* Model path: the feedback compares against the reference delayed by the
+     * loop delay, and the model feedforward replaces input->feedforwardFlow. */
+    modelActive = HYD_IsModelPathActive(&config, input);
+    referencePressure = modelActive ? HYD_DelayReference(state, input->targetPressure)
+                                    : input->targetPressure;
+    feedforwardFlow = modelActive ? HYD_ResolveModelFeedforward(input)
+                                  : input->feedforwardFlow;
 
     /* Sensor processing already supplies filtered pressure.  Do not add a
      * second low-pass here; it would add phase lag to the 1 ms loop. */
@@ -729,7 +836,7 @@ void HYD_PressureController_Execute(const HYD_MotionSegment* segment,
 
     /* F3：外层段死区是 RBF 分支的唯一死区（内层已旁路）；
        对非 RBF 分支此处仍为唯一死区，行为不变 */
-    error = HYD_ApplyPressureDeadband(input->targetPressure - filteredPressure, config.deadband);
+    error = HYD_ApplyPressureDeadband(referencePressure - filteredPressure, config.deadband);
 
     trackingRequested = state->trackingRequested ||
                         ((state->activeStrategy != HYD_PRESSURE_CONTROLLER_NONE) &&
@@ -742,7 +849,7 @@ void HYD_PressureController_Execute(const HYD_MotionSegment* segment,
     output->filteredPressure = filteredPressure;
     output->filteredPressureRate = filteredPressureRate;
     output->controlError = error;
-    output->feedforwardFlow = input->feedforwardFlow;
+    output->feedforwardFlow = feedforwardFlow;
     output->requestedOutputMin = isfinite(input->outputMin) ? input->outputMin : 0.0;
     output->reliefPolicyMin = (state->reliefActive && !HYD_ShouldClampReverseFlow(input)) ?
                               output->requestedOutputMin : 0.0;
@@ -855,13 +962,32 @@ void HYD_PressureController_Execute(const HYD_MotionSegment* segment,
         output->trackingApplied = true;
         if (config.strategySpec->supportsIntegral) {
             integralTerm = HYD_ResolveTrackedIntegralOutput(segment, input,
+                                                            feedforwardFlow,
                                                             proportionalTerm,
                                                             derivativeTerm,
                                                             trackedOutputFlow);
         } else {
-            trackingTerm = trackedOutputFlow - input->feedforwardFlow
+            trackingTerm = trackedOutputFlow - feedforwardFlow
                          - proportionalTerm - derivativeTerm;
         }
+    }
+
+    if (modelActive && input->rippleComp != NULL) {
+        HYD_PressureRippleCompInput rippleInput;
+
+        memset(&rippleInput, 0, sizeof(rippleInput));
+        rippleInput.order = input->pumpRippleOrder;
+        rippleInput.pumpFeedback = input->pumpFeedback;
+        rippleInput.referenceMoving = (input->targetPressureRate != 0.0);
+        rippleInput.error = error;
+        rippleInput.kqFlow = input->kqBarPerSecRpm * input->flowToPumpSpeedGain;
+        rippleInput.leakResistanceFlow = (input->systemGainBarPerRpm > 0.0)
+            ? input->systemGainBarPerRpm * input->flowToPumpSpeedGain : 0.0;
+        rippleInput.kp = config.kp;
+        rippleInput.ki = config.ki;
+        rippleInput.dt = config.dt;
+        HYD_PressureRippleComp_Execute(input->rippleComp, &rippleInput, &rippleOutput);
+        rippleFlow = rippleOutput.flow;
     }
 
     if (config.strategySpec->supportsIntegral && config.dt > 0.0 && config.ki > 0.0) {
@@ -870,8 +996,8 @@ void HYD_PressureController_Execute(const HYD_MotionSegment* segment,
             integralCandidate = HYD_ClampReal(integralCandidate, -config.integralLimit, config.integralLimit);
         }
 
-        unsaturatedOutput = input->feedforwardFlow + proportionalTerm
-                          + integralCandidate + derivativeTerm + trackingTerm;
+        unsaturatedOutput = feedforwardFlow + proportionalTerm
+                          + integralCandidate + derivativeTerm + trackingTerm + rippleFlow;
 
         if ((unsaturatedOutput >= config.outputMin && unsaturatedOutput <= config.outputMax) ||
             (unsaturatedOutput > config.outputMax && error < 0.0) ||
@@ -880,8 +1006,8 @@ void HYD_PressureController_Execute(const HYD_MotionSegment* segment,
         }
     }
 
-    unsaturatedOutput = input->feedforwardFlow + proportionalTerm
-                      + integralTerm + derivativeTerm + trackingTerm;
+    unsaturatedOutput = feedforwardFlow + proportionalTerm
+                      + integralTerm + derivativeTerm + trackingTerm + rippleFlow;
     outputFlow = HYD_ClampReal(unsaturatedOutput, config.outputMin, config.outputMax);
 
     /* Keep reverse flow semantics identical to the RBF path. */
@@ -898,6 +1024,23 @@ void HYD_PressureController_Execute(const HYD_MotionSegment* segment,
     output->unsaturatedOutputFlow = unsaturatedOutput;
     output->outputFlow = outputFlow;
     output->saturated = (outputFlow != unsaturatedOutput);
+
+    if (modelActive) {
+        if (input->rippleComp != NULL) {
+            /* Freeze ripple learning next scan while the output is limited. */
+            input->rippleComp->lastClipped = output->saturated;
+        }
+        output->referencePressureRate = input->targetPressureRate;
+        output->rippleCompFlow = rippleFlow;
+        HYD_Debug_SetValue(0U, (float)input->targetPressure);
+        HYD_Debug_SetValue(1U, (float)input->targetPressureRate);
+        HYD_Debug_SetValue(2U, (float)feedforwardFlow);
+        HYD_Debug_SetValue(3U, (float)output->feedbackFlow);
+        HYD_Debug_SetValue(4U, (float)rippleFlow);
+        HYD_Debug_SetValue(5U, (float)rippleOutput.amplitude[0]);
+        HYD_Debug_SetValue(6U, (float)rippleOutput.amplitude[1]);
+        HYD_Debug_SetValue(7U, (float)error);
+    }
 
     state->initialized = true;
     state->trackingRequested = false;

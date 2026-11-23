@@ -2561,6 +2561,7 @@ static HYD_BOOL HYD_ExecuteActiveSegmentControl(HYD_MotionControlFB* fb,
     if (segment->mode == HYD_MODE_PRESSURE_CLOSED_LOOP) {
         HYD_REAL pumpFlowLimit;
 
+        memset(&pressureInput, 0, sizeof(pressureInput));
         pressureInput.outputMax = HYD_ResolvePressureOutputMax(fb, segment);
         pumpFlowLimit = HYD_GetPumpFlowLimit(fb);
         pressureInput.targetPressure = rampOutput->rampedPressure;
