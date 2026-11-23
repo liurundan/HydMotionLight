@@ -54,6 +54,7 @@ void HYD_SafetyStateManager_ApplyDisabledState(HYD_MotionControlFB* fb) {
     }
 
     HYD_SafetyStateManager_ResetRuntimeActuation(fb);
+    HYD_PressureRippleComp_Clear(&fb->_pressureRippleComp);
     fb->_lastCommandedFlow = 0.0;
     HYD_StateReporter_ResetTransitionFlags(fb);
     HYD_StateReporter_ApplySafeOutputs(fb);
@@ -81,6 +82,7 @@ void HYD_SafetyStateManager_ApplyFaultHold(HYD_MotionControlFB* fb) {
     }
 
     HYD_SafetyStateManager_ResetRuntimeActuation(fb);
+    HYD_PressureRippleComp_Clear(&fb->_pressureRippleComp);
     fb->_lastCommandedFlow = 0.0;
     HYD_StateReporter_ApplySafeOutputs(fb);
     HYD_StateReporter_SetProtectionAction(fb, HYD_PROTECTION_ACTION_STOP);
@@ -94,6 +96,7 @@ void HYD_SafetyStateManager_EnterFaultStop(HYD_MotionControlFB* fb) {
     }
 
     HYD_SafetyStateManager_ResetRuntimeActuation(fb);
+    HYD_PressureRippleComp_Clear(&fb->_pressureRippleComp);
     fb->_lastCommandedFlow = 0.0;
     HYD_ClearDirectPendingSlot(fb);
     HYD_StateReporter_EnterFaultState(fb);

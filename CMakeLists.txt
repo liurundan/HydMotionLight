@@ -53,6 +53,9 @@ target_link_libraries(test_pressure_ramp_time PRIVATE HydroMotionLib)
 add_executable(test_pressure_ripple_comp tests/test_pressure_ripple_comp.c)
 target_link_libraries(test_pressure_ripple_comp PRIVATE HydroMotionLib)
 
+add_executable(test_pressure_2dof_closed_loop tests/test_pressure_2dof_closed_loop.c)
+target_link_libraries(test_pressure_2dof_closed_loop PRIVATE HydroMotionLib)
+
 add_executable(test_pump_converter tests/test_pump_converter.c)
 target_link_libraries(test_pump_converter PRIVATE HydroMotionLib)
 
@@ -246,6 +249,7 @@ add_test(NAME test_recipe_validator COMMAND test_recipe_validator)
 add_test(NAME test_pressure_controller COMMAND test_pressure_controller)
 add_test(NAME test_pressure_ramp_time COMMAND test_pressure_ramp_time)
 add_test(NAME test_pressure_ripple_comp COMMAND test_pressure_ripple_comp)
+add_test(NAME test_pressure_2dof_closed_loop COMMAND test_pressure_2dof_closed_loop)
 add_test(NAME test_pump_converter COMMAND test_pump_converter)
 add_test(NAME test_output_limiter COMMAND test_output_limiter)
 add_test(NAME test_velocity_controller COMMAND test_velocity_controller)

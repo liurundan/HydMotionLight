@@ -366,6 +366,7 @@ typedef struct {
     HYD_RampController _rampController;
     HYD_MotionPlannerState _plannerState;
     HYD_PressureControllerState _pressureController;
+    HYD_PressureRippleCompState _pressureRippleComp; /* learned pump ripple; kept across segments */
 
     /* --- Completion detection --- */
     HYD_TIME _completionCandidateStartTime;

@@ -2508,6 +2508,43 @@ static void HYD_UpdateMonitorPositionError(HYD_ErrorMonitor* monitor,
     monitor->positionErrorDuration = currentTime - monitor->positionErrorStartTime;
 }
 
+/* Reverse relief flow offered to the pressure controller (L/min, <= 0). */
+static HYD_REAL HYD_GetPressureReliefFlow(const HYD_MotionControlFB* fb) {
+    return -HYD_GetPumpFlowLimit(fb) * 0.08f;
+}
+
+/* Profiled pressure reference (spec 2026-11-23 §4.2/§4.3): pressure segments
+ * with a configured Kq (parameter 37) and a non-RBF strategy only. */
+static HYD_BOOL HYD_ResolvePressureProfileLimits(const HYD_MotionControlFB* fb,
+                                                 const HYD_MotionSegment* segment,
+                                                 HYD_RampProfileLimits* limits) {
+    HYD_REAL gain;
+
+    if (segment->mode != HYD_MODE_PRESSURE_CLOSED_LOOP ||
+        !(fb->_params.kqBarPerSecRpm > 0.0f) ||
+        segment->pressureController == HYD_PRESSURE_CONTROLLER_RBF_PID ||
+        segment->pressureController == HYD_PRESSURE_CONTROLLER_RBF_PI) {
+        return false;
+    }
+    gain = HYD_PumpConfig_IsValid(&fb->pumpConfig)
+        ? HYD_PumpConfig_GetFlowToSpeedGain(&fb->pumpConfig)
+        : fb->FLOW_TO_PUMP_SPEED_GAIN;
+    if (!HYD_PressureController_ResolveRateLimits(fb->_params.kqBarPerSecRpm,
+                                                  fb->_params.ksysBarPerRpm,
+                                                  gain,
+                                                  segment->targetPressure,
+                                                  HYD_ResolvePressureOutputMax(fb, segment),
+                                                  HYD_GetPressureReliefFlow(fb),
+                                                  &limits->riseRate,
+                                                  &limits->fallRate)) {
+        return false;
+    }
+    limits->brakeTime = (fb->_params.pressureBrakeTimeMs > 0.0f)
+        ? fb->_params.pressureBrakeTimeMs * 0.001f
+        : HYD_THRESH_PRESSURE_PROFILE_BRAKE_TIME_S;
+    return true;
+}
+
 static HYD_BOOL HYD_ExecuteActiveSegmentControl(HYD_MotionControlFB* fb,
                                                 const HYD_MotionSegment* segment,
                                                 HYD_REAL elapsed,
@@ -2518,6 +2555,7 @@ static HYD_BOOL HYD_ExecuteActiveSegmentControl(HYD_MotionControlFB* fb,
                                                 HYD_PumpConverterOutput* pumpOutput,
                                                 HYD_ExecutionReference* executionReference) {
     HYD_RampControllerInput rampInput;
+    HYD_RampProfileLimits profileLimits;
     HYD_MotionPlannerInput plannerInput;
     HYD_PressureControllerInput pressureInput;
     HYD_PumpConverterInput pumpInput;
@@ -2548,7 +2586,14 @@ static HYD_BOOL HYD_ExecuteActiveSegmentControl(HYD_MotionControlFB* fb,
         rampInput.targetPressure = segment->targetPressure;
         rampInput.rampRate = segment->pressureRampRate;
         rampInput.currentTime = controllerTime;
-        if (HYD_UseSimulationFixedStep(fb)) {
+        if (HYD_ResolvePressureProfileLimits(fb, segment, &profileLimits)) {
+            HYD_RampController_ExecuteProfiledWithDt(
+                &fb->_rampController, &rampInput, &profileLimits,
+                HYD_UseSimulationFixedStep(fb)
+                    ? deltaTime
+                    : controllerTime - fb->_rampController.lastTimestamp,
+                rampOutput);
+        } else if (HYD_UseSimulationFixedStep(fb)) {
             HYD_RampController_ExecuteWithDt(&fb->_rampController, &rampInput, deltaTime, rampOutput);
         } else {
             HYD_RampController_Execute(&fb->_rampController, &rampInput, rampOutput);
@@ -2573,7 +2618,7 @@ static HYD_BOOL HYD_ExecuteActiveSegmentControl(HYD_MotionControlFB* fb,
         /* The pressure controller owns the reverse-flow policy.  Expose the
          * complete configured pump capability; the controller will set this
          * to zero when reverse relief is not currently allowed. */
-        pressureInput.outputMin = -pumpFlowLimit * 0.08f;
+        pressureInput.outputMin = HYD_GetPressureReliefFlow(fb);
         if (HYD_PumpConfig_IsValid(&fb->pumpConfig)) {
             pressureInput.flowToPumpSpeedGain = HYD_PumpConfig_GetFlowToSpeedGain(&fb->pumpConfig);
             pressureInput.pumpSpeedLimit = HYD_PumpConfig_GetSpeedLimit(&fb->pumpConfig);
@@ -2583,6 +2628,10 @@ static HYD_BOOL HYD_ExecuteActiveSegmentControl(HYD_MotionControlFB* fb,
         }
         pressureInput.systemGainBarPerRpm = fb->_params.ksysBarPerRpm;
         HYD_MotionControl_GetPumpFeedback(&pressureInput.pumpFeedback);
+        pressureInput.targetPressureRate = rampOutput->rampedPressureRate;
+        pressureInput.kqBarPerSecRpm = fb->_params.kqBarPerSecRpm;
+        pressureInput.pumpRippleOrder = (HYD_UINT8)fb->_params.pumpRippleOrder;
+        pressureInput.rippleComp = &fb->_pressureRippleComp;
         pressureInput.timestamp = HYD_GetCurrentSegmentTime(fb);
         HYD_PressureController_Execute(segment,
                                        &fb->_pressureController,
