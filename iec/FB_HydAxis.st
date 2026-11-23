@@ -395,6 +395,27 @@ FUNCTION_BLOCK FB_HydAxis
                 SetParameter(36, stHydAxisRef.rZeroEndSettleVelocity);
               END_IF;
 
+              // 压力闭环二自由度（spec 2026-11-23 §7）：参数 34 ksys bar/rpm、37 Kq bar/s/rpm、
+              // 38 制动时间 ms、39 泵每转纹波次数、11/14 PI 增益；0 = 不写，保持库默认（Kq = 0 走旧路径）
+              IF stHydAxisRef.rPressureKsys > 0.0 THEN
+                SetParameter(34, stHydAxisRef.rPressureKsys);
+              END_IF;
+              IF stHydAxisRef.rPressureKq > 0.0 THEN
+                SetParameter(37, stHydAxisRef.rPressureKq);
+              END_IF;
+              IF stHydAxisRef.rPressureBrakeTimeMs > 0.0 THEN
+                SetParameter(38, stHydAxisRef.rPressureBrakeTimeMs);
+              END_IF;
+              IF stHydAxisRef.rPumpRippleOrder > 0.0 THEN
+                SetParameter(39, stHydAxisRef.rPumpRippleOrder);
+              END_IF;
+              IF stHydAxisRef.rPressureKp > 0.0 THEN
+                SetParameter(11, stHydAxisRef.rPressureKp);
+              END_IF;
+              IF stHydAxisRef.rPressureKi > 0.0 THEN
+                SetParameter(14, stHydAxisRef.rPressureKi);
+              END_IF;
+
               IF iMechBaseClass = 1 THEN
                 iStep := 1;
               ELSE

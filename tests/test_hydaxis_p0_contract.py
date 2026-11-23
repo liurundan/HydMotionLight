@@ -55,6 +55,19 @@ class HydAxisTimeContractTest(unittest.TestCase):
         )
         self.assertNotIn("rEndVel := UINT_TO_REAL(uiEndSpd)*0.1*0.01*rMaxSpeed;", SOURCE)
 
+    def test_pressure_2dof_parameters_contract(self):
+        # spec 2026-11-23 §7
+        for number, field in (
+            (34, "rPressureKsys"),
+            (37, "rPressureKq"),
+            (38, "rPressureBrakeTimeMs"),
+            (39, "rPumpRippleOrder"),
+            (11, "rPressureKp"),
+            (14, "rPressureKi"),
+        ):
+            self.assertIn(f"IF stHydAxisRef.{field} > 0.0 THEN", SOURCE)
+            self.assertIn(f"SetParameter({number}, stHydAxisRef.{field});", SOURCE)
+
 
 if __name__ == "__main__":
     unittest.main()
