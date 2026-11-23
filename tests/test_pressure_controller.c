@@ -378,6 +378,39 @@ static void test_model_tracking_is_bumpless(void) {
     assert(fabs(output.integralTerm - (4.0 - 60.0 / 104.0)) < 1.0e-4);
 }
 
+static void test_model_tracking_is_bumpless_with_active_ripple(void) {
+    HYD_MotionSegment segment = make_model_segment();
+    HYD_PressureControllerState state;
+    HYD_PressureControllerInput input;
+    HYD_PressureControllerOutput output;
+    HYD_PressureRippleCompState ripple;
+
+    HYD_PressureController_InitState(&state, 60.0, 4.0, 0.0);
+    HYD_PressureController_RequestTracking(&state, 4.0);
+    fill_model_input(&input, 0.001);
+    input.targetPressure = 60.0;
+    input.measuredPressure = 60.0;
+    input.targetPressureRate = 0.0;
+    input.pumpRippleOrder = 12U;
+    input.rippleComp = &ripple;
+    input.pumpFeedback.rpm = 20.0f;
+    input.pumpFeedback.angleDeg = 0.0f;
+    input.pumpFeedback.validFlags = HYD_PUMP_FEEDBACK_VALID_RPM | HYD_PUMP_FEEDBACK_VALID_ANGLE;
+
+    /* Ripple state carried over from the previous segment at full weight:
+     * 20 rpm x 0.02 x cos(0) = 0.4 L/min. */
+    HYD_PressureRippleComp_Clear(&ripple);
+    ripple.order = 12U;
+    ripple.coeffRe[0] = 0.02f;
+    ripple.fade = 1.0f;
+    ripple.holdTime = 1.0f;
+    HYD_PressureController_Execute(&segment, &state, &input, &output);
+
+    assert(output.trackingApplied);
+    assert(fabs(output.rippleCompFlow) > 0.1f);
+    assert(fabs(output.outputFlow - 4.0f) < 1.0e-4f);
+}
+
 static void test_model_relief_holds_while_reference_falls(void) {
     HYD_MotionSegment segment = make_model_segment();
     HYD_PressureControllerState state;
@@ -492,6 +525,7 @@ int main(void) {
     test_model_feedforward_replaces_legacy_feedforward();
     test_model_error_uses_delayed_reference();
     test_model_tracking_is_bumpless();
+    test_model_tracking_is_bumpless_with_active_ripple();
     test_model_relief_holds_while_reference_falls();
     test_model_conditional_integration_at_limit();
     test_model_path_flags_clipped_output_for_ripple();

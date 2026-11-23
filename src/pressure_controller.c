@@ -958,20 +958,6 @@ void HYD_PressureController_Execute(const HYD_MotionSegment* segment,
     trackingTerm = 0.0;
     integralTerm = state->integralOutput;
 
-    if (trackingRequested) {
-        output->trackingApplied = true;
-        if (config.strategySpec->supportsIntegral) {
-            integralTerm = HYD_ResolveTrackedIntegralOutput(segment, input,
-                                                            feedforwardFlow,
-                                                            proportionalTerm,
-                                                            derivativeTerm,
-                                                            trackedOutputFlow);
-        } else {
-            trackingTerm = trackedOutputFlow - feedforwardFlow
-                         - proportionalTerm - derivativeTerm;
-        }
-    }
-
     if (modelActive && input->rippleComp != NULL) {
         HYD_PressureRippleCompInput rippleInput;
 
@@ -988,6 +974,21 @@ void HYD_PressureController_Execute(const HYD_MotionSegment* segment,
         rippleInput.dt = config.dt;
         HYD_PressureRippleComp_Execute(input->rippleComp, &rippleInput, &rippleOutput);
         rippleFlow = rippleOutput.flow;
+    }
+
+    if (trackingRequested) {
+        output->trackingApplied = true;
+        /* The tracked flow already contains this scan's ripple compensation. */
+        if (config.strategySpec->supportsIntegral) {
+            integralTerm = HYD_ResolveTrackedIntegralOutput(segment, input,
+                                                            feedforwardFlow + rippleFlow,
+                                                            proportionalTerm,
+                                                            derivativeTerm,
+                                                            trackedOutputFlow);
+        } else {
+            trackingTerm = trackedOutputFlow - (feedforwardFlow + rippleFlow)
+                         - proportionalTerm - derivativeTerm;
+        }
     }
 
     if (config.strategySpec->supportsIntegral && config.dt > 0.0 && config.ki > 0.0) {
