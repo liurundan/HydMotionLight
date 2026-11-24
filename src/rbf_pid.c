@@ -770,7 +770,7 @@ static void rbf_pid_step_incremental_output(RBF_PID_Handle *pid, float error)
     pid->fLastActPress = pid->P_actual;
     pid->last_ref = pid->P_set;
 
-
+    HYD_Debug_SetValue(5,pid->Output);
 }
 
 /* ==================== 外层稳态判定（Status 用） ==================== */
