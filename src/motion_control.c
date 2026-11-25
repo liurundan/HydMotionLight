@@ -2513,9 +2513,9 @@ static void HYD_UpdateMonitorPositionError(HYD_ErrorMonitor* monitor,
     monitor->positionErrorDuration = currentTime - monitor->positionErrorStartTime;
 }
 
-/* Reverse relief flow offered to the pressure controller (L/min, <= 0). */
+/* Reverse relief flow offered to the pressure controller (L/min, <= 0). liurundan */
 static HYD_REAL HYD_GetPressureReliefFlow(const HYD_MotionControlFB* fb) {
-    return -HYD_GetPumpFlowLimit(fb) * 0.08f;
+    return -HYD_GetPumpFlowLimit(fb) * 0.16f; // 1700*0.08=136 L/min, 2000*0.08=160 L/min
 }
 
 /* Profiled pressure reference (spec 2026-11-23 §4.2/§4.3): pressure segments
