@@ -827,6 +827,12 @@ static void HYD_CaptureDirectContinuityState(const HYD_MotionControlFB* fb,
     if (fabs(state->lastCommandedFlow) <= 0.0 && flowMagnitude > 0.0) {
         state->lastCommandedFlow = flowMagnitude;
     }
+    if (fb->_limiterState.pressureLimitActive) {
+        /* 限压 PI 被选中时实际执行流量可以是 0（spec 2026-11-26 §4.2）：保留实际值，
+         * 不用规划流量代替，否则接管后跟踪源退回限压前的流量。 */
+        state->pumpSpeed = (fb->PUMP_SPEED > 0.0f) ? fb->PUMP_SPEED : 0.0f;
+        state->lastCommandedFlow = fb->_lastCommandedFlow;
+    }
     state->plannedVelocity = signedVelocity;
     state->plannedFlow = flowMagnitude;
     state->commandedPumpSpeed = fb->STATE.commandedPumpSpeed;
@@ -1820,7 +1826,7 @@ static HYD_BOOL HYD_PrimeSegmentControllers(HYD_MotionControlFB* fb,
             if (fb->_previousSegmentMode == HYD_MODE_SPEED_RAMP ||
                 fb->_previousSegmentMode == HYD_MODE_POSITION) {
                 /* 限压生效时规划流量高于实际执行流量（spec 2026-11-26 §4.5）：
-                 * 优先取上一拍实际执行流量，未记录时退回规划流量。 */
+                 * 优先取上一拍实际执行流量；为 0 时（未记录，或限压已把实际流量压到 0）退回规划流量，后者见 spec §11。 */
                 carriedFlow = fb->_lastCommandedFlow;
                 if (carriedFlow <= 0.0) {
                     carriedFlow = fb->_plannerState.lastTargetFlow;

@@ -340,6 +340,99 @@ static void test_pressure_handover_seeds_from_executed_flow(void) {
     assert(fabs(fb._pressureController.previousOutput - 7.7) < 1e-3);
 }
 
+/* spec 2026-11-26 §4.2 / T3c：接管前限压已把实际执行流量压到 0，
+ * 接管后首拍从 0 续接，不退回规划流量（868 rpm）。 */
+static void seed_limited_to_zero(HYD_MotionControlFB* fb,
+                                 HYD_MotionSegment source,
+                                 HYD_REAL pressure) {
+    seed_active_segment(fb, source, HYD_DIRECT_CMD_MOVE_VELOCITY);
+    fb->FLOW_TO_PUMP_SPEED_GAIN = 20.0;
+    fb->PUMP_SPEED_LIMIT = 1700.0;
+    fb->AXIS_REF.pressure = pressure;
+    fb->PUMP_SPEED = 0.0;
+    fb->STATE.commandedPumpSpeed = 0.0;
+    fb->_lastCommandedFlow = 0.0;                 /* 限压 PI 已把实际流量压到 0 */
+    fb->_limiterState.pressureLimitActive = true;
+    fb->_plannerState.lastTargetVelocity = 43.4;  /* 规划器仍按 868 rpm 走 */
+    fb->_plannerState.lastTargetFlow = 43.4;
+    fb->STATE.plannedFlow = 43.4;
+    fb->STATE.plannedVelocity = 43.4;
+}
+
+static void test_takeover_while_limited_to_zero_keeps_zero_flow(void) {
+    HYD_MotionControlFB fb;
+    HYD_MotionSegment source = make_speed_segment();
+    HYD_MotionSegment successor = make_speed_segment();
+
+    source.maxVelocity = 43.4;
+    source.maxPressure = 100.0;
+    successor.maxVelocity = 43.4;
+    successor.maxPressure = 140.0;
+
+    /* P = 150 高于新 Plim 140 */
+    seed_limited_to_zero(&fb, source, 150.0);
+    assert(HYD_MotionControlFB_StartDirectCommand(
+        &fb, HYD_DIRECT_CMD_MOVE_VELOCITY, &successor, NULL,
+        HYD_BUFFER_MODE_ABORT, 1.001) == HYD_DIRECT_START_STARTED);
+    assert(fb.PUMP_SPEED < 1.0);
+
+    fb.AXIS_REF.timestamp = 1.002;
+    HYD_MotionControlFB_Cycle(&fb);
+
+    /* Q = 0 + Kp·(140 − 150) → 限到 0 */
+    assert(fb.PUMP_SPEED < 1.0);
+    assert((fb.STATE.limitFlags & HYD_LIMIT_FLAG_PRESSURE) != 0u);
+
+    /* P = 124 低于新 Plim 140 */
+    seed_limited_to_zero(&fb, source, 124.0);
+    assert(HYD_MotionControlFB_StartDirectCommand(
+        &fb, HYD_DIRECT_CMD_MOVE_VELOCITY, &successor, NULL,
+        HYD_BUFFER_MODE_ABORT, 1.001) == HYD_DIRECT_START_STARTED);
+
+    fb.AXIS_REF.timestamp = 1.002;
+    HYD_MotionControlFB_Cycle(&fb);
+
+    /* Q = 0 + Kp·(140 − 124) = 16 L/min → 320 rpm（默认 Kp 1.0） */
+    assert(fabs(fb.PUMP_SPEED - 320.0) < 1.0);
+    assert((fb.STATE.limitFlags & HYD_LIMIT_FLAG_PRESSURE) != 0u);
+}
+
+/* spec 2026-11-26 §4.2 注 / T3b：限压稳态 P = 旧 Plim 100，实际流量约为泄漏量，
+ * 换段把 Plim 上调到 140。 */
+static void test_raised_limit_with_margin_releases_toward_velocity_flow(void) {
+    HYD_MotionControlFB fb;
+    HYD_MotionSegment source = make_speed_segment();
+    HYD_MotionSegment successor = make_speed_segment();
+
+    source.maxVelocity = 43.4;
+    source.maxPressure = 100.0;
+    successor.maxVelocity = 43.4;
+    successor.maxPressure = 140.0;
+    seed_active_segment(&fb, source, HYD_DIRECT_CMD_MOVE_VELOCITY);
+    fb.FLOW_TO_PUMP_SPEED_GAIN = 20.0;
+    fb.PUMP_SPEED_LIMIT = 1700.0;
+    fb.AXIS_REF.pressure = 100.0;
+    fb.PUMP_SPEED = 20.0;
+    fb.STATE.commandedPumpSpeed = 20.0;
+    fb._lastCommandedFlow = 1.0;                 /* 约等于泄漏量 */
+    fb._plannerState.lastTargetVelocity = 43.4;
+    fb._plannerState.lastTargetFlow = 43.4;
+    fb.STATE.plannedFlow = 43.4;
+    fb.STATE.plannedVelocity = 43.4;
+
+    assert(HYD_MotionControlFB_StartDirectCommand(
+        &fb, HYD_DIRECT_CMD_MOVE_VELOCITY, &successor, NULL,
+        HYD_BUFFER_MODE_ABORT, 1.001) == HYD_DIRECT_START_STARTED);
+
+    fb.AXIS_REF.timestamp = 1.002;
+    HYD_MotionControlFB_Cycle(&fb);
+
+    /* Q_p = 1.0 + 1.0·(140 − 100) = 41 L/min < Q_v 43.4 → 820 rpm。
+     * 离新 Plim 有压力余量时，压力环一拍内就让流量回到接近 Q_v，
+     * 到新 Plim 附近才重新接管（spec §4.2 注、§9 上机注意第 1 条）。 */
+    assert(fabs(fb.PUMP_SPEED - 820.0) < 1.0);
+}
+
 static void test_reverse_position_handover_keeps_old_direction(void) {
     HYD_MotionSegment successor = make_position_segment();
     HYD_MotionControlFB fb;
@@ -528,6 +621,8 @@ int main(void) {
     test_reverse_position_handover_keeps_old_direction();
     test_pressure_limited_handover_continues_from_executed_flow();
     test_pressure_handover_seeds_from_executed_flow();
+    test_takeover_while_limited_to_zero_keeps_zero_flow();
+    test_raised_limit_with_margin_releases_toward_velocity_flow();
     test_pressure_handover_keeps_initialized_zero_feedback_fallback();
     test_initialized_zero_planner_state_ignores_feedback_velocity();
     test_explicit_abort_still_zeros_outputs();
