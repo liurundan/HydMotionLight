@@ -4119,6 +4119,8 @@ void HYD_MotionControlFB_Init(HYD_MotionControlFB* fb) {
     fb->_params.kqBarPerSecRpm = 0.0f;
     fb->_params.pressureBrakeTimeMs = 0.0f;
     fb->_params.pumpRippleOrder = 0.0f;
+    fb->_params.pressureLimitKp = 0.0f;
+    fb->_params.pressureLimitKi = 0.0f;
 
     /* Legacy defaults — used when pumpConfig/cylinderConfig are not configured.
      * pumpConfig and cylinderConfig are zero after memset — inactive by default. */
@@ -4748,6 +4750,8 @@ HYD_BOOL HYD_MotionControlFB_ReadParameter(const HYD_MotionControlFB* fb, int pa
         case HYD_PARAM_KQ_BAR_PER_S_RPM:               *value = fb->_params.kqBarPerSecRpm; break;
         case HYD_PARAM_PRESSURE_BRAKE_TIME:            *value = fb->_params.pressureBrakeTimeMs; break;
         case HYD_PARAM_PUMP_RIPPLE_ORDER:              *value = fb->_params.pumpRippleOrder; break;
+        case HYD_PARAM_PRESSURE_LIMIT_KP:              *value = fb->_params.pressureLimitKp; break;
+        case HYD_PARAM_PRESSURE_LIMIT_KI:              *value = fb->_params.pressureLimitKi; break;
         default: return false;
     }
     return true;
@@ -4847,6 +4851,14 @@ HYD_BOOL HYD_MotionControlFB_WriteParameter(HYD_MotionControlFB* fb, int paramNu
                 value > (HYD_REAL)HYD_MAX_PUMP_RIPPLE_ORDER ||
                 (HYD_REAL)(int)value != value) return false;
             fb->_params.pumpRippleOrder = value;
+            break;
+        case HYD_PARAM_PRESSURE_LIMIT_KP:
+            if (!isfinite(value) || value < 0.0f) return false;
+            fb->_params.pressureLimitKp = value;
+            break;
+        case HYD_PARAM_PRESSURE_LIMIT_KI:
+            if (!isfinite(value) || value < 0.0f) return false;
+            fb->_params.pressureLimitKi = value;
             break;
         default: return false;
     }

@@ -602,6 +602,8 @@ typedef enum {
     HYD_PARAM_KQ_BAR_PER_S_RPM,         /* bar/s per rpm; 0 keeps the legacy pressure path */
     HYD_PARAM_PRESSURE_BRAKE_TIME,      /* ms; 0 uses HYD_THRESH_PRESSURE_PROFILE_BRAKE_TIME_S */
     HYD_PARAM_PUMP_RIPPLE_ORDER,        /* ripples per pump revolution (integer); 0 disables compensation */
+    HYD_PARAM_PRESSURE_LIMIT_KP,        /* L/min per bar; motion-segment pressure-limit PI, 0 uses HYD_THRESH_PRESSURE_LIMIT_PI_KP */
+    HYD_PARAM_PRESSURE_LIMIT_KI,        /* L/min per (bar*s); motion-segment pressure-limit PI, 0 uses HYD_THRESH_PRESSURE_LIMIT_PI_KI */
     HYD_PARAM_COUNT
 } HYD_ParameterNumber;
 
@@ -640,6 +642,8 @@ typedef struct {
     HYD_REAL kqBarPerSecRpm;             /* bar/s per rpm; 0 keeps the legacy pressure path */
     HYD_REAL pressureBrakeTimeMs;        /* ms; 0 uses the built-in brake time */
     HYD_REAL pumpRippleOrder;            /* ripples per pump revolution (integer); 0 disables */
+    HYD_REAL pressureLimitKp;            /* L/min per bar; pressure-limit PI, 0 uses the built-in default */
+    HYD_REAL pressureLimitKi;            /* L/min per (bar*s); pressure-limit PI, 0 uses the built-in default */
 } HYD_MotionFBParams;
 
 /* ============================================================================

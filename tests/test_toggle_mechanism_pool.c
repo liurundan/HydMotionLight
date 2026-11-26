@@ -4,7 +4,7 @@
 #include "motion_control.h"
 #include "toggle_mechanism_pool.h"
 
-#define HYD_BASELINE_MOTION_FB_BYTES 3384U /* host ABI without toggle telemetry; +104 for the 2-DOF pressure loop (2026-11-23) */
+#define HYD_BASELINE_MOTION_FB_BYTES 3392U /* host ABI without toggle telemetry; +104 for the 2-DOF pressure loop (2026-11-23); +8 pressure-limit PI params 40/41 (2026-11-26) */
 
 static HYD_TogglePreparedConfig validated_default(void)
 {

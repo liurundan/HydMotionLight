@@ -273,6 +273,43 @@ static void test_pressure_model_parameters_roundtrip_and_validation(void) {
     ASSERT_FLOAT_EQ(value, 12.0f, 0.0f, "Rejected writes keep the last accepted order");
 }
 
+static void test_pressure_limit_pi_parameters_roundtrip_and_validation(void) {
+    HYD_MotionControlFB fb;
+    HYD_REAL value = -1.0f;
+    HYD_BOOL ok;
+
+    HYD_MotionControlFB_Init(&fb);
+
+    ASSERT_EQ((int)HYD_PARAM_PRESSURE_LIMIT_KP, 40, "Pressure-limit Kp is parameter 40");
+    ASSERT_EQ((int)HYD_PARAM_PRESSURE_LIMIT_KI, 41, "Pressure-limit Ki is parameter 41");
+    ASSERT_EQ((int)HYD_PARAM_COUNT, 42, "Parameter count follows parameter 41");
+
+    ok = HYD_MotionControlFB_ReadParameter(&fb, HYD_PARAM_PRESSURE_LIMIT_KP, &value);
+    ASSERT_TRUE(ok, "Pressure-limit Kp should be readable");
+    ASSERT_FLOAT_EQ(value, 0.0f, 0.0f, "Pressure-limit Kp should default to zero (built-in default)");
+    ok = HYD_MotionControlFB_ReadParameter(&fb, HYD_PARAM_PRESSURE_LIMIT_KI, &value);
+    ASSERT_TRUE(ok, "Pressure-limit Ki should be readable");
+    ASSERT_FLOAT_EQ(value, 0.0f, 0.0f, "Pressure-limit Ki should default to zero (built-in default)");
+
+    ok = HYD_MotionControlFB_WriteParameter(&fb, HYD_PARAM_PRESSURE_LIMIT_KP, 2.2f);
+    ASSERT_TRUE(ok, "Positive pressure-limit Kp should be writable");
+    ok = HYD_MotionControlFB_ReadParameter(&fb, HYD_PARAM_PRESSURE_LIMIT_KP, &value);
+    ASSERT_FLOAT_EQ(value, 2.2f, 0.0001f, "Pressure-limit Kp should round-trip in L/min/bar");
+    ok = HYD_MotionControlFB_WriteParameter(&fb, HYD_PARAM_PRESSURE_LIMIT_KI, 35.0f);
+    ASSERT_TRUE(ok, "Positive pressure-limit Ki should be writable");
+    ok = HYD_MotionControlFB_ReadParameter(&fb, HYD_PARAM_PRESSURE_LIMIT_KI, &value);
+    ASSERT_FLOAT_EQ(value, 35.0f, 0.0001f, "Pressure-limit Ki should round-trip in L/min/(bar*s)");
+
+    ASSERT_TRUE(!HYD_MotionControlFB_WriteParameter(&fb, HYD_PARAM_PRESSURE_LIMIT_KP, -1.0f),
+                "Negative pressure-limit Kp should be rejected");
+    ASSERT_TRUE(!HYD_MotionControlFB_WriteParameter(&fb, HYD_PARAM_PRESSURE_LIMIT_KI, NAN),
+                "Non-finite pressure-limit Ki should be rejected");
+    ok = HYD_MotionControlFB_ReadParameter(&fb, HYD_PARAM_PRESSURE_LIMIT_KP, &value);
+    ASSERT_FLOAT_EQ(value, 2.2f, 0.0001f, "Rejected writes keep the last accepted Kp");
+    ASSERT_TRUE(HYD_MotionControlFB_WriteParameter(&fb, HYD_PARAM_PRESSURE_LIMIT_KP, 0.0f),
+                "Zero pressure-limit Kp should select the built-in default");
+}
+
 static void test_pressure_controller_type_validation(void) {
     HYD_MotionControlFB fb;
     HYD_REAL val;
@@ -403,6 +440,7 @@ int main(void) {
     test_zero_end_settle_velocity_roundtrip_and_validation();
     test_hydraulic_response_delay_roundtrip_and_validation();
     test_pressure_model_parameters_roundtrip_and_validation();
+    test_pressure_limit_pi_parameters_roundtrip_and_validation();
     test_pressure_controller_type_validation();
     test_write_read_bool_roundtrip();
     test_invalid_param_number();
