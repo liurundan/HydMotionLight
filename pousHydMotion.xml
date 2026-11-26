@@ -926,7 +926,7 @@
 				<body>
 					<ST><![CDATA[{{ extern void __mcl_cmd_PressureHandle(HYD_PRESSUREHANDLE*); __mcl_cmd_PressureHandle(data__); }} ]]></ST>
 				</body>
-				<documentation><![CDATA[This Function Block commands pressure closed control. FLOWLIMITPERCENT is the pressure-segment flow cap as a percentage of 20 L/min; valid range is (0,100], default 100. ]]></documentation>
+				<documentation><![CDATA[This Function Block commands pressure closed control. FLOWLIMITPERCENT is the pressure-segment flow cap as a percentage of the 100 L/min base (HYD_PRESSURE_HANDLE_BASE_MAX_FLOW); valid range is (0,100], default 100. ]]></documentation>
 			</pou>
 			<pou name="HYD_CreateMotion" pouType="functionBlock">
 				<interface>

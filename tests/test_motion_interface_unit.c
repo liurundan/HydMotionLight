@@ -1829,6 +1829,7 @@ static void test_pressurehandle_does_not_move_non_simulation_feedback(void) {
 }
 
 static void test_pressurehandle_accepts_continuousupdate_and_updates_active_target(void) {
+    const HYD_REAL expectedLimit = HYD_PRESSURE_HANDLE_BASE_MAX_FLOW * 25.0f / 100.0f;
     HYD_PRESSUREHANDLE ph;
     HYD_MotionControlFB* fb;
 
@@ -1870,9 +1871,9 @@ static void test_pressurehandle_accepts_continuousupdate_and_updates_active_targ
                "PressureHandle continuous update should update active targetPressure");
     ASSERT_TRUE(fabs(fb->_activeSegment.pressureRampRate - 4.0f) < 0.001f,
                "PressureHandle continuous update should update active pressureRampRate");
-    ASSERT_TRUE(fabs(fb->_activeSegment.maxFlow - 5.0f) < 0.001f,
-               "PressureHandle continuous update should convert 25 percent to 5 L/min");
-    ASSERT_TRUE(fabs(fb->DIRECT_SEGMENT.maxFlow - 5.0f) < 0.001f,
+    ASSERT_TRUE(fabs(fb->_activeSegment.maxFlow - expectedLimit) < 0.001f,
+               "PressureHandle continuous update should convert 25 percent of its base flow limit");
+    ASSERT_TRUE(fabs(fb->DIRECT_SEGMENT.maxFlow - expectedLimit) < 0.001f,
                "PressureHandle continuous update should persist the converted flow limit");
 
     IEC_VAL(ph.FLOWLIMITPERCENT) = 0.0f;
@@ -1882,9 +1883,9 @@ static void test_pressurehandle_accepts_continuousupdate_and_updates_active_targ
                "PressureHandle continuous update should reject zero flow limit percent");
     ASSERT_TRUE(IEC_VAL(ph.ERRORID) == HYD_DIAG_CODE_COMMAND_NOT_ALLOWED,
                "Rejected continuous update should report command-not-allowed");
-    ASSERT_TRUE(fabs(fb->_activeSegment.maxFlow - 5.0f) < 0.001f,
+    ASSERT_TRUE(fabs(fb->_activeSegment.maxFlow - expectedLimit) < 0.001f,
                "Rejected continuous update should preserve the active flow limit");
-    ASSERT_TRUE(fabs(fb->DIRECT_SEGMENT.maxFlow - 5.0f) < 0.001f,
+    ASSERT_TRUE(fabs(fb->DIRECT_SEGMENT.maxFlow - expectedLimit) < 0.001f,
                "Rejected continuous update should preserve the direct flow limit");
 }
 

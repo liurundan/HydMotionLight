@@ -28,7 +28,6 @@ static HYD_AxisSlotState HYD_AxisSlots[HYD_MAX_AXIS_MOTION];
 static HYD_UINT16 HYD_FrameworkGeneration;
 
 static const HYD_REAL HYD_CONTABS_DIRECTION_VELOCITY_THRESHOLD = 0.01f;
-static const HYD_REAL HYD_PRESSURE_HANDLE_BASE_MAX_FLOW = 100.0f; // liurundan pressure handle base max flow 1700 * 20%,
 static const HYD_REAL HYD_SIM_PRESSURE_CREEP_VELOCITY = 1.0f;
 static const HYD_REAL HYD_SIM_PRESSURE_CREEP_MAX_STROKE = 500.0f;
 
@@ -594,8 +593,9 @@ static HYD_BOOL resolvePressureLimit(HYD_REAL requestedLimit,
     return true;
 }
 
-/* PressureHandle is intentionally based on its fixed 20 L/min process
- * envelope. The IEC percentage is converted once here; the core only sees
+/* PressureHandle is intentionally based on its fixed
+ * HYD_PRESSURE_HANDLE_BASE_MAX_FLOW process envelope (hyd_config.h §14B).
+ * The IEC percentage is converted once here; the core only sees
  * absolute L/min through HYD_MotionSegment.maxFlow. */
 static HYD_BOOL resolvePressureHandleFlowLimit(HYD_REAL requestedPercent,
                                                HYD_REAL* resolvedLimit,

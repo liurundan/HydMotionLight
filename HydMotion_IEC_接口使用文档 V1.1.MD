@@ -558,7 +558,7 @@ Direct 模式下的压力闭环控制，支持保压和压力斜坡。
 | `PRESSURE` | REAL | IN | 目标压力 |
 | `PRESSURERAMPRATE` | REAL | IN | 压力斜坡速率 |
 | `DURATION` | REAL | IN | 持续时间（0=持续到手动停止） |
-| `FLOWLIMITPERCENT` | REAL | IN | 压力段最大流量限制，占 20.0 L/min 基础上限的百分比；默认 100，有效范围 (0,100] |
+| `FLOWLIMITPERCENT` | REAL | IN | 压力段最大流量限制，占基础上限 `HYD_PRESSURE_HANDLE_BASE_MAX_FLOW`（默认 100.0 L/min）的百分比；默认 100，有效范围 (0,100] |
 | `BUFFERMODE` | INT | IN | 缓冲模式 |
 | `INPRESSURE` | BOOL | OUT | 已达到目标压力 |
 | `BUSY` | BOOL | OUT | 控制中 |
@@ -576,7 +576,7 @@ fbPressHandle(EN := TRUE,
               PRESSURE := 80.0,          // 目标压力 80MPa
               PRESSURERAMPRATE := 50.0,   // 斜坡速率 50MPa/s
               DURATION := 5.0,            // 保压 5 秒
-              FLOWLIMITPERCENT := 25.0,    // 最大 5.0 L/min，降低建压超调
+              FLOWLIMITPERCENT := 25.0,    // 最大 25.0 L/min，降低建压超调
               BUFFERMODE := 0);
 
 IF fbPressHandle.INPRESSURE THEN
@@ -601,7 +601,8 @@ fbPressHandle(EN := TRUE,
 - `DURATION > 0` → 时间结束条件，`DURATION = 0` → 手动结束条件
 - 内部默认 PI 压力控制器（Kp=0.5, Ki=0.1）
 - 压力容差默认 0.5MPa，超时保护 30s
-- 保压前馈流量默认 5.0 L/min；压力段唯一工艺流量上限为 `FLOWLIMITPERCENT * 20.0 / 100` L/min
+- 保压前馈流量默认 5.0 L/min；压力段唯一工艺流量上限为 `FLOWLIMITPERCENT * HYD_PRESSURE_HANDLE_BASE_MAX_FLOW / 100` L/min（基数默认 100.0 L/min，在 `include/hyd_config.h` §14B 修改，不随 `HYD_PARAM_MAX_FLOW` 或泵转速限值变化）
+- 实际正向流量还受泵能力（`PUMPSPEED_LIMIT / FLOW_TO_PUMPSPEED`）截断：例如 1700 rpm、20 rpm/(L/min) 时泵能力为 85 L/min，`FLOWLIMITPERCENT` 设 85 以上与设 100 效果相同
 - `FLOWLIMITPERCENT` 仅用于 PressureHandle，必须在 (0,100]；运行中配合 `CONTINUOUSUPDATE=TRUE` 可更新
 - `HYD_PARAM_MAX_FLOW` 继续用于配方、位置和速度段，不参与 PressureHandle
 

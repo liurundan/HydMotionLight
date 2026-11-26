@@ -30,7 +30,8 @@
  *   HYD_MOVECONTINUOUSABSOLUTE.PRESSURELIMIT,
  *   HYD_MOVEVELOCITY.PRESSURELIMIT,
  *   HYD_PRESSUREHANDLE.PRESSURE / PRESSURERAMPRATE (ms). PressureHandle's
- *   FLOWLIMITPERCENT is a separate percentage of its 20 L/min base limit.
+ *   FLOWLIMITPERCENT is a separate percentage of its
+ *   HYD_PRESSURE_HANDLE_BASE_MAX_FLOW base limit (hyd_config.h, 100 L/min).
  *   HYD_SETAXISFEEDBACK.ACT_PRESSURE,
  *   HYD_READSIMFEEDBACK.PRESSURE.
  * The IEC adapter passes pressure values in bar and ramp time in ms; the
@@ -359,7 +360,8 @@ typedef struct {
   /* Pressure target transition time in milliseconds, zero defaults to 20 milliseconds. */
   __DECLARE_VAR(REAL,PRESSURERAMPRATE)
   __DECLARE_VAR(REAL,DURATION)
-  /* Percentage of the PressureHandle 20 L/min process cap; (0,100], default 100. */
+  /* Percentage of the PressureHandle HYD_PRESSURE_HANDLE_BASE_MAX_FLOW process
+   * cap (hyd_config.h, 100 L/min); (0,100], default 100. */
   __DECLARE_VAR(REAL,FLOWLIMITPERCENT)
   __DECLARE_VAR(INT,BUFFERMODE)
   __DECLARE_VAR(BOOL,INPRESSURE)

@@ -694,7 +694,20 @@ static void test_read_status_reports_mechanism_state(void) {
                     "Invalid axis should clear velocity reference");
 }
 
+/* Enough scans for the ~0.275 L/min-per-scan output slew to saturate a
+ * 2 L/min cap, so the cap rather than the slew bounds the output. */
+#define PRESSURE_HANDLE_SETTLE_SCANS 20
+
+static void publish_scans(int count) {
+    int scan;
+
+    for (scan = 0; scan < count; ++scan) {
+        __HydMotion_framework_Publish();
+    }
+}
+
 static void test_pressure_handle_maps_percent_to_its_absolute_flow_limit(void) {
+    const HYD_REAL expectedLimit = HYD_PRESSURE_HANDLE_BASE_MAX_FLOW * 25.0f / 100.0f;
     HYD_PRESSUREHANDLE ph;
     HYD_MotionControlFB* fb;
 
@@ -713,14 +726,14 @@ static void test_pressure_handle_maps_percent_to_its_absolute_flow_limit(void) {
     IEC_VAL(ph.FLOWLIMITPERCENT) = 25.0f;
     __mcl_cmd_PressureHandle(&ph);
 
-    ASSERT_FLOAT_EQ(fb->_activeSegment.maxFlow, 5.0f, 0.001f,
-                    "PressureHandle should convert 25 percent to 5 L/min");
-    ASSERT_FLOAT_EQ(fb->DIRECT_SEGMENT.maxFlow, 5.0f, 0.001f,
+    ASSERT_FLOAT_EQ(fb->_activeSegment.maxFlow, expectedLimit, 0.001f,
+                    "PressureHandle should convert 25 percent of its base flow limit");
+    ASSERT_FLOAT_EQ(fb->DIRECT_SEGMENT.maxFlow, expectedLimit, 0.001f,
                     "PressureHandle should persist the converted direct flow limit");
     __HydMotion_framework_Publish();
-    ASSERT_TRUE(fb->STATE.pressureLoop.outputFlow <= 5.001f,
+    ASSERT_TRUE(fb->STATE.pressureLoop.outputFlow <= expectedLimit + 0.001f,
                 "PressureHandle should keep its process flow limit in the output path");
-    ASSERT_TRUE(fb->STATE.pressureLoop.feedforwardFlow <= 5.001f,
+    ASSERT_TRUE(fb->STATE.pressureLoop.feedforwardFlow <= expectedLimit + 0.001f,
                 "PressureHandle feedforward flow should not exceed its converted flow limit");
 }
 
@@ -771,17 +784,20 @@ static void test_pressure_handle_respects_the_lower_pump_flow_cap(void) {
     IEC_VAL(ph.DURATION) = 1.0f;
     IEC_VAL(ph.FLOWLIMITPERCENT) = 100.0f;
     __mcl_cmd_PressureHandle(&ph);
-    __HydMotion_framework_Publish();
+    publish_scans(PRESSURE_HANDLE_SETTLE_SCANS);
 
-    ASSERT_FLOAT_EQ(fb->_activeSegment.maxFlow, 20.0f, 0.001f,
-                    "PressureHandle 100 percent should retain its 20 L/min process cap");
+    ASSERT_FLOAT_EQ(fb->_activeSegment.maxFlow, HYD_PRESSURE_HANDLE_BASE_MAX_FLOW, 0.001f,
+                    "PressureHandle 100 percent should retain its full base process cap");
     ASSERT_TRUE(fb->_lastCommandedFlow <= 2.001f,
                 "PressureHandle output should not exceed the lower pump flow capability");
+    ASSERT_TRUE(fb->_lastCommandedFlow >= 1.99f,
+                "PressureHandle output should settle at the lower pump flow capability");
     ASSERT_TRUE(fb->_pressureController.previousOutput <= 2.001f,
                 "Pressure controller state should use the lower pump flow capability");
 }
 
 static void test_pressure_handle_caps_feedforward_at_low_percentage(void) {
+    const HYD_REAL expectedLimit = HYD_PRESSURE_HANDLE_BASE_MAX_FLOW * 1.0f / 100.0f;
     HYD_PRESSUREHANDLE ph;
     HYD_MotionControlFB* fb;
 
@@ -795,15 +811,17 @@ static void test_pressure_handle_caps_feedforward_at_low_percentage(void) {
     IEC_VAL(ph.AXISID) = 0;
     IEC_VAL(ph.PRESSURE) = 10.0f;
     IEC_VAL(ph.DURATION) = 1.0f;
-    IEC_VAL(ph.FLOWLIMITPERCENT) = 5.0f;  /* 1 L/min */
+    IEC_VAL(ph.FLOWLIMITPERCENT) = 1.0f;
     __mcl_cmd_PressureHandle(&ph);
-    __HydMotion_framework_Publish();
+    publish_scans(PRESSURE_HANDLE_SETTLE_SCANS);
 
-    ASSERT_FLOAT_EQ(fb->_activeSegment.maxFlow, 1.0f, 0.001f,
-                    "PressureHandle 5 percent should produce a 1 L/min cap");
-    ASSERT_TRUE(fb->_lastCommandedFlow <= 1.001f,
+    ASSERT_FLOAT_EQ(fb->_activeSegment.maxFlow, expectedLimit, 0.001f,
+                    "PressureHandle 1 percent should produce a 1 percent base cap");
+    ASSERT_TRUE(fb->_lastCommandedFlow <= expectedLimit + 0.001f,
                 "PressureHandle output should respect a low process cap");
-    ASSERT_TRUE(fb->_pressureController.previousOutput <= 1.001f,
+    ASSERT_TRUE(fb->_lastCommandedFlow >= expectedLimit - 0.01f,
+                "PressureHandle output should settle at the low process cap");
+    ASSERT_TRUE(fb->_pressureController.previousOutput <= expectedLimit + 0.001f,
                 "PressureHandle feedforward should be capped with the process limit");
 }
 

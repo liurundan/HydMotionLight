@@ -435,6 +435,16 @@ typedef HYD_REAL HYD_TIME;
  * 原值：motion_control.c:2096 `0.30`，已 f-typed 与同组 _MAG 常量保持一致。 */
 #define HYD_THRESH_PRESSURE_CEILING_FAULT_ESCALATION_S 0.30f
 
+/* --- PressureHandle 工艺流量基数（src/motion_interface.c） --- */
+
+/* FLOWLIMITPERCENT 的 100% 对应值（L/min）：压力段最大流量 =
+ * 基数 × FLOWLIMITPERCENT / 100。基数固定，不随 HYD_PARAM_MAX_FLOW 或
+ * 泵转速限值变化；实际正向流量仍受泵能力（PUMP_SPEED_LIMIT / 流量转速
+ * 系数）截断。 */
+#ifndef HYD_PRESSURE_HANDLE_BASE_MAX_FLOW
+    #define HYD_PRESSURE_HANDLE_BASE_MAX_FLOW 100.0f // liurundan pressure handle base max flow 1700 * 20%,
+#endif
+
 /* --- 压力限制保护阈值（src/output_limiter.c） --- */
 
 /* 速度段限压 PI（spec 2026-11-26 §4–§5）：Q = min(Q_v, Kp·(Plim − P) + I)，
