@@ -117,7 +117,7 @@ pumpSpeed = Q_cmd × G，然后照旧按泵转速上限裁剪
 | 41（新） | HYD_PARAM_PRESSURE_LIMIT_KI | L/min/(bar·s) | 用 §14B 默认值 16 | 有限值，≥ 0 |
 
 - 枚举追加在 `HYD_PARAM_PUMP_RIPPLE_ORDER`（39）之后，`HYD_PARAM_COUNT` 加 2；`HYD_MotionFBParams` 新增 `pressureLimitKp`、`pressureLimitKi`，初值为 0。
-- `HYD_OutputLimiterInput` 新增 `pressureLimitKp`、`pressureLimitKi`、`deltaTime`。
+- `HYD_OutputLimiterInput` 新增 `pressureLimitKp`、`pressureLimitKi`、`previousCommandFlow`（= `fb->_lastCommandedFlow`，§4.2 的跟踪源）、`deltaTime`。
 - `HYD_OutputLimiterState`：
   - 删除 `pressureScale`、`pressureScaleLastTime`；
   - 新增 `pressureLimitIntegral`；
@@ -183,8 +183,8 @@ fc_lim = 10 Hz
 
 | 项 | 现状 | 本方案 | 若复用压力控制器 |
 |---|---|---|---|
-| `HYD_MotionControlFB` / 轴 | 3432 B | +4 B（参数 +8，限幅状态 −4） | +736 B |
-| 20 轴 FB 池（`.motionAlgoSection`） | 68.6 KB | +80 B | +14.7 KB（+21%） |
+| `HYD_MotionControlFB` / 轴 | 3432 B | +8 B（参数 +8；限幅状态 24 → 20 B，−4 被对齐吃掉；原型实测 3440 B） | +736 B |
+| 20 轴 FB 池（`.motionAlgoSection`） | 68.6 KB | +160 B | +14.7 KB（+21%） |
 | 栈：`HYD_OutputLimiterInput` | — | +12 B | — |
 | 代码 | 比例缩放 + 回差 + 双速恢复约 110 行 | PI 约 30 行，代码量净减少 | — |
 | 每轴每拍运算 | — | 约 6 次 float 乘加 + 2 次比较；用 Ki 形式，没有除法 | RBF 前向计算 |
@@ -229,7 +229,9 @@ fc_lim = 10 Hz
   - `effectiveMaxPressure = 0` 时与不限压逐位相同；
   - 软限位和降额与取小组合时，标志位正确。
 - **T2 `test_parameter_access`**：40/41 的读写往返；负值、NaN 拒绝写入；`HYD_PARAM_COUNT` 边界。
-- **T3 换段连续性**：射出段限压中换下一段（Plim 改变）时，首拍流量 ≤ Q_last + Kp·(Plim − P)，复现 8879 ms 场景。实时更新路径和 Stop 减速路径同样覆盖。
+- **T3 换段连续性**：射出段限压中换下一段（Plim 改变）时，首拍流量 ≤ Q_last + Kp·(Plim − P)，复现 8879 ms 场景。
+  - 活动段实时更新（`ApplyLiveUpdate` 的 `isSegmentActive` 分支）只改 `maxPressure`，不复位限幅状态，积分连续，不需要单独测试（读代码确认）。
+  - Stop 减速仍在同一段内，限幅状态不复位；段完成后重新激活与直接接管走同一"复位 + 跟踪 `_lastCommandedFlow`"机制，由本测试覆盖。
 - **T4 运动块语义**：MoveVelocity、MoveContinuousAbsolute 在持续限压 1 s 内保持 Busy，不出 Done/CommandAborted/Error，`PRESSURELIMITACTIVE` = TRUE。
 - **T5 转保压初值**：受限状态下直接接管为 PressureHandle，保压 PI 的初始输出等于实际执行流量（约 7.7 L/min），而不是限幅前的流量。
 - **回归**：
