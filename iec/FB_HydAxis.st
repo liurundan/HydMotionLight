@@ -96,6 +96,7 @@ FUNCTION_BLOCK FB_HydAxis
     bPositionReached : BOOL;
     bInVelocity : BOOL;
     bInPressure : BOOL;
+    bPressureLimited : BOOL;   // 速度类段限压 PI 正在接管（实际压力达到 uiPres），工艺层据此判堵转
     bAlarm : BOOL;
     bStandStillOrAllowUpdate : BOOL;
     dwAlarmID : DWORD;
@@ -415,6 +416,13 @@ FUNCTION_BLOCK FB_HydAxis
               IF stHydAxisRef.rPressureKi > 0.0 THEN
                 SetParameter(14, stHydAxisRef.rPressureKi);
               END_IF;
+              // 速度段限压 PI（spec 2026-11-26 §5）：参数 40 Kp L/min/bar、41 Ki L/min/(bar·s)；0 = 不写，保持库默认
+              IF stHydAxisRef.rPressureLimitKp > 0.0 THEN
+                SetParameter(40, stHydAxisRef.rPressureLimitKp);
+              END_IF;
+              IF stHydAxisRef.rPressureLimitKi > 0.0 THEN
+                SetParameter(41, stHydAxisRef.rPressureLimitKi);
+              END_IF;
 
               IF iMechBaseClass = 1 THEN
                 iStep := 1;
@@ -597,6 +605,7 @@ FUNCTION_BLOCK FB_HydAxis
   END_IF;
 
   fbHYD_ReadStatus(  AXISID := siAxisId,  ENABLE := TRUE, STATE => iAxisState, PRESSUREREFERENCE=>rPressureRef, FLOWREFERENCE=>rFlowRef, VELOCITYREFERENCE=>rVeloctityRef );
+  bPressureLimited := fbHYD_ReadStatus.VALID AND fbHYD_ReadStatus.PRESSURELIMITACTIVE AND (iStep = 100 OR iStep = 105);
 
   stHydAxisRef.iStep := iStep;
 

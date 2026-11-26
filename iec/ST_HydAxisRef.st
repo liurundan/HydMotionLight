@@ -31,5 +31,7 @@ STRUCT
   rPumpRippleOrder       : REAL := 0; // 纹波阶次 12
   rPressureKp            : REAL := 0;
   rPressureKi            : REAL := 0;
+  rPressureLimitKp       : REAL := 0; // 速度段限压 PI 比例增益 L/min/bar（参数 40），0 = 库默认 1.0
+  rPressureLimitKi       : REAL := 0; // 速度段限压 PI 积分增益 L/min/(bar·s)（参数 41），0 = 库默认 16
 END_STRUCT;
 END_TYPE
