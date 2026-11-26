@@ -311,6 +311,35 @@ static void test_pressure_limited_handover_continues_from_executed_flow(void) {
     assert((fb.STATE.limitFlags & HYD_LIMIT_FLAG_PRESSURE) != 0u);
 }
 
+/* spec 2026-11-26 §4.5 / T5：限压中转保压，保压 PI 初值取实际执行流量（7.7 L/min），
+ * 不取限压前的规划流量（52 L/min）。 */
+static void test_pressure_handover_seeds_from_executed_flow(void) {
+    HYD_MotionControlFB fb;
+    HYD_MotionSegment source = make_speed_segment();
+    HYD_MotionSegment successor = make_pressure_segment();
+
+    source.maxVelocity = 52.0;
+    source.maxPressure = 140.0;
+    seed_active_segment(&fb, source, HYD_DIRECT_CMD_MOVE_VELOCITY);
+    fb.FLOW_TO_PUMP_SPEED_GAIN = 20.0;
+    fb.PUMP_SPEED_LIMIT = 1700.0;
+    fb.AXIS_REF.pressure = 140.0;
+    fb.AXIS_REF.flow = 0.0;
+    fb.PUMP_SPEED = 154.0;
+    fb.STATE.commandedPumpSpeed = 154.0;
+    fb._lastCommandedFlow = 7.7;
+    fb._plannerState.lastTargetVelocity = 52.0;
+    fb._plannerState.lastTargetFlow = 52.0;
+    fb.STATE.plannedFlow = 52.0;
+    successor.targetPressure = 100.0;
+    successor.maxFlow = 85.0;
+
+    assert(HYD_MotionControlFB_StartDirectCommand(
+        &fb, HYD_DIRECT_CMD_PRESSURE_HANDLE, &successor, NULL,
+        HYD_BUFFER_MODE_ABORT, 1.001) == HYD_DIRECT_START_STARTED);
+    assert(fabs(fb._pressureController.previousOutput - 7.7) < 1e-3);
+}
+
 static void test_reverse_position_handover_keeps_old_direction(void) {
     HYD_MotionSegment successor = make_position_segment();
     HYD_MotionControlFB fb;
@@ -498,6 +527,7 @@ int main(void) {
     test_pressure_handover_does_not_add_second_pump_slew();
     test_reverse_position_handover_keeps_old_direction();
     test_pressure_limited_handover_continues_from_executed_flow();
+    test_pressure_handover_seeds_from_executed_flow();
     test_pressure_handover_keeps_initialized_zero_feedback_fallback();
     test_initialized_zero_planner_state_ignores_feedback_velocity();
     test_explicit_abort_still_zeros_outputs();

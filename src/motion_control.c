@@ -1819,11 +1819,11 @@ static HYD_BOOL HYD_PrimeSegmentControllers(HYD_MotionControlFB* fb,
             /* Sprint 3: V->P and Position->P carryover to prevent pump speed spike */
             if (fb->_previousSegmentMode == HYD_MODE_SPEED_RAMP ||
                 fb->_previousSegmentMode == HYD_MODE_POSITION) {
-                /* Preserve flow from motion planning state */
-                carriedFlow = fb->_plannerState.lastTargetFlow;
+                /* 限压生效时规划流量高于实际执行流量（spec 2026-11-26 §4.5）：
+                 * 优先取上一拍实际执行流量，未记录时退回规划流量。 */
+                carriedFlow = fb->_lastCommandedFlow;
                 if (carriedFlow <= 0.0) {
-                    /* Fallback: use last commanded pump flow */
-                    carriedFlow = fb->_lastCommandedFlow;
+                    carriedFlow = fb->_plannerState.lastTargetFlow;
                 }
                 if (carriedFlow > 0.0) {
                     doCarryover = true;
