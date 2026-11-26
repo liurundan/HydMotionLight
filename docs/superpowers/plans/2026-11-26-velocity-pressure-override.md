@@ -1306,3 +1306,4 @@ git log --oneline -5
    - 峰值 ≤ 1.1 Plim；
    - 无振荡；
    - `bPressureLimited` = TRUE。
+5. 另见 spec §9"上机注意"四条：段间上调 Plim、库诊断保持关闭、`bPressureLimited` 去抖、完整下载。

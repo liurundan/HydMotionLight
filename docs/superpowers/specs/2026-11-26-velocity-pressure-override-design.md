@@ -101,7 +101,8 @@ pumpSpeed = Q_cmd × G，然后照旧按泵转速上限裁剪
 ### 4.2 跨段连续性
 
 - 积分 I 用 `fb->_lastCommandedFlow`（上一拍实际执行的流量）作为未选中时的跟踪源，不依赖限幅器内部保存的旧值。所以 `ResetState` 在段开始、实时更新、直接接管时清零无害：第一拍 Q_p = Q_last + Kp·e，从上一段实际流量继续。
-- 例：8879 ms 换段时，Plim 由 100 改为 140，P = 124。新逻辑首拍 Q_p = 217 + 20·16 ≈ 537 rpm，而不是 868 rpm；随后按压力误差收敛。
+- 直接接管时，限压 PI 被选中的情况下，`HYD_CaptureDirectContinuityState` 保留实际执行流量和泵转速（包括 0），不用规划流量代替；否则接管后跟踪源会退回限压前的流量（T3c）。
+- 例（8879 ms 数据）：换段时 Plim 由 100 改为 140，P = 124，实际流量 217 rpm。新逻辑首拍 Q_p = 217 + 20·16 ≈ 537 rpm，而不是 868 rpm（T3）。注意 P = 124 是旧比例限幅器的稳态。新逻辑下第一段会稳在 P ≈ 100，换段后 Q_p = Q_last + Kp·40 已接近或高于 Q_v，泵几乎按 Q_v 全速升压，直到 P 接近 140 才由压力环重新接管（T3b）。这是外部复位反馈"有压力余量就不限流"的设计行为，瞬态相当于在新 Plim 处硬堵转，处理见 §9 上机注意第 1 条。
 
 ### 4.3 运动块语义与状态位
 
@@ -136,7 +137,7 @@ pumpSpeed = Q_cmd × G，然后照旧按泵转速上限裁剪
 
 ### 4.6 兼容性
 
-- PRESSURELIMIT = 0 且 `fb.PRESSURE_LIMIT` = 0 时，输出与现在逐位相同。
+- PRESSURELIMIT = 0 且 `fb.PRESSURE_LIMIT` = 0 时，输出与现在逐位相同。例外：§4.5 的转保压初值改为优先取实际执行流量。软限位减速带、DERATE 等使实际流量低于规划流量时，即使不限压，转保压初值也会与现在不同（取实际流量，属于修正）。
 - 压力段、RBF、2DOF、纹波补偿不改。
 - IEC 功能块接口不变，只增加参数号。
 - 现有依赖比例缩放数值的测试要改写（§8）。
@@ -232,6 +233,8 @@ fc_lim = 10 Hz
 - **T3 换段连续性**：射出段限压中换下一段（Plim 改变）时，首拍流量 ≤ Q_last + Kp·(Plim − P)，复现 8879 ms 场景。
   - 活动段实时更新（`ApplyLiveUpdate` 的 `isSegmentActive` 分支）只改 `maxPressure`，不复位限幅状态，积分连续，不需要单独测试（读代码确认）。
   - Stop 减速仍在同一段内，限幅状态不复位；段完成后重新激活与直接接管走同一"复位 + 跟踪 `_lastCommandedFlow`"机制，由本测试覆盖。
+  - T3b：P = 旧 Plim（100 bar）、实际流量约 1 L/min 时上调 Plim 到 140，首拍泵转速约 820 rpm（接近 Q_v），固定"有余量不限流"的语义。
+  - T3c：接管前限压已把实际流量压到 0。P = 150（高于新 Plim 140）时接管瞬间和首拍泵转速都为 0；P = 124 时首拍约 320 rpm（0 + Kp·16），不回到规划流量 868 rpm。
 - **T4 运动块语义**：MoveVelocity、MoveContinuousAbsolute 在持续限压 1 s 内保持 Busy，不出 Done/CommandAborted/Error，`PRESSURELIMITACTIVE` = TRUE。
 - **T5 转保压初值**：受限状态下直接接管为 PressureHandle，保压 PI 的初始输出等于实际执行流量（约 7.7 L/min），而不是限幅前的流量。
 - **回归**：
@@ -243,13 +246,18 @@ fc_lim = 10 Hz
 - **`iec/ST_HydAxisRef.st`**：新增 `rPressureLimitKp : REAL := 0; rPressureLimitKi : REAL := 0;`。
 - **`iec/FB_HydAxis.st`**：
   - 第 0 步：值大于 0 时才写入参数 40/41，与参数 37/38 的做法相同；
-  - 新增输出 `bPressureLimited := fbHYD_ReadStatus.PRESSURELIMITACTIVE`。
+  - 新增输出 `bPressureLimited := fbHYD_ReadStatus.VALID AND fbHYD_ReadStatus.PRESSURELIMITACTIVE AND (iStep = 100 OR iStep = 105)`，只在运行步有效，Stop 减速步不输出。
 - **工艺层（不在本库，上机前必须具备）**：
   1. 每段射出设压力上限（即 PRESSURELIMIT）；
   2. **最大射出时间后备**：由工艺层参数提供，超时自动转保压（用户已确认，§13），是上机测试的前提；
   3. 可选：`bPressureLimited` 且螺杆速度 < 阈值持续 T，判为堵转，报警或转保压；
   4. 末段射速降低，用于压住硬堵转时的瞬态超调。
 - **原因**：改动后，以前靠超出约 40 bar 把螺杆推到转保压位置的模具，现在可能会停在位置前面。
+- **上机注意（2026-11-26 终审补充）**：
+  1. **段间上调 Plim**：上一段处于限压（P ≈ 旧 Plim）时把下一段 Plim 调高，新段几乎按 Q_v 全速升压，到新 Plim 附近才由压力环接管，瞬态相当于硬堵转（§7：约 1.2–1.3 Plim）。需要上调时同时降低该段射速。
+  2. **库诊断保持关闭**：受限压的轴，`flowTolerance`、`velocityTolerance`、`timeoutLimit` 保持 0（默认值，`FB_HydAxis` 不写）。这些诊断按限压前的参考值判断，完全堵转时会误报 FLOW_DEVIATION / VELOCITY_DEVIATION / TIMEOUT。
+  3. **`bPressureLimited` 去抖**：它是逐拍的"压力环被选中"位，没有回差，工艺层用于堵转判定时自行去抖（§11）。
+  4. **完整下载**：`FB_HydAxis` 新增输出，`ST_HydAxisRef` 新增字段，内存布局改变，需完整下载，不能在线修改；注意保持型数据。
 
 ## 10. 射出轴辨识与上机整定步骤
 
@@ -275,6 +283,7 @@ fc_lim = 10 Hz
 - 进入保压、螺杆静止后，泵转速给恒定值 150、250、350 rpm 各一次，压力到 Pmax（按模具允许，例如 150 bar）时由工艺层立即切回保压或停泵。
 - 转速不低于 100 rpm：hor1121 记录中 10–25 rpm 的开环数据拟合 R² 只有 0.3–0.4，无法用于辨识。
 - 恒速段 dP/dt 近似恒定，Kq = (dP/dt) / (n − P/ksys)，直接按 20 bar 分段计算。
+- **静止过滤**：`--max-pos-rate` 默认 0.5 mm/s。位置尺分辨率 0.01 mm 时，单个计数跳变经平滑后约 0.9 mm/s，相当于只取位置完全不动的样本；脚本提示样本不足时改为 1.0。
 
 两种方法的后续处理相同：
 4. 拟合 dP/dt = Kq·(n − P/ksys)；ksys 可先用 5.2，射出阀口打开时泄漏项占比 < 5%。
@@ -313,6 +322,7 @@ Kp = 62.8 / (Kq_max × 20)，Ki = Kp × 15.7，写入 `rPressureLimitKp` / `rPre
 | 硬堵转峰值 > 1.1 Plim | 工艺层降低末段射速；预判制动不在本次范围 |
 | 压力环选中位在边界附近抖动 | 不影响流量连续性；工艺层用到该位时自行去抖 |
 | fc = 10 Hz 时 12 阶纹波（约 30 Hz）被放大约 1.3 倍 | 稳态纹波超过 ±2 bar 时把 fc 降到 7 Hz |
+| 限压把实际流量压到 0 的瞬间转保压，保压 PI 初值退回规划流量（§4.5 的 0 回退） | 与改动前相同；后续单独处理，需同时修改转保压初值与压力段默认初值 |
 
 ## 12. 不在本次范围
 
