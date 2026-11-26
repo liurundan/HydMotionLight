@@ -3451,6 +3451,10 @@ static void HYD_MotionControlFB_RunRunningState(HYD_MotionControlFB* fb) {
         limiterInput.effectiveMaxPressure = effective;
     }
     limiterInput.actualPressure = fb->AXIS_REF.pressure;
+    limiterInput.pressureLimitKp = fb->_params.pressureLimitKp;
+    limiterInput.pressureLimitKi = fb->_params.pressureLimitKi;
+    limiterInput.previousCommandFlow = fb->_lastCommandedFlow;
+    limiterInput.deltaTime = deltaTime;
 
     /* 软限位参数（使用电子尺位置反馈） */
     limiterInput.actualPosition = fb->AXIS_REF.position;

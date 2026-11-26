@@ -24,6 +24,10 @@ typedef struct {
     /* --- 压力限制（新增） --- */
     HYD_REAL actualPressure;         /* 当前压力反馈 [bar] */
     HYD_REAL effectiveMaxPressure;   /* 生效的最大压力限制 [bar], 0 = 不启用 */
+    HYD_REAL pressureLimitKp;        /* 限压 PI 比例增益 [L/min/bar]，<= 0 用默认值 */
+    HYD_REAL pressureLimitKi;        /* 限压 PI 积分增益 [L/min/(bar·s)]，<= 0 用默认值 */
+    HYD_REAL previousCommandFlow;    /* 上一拍实际执行流量 [L/min]，PI 未选中时的积分跟踪源 */
+    HYD_REAL deltaTime;              /* 本拍周期 [s]，非正或非有限时按 1 ms */
 
     /* --- 软限位（新增） --- */
     HYD_REAL actualPosition;         /* 当前位置反馈 [mm]（电子尺） */
@@ -42,18 +46,16 @@ typedef struct {
     HYD_BOOL derated;
 
     /* --- 保护状态输出（新增） --- */
-    HYD_BOOL pressureLimitActive;    /* 压力比例限速正在生效 */
+    HYD_BOOL pressureLimitActive;    /* 限压 PI 本拍被选中（Q_p < Q_v） */
     HYD_BOOL softLimitActive;        /* 软限位减速正在生效 */
     HYD_DiagnosticCode diagnosticCode; /* 最高优先级的保护诊断码, NONE = 无 */
 } HYD_OutputLimiterOutput;
 
 /* output_limiter 内部持久状态（由调用方持有，每段开始时 reset） */
 typedef struct {
-    /* 压力限制运行状态。位置/速度段使用滞回保持限压状态，
-     * 不在这里升级为库级压力故障。 */
+    /* 限压 PI：上一拍是否被选中、积分 [L/min]。位置/速度段不升级为库级故障。 */
     HYD_BOOL pressureLimitActive;
-    HYD_REAL pressureScale;
-    HYD_TIME pressureScaleLastTime;
+    HYD_REAL pressureLimitIntegral;
 
     /* 软限位计时 */
     HYD_BOOL softLimitBreachActive;    /* 当前是否处于越界状态 */
@@ -65,7 +67,7 @@ typedef struct {
 void HYD_OutputLimiter_Execute(const HYD_OutputLimiterInput* input,
                                HYD_OutputLimiterOutput* output);
 
-/* 带状态的扩展版本（支持压力滞回/缓释 + 软限位诊断） */
+/* 带状态的扩展版本（限压 PI 取小 + 软限位诊断） */
 void HYD_OutputLimiter_ExecuteWithProtection(
     const HYD_OutputLimiterInput* input,
     HYD_OutputLimiterState* state,

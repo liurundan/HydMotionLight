@@ -270,7 +270,7 @@ static void test_pressure_limit_derates_output_without_fault(void) {
     HYD_REAL axis_limited_pump_speed;
     int axis_id;
 
-    printf("--- Test: MoveVelocity pressure limit should derate without fault ---\n");
+    printf("--- Test: MoveVelocity pressure limit PI should limit without fault ---\n");
 
     __HydMotion_framework_Init();
     axis_id = create_sim_axis_with_gain(100.0f);
@@ -304,27 +304,29 @@ static void test_pressure_limit_derates_output_without_fault(void) {
     }
     unrestricted_pump_speed = fb->PUMP_SPEED;
 
-    fb->AXIS_REF.pressure = 110.0f;
+    /* 限压 PI（spec 2026-11-26）：0.2 bar 超限时 Q = 上一拍流量 − Kp·0.2，
+     * 默认 Kp 1.0 L/min/bar、增益 100 rpm/(L/min) → 泵转速比上一拍低 20 rpm。 */
+    fb->AXIS_REF.pressure = 100.2f;
     __HydMotion_framework_Publish();
     hold_movevelocity_scan(&mv);
     limited_pump_speed = fb->PUMP_SPEED;
 
     ASSERT_TRUE(unrestricted_pump_speed > 90.0f,
                 "MoveVelocity should reach steady unrestricted pump speed before pressure limiting");
-    ASSERT_TRUE(limited_pump_speed > unrestricted_pump_speed * 0.68f &&
-                limited_pump_speed < unrestricted_pump_speed * 0.72f,
-                "A 10 percent pressure excess should reduce pump speed to about 70 percent");
+    ASSERT_TRUE(fabsf(limited_pump_speed - (unrestricted_pump_speed - 20.0f)) < 0.5f,
+                "A 0.2 bar excess should lower pump speed by Kp*0.2*gain = 20 rpm");
     ASSERT_TRUE(IEC_VAL(mv.BUSY) == true && IEC_VAL(mv.ACTIVE) == true,
-                "Pressure derating should keep MoveVelocity busy and active before fault escalation");
+                "Pressure limiting should keep MoveVelocity busy and active");
 
+    /* 88 bar 低于指令限压 100、高于轴限压 80：只有轴限压能让压力环接管。 */
     fb->PRESSURE_LIMIT = 80.0f;
     fb->AXIS_REF.pressure = 88.0f;
     __HydMotion_framework_Publish();
     hold_movevelocity_scan(&mv);
     axis_limited_pump_speed = fb->PUMP_SPEED;
 
-    ASSERT_TRUE(axis_limited_pump_speed > unrestricted_pump_speed * 0.68f &&
-                axis_limited_pump_speed < unrestricted_pump_speed * 0.72f,
+    ASSERT_TRUE(axis_limited_pump_speed < limited_pump_speed - 1.0f &&
+                (fb->STATE.limitFlags & HYD_LIMIT_FLAG_PRESSURE) != 0u,
                 "The lower axis pressure limit should override the command pressure limit");
 
     for (int step = 0; step < 2000; ++step) {

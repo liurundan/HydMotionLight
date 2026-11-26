@@ -133,65 +133,6 @@ static void test_segment_derate_ratio_overrides_default(void) {
     printf("test_segment_derate_ratio_overrides_default PASSED\n");
 }
 
-static void test_pressure_limit_proportional_reduction(void) {
-    HYD_OutputLimiterInput input;
-    HYD_OutputLimiterState state;
-    HYD_OutputLimiterOutput output;
-
-    memset(&input, 0, sizeof(input));
-    memset(&state, 0, sizeof(state));
-
-    input.requestedFlow = 100.0;
-    input.requestedPumpSpeed = 1500.0;
-    input.flowToPumpSpeedGain = 15.0;
-    input.pumpSpeedLimit = 3000.0;
-    input.protectionAction = HYD_PROTECTION_ACTION_NONE;
-    input.derateRatio = 0.0;
-
-    /* 22 bar / 20 bar: overRatio=10%, scale = 1.0 - 3.0*0.1 = 0.7 */
-    input.actualPressure = 22.0;
-    input.effectiveMaxPressure = 20.0;
-    input.strokeMm = 0.0; /* 软限位不启用 */
-    input.currentTime = 1.0;
-
-    HYD_OutputLimiter_ExecuteWithProtection(&input, &state, &output);
-
-    assert(output.pressureLimitActive == true);
-    assert(output.softLimitActive == false);
-    /* 100.0 * 0.7 = 70.0 */
-    assert_real_eq(output.commandFlow, 70.0, 0.01, "pressure limit 10% over in bar domain");
-    assert_real_eq(output.pumpSpeed, 1050.0, 0.01, "pump speed 10% over in bar domain");
-    printf("test_pressure_limit_proportional_reduction PASSED\n");
-}
-
-static void test_pressure_limit_zero_scale_clamp(void) {
-    HYD_OutputLimiterInput input;
-    HYD_OutputLimiterState state;
-    HYD_OutputLimiterOutput output;
-
-    memset(&input, 0, sizeof(input));
-    memset(&state, 0, sizeof(state));
-
-    input.requestedFlow = 100.0;
-    input.requestedPumpSpeed = 1500.0;
-    input.flowToPumpSpeedGain = 15.0;
-    input.pumpSpeedLimit = 3000.0;
-    input.protectionAction = HYD_PROTECTION_ACTION_NONE;
-
-    /* 30 bar / 20 bar: overRatio=50%, scale = 1.0 - 3.0*0.5 = -0.5 -> clamp to 0.0 */
-    input.actualPressure = 30.0;
-    input.effectiveMaxPressure = 20.0;
-    input.strokeMm = 0.0;
-    input.currentTime = 1.0;
-
-    HYD_OutputLimiter_ExecuteWithProtection(&input, &state, &output);
-
-    assert(output.pressureLimitActive == true);
-    assert_real_eq(output.commandFlow, 0.0, 0.01, "pressure limit zero scale");
-    assert_real_eq(output.pumpSpeed, 0.0, 0.01, "pressure limit zero pump speed");
-    printf("test_pressure_limit_zero_scale_clamp PASSED\n");
-}
-
 static void test_soft_limit_extend_deceleration(void) {
     HYD_OutputLimiterInput input;
     HYD_OutputLimiterState state;
@@ -252,104 +193,6 @@ static void test_soft_limit_does_not_block_retract(void) {
     assert(output.softLimitActive == false);
     assert_real_eq(output.commandFlow, 80.0, 0.01, "retract not blocked");
     printf("test_soft_limit_does_not_block_retract PASSED\n");
-}
-
-static void test_protection_takes_min_scale(void) {
-    HYD_OutputLimiterInput input;
-    HYD_OutputLimiterState state;
-    HYD_OutputLimiterOutput output;
-
-    memset(&input, 0, sizeof(input));
-    memset(&state, 0, sizeof(state));
-
-    input.requestedFlow = 100.0;
-    input.requestedPumpSpeed = 1500.0;
-    input.flowToPumpSpeedGain = 15.0;
-    input.pumpSpeedLimit = 3000.0;
-    input.protectionAction = HYD_PROTECTION_ACTION_NONE;
-
-    /* 压力限制: 超压10% → scale=0.7, 软限位: remaining=2, band=5 → scale=0.4, 最终取 min=0.4 */
-    input.actualPressure = 22.0;
-    input.effectiveMaxPressure = 20.0;
-    input.actualPosition = 98.0;
-    input.strokeMm = 100.0;
-    input.softLimitBandMm = 5.0;
-    input.softLimitRetractMm = 0.0;
-    input.direction = HYD_DIRECTION_EXTEND;
-    input.currentTime = 1.0;
-
-    HYD_OutputLimiter_ExecuteWithProtection(&input, &state, &output);
-
-    assert(output.softLimitActive == true);
-    /* 100.0 * 0.4 = 40.0 */
-    assert_real_eq(output.commandFlow, 40.0, 0.01, "min of two scales");
-    printf("test_protection_takes_min_scale PASSED\n");
-}
-
-static void test_pressure_limit_stays_non_fault_and_hysteretic(void) {
-    HYD_OutputLimiterInput input;
-    HYD_OutputLimiterState state;
-    HYD_OutputLimiterOutput output;
-
-    memset(&input, 0, sizeof(input));
-    HYD_OutputLimiter_ResetState(&state);
-
-    input.requestedFlow = 100.0;
-    input.requestedPumpSpeed = 1500.0;
-    input.flowToPumpSpeedGain = 15.0;
-    input.pumpSpeedLimit = 3000.0;
-    input.protectionAction = HYD_PROTECTION_ACTION_NONE;
-    input.actualPressure = 25.0;
-    input.effectiveMaxPressure = 20.0;
-    input.strokeMm = 0.0;
-
-    /* t=0: 首次超压，保持限压状态但不产生诊断。 */
-    input.currentTime = 0.0;
-    HYD_OutputLimiter_ExecuteWithProtection(&input, &state, &output);
-    assert(output.pressureLimitActive == true);
-    assert(output.diagnosticCode == HYD_DIAG_CODE_NONE);
-
-    /* t=0.25s: 持续超压仍不升级为 WARNING/FAULT。 */
-    input.currentTime = 0.25;
-    HYD_OutputLimiter_ExecuteWithProtection(&input, &state, &output);
-    assert(output.pressureLimitActive == true);
-    assert(output.diagnosticCode == HYD_DIAG_CODE_NONE);
-
-    /* t=1.3s: 即使长期超压，也保持非故障限压。 */
-    input.currentTime = 1.3;
-    HYD_OutputLimiter_ExecuteWithProtection(&input, &state, &output);
-    assert(output.pressureLimitActive == true);
-    assert(output.diagnosticCode == HYD_DIAG_CODE_NONE);
-
-    /* 限制点附近抖动时，回差保持限压状态，不反复恢复满流量。 */
-    input.actualPressure = 19.9;
-    input.currentTime = 1.31;
-    HYD_OutputLimiter_ExecuteWithProtection(&input, &state, &output);
-    assert(output.pressureLimitActive == true);
-    assert(output.commandFlow < 100.0);
-
-    input.actualPressure = 20.1;
-    input.currentTime = 1.32;
-    HYD_OutputLimiter_ExecuteWithProtection(&input, &state, &output);
-    assert(output.pressureLimitActive == true);
-    assert(output.commandFlow < 100.0);
-
-    /* 低于释放阈值（19.6bar）后按快速速率 10/s 恢复：dt=0.68 钳位到 0.1，
-     * releaseStep=1.0，一步恢复满输出并解除限压（旧行为 2/s 需多步爬坡）。 */
-    input.actualPressure = 19.5;
-    input.currentTime = 2.0;
-    HYD_OutputLimiter_ExecuteWithProtection(&input, &state, &output);
-    assert(output.pressureLimitActive == false);
-    assert_real_eq(output.commandFlow, 100.0, 0.01, "pressure limit fast release below threshold");
-
-    for (int step = 1; step <= 5; ++step) {
-        input.currentTime = (HYD_TIME)(2.0 + step * 0.1);
-        HYD_OutputLimiter_ExecuteWithProtection(&input, &state, &output);
-    }
-    assert(output.pressureLimitActive == false);
-    assert_real_eq(output.commandFlow, 100.0, 0.01, "pressure limit hysteresis release");
-
-    printf("test_pressure_limit_stays_non_fault_and_hysteretic PASSED\n");
 }
 
 static void test_no_protection_when_disabled(void) {
@@ -443,43 +286,198 @@ static void test_allow_negative_flow_false_clamps_to_zero(void) {
     printf("test_allow_negative_flow_false_clamps_to_zero PASSED\n");
 }
 
-static void test_pressure_scale_recovers_fast_below_release_threshold(void)
-{
+/* 限压 PI（spec 2026-11-26 §4.1）公共输入：G = 20 rpm/(L/min)，泵 1700 rpm → Qmax 85 L/min，
+ * Q_v = 50 L/min，Plim = 140 bar，参数 40/41 = 0 → 默认 Kp 1.0、Ki 16，dt = 1 ms。 */
+static void init_pressure_limit_input(HYD_OutputLimiterInput* input) {
+    memset(input, 0, sizeof(*input));
+    input->requestedFlow = 50.0f;
+    input->requestedPumpSpeed = 1000.0f;
+    input->flowToPumpSpeedGain = 20.0f;
+    input->pumpSpeedLimit = 1700.0f;
+    input->protectionAction = HYD_PROTECTION_ACTION_NONE;
+    input->effectiveMaxPressure = 140.0f;
+    input->previousCommandFlow = 50.0f;
+    input->deltaTime = 0.001f;
+    input->currentTime = 1.0f;
+}
+
+static void test_pressure_limit_not_selected_below_limit(void) {
     HYD_OutputLimiterInput input;
     HYD_OutputLimiterState state;
     HYD_OutputLimiterOutput output;
 
-    memset(&input, 0, sizeof(input));
-    memset(&output, 0, sizeof(output));
+    init_pressure_limit_input(&input);
     HYD_OutputLimiter_ResetState(&state);
+    input.actualPressure = 100.0f;   /* Q_p = 1.0·40 + 50 = 90 > Q_v */
 
-    input.requestedFlow = 100.0;
-    input.requestedPumpSpeed = 100.0;
-    input.flowToPumpSpeedGain = 1.0;
-    input.pumpSpeedLimit = 2000.0;
-    input.effectiveMaxPressure = 2.0;    /* bar，释放阈值 2.0*(1-0.02)=1.96 */
-
-    /* 1) 超压 50%：scale = 1 - 3.0*0.5 < 0 → 钳到 0 */
-    input.actualPressure = 3.0;
-    input.currentTime = 0.000;
     HYD_OutputLimiter_ExecuteWithProtection(&input, &state, &output);
-    assert(state.pressureLimitActive);
-    assert(state.pressureScale < 0.01);
 
-    /* 2) 压力深落到 0（低于释放阈值）：10ms 内按 10/s 恢复到 ~0.10
-     *    （旧行为 2/s 只有 0.02） */
-    input.actualPressure = 0.0;
-    input.currentTime = 0.010;
-    HYD_OutputLimiter_ExecuteWithProtection(&input, &state, &output);
-    assert(state.pressureScale > 0.09);
-    assert(state.pressureScale < 0.12);
+    assert(output.pressureLimitActive == false);
+    assert(output.derated == false);
+    assert_real_eq(output.commandFlow, 50.0f, 1e-4f, "below limit keeps Q_v");
+    assert_real_eq(output.pumpSpeed, 1000.0f, 1e-3f, "below limit keeps pump speed");
+    printf("test_pressure_limit_not_selected_below_limit PASSED\n");
+}
 
-    /* 3) 回差带内（1.96 < p <= 2.0）：仍用慢速 2/s 防振荡 */
-    state.pressureScale = 0.5;
-    input.actualPressure = 1.98;
-    input.currentTime = 0.020;
+static void test_pressure_limit_takes_over_before_limit_when_flow_rises(void) {
+    HYD_OutputLimiterInput input;
+    HYD_OutputLimiterState state;
+    HYD_OutputLimiterOutput output;
+
+    init_pressure_limit_input(&input);
+    HYD_OutputLimiter_ResetState(&state);
+    input.previousCommandFlow = 30.0f;  /* 上一拍 30，本拍 Q_v 50 */
+    input.actualPressure = 135.0f;      /* Q_p = 1.0·5 + 30 = 35 < 50 */
+
     HYD_OutputLimiter_ExecuteWithProtection(&input, &state, &output);
-    assert(state.pressureScale > 0.5199 && state.pressureScale < 0.5201);
+
+    assert(output.pressureLimitActive == true);
+    assert_real_eq(output.commandFlow, 35.0f, 1e-4f, "rise limited to previous flow + Kp*e");
+    assert_real_eq(output.pumpSpeed, 700.0f, 1e-3f, "pump speed follows limited flow");
+    assert_real_eq(state.pressureLimitIntegral, 30.08f, 1e-4f, "integral = 30 + 16*5*0.001");
+    printf("test_pressure_limit_takes_over_before_limit_when_flow_rises PASSED\n");
+}
+
+static void test_pressure_limit_over_limit_reduces_flow_with_integral(void) {
+    HYD_OutputLimiterInput input;
+    HYD_OutputLimiterState state;
+    HYD_OutputLimiterOutput output;
+
+    init_pressure_limit_input(&input);
+    HYD_OutputLimiter_ResetState(&state);
+    input.actualPressure = 150.0f;      /* Q_p = −10 + 50 = 40 */
+
+    HYD_OutputLimiter_ExecuteWithProtection(&input, &state, &output);
+    assert(output.pressureLimitActive == true);
+    assert(output.diagnosticCode == HYD_DIAG_CODE_NONE);
+    assert_real_eq(output.commandFlow, 40.0f, 1e-4f, "first over-limit scan");
+    assert_real_eq(state.pressureLimitIntegral, 49.84f, 1e-4f, "integral = 50 − 16*10*0.001");
+
+    /* 第二拍：沿用自身积分，不再取 previousCommandFlow */
+    input.previousCommandFlow = 40.0f;
+    input.currentTime = 1.001f;
+    HYD_OutputLimiter_ExecuteWithProtection(&input, &state, &output);
+    assert_real_eq(output.commandFlow, 39.84f, 1e-4f, "second scan uses own integral");
+    printf("test_pressure_limit_over_limit_reduces_flow_with_integral PASSED\n");
+}
+
+static void test_pressure_limit_output_never_negative(void) {
+    HYD_OutputLimiterInput input;
+    HYD_OutputLimiterState state;
+    HYD_OutputLimiterOutput output;
+
+    init_pressure_limit_input(&input);
+    HYD_OutputLimiter_ResetState(&state);
+    input.actualPressure = 300.0f;      /* Q_p = −160 + 50 = −110 */
+
+    HYD_OutputLimiter_ExecuteWithProtection(&input, &state, &output);
+
+    assert(output.pressureLimitActive == true);
+    assert_real_eq(output.commandFlow, 0.0f, 1e-6f, "motion segment flow never negative");
+    assert_real_eq(output.pumpSpeed, 0.0f, 1e-6f, "motion segment pump speed never negative");
+    assert_real_eq(state.pressureLimitIntegral, 47.44f, 1e-4f, "integral = 50 − 16*160*0.001");
+    printf("test_pressure_limit_output_never_negative PASSED\n");
+}
+
+static void test_pressure_limit_uses_configured_gains(void) {
+    HYD_OutputLimiterInput input;
+    HYD_OutputLimiterState state;
+    HYD_OutputLimiterOutput output;
+
+    init_pressure_limit_input(&input);
+    HYD_OutputLimiter_ResetState(&state);
+    input.pressureLimitKp = 2.0f;
+    input.pressureLimitKi = 32.0f;
+    input.actualPressure = 150.0f;      /* Q_p = 2·(−10) + 50 = 30 */
+
+    HYD_OutputLimiter_ExecuteWithProtection(&input, &state, &output);
+
+    assert_real_eq(output.commandFlow, 30.0f, 1e-4f, "configured Kp");
+    assert_real_eq(state.pressureLimitIntegral, 49.68f, 1e-4f, "configured Ki");
+    printf("test_pressure_limit_uses_configured_gains PASSED\n");
+}
+
+/* 积分对象 dP/dt = Kq_f·(Q − P/R_f)，Kq_f = 64 bar/s/(L/min)，R_f = 104 bar/(L/min)，
+ * 执行流量滞后一拍。Q_v = 10 L/min 堵转（油阀全关），默认增益。 */
+static void test_pressure_limit_closed_loop_settles_at_limit_and_releases(void) {
+    HYD_OutputLimiterInput input;
+    HYD_OutputLimiterState state;
+    HYD_OutputLimiterOutput output;
+    HYD_REAL pressure = 60.0f;
+    HYD_REAL applied = 10.0f;
+    HYD_REAL peak = 0.0f;
+    HYD_REAL previous;
+    int step;
+
+    init_pressure_limit_input(&input);
+    HYD_OutputLimiter_ResetState(&state);
+    input.requestedFlow = 10.0f;
+    input.requestedPumpSpeed = 200.0f;
+    input.previousCommandFlow = 10.0f;
+
+    for (step = 0; step < 2000; ++step) {
+        input.actualPressure = pressure;
+        input.currentTime = 1.0f + 0.001f * (HYD_REAL)step;
+        HYD_OutputLimiter_ExecuteWithProtection(&input, &state, &output);
+        pressure += 64.0f * (applied - pressure / 104.0f) * 0.001f;
+        applied = output.commandFlow;
+        input.previousCommandFlow = output.commandFlow;
+        if (pressure > peak) {
+            peak = pressure;
+        }
+    }
+    assert(output.pressureLimitActive == true);
+    assert(fabs(pressure - 140.0f) < 0.5f);
+    assert(peak < 154.0f);
+
+    /* 负载下降：压力以 200 bar/s 降到 100 bar 并保持，流量连续回升到 Q_v，
+     * 单拍增量不超过 Kp·|ΔP| + Ki·e·dt。 */
+    previous = output.commandFlow;
+    for (step = 0; step < 300; ++step) {
+        HYD_REAL lastPressure = pressure;
+        pressure = (pressure - 0.2f > 100.0f) ? pressure - 0.2f : 100.0f;
+        input.actualPressure = pressure;
+        HYD_OutputLimiter_ExecuteWithProtection(&input, &state, &output);
+        assert(output.commandFlow >= previous - 1e-5f);
+        assert(output.commandFlow - previous <=
+               1.0f * (lastPressure - pressure) + 16.0f * (140.0f - pressure) * 0.001f + 1e-4f);
+        previous = output.commandFlow;
+        input.previousCommandFlow = output.commandFlow;
+    }
+    assert(output.pressureLimitActive == false);
+    assert_real_eq(output.commandFlow, 10.0f, 1e-4f, "released back to Q_v");
+    printf("test_pressure_limit_closed_loop_settles_at_limit_and_releases PASSED (peak %.2f bar)\n",
+           (double)peak);
+}
+
+static void test_pressure_limit_and_soft_limit_take_minimum(void) {
+    HYD_OutputLimiterInput input;
+    HYD_OutputLimiterState state;
+    HYD_OutputLimiterOutput output;
+
+    /* 软限位：remaining 2 / band 5 → Q_v = 50 × 0.4 = 20 */
+    init_pressure_limit_input(&input);
+    HYD_OutputLimiter_ResetState(&state);
+    input.actualPosition = 98.0f;
+    input.strokeMm = 100.0f;
+    input.softLimitBandMm = 5.0f;
+    input.direction = HYD_DIRECTION_EXTEND;
+
+    /* 压力 145：Q_p = −5 + 50 = 45 > 20 → 软限位决定输出 */
+    input.actualPressure = 145.0f;
+    HYD_OutputLimiter_ExecuteWithProtection(&input, &state, &output);
+    assert(output.softLimitActive == true);
+    assert(output.pressureLimitActive == false);
+    assert_real_eq(output.commandFlow, 20.0f, 1e-4f, "soft limit wins");
+
+    /* 压力 180：Q_p = −40 + 50 = 10 < 20 → 限压决定输出 */
+    HYD_OutputLimiter_ResetState(&state);
+    input.actualPressure = 180.0f;
+    HYD_OutputLimiter_ExecuteWithProtection(&input, &state, &output);
+    assert(output.softLimitActive == false);
+    assert(output.pressureLimitActive == true);
+    assert_real_eq(output.commandFlow, 10.0f, 1e-4f, "pressure limit wins");
+    printf("test_pressure_limit_and_soft_limit_take_minimum PASSED\n");
 }
 
 int main(void) {
@@ -488,17 +486,19 @@ int main(void) {
     test_stop_forces_safe_zero();
     test_invalid_ratio_uses_default_derate();
     test_segment_derate_ratio_overrides_default();
-    test_pressure_limit_proportional_reduction();
-    test_pressure_limit_zero_scale_clamp();
+    test_pressure_limit_not_selected_below_limit();
+    test_pressure_limit_takes_over_before_limit_when_flow_rises();
+    test_pressure_limit_over_limit_reduces_flow_with_integral();
+    test_pressure_limit_output_never_negative();
+    test_pressure_limit_uses_configured_gains();
+    test_pressure_limit_closed_loop_settles_at_limit_and_releases();
+    test_pressure_limit_and_soft_limit_take_minimum();
     test_soft_limit_extend_deceleration();
     test_soft_limit_does_not_block_retract();
-    test_protection_takes_min_scale();
-    test_pressure_limit_stays_non_fault_and_hysteretic();
     test_no_protection_when_disabled();
     test_allow_negative_flow_passes_negative_input();
     test_allow_negative_flow_clamps_to_min();
     test_allow_negative_flow_false_clamps_to_zero();
-    test_pressure_scale_recovers_fast_below_release_threshold();
 
     printf("test_output_limiter passed\n");
     return 0;

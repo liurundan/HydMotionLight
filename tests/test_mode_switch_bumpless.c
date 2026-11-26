@@ -276,6 +276,41 @@ static void test_pressure_handover_does_not_add_second_pump_slew(void) {
     assert(fabs(fb.PUMP_SPEED - 500.0) < 0.01);
 }
 
+/* spec 2026-11-26 §4.2 / T3：限压中换段（限压 100 → 140，P = 124）不得一拍恢复到新段的
+ * 速度流量。复现 vofa 20261125 8879 ms：217 rpm → 868 rpm。 */
+static void test_pressure_limited_handover_continues_from_executed_flow(void) {
+    HYD_MotionControlFB fb;
+    HYD_MotionSegment source = make_speed_segment();
+    HYD_MotionSegment successor = make_speed_segment();
+
+    source.maxVelocity = 43.4;
+    source.maxPressure = 100.0;
+    successor.maxVelocity = 43.4;
+    successor.maxPressure = 140.0;
+    seed_active_segment(&fb, source, HYD_DIRECT_CMD_MOVE_VELOCITY);
+    fb.FLOW_TO_PUMP_SPEED_GAIN = 20.0;
+    fb.PUMP_SPEED_LIMIT = 1700.0;
+    fb.AXIS_REF.pressure = 124.0;
+    fb.PUMP_SPEED = 217.0;
+    fb.STATE.commandedPumpSpeed = 217.0;
+    fb._lastCommandedFlow = 10.85;               /* 限压后实际执行 217 rpm */
+    fb._plannerState.lastTargetVelocity = 43.4;  /* 规划器仍按 868 rpm 走 */
+    fb._plannerState.lastTargetFlow = 43.4;
+    fb.STATE.plannedFlow = 43.4;
+    fb.STATE.plannedVelocity = 43.4;
+
+    assert(HYD_MotionControlFB_StartDirectCommand(
+        &fb, HYD_DIRECT_CMD_MOVE_VELOCITY, &successor, NULL,
+        HYD_BUFFER_MODE_ABORT, 1.001) == HYD_DIRECT_START_STARTED);
+
+    fb.AXIS_REF.timestamp = 1.002;
+    HYD_MotionControlFB_Cycle(&fb);
+
+    /* Q = 10.85 + Kp·(140 − 124) = 26.85 L/min → 537 rpm（默认 Kp 1.0） */
+    assert(fabs(fb.PUMP_SPEED - 537.0) < 1.0);
+    assert((fb.STATE.limitFlags & HYD_LIMIT_FLAG_PRESSURE) != 0u);
+}
+
 static void test_reverse_position_handover_keeps_old_direction(void) {
     HYD_MotionSegment successor = make_position_segment();
     HYD_MotionControlFB fb;
@@ -462,6 +497,7 @@ int main(void) {
     test_motion_handover_does_not_add_second_pump_slew();
     test_pressure_handover_does_not_add_second_pump_slew();
     test_reverse_position_handover_keeps_old_direction();
+    test_pressure_limited_handover_continues_from_executed_flow();
     test_pressure_handover_keeps_initialized_zero_feedback_fallback();
     test_initialized_zero_planner_state_ignores_feedback_velocity();
     test_explicit_abort_still_zeros_outputs();

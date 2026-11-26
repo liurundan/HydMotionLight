@@ -437,31 +437,13 @@ typedef HYD_REAL HYD_TIME;
 
 /* --- 压力限制保护阈值（src/output_limiter.c） --- */
 
-/* 压力限制比例增益：超压比例 overRatio 时的输出缩减系数。
- * scale = 1.0 - Kp * overRatio
- * 例：Kp=3.0, 超压10% → scale = 1.0 - 3.0*0.1 = 0.7（输出降至70%）
- * 取保守值避免振荡，实际整定时可适当增大。
- * 单位：无量纲。 */
-#define HYD_THRESH_PRESSURE_LIMIT_KP             3.0f
-
-/* 压力限制最小缩放比：比例限速的下限。
- * 位置/速度段没有压力限幅故障升级；压力明显高于限制时允许将正向流量
- * 降到零，避免在堵转状态下持续憋压。单位：无量纲 [0, 1]。 */
-#define HYD_THRESH_PRESSURE_LIMIT_MIN_SCALE      0.0f
-
-/* 压力限幅释放回差比例。限压状态只有在压力低于
- * maxPressure * (1 - ratio) 后才解除，避免限制点附近反复进出。 */
-#define HYD_THRESH_PRESSURE_LIMIT_HYSTERESIS_RATIO 0.02f
-
-/* 限压状态下输出恢复速率，单位 1/s。压力下降后逐步恢复流量，避免
- * 在限制点附近一次性恢复满流量再次把压力推过上限。 */
-#define HYD_THRESH_PRESSURE_LIMIT_SCALE_RELEASE_RATE 2.0f
-
-/* 限压解除后的快速恢复速率，单位 1/s。实际压力已低于释放阈值
- * maxPressure*(1-回差比例) 时使用，避免压力早已卸荷仍按慢速率爬坡
- * （实测：压力段切到低限压位置段后泵速爬坡 500ms）。仍处于回差带内时
- * 沿用 HYD_THRESH_PRESSURE_LIMIT_SCALE_RELEASE_RATE 防振荡。 */
-#define HYD_THRESH_PRESSURE_LIMIT_SCALE_FAST_RELEASE_RATE 10.0f
+/* 速度段限压 PI（spec 2026-11-26 §4–§5）：Q = min(Q_v, Kp·(Plim − P) + I)，
+ * 压力环未被选中时 I 跟踪上一拍实际执行流量。参数 40/41 为 0 时用下列默认值。
+ * 按油阀全关 Kq = 3.2 bar/s/rpm、G = 20 rpm/(L/min)、fc = 10 Hz 设计：
+ * Kp = 2π·fc/(Kq·G) ≈ 1.0，Ki = Kp·2π·fc/4 ≈ 16（Ti ≈ 64 ms）。
+ * 同一泵上任何轴的 Kq 都不高于油阀全关值，所以默认值对所有轴稳定。 */
+#define HYD_THRESH_PRESSURE_LIMIT_PI_KP          1.0f   /* L/min per bar */
+#define HYD_THRESH_PRESSURE_LIMIT_PI_KI          16.0f  /* L/min per (bar·s) */
 
 /* Retained for source compatibility with older integrations. Process
  * pressure limiting no longer escalates these timers to a library fault. */

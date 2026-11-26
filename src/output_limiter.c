@@ -111,153 +111,87 @@ void HYD_OutputLimiter_Execute(const HYD_OutputLimiterInput* input,
 void HYD_OutputLimiter_ResetState(HYD_OutputLimiterState* state) {
     if (state == NULL) return;
     state->pressureLimitActive = false;
-    state->pressureScale = 1.0;
-    state->pressureScaleLastTime = 0.0;
+    state->pressureLimitIntegral = 0.0f;
     state->softLimitBreachActive = false;
     state->softLimitBreachStartTime = 0.0;
     state->softLimitFaultEscalated = false;
 }
 
 /* ============================================================================
- * 压力限制比例限速算法
+ * 速度段限压 PI（spec 2026-11-26 §4.1）
  * ----------------------------------------------------------------------------
- * 当实际压力超过 effectiveMaxPressure 时，按超压比例线性缩减输出流量。
- * actualPressure 与 effectiveMaxPressure 必须同单位，当前 IEC 接口层和
- * HydroMotionLib 压力限制链路均使用 bar，不在此处进行 bar/MPa 换算。
- *
- * 算法：
- *   overRatio = (actualPressure_bar - effectiveMaxPressure_bar) / effectiveMaxPressure_bar
- *   scale = 1.0 - Kp * overRatio
- *   scale = clamp(scale, minScale, 1.0)
- *
- * 设计意图：
- * - Kp=3.0（保守值）：超压10%时输出降至70%，避免振荡
- * - minScale=0：压力明显高于限制时允许撤掉正向流量，避免堵转憋压
- * - 只在 actualPressure > maxPressure 时生效，否则 scale = 1.0
+ * 速度链路流量 Q_v 与限压 PI 输出 Q_p 取小：
+ *   e   = Plim − P（P 不滤波）
+ *   Q_p = Kp·e + I
+ *   选中（Q_p < Q_v）：输出 Q_p，然后 I ← clamp(I + Ki·e·dt, 0, Qmax)
+ *   未选中：输出 Q_v；下一拍 I 取上一拍实际执行流量（外部复位反馈）
+ * 压力越接近 Plim，Q_p 比上一拍流量高出 Kp·e 越少，到 Plim 时接管；
+ * 负载下降后 Q_p 连续升过 Q_v，自动回到速度控制。
+ * actualPressure 与 effectiveMaxPressure 同为 bar。
+ * 返回本拍流量上限；*selected 为 true 表示压力环被选中。
  * ============================================================================ */
-static HYD_REAL HYD_OutputLimiter_CalcPressureScale(
-    HYD_REAL actualPressure,
-    HYD_REAL effectiveMaxPressure)
+static HYD_REAL HYD_OutputLimiter_ApplyPressureLimit(
+    const HYD_OutputLimiterInput* input,
+    HYD_OutputLimiterState* state,
+    HYD_REAL velocityFlow,
+    HYD_REAL maxFlow,
+    HYD_BOOL* selected)
 {
-    HYD_REAL overRatio;
-    HYD_REAL scale;
+    HYD_REAL kp;
+    HYD_REAL ki;
+    HYD_REAL dt;
+    HYD_REAL error;
+    HYD_REAL integral;
+    HYD_REAL pressureFlow;
 
-    /* 未启用或未超压：不限制 */
-    if (effectiveMaxPressure <= 0.0 || actualPressure <= effectiveMaxPressure) {
-        return 1.0;
-    }
-
-    /* 计算超压比例：(实际 - 限制) / 限制 */
-    overRatio = (actualPressure - effectiveMaxPressure) / effectiveMaxPressure;
-
-    /* 比例缩减：Kp 越大响应越快，但振荡风险越高 */
-    scale = 1.0 - HYD_THRESH_PRESSURE_LIMIT_KP * overRatio;
-
-    /* 钳位到 [minScale, 1.0]；较大超压时允许输出降为零。 */
-    if (scale < HYD_THRESH_PRESSURE_LIMIT_MIN_SCALE) {
-        scale = HYD_THRESH_PRESSURE_LIMIT_MIN_SCALE;
-    }
-    if (scale > 1.0) {
-        scale = 1.0;
-    }
-
-    return scale;
-}
-
-static HYD_REAL HYD_OutputLimiter_ResolvePressureHysteresis(
-    HYD_REAL effectiveMaxPressure)
-{
-    HYD_REAL ratio = HYD_THRESH_PRESSURE_LIMIT_HYSTERESIS_RATIO;
-
-    if (!HYD_OutputLimiter_IsFinite(ratio) || ratio <= 0.0) {
-        return 0.0;
-    }
-    if (ratio > 0.5) {
-        ratio = 0.5;
-    }
-    return effectiveMaxPressure * ratio;
-}
-
-/* Maintain a latched process-limit state and release the scale gradually.
- * Pressure reduction is immediate; recovery is deliberately slower so a
- * small measurement ripple around maxPressure cannot restore full flow on
- * every other scan. */
-static HYD_REAL HYD_OutputLimiter_UpdatePressureLimitState(
-    HYD_REAL actualPressure,
-    HYD_REAL effectiveMaxPressure,
-    HYD_TIME currentTime,
-    HYD_OutputLimiterState* state)
-{
-    HYD_REAL targetScale;
-    HYD_REAL releasePressure;
-    HYD_REAL deltaTime;
-    HYD_REAL releaseStep;
-
-    if (state == NULL) {
-        return HYD_OutputLimiter_CalcPressureScale(
-            actualPressure, effectiveMaxPressure);
-    }
-
-    if (effectiveMaxPressure <= 0.0 ||
-        !HYD_OutputLimiter_IsFinite(effectiveMaxPressure) ||
-        !HYD_OutputLimiter_IsFinite(actualPressure)) {
+    *selected = false;
+    if (!(input->effectiveMaxPressure > 0.0f) ||
+        !HYD_OutputLimiter_IsFinite(input->effectiveMaxPressure) ||
+        !HYD_OutputLimiter_IsFinite(input->actualPressure)) {
         state->pressureLimitActive = false;
-        state->pressureScale = 1.0;
-        state->pressureScaleLastTime = currentTime;
-        return 1.0;
+        return velocityFlow;
     }
 
-    releasePressure = effectiveMaxPressure -
-        HYD_OutputLimiter_ResolvePressureHysteresis(effectiveMaxPressure);
-    targetScale = HYD_OutputLimiter_CalcPressureScale(
-        actualPressure, effectiveMaxPressure);
-
-    if (!state->pressureLimitActive) {
-        if (actualPressure > effectiveMaxPressure) {
-            state->pressureLimitActive = true;
-            state->pressureScale = targetScale;
-        } else {
-            state->pressureScale = 1.0;
-        }
-        state->pressureScaleLastTime = currentTime;
-        return state->pressureScale;
+    kp = (input->pressureLimitKp > 0.0f &&
+          HYD_OutputLimiter_IsFinite(input->pressureLimitKp))
+        ? input->pressureLimitKp : HYD_THRESH_PRESSURE_LIMIT_PI_KP;
+    ki = (input->pressureLimitKi > 0.0f &&
+          HYD_OutputLimiter_IsFinite(input->pressureLimitKi))
+        ? input->pressureLimitKi : HYD_THRESH_PRESSURE_LIMIT_PI_KI;
+    dt = input->deltaTime;
+    if (!HYD_OutputLimiter_IsFinite(dt) || dt <= 0.0f) {
+        dt = 0.001f;
+    } else if (dt > 0.1f) {
+        dt = 0.1f;
     }
 
-    if (actualPressure > effectiveMaxPressure) {
-        /* Pressure above the limit must never cause output recovery. */
-        if (targetScale < state->pressureScale) {
-            state->pressureScale = targetScale;
-        }
+    if (state->pressureLimitActive) {
+        integral = state->pressureLimitIntegral;
     } else {
-        /* Below the limit, recover gradually. The hysteresis threshold
-         * determines when the limit state may finally be cleared. */
-        deltaTime = currentTime - state->pressureScaleLastTime;
-        if (!HYD_OutputLimiter_IsFinite(deltaTime) || deltaTime <= 0.0) {
-            deltaTime = 0.001;
-        } else if (deltaTime > 0.1) {
-            deltaTime = 0.1;
-        }
-        releaseStep = ((actualPressure <= releasePressure)
-                           ? HYD_THRESH_PRESSURE_LIMIT_SCALE_FAST_RELEASE_RATE
-                           : HYD_THRESH_PRESSURE_LIMIT_SCALE_RELEASE_RATE) *
-                      deltaTime;
-        if (!HYD_OutputLimiter_IsFinite(releaseStep) || releaseStep < 0.0) {
-            releaseStep = 0.0;
-        }
-        state->pressureScale += releaseStep;
-        if (state->pressureScale > 1.0) {
-            state->pressureScale = 1.0;
-        }
-        if (actualPressure <= releasePressure && state->pressureScale >= 1.0) {
-            state->pressureLimitActive = false;
-        } else if (state->pressureLimitActive && state->pressureScale >= 1.0) {
-            /* Keep a small derate while inside the hysteresis band. */
-            state->pressureScale = 0.999;
+        integral = HYD_OutputLimiter_IsFinite(input->previousCommandFlow)
+            ? input->previousCommandFlow : 0.0f;
+        if (integral < 0.0f) {
+            integral = 0.0f;
+        } else if (integral > maxFlow) {
+            integral = maxFlow;
         }
     }
 
-    state->pressureScaleLastTime = currentTime;
-    return state->pressureScale;
+    error = input->effectiveMaxPressure - input->actualPressure;
+    pressureFlow = kp * error + integral;
+    if (pressureFlow < velocityFlow) {
+        *selected = true;
+        integral += ki * error * dt;
+        if (integral < 0.0f) {
+            integral = 0.0f;
+        } else if (integral > maxFlow) {
+            integral = maxFlow;
+        }
+    }
+
+    state->pressureLimitActive = *selected;
+    state->pressureLimitIntegral = integral;
+    return *selected ? pressureFlow : velocityFlow;
 }
 
 /* ============================================================================
@@ -364,11 +298,8 @@ void HYD_OutputLimiter_ExecuteWithProtection(
     HYD_REAL commandFlow;
     HYD_REAL pumpSpeed;
     HYD_REAL ratio;
-    HYD_REAL pressureScale;
     HYD_REAL softLimitScale;
-    HYD_REAL finalScale;
     HYD_DiagnosticCode softLimitDiag;
-    HYD_BOOL pressureLimitActive;
 
     if (output == NULL) return;
 
@@ -408,47 +339,50 @@ void HYD_OutputLimiter_ExecuteWithProtection(
         output->derated = true;
     }
 
-    /* --- 2. 计算压力限制 scale（独立于软限位） --- */
-    pressureScale = HYD_OutputLimiter_UpdatePressureLimitState(
-        input->actualPressure,
-        input->effectiveMaxPressure,
-        input->currentTime,
-        state);
-    pressureLimitActive = (state != NULL)
-        ? state->pressureLimitActive
-        : (pressureScale < 1.0);
-
-    /* --- 3. 计算软限位 scale（独立于压力限制） --- */
+    /* --- 2. 软限位减速 --- */
     softLimitScale = HYD_OutputLimiter_CalcSoftLimitScale(
         input->actualPosition, input->strokeMm,
         input->softLimitRetractMm, input->softLimitBandMm,
         input->direction);
-
-    /* --- 4. 取两者较小值作为最终 scale（不叠加相乘） ---
-     * 设计决策：两种保护独立评估，取更严格的那个生效。
-     * 例：pressureScale=0.7, softLimitScale=0.5 → finalScale=0.5 */
-    finalScale = (pressureScale < softLimitScale) ? pressureScale : softLimitScale;
-
-    /* --- 5. 应用 finalScale --- */
-    if (finalScale < 1.0) {
-        commandFlow *= finalScale;
-        pumpSpeed *= finalScale;
-
-        if (softLimitScale <= pressureScale) {
-            output->softLimitActive = true;
-        }
+    if (softLimitScale < 1.0f) {
+        commandFlow *= softLimitScale;
+        pumpSpeed *= softLimitScale;
+        output->softLimitActive = true;
         output->derated = true;
     }
-    output->pressureLimitActive = pressureLimitActive;
 
-    /* --- 6. 软限位诊断；段压力限幅本身不是库级故障 --- */
+    /* --- 3. 限压 PI 与速度链路流量取小（spec 2026-11-26 §4.1） --- */
+    {
+        HYD_OutputLimiterState scratch;
+        HYD_OutputLimiterState* piState = state;
+        HYD_BOOL pressureSelected;
+        HYD_REAL limitedFlow;
+
+        if (piState == NULL) {
+            HYD_OutputLimiter_ResetState(&scratch);
+            piState = &scratch;
+        }
+        limitedFlow = HYD_OutputLimiter_ApplyPressureLimit(
+            input, piState, commandFlow,
+            input->pumpSpeedLimit / input->flowToPumpSpeedGain,
+            &pressureSelected);
+        if (pressureSelected) {
+            commandFlow = (limitedFlow > minFlow) ? limitedFlow : minFlow;
+            pumpSpeed = commandFlow * input->flowToPumpSpeedGain;
+            output->pressureLimitActive = true;
+            output->softLimitActive = false;
+            output->derated = true;
+        }
+    }
+
+    /* --- 4. 软限位诊断；段压力限幅本身不是库级故障 --- */
     if (state != NULL) {
         softLimitDiag = HYD_OutputLimiter_UpdateSoftLimitDiag(
             softLimitScale, input->currentTime, state);
         output->diagnosticCode = softLimitDiag;
     }
 
-    /* --- 7. pumpSpeedLimit 硬裁剪（最终兜底） --- */
+    /* --- 5. pumpSpeedLimit 硬裁剪（最终兜底） --- */
     {
         HYD_REAL lo = minSpeed;
         HYD_REAL hi = input->pumpSpeedLimit;
